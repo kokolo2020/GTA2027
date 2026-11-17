@@ -304,7 +304,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.20: Harbor Raceway is open east of the North Highway. Race, jump and drag!")
+	_show_toast("Harbor City 0.21: the new Harbor Raceway circuit. Park inside, race in identical cars!")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -3477,14 +3477,9 @@ func _physics_process(delta: float) -> void:
 		car.velocity.x = move_toward(car.velocity.x,0,delta*20)
 		car.velocity.z = move_toward(car.velocity.z,0,delta*20)
 	car.velocity.y -= 24*delta
-	var was_floor := car_on_floor
 	car.move_and_slide()
-	car_on_floor = car.is_on_floor()
-	if car_on_floor:
+	if car.is_on_floor():
 		car.velocity.y = 0
-		car_floor_n = car.get_floor_normal()
-	elif was_floor and race_car:
-		_race_takeoff()
 	_bus_tick(delta)
 	if player.position.y < -5 or car.position.y < -5:
 		_rescue()
@@ -4391,7 +4386,7 @@ func _smoke_test() -> void:
 	checkpoint_id = saved_checkpoint
 	_refresh_checkpoints()
 	_save_progress()
-	print("HARBOR_SMOKE_OK: Harbor Raceway (race car, GP vs AI, boosters, spikes, long jump, drag, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -9356,43 +9351,44 @@ func _hub_focus() -> Vector3:
 			best = p
 	return best
 
-# ---------- v0.20.0: Harbor Raceway (race track, long jump, drag strip, boosters, spikes) ----------
+# ---------- v0.21.0: Harbor Raceway (real circuit, pit lane, inside parking, boosters, spikes) ----------
 const RW_X0 := 205.0
 const RW_X1 := 620.0
 const RW_Z0 := -440.0
 const RW_Z1 := -40.0
-const RW_BARRIER_X := 200.5
-const RACE_PARK := Vector3(192,0.8,-150)
-const RW_DESK := Vector3(225,0,-131)
-const RW_PIT := Vector3(250,0.8,-150)
+# Visitor parking inside the gate (cars only; race cars come from the pit lane).
+const RW_LOT_X1 := 257.5
+const RW_LOT_Z0 := -250.5
+const RACE_PARK := Vector3(248.25,0.8,-141.5)
+const RW_DESK := Vector3(262,0,-138)
+const RW_PIT := Vector3(295.5,0.8,-205)
 const RACE_MAX := 30.0
 const RACE_ACCEL := 16.0
 const RACE_TURN := 4.6
 const RACE_COLOR := Color("ff7a1a")
-const RW_TRACK := [Vector2(300,-150),Vector2(300,-300),Vector2(315,-338),Vector2(355,-358),Vector2(480,-358),Vector2(522,-340),Vector2(545,-300),Vector2(545,-255),Vector2(518,-232),Vector2(545,-208),Vector2(545,-150),Vector2(560,-110),Vector2(540,-75),Vector2(500,-75),Vector2(440,-118),Vector2(380,-80),Vector2(330,-80),Vector2(305,-100),Vector2(300,-125)]
-const RW_TRACK_W := 12.0
+# Circuit control points in race order (smoothed with a centripetal Catmull-Rom spline).
+const RW_TRACK := [Vector2(312,-150),Vector2(312,-210),Vector2(312,-270),Vector2(312,-325),Vector2(318,-365),Vector2(338,-395),Vector2(370,-409),Vector2(415,-411),Vector2(470,-411),Vector2(520,-409),Vector2(556,-398),Vector2(576,-372),Vector2(580,-342),Vector2(568,-322),Vector2(567,-303),Vector2(582,-284),Vector2(588,-250),Vector2(589,-205),Vector2(586,-165),Vector2(572,-132),Vector2(545,-118),Vector2(505,-118),Vector2(474,-126),Vector2(458,-150),Vector2(455,-185),Vector2(455,-230),Vector2(452,-262),Vector2(438,-288),Vector2(414,-292),Vector2(401,-272),Vector2(399,-240),Vector2(399,-195),Vector2(398,-150),Vector2(390,-110),Vector2(370,-80),Vector2(340,-66),Vector2(320,-78),Vector2(313,-105),Vector2(312,-128)]
+const RW_TRACK_W := 14.0
+const RW_STEP := 2.5
+const RW_WALL := 16.0
 const RW_GRID := [Vector2(-3,6),Vector2(3,10),Vector2(-3,14),Vector2(3,18)]
-const JUMP_START := Vector3(250,0.8,-190)
-const JUMP_RAMP_Z := -243.0
-const JUMP_LIP_Z := -248.7
-const DRAG_START := Vector3(232,0.8,-405)
-const DRAG_FINISH_X := 592.0
-const DRAG_PAR := 13.5
 const BOOST_PRICE := 50
 const SPIKE_PRICE := 40
 const GP_PRICE := 50
 const TA_PRICE := 20
-const JUMP_PRICE := 10
-const DRAG_PRICE := 10
 const GP_PRIZES := [300,150,75,0]
 const AI_NAMES := ["Blaze","Nova","Turbo Tom"]
 const AI_COLORS := [Color("2f5fd0"),Color("7ac74f"),Color("e8559a")]
+# AI drivers use the exact same race car (top speed, acceleration, boosters, spikes) as players.
+# They only differ in how much they lift for corners.
+const AI_CORNER := [0.26,0.31,0.36]
 var race_car := false
 var race_parked_pos := Vector3.ZERO
 var race_parked_rot := 0.0
 var race_ghost: Node3D
 var rw_path := {}
 var rw_corner: Array = []
+var rw_gate_idx: Array = []
 var rec_act := 0
 var rec_count := 0.0
 var rec_t := 0.0
@@ -9413,13 +9409,10 @@ var boosts := 0
 var spikes := 0
 var rw_best_lap := 0.0
 var rw_best_gp := 0.0
+# Kept only so older saves load and save unchanged (the jump and drag events were removed in 0.21).
 var rw_best_jump := 0.0
 var rw_best_drag := 0.0
 var spike_strips: Array = []
-var jump_air := false
-var jump_from := Vector3.ZERO
-var car_on_floor := true
-var car_floor_n := Vector3.UP
 var rw_panel: PanelContainer
 var rw_info: Label
 var rw_buttons := {}
@@ -9431,6 +9424,9 @@ var online_bests := {}
 
 func _in_raceway(p: Vector3) -> bool:
 	return p.x > RW_X0 and p.x < RW_X1 and p.z > RW_Z0 and p.z < RW_Z1
+
+func _in_rw_lot(p: Vector3) -> bool:
+	return p.x > RW_X0 and p.x < RW_LOT_X1 and p.z > RW_LOT_Z0 and p.z < RW_Z1
 
 func _box_batch_rot(color: Color, items: Array) -> MultiMeshInstance3D:
 	# items: [position, size, yaw]
@@ -9449,11 +9445,127 @@ func _box_batch_rot(color: Color, items: Array) -> MultiMeshInstance3D:
 	add_child(inst)
 	return inst
 
+func _multi_collider(items: Array, layer := 1) -> StaticBody3D:
+	# One static body holding many boxes. items: [position, size, yaw]
+	var body := StaticBody3D.new()
+	body.collision_layer = layer
+	body.collision_mask = 0
+	add_child(body)
+	for it in items:
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = it[1]
+		shape.shape = box
+		shape.transform = Transform3D(Basis(Vector3.UP,float(it[2])),it[0])
+		body.add_child(shape)
+	return body
+
+# ---------- circuit geometry ----------
+func _cr_point(p0: Vector2, p1: Vector2, p2: Vector2, p3: Vector2, u: float) -> Vector2:
+	# Centripetal Catmull-Rom between p1 and p2 (u in 0..1): no loops or overshoot on uneven spacing.
+	var t0 := 0.0
+	var t1 := t0+sqrt(maxf(p0.distance_to(p1),0.01))
+	var t2 := t1+sqrt(maxf(p1.distance_to(p2),0.01))
+	var t3 := t2+sqrt(maxf(p2.distance_to(p3),0.01))
+	var t := lerpf(t1,t2,u)
+	var a1 := p0*((t1-t)/(t1-t0))+p1*((t-t0)/(t1-t0))
+	var a2 := p1*((t2-t)/(t2-t1))+p2*((t-t1)/(t2-t1))
+	var a3 := p2*((t3-t)/(t3-t2))+p3*((t-t2)/(t3-t2))
+	var b1 := a1*((t2-t)/(t2-t0))+a2*((t-t0)/(t2-t0))
+	var b2 := a2*((t3-t)/(t3-t1))+a3*((t-t1)/(t3-t1))
+	return b1*((t2-t)/(t2-t1))+b2*((t-t1)/(t2-t1))
+
+func _rw_build_path() -> void:
+	var g := RW_TRACK.size()
+	var way: Array = []
+	rw_gate_idx.clear()
+	for i in g:
+		var p0: Vector2 = RW_TRACK[(i-1+g) % g]
+		var p1: Vector2 = RW_TRACK[i]
+		var p2: Vector2 = RW_TRACK[(i+1) % g]
+		var p3: Vector2 = RW_TRACK[(i+2) % g]
+		rw_gate_idx.append(way.size())
+		var parts := maxi(1,int(ceil(p1.distance_to(p2)/RW_STEP)))
+		for k in parts:
+			way.append(_cr_point(p0,p1,p2,p3,float(k)/float(parts)))
+	var n := way.size()
+	var cum: Array = [0.0]
+	for i in n:
+		cum.append(float(cum[i])+(way[(i+1) % n] as Vector2).distance_to(way[i]))
+	rw_path = {"way":way,"cum":cum,"total":cum[n]}
+	# How sharply the track turns over the next ~35 m (used by the AI to lift for corners).
+	var ahead := int(35.0/RW_STEP)
+	rw_corner.clear()
+	for i in n:
+		var d0 := _rw_dir(i)
+		var turn := 0.0
+		for k in range(1,ahead+1):
+			turn = maxf(turn,absf(d0.angle_to(_rw_dir(i+k))))
+		rw_corner.append(turn)
+
+func _rw_dir(i: int) -> Vector2:
+	var way: Array = rw_path["way"]
+	var n := way.size()
+	return ((way[(i+1) % n] as Vector2)-(way[(i-1+n) % n] as Vector2)).normalized()
+
+func _rw_bend(i: int) -> float:
+	# Signed heading change around node i (positive = turning towards the +perp side).
+	var a := _rw_dir(i-3)
+	var b := _rw_dir(i+3)
+	return a.x*b.y-a.y*b.x
+
+func _ribbon(color: Color, quads: Array, y: float) -> void:
+	# quads: [[a0,b0,b1,a1], ...] Vector2 corners on the ground, drawn flat at height y.
+	if quads.is_empty():
+		return
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	for q in quads:
+		var v: Array = []
+		for c in q:
+			v.append(Vector3((c as Vector2).x,y,(c as Vector2).y))
+		for idx in [0,1,2,0,2,3]:
+			st.add_vertex(v[idx])
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var m := _material(color)
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m
+	add_child(mi)
+
+func _rw_band(a: float, b: float, keep: Callable) -> Array:
+	# Quads between lateral offsets a..b for every path segment where keep(i) is true.
+	var way: Array = rw_path["way"]
+	var n := way.size()
+	var out: Array = []
+	for i in n:
+		if not keep.call(i):
+			continue
+		var j := (i+1) % n
+		var ni := _rw_dir(i)
+		var nj := _rw_dir(j)
+		var qa := Vector2(-ni.y,ni.x)
+		var qb := Vector2(-nj.y,nj.x)
+		var ci: Vector2 = way[i]
+		var cj: Vector2 = way[j]
+		out.append([ci+qa*a,ci+qa*b,cj+qb*b,cj+qb*a])
+	return out
+
+func _rw_keepout(p: Vector2) -> bool:
+	# Places where trackside walls must not go: pit lane and paddock, grandstands, bridge towers.
+	if p.x < 306.0 and p.y > -362.0:
+		return true
+	for r in [Rect2(340,-272,20,104),Rect2(550,-267,20,104),Rect2(424,-443,12,12),Rect2(424,-391,12,12)]:
+		if (r as Rect2).has_point(p):
+			return true
+	return p.x < RW_X0+3.0 or p.x > RW_X1-3.0 or p.y < RW_Z0+3.0 or p.y > RW_Z1-3.0
+
 func _build_raceway() -> void:
 	var rock := Color("7d776c")
 	var grass := Color("6aa35a")
-	var asphalt := Color("343b42")
 	var paved := Color("a9a69e")
+	_rw_build_path()
 	# Approach road east from the North Highway's Industrial Quarter cross street (z = -150).
 	_slab(Vector3((110.5+RW_X0)/2.0,-0.35,-150),Vector3(RW_X0-110.5,0.6,14),0,paved)
 	_box(self,Vector3((110.5+RW_X0)/2.0,0.012,-150),Vector3(RW_X0-110.5,0.08,10),Color("394552"))
@@ -9463,31 +9575,17 @@ func _build_raceway() -> void:
 	for x in range(116,200,8):
 		road_dash.append([Vector3(float(x),0.06,-150),Vector3(3,0.02,0.18)])
 	_box_batch(Color("e7d9a4"),road_dash)
-	_sign("HARBOR RACEWAY  →",Vector3(118,6.5,-150),Color("ffd8a8"),56)
-	# Cars stop at the bollards; people walk in.
-	var barrier := StaticBody3D.new()
-	barrier.collision_layer = HUB_CAR_LAYER
-	barrier.collision_mask = 0
-	barrier.position = Vector3(RW_BARRIER_X,1.0,-150)
-	add_child(barrier)
-	var bshape := CollisionShape3D.new()
-	var bbox := BoxShape3D.new()
-	bbox.size = Vector3(0.6,2.0,14)
-	bshape.shape = bbox
-	barrier.add_child(bshape)
-	var posts := []
-	for k in 11:
-		posts.append([Vector3(RW_BARRIER_X,0.45,-156.0+float(k)*1.2),Vector3(0.28,0.9,0.28)])
-	_box_batch(Color("f2c94c"),posts)
-	var bays := []
-	for k in 7:
-		bays.append([Vector3(RACE_PARK.x,0.065,-156.0+float(k)*2.0),Vector3(5.0,0.02,0.12)])
-	_box_batch(Color("f4f1e8"),bays)
-	_sign("NO CARS PAST THIS POINT\nPARK HERE · RACE CARS INSIDE",Vector3(RW_BARRIER_X-0.5,4.2,-150),Color("ffe9b8"),40)
+	_sign("HARBOR RACEWAY  →\nparking inside",Vector3(118,6.5,-150),Color("ffd8a8"),56)
 	# Venue ground and walls (entrance gap on the west wall at z -157..-143).
 	var cx := (RW_X0+RW_X1)/2.0
 	var cz := (RW_Z0+RW_Z1)/2.0
 	_slab(Vector3(cx,-0.35,cz),Vector3(RW_X1-RW_X0,0.6,RW_Z1-RW_Z0),0,grass)
+	var stripes := []
+	var sz2 := RW_Z0
+	while sz2 < RW_Z1:
+		stripes.append([Vector3((291.0+RW_X1)/2.0,0.0,sz2+3.0),Vector3(RW_X1-291.0,0.04,6.0)])
+		sz2 += 12.0
+	_box_batch(Color("5f984f"),stripes)
 	_box(self,Vector3(RW_X1+0.5,1.25,cz),Vector3(1,2.5,RW_Z1-RW_Z0+1),rock,true)
 	_box(self,Vector3(cx,1.25,RW_Z0-0.5),Vector3(RW_X1-RW_X0+1,2.5,1),rock,true)
 	_box(self,Vector3(cx,1.25,RW_Z1+0.5),Vector3(RW_X1-RW_X0+1,2.5,1),rock,true)
@@ -9498,130 +9596,204 @@ func _build_raceway() -> void:
 	for z in [-157.5,-142.5]:
 		_box(self,Vector3(RW_X0+1,4,z),Vector3(1.2,8,1.2),Color("ff7a1a"),true)
 	_box(self,Vector3(RW_X0+1,8.2,-150),Vector3(1.4,1.0,16),Color("23262b"))
-	# Pit plaza, desk, garage, leaderboard.
-	_box_batch(paved,[[Vector3(247,0.02,-110),Vector3(76,0.04,130)]])
-	_prop("res://models/hub_counter.glb",Vector3(225,0,-128),Vector3(6.2,1.2,1.4),180.0,Color("22b5c9"))
-	_sign("PIT DESK\nrace car · boosters · spikes",RW_DESK+Vector3(0,4.2,3),Color("bff4f0"),40)
-	_prop("res://models/hangar.glb",Vector3(245,0,-80),Vector3(24,9,22),0.0,Color("c9d0d4"))
-	_sign("PIT GARAGE",Vector3(245,11,-70),Color("ffd8a8"),48)
-	_model_batch("res://models/billboard.glb",[[Vector3(266,0,-128),PI,1.3]])
+	_build_rw_parking()
+	_build_rw_pits()
+	_build_rw_track()
+	_build_rw_trackside()
+	_rw_refresh_board()
+
+func _build_rw_parking() -> void:
+	var paved := Color("a9a69e")
+	# Big visitor lot just inside the gate (about 240 bays). Cars stop at the bollards; people walk on.
+	var lot_w := RW_LOT_X1-RW_X0
+	var lot_d := RW_Z1-RW_LOT_Z0
+	_box_batch(Color("3d434a"),[[Vector3((RW_X0+RW_LOT_X1)/2.0,0.04,(RW_Z1+RW_LOT_Z0)/2.0),Vector3(lot_w,0.1,lot_d)]])
+	var lines := []
+	for row in [[213.0,218.5],[225.5,231.0],[233.0,238.5],[245.5,251.0]]:
+		var z := -56.0
+		while z > -246.0:
+			if z <= -143.0 or z >= -157.0:
+				lines.append([Vector3((float(row[0])+float(row[1]))/2.0,0.1,z),Vector3(float(row[1])-float(row[0]),0.02,0.14)])
+			z -= 3.0
+		for edge in row:
+			lines.append([Vector3(float(edge),0.1,-150.0),Vector3(0.12,0.02,0.1)])
+	_box_batch(Color("f4f1e8"),lines)
+	# Planted median and footpaths.
+	_box_batch(Color("5f984f"),[[Vector3(232,0.08,-100),Vector3(1.8,0.1,84)],[Vector3(232,0.08,-201),Vector3(1.8,0.1,86)]])
+	_box_batch(paved,[[Vector3(209.25,0.08,-145),Vector3(7.5,0.1,210)],[Vector3(254.25,0.08,-145),Vector3(6.5,0.1,210)]])
+	var trees := []
+	for z in range(-64,-244,-12):
+		if absf(float(z)+150.0) > 10.0:
+			trees.append([Vector3(232,0,float(z)),0.0,0.7])
+	_model_batch("res://models/tree_round.glb",trees)
+	var lamps := []
+	for z in range(-60,-250,-20):
+		lamps.append([Vector3(208,0,float(z)),PI/2.0,1.0])
+		lamps.append([Vector3(255,0,float(z)),-PI/2.0,1.0])
+	_model_batch("res://models/lamp.glb",lamps)
+	# Car-only bollard line on the east and north edges of the lot.
+	var posts := []
+	var z2 := RW_Z1-1.0
+	while z2 > RW_LOT_Z0:
+		posts.append([Vector3(RW_LOT_X1,0.45,z2),Vector3(0.28,0.9,0.28)])
+		z2 -= 1.6
+	var x2 := RW_X0+1.0
+	while x2 < RW_LOT_X1:
+		posts.append([Vector3(x2,0.45,RW_LOT_Z0),Vector3(0.28,0.9,0.28)])
+		x2 += 1.6
+	_box_batch(Color("f2c94c"),posts)
+	_multi_collider([[Vector3(RW_LOT_X1,1.0,(RW_Z1+RW_LOT_Z0)/2.0),Vector3(0.6,2.0,lot_d),0.0],[Vector3((RW_X0+RW_LOT_X1)/2.0,1.0,RW_LOT_Z0),Vector3(lot_w,2.0,0.6),0.0]],HUB_CAR_LAYER)
+	_sign("PARKING\npark here · walk to the Pit Desk",Vector3(214,5.5,-150),Color("bff4f0"),44)
+	var p_sign := _sign("P",Vector3(230,9,-150),Color("6fb6ff"),120)
+	p_sign.outline_size = 16
+
+func _build_rw_pits() -> void:
+	var paved := Color("8f8c85")
+	# Paddock between the parking lot and the pit building.
+	_box_batch(paved,[[Vector3((RW_LOT_X1+291.0)/2.0,0.04,-200),Vector3(291.0-RW_LOT_X1,0.1,320)]])
+	_prop("res://models/hub_counter.glb",RW_DESK+Vector3(3,0,0),Vector3(6.2,1.2,1.4),-90.0,Color("22b5c9"))
+	_sign("PIT DESK\nrace car · boosters · spikes",RW_DESK+Vector3(3,4.4,0),Color("bff4f0"),40)
+	_model_batch("res://models/billboard.glb",[[Vector3(266,0,-168),-PI/2.0,1.3]])
 	rw_board = Label3D.new()
 	rw_board.font_size = 48
 	rw_board.pixel_size = 0.016
 	rw_board.modulate = Color("23262b")
 	rw_board.outline_size = 0
-	rw_board.position = Vector3(266,9.5,-128.45)
-	rw_board.rotation.y = PI
+	rw_board.position = Vector3(265.55,9.5,-168)
+	rw_board.rotation.y = -PI/2.0
 	add_child(rw_board)
-	# Track: segments, joints, kerbs, start/finish.
-	var segs := []
-	var joints := []
-	var kerb_r := []
-	var kerb_w := []
-	var n := RW_TRACK.size()
+	# Pit building: 15 garages facing the pit lane, race control tower at the north end.
+	_prop("res://models/pit_building.glb",Vector3(283,0,-225),Vector3(150,10,14),90.0,Color("eef0f1"),false)
+	_collider(self,Vector3(283,5,-225),Vector3(14,10,150))
+	_collider(self,Vector3(283,13,-294),Vector3(10,26,10))
+	_sign("PIT GARAGES",Vector3(283,14,-160),Color("ffd8a8"),48)
+	# Pit lane with entry and exit, pit wall, and painted pit boxes.
+	var asphalt := Color("33383e")
+	_box_batch(asphalt,[[Vector3(295.5,0.07,-220),Vector3(9.0,0.1,220)]])
+	_box_batch_rot(asphalt,[[Vector3(303.25,0.068,-99),Vector3(9.0,0.1,26),atan2(-(311.0-295.5),-(-88.0+110.0))],[Vector3(303.25,0.068,-341),Vector3(9.0,0.1,26),atan2(-(311.0-295.5),-(-352.0+330.0))]])
+	var marks := []
+	for i in 15:
+		marks.append([Vector3(294.5,0.13,-155.0-float(i)*10.0),Vector3(4.0,0.02,6.0)])
+	_box_batch(Color("c96a2a"),marks)
+	_box_batch(Color("f4f1e8"),[[Vector3(291.2,0.13,-220),Vector3(0.25,0.02,220)],[Vector3(299.8,0.13,-220),Vector3(0.25,0.02,220)]])
+	_box(self,Vector3(303,0.55,-220),Vector3(0.8,1.1,216),Color("e2e4e6"),true)
+	var wall_stripes := []
+	for z in range(-114,-328,-6):
+		wall_stripes.append([Vector3(303,0.56,float(z)),Vector3(0.84,1.12,3.0)])
+	_box_batch(Color("d33a3a"),wall_stripes)
+	_sign("PIT LANE",Vector3(299,4,-104),Color("fff5dc"),40)
+	_sign("PIT EXIT",Vector3(299,4,-334),Color("fff5dc"),40)
+
+func _build_rw_track() -> void:
+	var way: Array = rw_path["way"]
+	var n := way.size()
+	var bends: Array = []
 	for i in n:
-		var a: Vector2 = RW_TRACK[i]
-		var b: Vector2 = RW_TRACK[(i+1) % n]
-		var mid := (a+b)/2.0
-		var d := b-a
-		var yaw := atan2(-d.x,-d.y)
-		segs.append([Vector3(mid.x,0.015,mid.y),Vector3(RW_TRACK_W,0.06,d.length()),yaw])
-		joints.append([Vector3(a.x,0.016,a.y),Vector3(RW_TRACK_W,0.06,RW_TRACK_W),yaw])
-		var dir := d.normalized()
-		var perp := Vector2(-dir.y,dir.x)
-		var k := 0
-		var t := 2.0
-		while t < d.length()-2.0:
-			for side in [-1.0,1.0]:
-				var p: Vector2 = a+dir*t+perp*float(side)*(RW_TRACK_W/2.0+0.6)
-				((kerb_r if k % 2 == 0 else kerb_w) as Array).append([Vector3(p.x,0.04,p.y),Vector3(1.2,0.1,2.0),yaw])
-			k += 1
-			t += 2.0
-	_box_batch_rot(asphalt,segs)
-	_box_batch_rot(asphalt,joints)
-	_box_batch_rot(Color("d33a3a"),kerb_r)
-	_box_batch_rot(Color("f4f1e8"),kerb_w)
+		bends.append(_rw_bend(i))
+	var corner := func(i: int) -> bool: return absf(float(bends[i])) > 0.035
+	var hw := RW_TRACK_W/2.0
+	# Asphalt, white edge lines, kerbs on corners (both sides), gravel traps on the outside of corners.
+	_ribbon(Color("2f3338"),_rw_band(-hw,hw,func(_i): return true),0.12)
+	_ribbon(Color("f4f1e8"),_rw_band(-hw+0.25,-hw+0.55,func(_i): return true),0.15)
+	_ribbon(Color("f4f1e8"),_rw_band(hw-0.55,hw-0.25,func(_i): return true),0.15)
+	for side: float in [-1.0,1.0]:
+		var a: float = hw*side
+		var b: float = (hw+1.5)*side
+		_ribbon(Color("d33a3a"),_rw_band(minf(a,b),maxf(a,b),func(i): return corner.call(i) and i % 2 == 0),0.17)
+		_ribbon(Color("f4f1e8"),_rw_band(minf(a,b),maxf(a,b),func(i): return corner.call(i) and i % 2 == 1),0.17)
+		var outer := func(i: int) -> bool: return absf(float(bends[i])) > 0.05 and signf(float(bends[i])) == -side
+		var g0: float = (hw+1.5)*side
+		var g1: float = (RW_WALL-1.0)*side
+		_ribbon(Color("d8c39a"),_rw_band(minf(g0,g1),maxf(g0,g1),outer),0.09)
+	# Start / finish: chequered line, grid boxes, light gantry.
 	var checks := []
 	var checks_w := []
-	for i in 8:
+	for i in 10:
 		for j in 2:
-			((checks if (i+j) % 2 == 0 else checks_w) as Array).append([Vector3(295.5+float(i)*1.5,0.05,-150.75+float(j)*1.5),Vector3(1.5,0.03,1.5)])
+			((checks if (i+j) % 2 == 0 else checks_w) as Array).append([Vector3(305.7+float(i)*1.4,0.15,-150.7+float(j)*1.4),Vector3(1.4,0.02,1.4)])
 	_box_batch(Color("1b1b1b"),checks)
 	_box_batch(Color("f4f1e8"),checks_w)
-	for x in [292.5,307.5]:
-		_box(self,Vector3(x,3.5,-150),Vector3(0.6,7,0.6),Color("23262b"),true)
-	_box(self,Vector3(300,7.2,-150),Vector3(16,1.2,0.8),Color("ff7a1a"))
-	_sign("START / FINISH",Vector3(300,8.8,-150),Color("fff5dc"),48)
-	# Grandstand with a crowd along the main straight.
-	var stand := []
-	var crowd := [[],[],[],[]]
+	var grid := []
+	for slot in RW_GRID:
+		var s: Vector2 = slot
+		grid.append([Vector3(312.0+s.x,0.15,-150.0+s.y-2.6),Vector3(3.0,0.02,0.25)])
+		grid.append([Vector3(312.0+s.x-1.4,0.15,-150.0+s.y-1.6),Vector3(0.25,0.02,2.0)])
+		grid.append([Vector3(312.0+s.x+1.4,0.15,-150.0+s.y-1.6),Vector3(0.25,0.02,2.0)])
+	_box_batch(Color("f4f1e8"),grid)
+	_prop("res://models/start_gantry.glb",Vector3(314,0,-151.5),Vector3(25,9,1.2),0.0,Color("3a4048"),false)
+	_collider(self,Vector3(302,4.2,-151.5),Vector3(0.8,8.5,0.8))
+	_collider(self,Vector3(326,4.2,-151.5),Vector3(0.8,8.5,0.8))
+	_sign("START / FINISH",Vector3(314,10.6,-151.5),Color("fff5dc"),48)
+
+func _build_rw_trackside() -> void:
+	var way: Array = rw_path["way"]
+	var n := way.size()
+	# Trackside walls: armco on straights, red/white tyre walls on corners, with colliders.
+	var armco := []
+	var tyre_r := []
+	var tyre_w := []
+	var shapes := []
+	var i := 0
+	while i < n:
+		var j := (i+2) % n
+		for side in [-1.0,1.0]:
+			var di := _rw_dir(i)
+			var dj := _rw_dir(j)
+			var a: Vector2 = (way[i] as Vector2)+Vector2(-di.y,di.x)*RW_WALL*side
+			var b: Vector2 = (way[j] as Vector2)+Vector2(-dj.y,dj.x)*RW_WALL*side
+			var mid := (a+b)/2.0
+			if _rw_keepout(mid) or _rw_keepout(a) or _rw_keepout(b) or _rw_point_dist(mid) < RW_WALL-1.5:
+				continue
+			var d := b-a
+			var yaw := atan2(-d.x,-d.y)
+			var length := d.length()+0.4
+			if absf(_rw_bend(i)) > 0.05:
+				((tyre_r if (i/2) % 2 == 0 else tyre_w) as Array).append([Vector3(mid.x,0.55,mid.y),Vector3(1.2,1.1,length),yaw])
+				shapes.append([Vector3(mid.x,0.55,mid.y),Vector3(1.2,1.1,length),yaw])
+			else:
+				armco.append([Vector3(mid.x,0.5,mid.y),Vector3(0.35,1.0,length),yaw])
+				shapes.append([Vector3(mid.x,0.5,mid.y),Vector3(0.35,1.0,length),yaw])
+		i += 2
+	_box_batch_rot(Color("b9c2c8"),armco)
+	_box_batch_rot(Color("d33a3a"),tyre_r)
+	_box_batch_rot(Color("eef1f2"),tyre_w)
+	_multi_collider(shapes)
+	# Grandstands: main stand facing the start/finish straight, second stand on the east straight.
+	_prop("res://models/grandstand.glb",Vector3(350,0,-220),Vector3(100,18,14),-90.0,Color("a3a6a3"),false)
+	_collider(self,Vector3(350,9,-220),Vector3(14,18,100))
+	_prop("res://models/grandstand.glb",Vector3(560,0,-215),Vector3(100,18,14),90.0,Color("a3a6a3"),false)
+	_collider(self,Vector3(560,9,-215),Vector3(14,18,100))
+	# Footbridge over the back straight.
+	_prop("res://models/footbridge.glb",Vector3(430,0,-411),Vector3(54,9,4),90.0,Color("eef0f1"),false)
+	_collider(self,Vector3(430,3.5,-437),Vector3(6,7,5))
+	_collider(self,Vector3(430,3.5,-385),Vector3(6,7,5))
+	# Billboards, marshal posts and trees well clear of the track.
+	_model_batch("res://models/billboard.glb",[[Vector3(475,0,-432),0.0,1.2],[Vector3(540,0,-432),0.0,1.2],[Vector3(612,0,-200),-PI/2.0,1.2],[Vector3(380,0,-45),PI,1.2]])
+	var marshal := []
+	var mk := 0
+	while mk < n:
+		var di := _rw_dir(mk)
+		var p: Vector2 = (way[mk] as Vector2)+Vector2(-di.y,di.x)*(RW_WALL+2.5)
+		if not _rw_keepout(p) and _rw_point_dist(p) > RW_WALL+1.0:
+			marshal.append([Vector3(p.x,1.0,p.y),Vector3(1.6,2.0,1.6)])
+		mk += 48
+	_box_batch(Color("ff9a3a"),marshal)
 	var rng := RandomNumberGenerator.new()
-	rng.seed = 2020
-	for step in 4:
-		stand.append([Vector3(286.5-float(step)*1.6,0.5+float(step)*1.0,-232),Vector3(1.6,1.0+float(step)*2.0,110),0.0])
-		var z := -285.0
-		while z < -180.0:
-			if rng.randf() < 0.75:
-				crowd[rng.randi() % 4].append([Vector3(286.5-float(step)*1.6,1.4+float(step)*2.0,z),Vector3(0.45,0.75,0.45)])
-			z += 1.1
-	_box_batch_rot(Color("b9bcbd"),stand)
-	_collider(self,Vector3(284,2.5,-232),Vector3(7,5,110))
-	var crowd_cols := [Color("d33a3a"),Color("2f5fd0"),Color("f2d046"),Color("eef1f2")]
-	for k in 4:
-		_box_batch(crowd_cols[k],crowd[k])
-	# Long jump: runway, ramp, landing zone with distance lines.
-	_box_batch(asphalt,[[Vector3(250,0.015,-213),Vector3(16,0.06,56)]])
-	_box_batch(Color("c9b48c"),[[Vector3(250,0.02,-307),Vector3(24,0.04,116)]])
-	var ramp := StaticBody3D.new()
-	# Sunk 0.35 m so the slope starts below the road surface (no lip for the car to hit).
-	ramp.position = Vector3(250,1.117,JUMP_RAMP_Z)
-	ramp.rotation_degrees.x = 17.0
-	add_child(ramp)
-	var rcol := CollisionShape3D.new()
-	var rbox := BoxShape3D.new()
-	rbox.size = Vector3(14,0.6,12)
-	rcol.shape = rbox
-	ramp.add_child(rcol)
-	var rmesh := MeshInstance3D.new()
-	var rbm := BoxMesh.new()
-	rbm.size = Vector3(14,0.6,12)
-	rmesh.mesh = rbm
-	rmesh.material_override = _material(Color("ff7a1a"))
-	ramp.add_child(rmesh)
-	_box(self,Vector3(250,1.45,JUMP_LIP_Z+0.8),Vector3(14,2.9,0.6),Color("5a5f66"))
-	var lines := []
-	for m in range(10,120,10):
-		var z := JUMP_LIP_Z-float(m)
-		lines.append([Vector3(250,0.05,z),Vector3(24,0.02,0.25)])
-		var lab := _sign("%d m" % m,Vector3(263,1.2,z),Color("fff5dc"),40)
-		lab.pixel_size = 0.012
-	_box_batch(Color("f4f1e8"),lines)
-	_sign("LONG JUMP",Vector3(250,6,-186),Color("ffd8a8"),56)
-	# Drag strip along the north edge.
-	_box_batch(asphalt,[[Vector3((DRAG_START.x+612.0)/2.0-5.0,0.015,DRAG_START.z),Vector3(612.0-DRAG_START.x+10.0,0.06,12)]])
-	var dchk := []
-	var dchk_w := []
-	for i in 8:
-		for j in 2:
-			((dchk if (i+j) % 2 == 0 else dchk_w) as Array).append([Vector3(DRAG_FINISH_X-0.75+float(j)*1.5,0.05,DRAG_START.z-5.25+float(i)*1.5),Vector3(1.5,0.03,1.5)])
-	_box_batch(Color("1b1b1b"),dchk)
-	_box_batch(Color("f4f1e8"),dchk_w)
-	_box_batch(Color("f4f1e8"),[[Vector3(DRAG_START.x+3.0,0.05,DRAG_START.z),Vector3(0.4,0.02,12)]])
-	_sign("DRAG STRIP 360 m",Vector3(DRAG_START.x+4.0,6,DRAG_START.z+9),Color("ffd8a8"),56)
-	_sign("FINISH",Vector3(DRAG_FINISH_X,6,DRAG_START.z),Color("fff5dc"),56)
-	# Track path for AI and progress.
-	var way: Array = []
-	for p in RW_TRACK:
-		way.append(p)
-	var cum: Array = [0.0]
-	for i in n:
-		cum.append(float(cum[i])+(way[(i+1) % n] as Vector2).distance_to(way[i]))
-	rw_path = {"way":way,"cum":cum,"total":cum[n]}
-	for i in n:
-		var din: Vector2 = ((way[i] as Vector2)-(way[(i-1+n) % n] as Vector2)).normalized()
-		var dout: Vector2 = ((way[(i+1) % n] as Vector2)-(way[i] as Vector2)).normalized()
-		rw_corner.append(absf(din.angle_to(dout)))
-	_rw_refresh_board()
+	rng.seed = 2021
+	var round_t := []
+	var pine_t := []
+	var tries := 0
+	while round_t.size()+pine_t.size() < 90 and tries < 2000:
+		tries += 1
+		var p := Vector2(rng.randf_range(296.0,RW_X1-6.0),rng.randf_range(RW_Z0+6.0,RW_Z1-6.0))
+		if _rw_keepout(p) or _rw_point_dist(p) < RW_WALL+6.0:
+			continue
+		((round_t if rng.randf() < 0.6 else pine_t) as Array).append([Vector3(p.x,0,p.y),rng.randf()*TAU,rng.randf_range(0.8,1.3)])
+	for k in 16:
+		var p2 := Vector2(rng.randf_range(212.0,250.0),rng.randf_range(-430.0,-262.0)) if k % 2 == 0 else Vector2(rng.randf_range(255.0,288.0),rng.randf_range(-430.0,-368.0))
+		pine_t.append([Vector3(p2.x,0,p2.y),rng.randf()*TAU,rng.randf_range(0.9,1.3)])
+	_model_batch("res://models/tree_round.glb",round_t)
+	_model_batch("res://models/tree_pine.glb",pine_t)
 
 # ---------- race car rental ----------
 func _model_key() -> int:
@@ -9634,10 +9806,10 @@ func _race_car_start() -> void:
 		_toggle_menu()
 	if driving:
 		driving = false
-	# Your own car waits in the parking (shown as a parked copy).
-	if car.position.distance_to(RACE_PARK) > 60.0 or _in_raceway(car.position):
+	# Your own car waits in the parking lot (shown as a parked copy).
+	if not _in_rw_lot(car.position):
 		car.position = RACE_PARK
-		car.rotation = Vector3(0,-PI/2.0,0)
+		car.rotation = Vector3(0,PI/2.0,0)
 	race_parked_pos = car.position
 	race_parked_rot = car.rotation.y
 	if race_ghost != null:
@@ -9655,7 +9827,7 @@ func _race_car_start() -> void:
 	race_car = true
 	_apply_car()
 	car.position = RW_PIT
-	car.rotation = Vector3(0,-PI/2.0,0)
+	car.rotation = Vector3(0,0,0)
 	car.velocity = Vector3.ZERO
 	car_speed = 0.0
 	driving = true
@@ -9663,7 +9835,7 @@ func _race_car_start() -> void:
 	player.get_child(0).set_deferred("disabled",true)
 	_apply_view()
 	_follow_camera(1.0)
-	_show_toast("Your race car is ready! Everyone drives the same car. Tap RACEWAY MENU to pick an event.")
+	_show_toast("Your race car is ready in the pit lane! Everyone drives the same car. Tap RACEWAY MENU to race.")
 
 func _tint_ghost(node: Node, body_m: Material, roof_m: Material) -> void:
 	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
@@ -9695,31 +9867,31 @@ func _race_car_end(silent := false) -> void:
 	car.velocity = Vector3.ZERO
 	car_speed = 0.0
 	driving = false
-	player.position = RW_DESK+Vector3(0,0.75,-3.0)
+	player.position = RW_DESK+Vector3(-3.0,0.75,0)
 	player.show()
 	player.get_child(0).set_deferred("disabled",false)
 	_apply_car()
 	_apply_view()
 	if not silent:
-		_show_toast("Race car returned. Your own car is parked outside the entrance.")
+		_show_toast("Race car returned. Your own car is in the parking lot.")
 
 func _race_keep_cars_out() -> void:
 	if race_car:
 		if not _in_raceway(car.position):
 			_race_car_end(true)
 		return
-	if _in_raceway(car.position):
+	if _in_raceway(car.position) and not _in_rw_lot(car.position):
 		if driving:
 			driving = false
-			player.position = Vector3(RW_X0+6.0,0.75,-150)
+			player.position = RW_DESK+Vector3(-3.0,0.75,0)
 			player.show()
 			player.get_child(0).set_deferred("disabled",false)
 			_apply_view()
 		car.position = RACE_PARK
-		car.rotation = Vector3(0,-PI/2.0,0)
+		car.rotation = Vector3(0,PI/2.0,0)
 		car.velocity = Vector3.ZERO
 		car_speed = 0.0
-		_show_toast("Harbor Raceway: park outside and take a race car at the Pit Desk.")
+		_show_toast("Harbor Raceway: park in the lot and take a race car at the Pit Desk.")
 
 # ---------- speed effects ----------
 func _eff_max() -> float:
@@ -9736,27 +9908,26 @@ func _eff_max() -> float:
 func _eff_accel() -> float:
 	return car_accel*(2.0 if race_car and boost_t > 0.0 else 1.0)
 
-func _race_takeoff() -> void:
-	var n := car_floor_n
-	var vh := Vector3(car.velocity.x,0,car.velocity.z)
-	var vy := -(vh.x*n.x+vh.z*n.z)/maxf(n.y,0.3)
-	if vy > 1.0:
-		car.velocity.y = vy
-		if rec_act == 3 and rec_started and not jump_air:
-			jump_air = true
-			jump_from = car.position
-
 # ---------- track helpers ----------
 func _rw_seg_progress(pos: Vector2) -> float:
-	# Progress along the lap for the current gate segment.
+	# Progress along the lap between the last gate and the next one.
 	var way: Array = rw_path["way"]
 	var cum: Array = rw_path["cum"]
 	var n := way.size()
-	var prev := (rec_gate-1+n) % n
-	var a: Vector2 = way[prev]
-	var b: Vector2 = way[(prev+1) % n]
-	var t := clampf((pos-a).dot(b-a)/maxf((b-a).length_squared(),0.01),0.0,1.0)
-	return float(cum[prev])+t*a.distance_to(b)
+	var g := RW_TRACK.size()
+	var i0: int = rw_gate_idx[(rec_gate-1+g) % g]
+	var i1: int = rw_gate_idx[rec_gate] if rec_gate != 0 else n
+	var best := INF
+	var best_s := float(cum[i0])
+	for i in range(i0,i1):
+		var a: Vector2 = way[i]
+		var b: Vector2 = way[(i+1) % n]
+		var t := clampf((pos-a).dot(b-a)/maxf((b-a).length_squared(),0.01),0.0,1.0)
+		var d := pos.distance_to(a.lerp(b,t))
+		if d < best:
+			best = d
+			best_s = float(cum[i])+t*a.distance_to(b)
+	return best_s
 
 func _rw_track_dist(pos: Vector2) -> float:
 	var way: Array = rw_path["way"]
@@ -9769,6 +9940,13 @@ func _rw_track_dist(pos: Vector2) -> float:
 		best = minf(best,pos.distance_to(a.lerp(b,t)))
 	return best
 
+func _rw_point_dist(pos: Vector2) -> float:
+	# Cheap distance to the nearest centreline sample (within RW_STEP/2 of the true distance).
+	var best := INF
+	for w in rw_path["way"]:
+		best = minf(best,pos.distance_squared_to(w))
+	return sqrt(best)
+
 func _rw_player_progress() -> float:
 	var pos := Vector2(car.position.x,car.position.z)
 	if not rec_started:
@@ -9776,14 +9954,9 @@ func _rw_player_progress() -> float:
 	return float(rec_lap)*float(rw_path["total"])+_rw_seg_progress(pos)
 
 func _rw_target() -> Vector3:
-	match rec_act:
-		1,2:
-			var g: Vector2 = RW_TRACK[rec_gate]
-			return Vector3(g.x,0,g.y)
-		3:
-			return Vector3(250,0,JUMP_LIP_Z)
-		4:
-			return Vector3(DRAG_FINISH_X,0,DRAG_START.z)
+	if rec_act == 1 or rec_act == 2:
+		var g: Vector2 = RW_TRACK[rec_gate]
+		return Vector3(g.x,0,g.y)
 	return car.position
 
 # ---------- events ----------
@@ -9792,7 +9965,6 @@ func _rec_stop() -> void:
 	rec_count = 0.0
 	rec_started = false
 	rec_online = false
-	jump_air = false
 	offtrack = false
 	for a in rec_ai:
 		(a["node"] as Node3D).queue_free()
@@ -9811,10 +9983,15 @@ func _rw_place(pos: Vector3, yaw: float) -> void:
 	car_speed = 0.0
 	_follow_camera(1.0)
 
+func _rw_grid_pos(slot_i: int) -> Vector3:
+	var slot: Vector2 = RW_GRID[slot_i]
+	var start: Vector2 = RW_TRACK[0]
+	return Vector3(start.x+slot.x,0.8,start.y+slot.y)
+
 func _rw_start(kind: int, online := false) -> void:
-	if not race_car:
+	if not race_car or kind < 1 or kind > 2:
 		return
-	var price: int = [0,GP_PRICE,TA_PRICE,JUMP_PRICE,DRAG_PRICE][kind]
+	var price: int = [0,GP_PRICE,TA_PRICE][kind]
 	if online and (not online_on or online_state != 3):
 		_show_toast("Turn Online on first (top right) to invite racers.")
 		return
@@ -9830,25 +10007,18 @@ func _rw_start(kind: int, online := false) -> void:
 	rec_last_count = -1
 	if paused:
 		_toggle_menu()
-	match kind:
-		1,2:
-			rec_laps = 2 if kind == 1 else 3
-			var slot: Vector2 = RW_GRID[2]
-			_rw_place(Vector3(300+slot.x,0.8,-150+slot.y),0.0)
-			if kind == 1 and not online:
-				for k in 3:
-					_rw_spawn_ai(k,[0,1,3][k])
-			if online:
-				rec_online = true
-				rec_race_id = "%s%d" % [online_id,randi() % 100000]
-				rec_count = 10.0
-				_online_event_send("rcs",{"rid":rec_race_id,"left":10.0})
-				_feed_add("You started an online Grand Prix. Racers can join for 10 s…","")
-		3:
-			_rw_place(JUMP_START,0.0)
-		4:
-			_rw_place(DRAG_START,-PI/2.0)
-	_show_toast(["","Grand Prix: 2 laps. Use boosters and spikes!","Time attack: 3 laps, beat your best lap.","Long jump: full speed up the ramp!","Drag strip: 360 m, floor it!"][kind])
+	rec_laps = 2 if kind == 1 else 3
+	_rw_place(_rw_grid_pos(2),0.0)
+	if kind == 1 and not online:
+		for k in 3:
+			_rw_spawn_ai(k,[0,1,3][k])
+	if online:
+		rec_online = true
+		rec_race_id = "%s%d" % [online_id,randi() % 100000]
+		rec_count = 10.0
+		_online_event_send("rcs",{"rid":rec_race_id,"left":10.0})
+		_feed_add("You started an online Grand Prix. Racers can join for 10 s…","")
+	_show_toast(["","Grand Prix: 2 laps. Use boosters and spikes!","Time attack: 3 laps, beat your best lap."][kind])
 
 func _rw_spawn_ai(k: int, slot_i: int) -> void:
 	var node := Node3D.new()
@@ -9869,7 +10039,8 @@ func _rw_spawn_ai(k: int, slot_i: int) -> void:
 	tag.position = Vector3(0,2.6,0)
 	node.add_child(tag)
 	var slot: Vector2 = RW_GRID[slot_i]
-	rec_ai.append({"node":node,"s":-slot.y,"lat":slot.x,"v":0.0,"vmax":randf_range(27.0,29.5),"boost":0.0,"slow":0.0,"boosts":1,"spikes":1,"done":0.0,"name":AI_NAMES[k]})
+	# Same race car as the player: same top speed, acceleration, booster and spike rules.
+	rec_ai.append({"node":node,"s":-slot.y,"lat":slot.x,"v":0.0,"vmax":RACE_MAX,"accel":RACE_ACCEL,"corner":AI_CORNER[k],"boost":0.0,"slow":0.0,"boosts":1,"spikes":1,"done":0.0,"name":AI_NAMES[k]})
 	_rw_ai_place(rec_ai[rec_ai.size()-1])
 
 func _rw_ai_place(a: Dictionary) -> void:
@@ -9908,8 +10079,6 @@ func _rw_tick(delta: float) -> void:
 			rec_big.text = "GO!"
 			rec_t = 0.0
 			rec_lap_t0 = 0.0
-			if rec_act >= 3:
-				rec_started = true
 		return
 	rec_t += delta
 	if rec_t > 1.0 and rec_big.visible:
@@ -9922,44 +10091,26 @@ func _rw_tick(delta: float) -> void:
 			slow_t = 2.0
 			car_speed = minf(car_speed,_eff_max())
 			_show_toast("SPIKES! Slowed down for 2 s.")
-	match rec_act:
-		1,2:
-			offtrack = rec_started and _rw_track_dist(pos) > RW_TRACK_W/2.0+2.0
-			var g: Vector2 = RW_TRACK[rec_gate]
-			if pos.distance_to(g) < 15.0:
-				if rec_gate == 0:
-					if rec_started:
-						rec_lap += 1
-						var lap_t := rec_t-rec_lap_t0
-						rec_lap_t0 = rec_t
-						_rw_lap_done(lap_t)
-						if rec_lap >= rec_laps:
-							_rw_finish()
-							return
-					rec_started = true
-				rec_gate = (rec_gate+1) % RW_TRACK.size()
-			_rw_ai_tick(delta)
-		3:
-			if jump_air and car_on_floor and car.position.z < JUMP_LIP_Z+0.5:
-				var dist := Vector2(car.position.x-jump_from.x,car.position.z-jump_from.z).length()
-				jump_air = false
-				_rw_jump_done(dist)
-				return
-			if rec_t > 15.0 and not jump_air:
-				_show_toast("No jump this time. Try again from the Raceway menu.")
-				_rec_stop()
-		4:
-			if car.position.x >= DRAG_FINISH_X:
-				_rw_drag_done(rec_t)
-				return
-			if rec_t > 30.0:
-				_show_toast("Drag run timed out.")
-				_rec_stop()
+	offtrack = rec_started and _rw_track_dist(pos) > RW_TRACK_W/2.0+2.0
+	var g: Vector2 = RW_TRACK[rec_gate]
+	if pos.distance_to(g) < 15.0:
+		if rec_gate == 0:
+			if rec_started:
+				rec_lap += 1
+				var lap_t := rec_t-rec_lap_t0
+				rec_lap_t0 = rec_t
+				_rw_lap_done(lap_t)
+				if rec_lap >= rec_laps:
+					_rw_finish()
+					return
+			rec_started = true
+		rec_gate = (rec_gate+1) % RW_TRACK.size()
+	_rw_ai_tick(delta)
 
 func _rw_ai_tick(delta: float) -> void:
 	var total := float(rw_path["total"])
 	var cum: Array = rw_path["cum"]
-	var n := RW_TRACK.size()
+	var n := (rw_path["way"] as Array).size()
 	var me := _rw_player_progress()
 	for a in rec_ai:
 		if float(a["done"]) > 0.0:
@@ -9967,31 +10118,22 @@ func _rw_ai_tick(delta: float) -> void:
 			continue
 		var s := float(a["s"])
 		var sm := fposmod(s,total)
-		var j := 0
-		while j < n and float(cum[j]) <= sm:
-			j += 1
-		var dnext := (float(cum[j]) if j < n else total)-sm
-		var corner := float(rw_corner[j % n])
+		var j := clampi(cum.bsearch(sm,false)-1,0,n-1)
 		var vmax := float(a["vmax"])
-		var target := vmax
-		if dnext < 35.0:
-			target = lerpf(vmax*(1.0-0.45*clampf(corner/1.4,0.0,1.0)),vmax,dnext/35.0)
-		var rel := s-me
-		if rel > 50.0:
-			target *= 0.9
-		elif rel < -50.0:
-			target *= 1.07
+		# Lift for the sharpest bend coming up; no catch-up help either way.
+		var target := vmax*(1.0-float(a["corner"])*clampf(float(rw_corner[j])/1.3,0.0,1.0))
 		if float(a["boost"]) > 0.0:
 			a["boost"] = float(a["boost"])-delta
-			target *= 1.4
-		elif int(a["boosts"]) > 0 and dnext > 80.0 and randf() < 0.004:
+			target = vmax*1.45
+		elif int(a["boosts"]) > 0 and float(rw_corner[j]) < 0.1 and randf() < 0.004:
 			a["boosts"] = int(a["boosts"])-1
 			a["boost"] = 3.0
 		if float(a["slow"]) > 0.0:
 			a["slow"] = float(a["slow"])-delta
-			target *= 0.4
+			target = minf(target,vmax*0.4)
 			a["v"] = minf(float(a["v"]),target)
-		var v := move_toward(float(a["v"]),target,delta*(12.0 if target > float(a["v"]) else 20.0))
+		var acc := float(a["accel"])*(2.0 if float(a["boost"]) > 0.0 else 1.0)
+		var v := move_toward(float(a["v"]),target,delta*(acc if target > float(a["v"]) else 20.0))
 		a["v"] = v
 		a["s"] = s+v*delta
 		_rw_ai_place(a)
@@ -10000,6 +10142,7 @@ func _rw_ai_tick(delta: float) -> void:
 			if String(sp["owner"]) != String(a["name"]) and not (sp["hit"] as Dictionary).has(a["name"]) and apos.distance_to(sp["pos"]) < 2.8:
 				(sp["hit"] as Dictionary)[a["name"]] = true
 				a["slow"] = 2.0
+		var rel := float(a["s"])-me
 		if int(a["spikes"]) > 0 and rel > 8.0 and rel < 30.0 and randf() < 0.01:
 			a["spikes"] = int(a["spikes"])-1
 			_rw_drop_spike_at(apos,String(a["name"]))
@@ -10042,28 +10185,6 @@ func _rw_finish() -> void:
 			_emote(player_person,3)
 	else:
 		_show_toast("Time attack done: %s total. Best lap %.2f s." % [_rw_fmt(t),rw_best_lap])
-	_save_progress()
-	_rw_refresh_board()
-	_rec_stop()
-
-func _rw_jump_done(dist: float) -> void:
-	var pay := maxi(0,int((dist-15.0)*4.0))
-	cash += pay
-	var best := dist > rw_best_jump
-	if best:
-		rw_best_jump = dist
-	_show_toast("JUMP: %.1f m%s%s" % [dist,"  NEW RECORD!" if best else "","  +$%d" % pay if pay > 0 else ""])
-	_save_progress()
-	_rw_refresh_board()
-	_rec_stop()
-
-func _rw_drag_done(t: float) -> void:
-	var pay := 40 if t < DRAG_PAR else 0
-	cash += pay
-	var best := rw_best_drag <= 0.0 or t < rw_best_drag
-	if best:
-		rw_best_drag = t
-	_show_toast("DRAG: %.2f s%s%s" % [t,"  NEW RECORD!" if best else "","  +$%d (under %.1f s)" % [pay,DRAG_PAR] if pay > 0 else ""])
 	_save_progress()
 	_rw_refresh_board()
 	_rec_stop()
@@ -10164,8 +10285,8 @@ func _join_race(from: String, invite: Dictionary) -> void:
 		if driving:
 			driving = false
 		car.position = RACE_PARK
-		car.rotation = Vector3(0,-PI/2.0,0)
-		player.position = RW_DESK+Vector3(0,0.75,-3.0)
+		car.rotation = Vector3(0,PI/2.0,0)
+		player.position = RW_DESK+Vector3(-3.0,0.75,0)
 		_race_car_start()
 	cash -= GP_PRICE
 	_rec_stop()
@@ -10178,8 +10299,7 @@ func _join_race(from: String, invite: Dictionary) -> void:
 	rec_race_id = String(invite["race"])
 	rec_count = left
 	rec_last_count = -1
-	var slot: Vector2 = RW_GRID[1+absi(online_id.hash()) % 3]
-	_rw_place(Vector3(300+slot.x,0.8,-150+slot.y),0.0)
+	_rw_place(_rw_grid_pos(1+absi(online_id.hash()) % 3),0.0)
 	_save_progress()
 	_show_toast("You joined the Grand Prix! Get ready…")
 
@@ -10208,8 +10328,6 @@ func _build_raceway_ui(root: Control) -> void:
 		["gp","GRAND PRIX vs robots  $%d" % GP_PRICE,_rw_start.bind(1,false)],
 		["gpo","ONLINE GRAND PRIX  $%d" % GP_PRICE,_rw_start.bind(1,true)],
 		["ta","TIME ATTACK  $%d" % TA_PRICE,_rw_start.bind(2,false)],
-		["jump","LONG JUMP  $%d" % JUMP_PRICE,_rw_start.bind(3,false)],
-		["drag","DRAG STRIP  $%d" % DRAG_PRICE,_rw_start.bind(4,false)],
 		["boost","BUY BOOSTER  $%d" % BOOST_PRICE,_rw_buy.bind(0)],
 		["spike","BUY SPIKES  $%d" % SPIKE_PRICE,_rw_buy.bind(1)],
 		["back","BACK",_rw_close],
@@ -10266,10 +10384,10 @@ func _rw_close() -> void:
 func _rw_refresh_panel() -> void:
 	if rw_panel == null:
 		return
-	rw_info.text = "Everyone drives the same race car, so it is fair. Boosters: %d  ·  Spikes: %d  ·  Cash: $%d\nBest lap %s  ·  Grand Prix %s  ·  Long jump %s  ·  Drag %s\nGrand Prix prizes: 1st $300, 2nd $150, 3rd $75. Leave the track and you slow down." % [boosts,spikes,cash,("%.2f s" % rw_best_lap) if rw_best_lap > 0.0 else "--",_rw_fmt(rw_best_gp) if rw_best_gp > 0.0 else "--",("%.1f m" % rw_best_jump) if rw_best_jump > 0.0 else "--",("%.2f s" % rw_best_drag) if rw_best_drag > 0.0 else "--"]
+	rw_info.text = "Everyone drives the same race car, robots too, so it is fair. Boosters: %d  ·  Spikes: %d  ·  Cash: $%d\nBest lap %s  ·  Grand Prix %s  ·  Lap length %.2f km\nGrand Prix prizes: 1st $300, 2nd $150, 3rd $75. Leave the track and you slow down." % [boosts,spikes,cash,("%.2f s" % rw_best_lap) if rw_best_lap > 0.0 else "--",_rw_fmt(rw_best_gp) if rw_best_gp > 0.0 else "--",float(rw_path.get("total",0.0))/1000.0]
 	rw_buttons["car"].visible = not race_car
 	rw_buttons["ret"].visible = race_car
-	for k in ["gp","gpo","ta","jump","drag"]:
+	for k in ["gp","gpo","ta"]:
 		rw_buttons[k].disabled = not race_car
 	rw_buttons["boost"].disabled = boosts >= 5
 	rw_buttons["spike"].disabled = spikes >= 5
@@ -10279,7 +10397,7 @@ func _rw_refresh_panel() -> void:
 func _rw_refresh_board() -> void:
 	if rw_board == null:
 		return
-	var lines := ["RACEWAY RECORDS","Best lap  %s" % (("%.2f s" % rw_best_lap) if rw_best_lap > 0.0 else "--"),"Grand Prix  %s" % (_rw_fmt(rw_best_gp) if rw_best_gp > 0.0 else "--"),"Long jump  %s" % (("%.1f m" % rw_best_jump) if rw_best_jump > 0.0 else "--"),"Drag 360 m  %s" % (("%.2f s" % rw_best_drag) if rw_best_drag > 0.0 else "--")]
+	var lines := ["RACEWAY RECORDS","Best lap  %s" % (("%.2f s" % rw_best_lap) if rw_best_lap > 0.0 else "--"),"Grand Prix  %s" % (_rw_fmt(rw_best_gp) if rw_best_gp > 0.0 else "--")]
 	if not online_bests.is_empty():
 		lines.append("ONLINE GRAND PRIX")
 		var names: Array = online_bests.keys()
@@ -10301,21 +10419,15 @@ func _rw_hud() -> void:
 	if not race_car or rec_act == 0:
 		return
 	mission_label.text = "HARBOR RACEWAY"
-	match rec_act:
-		1,2:
-			var pos_txt := ""
-			if rec_act == 1 and not rec_online:
-				var me := _rw_player_progress()
-				var p := 1
-				for a in rec_ai:
-					if float(a["s"]) > me:
-						p += 1
-				pos_txt = "POS %d/4  ·  " % p
-			objective.text = "%s%sLAP %d/%d  ·  %s%s" % ["GRAND PRIX  ·  " if rec_act == 1 else "TIME ATTACK  ·  ",pos_txt,mini(rec_lap+1,rec_laps),rec_laps,_rw_fmt(rec_t),"  ·  OFF TRACK!" if offtrack else ""]
-		3:
-			objective.text = "LONG JUMP  ·  best %s" % (("%.1f m" % rw_best_jump) if rw_best_jump > 0.0 else "--")
-		4:
-			objective.text = "DRAG STRIP  ·  %.2f s  ·  par %.1f s" % [rec_t,DRAG_PAR]
+	var pos_txt := ""
+	if rec_act == 1 and not rec_online:
+		var me := _rw_player_progress()
+		var p := 1
+		for a in rec_ai:
+			if float(a["s"]) > me:
+				p += 1
+		pos_txt = "POS %d/4  ·  " % p
+	objective.text = "%s%sLAP %d/%d  ·  %s%s" % ["GRAND PRIX  ·  " if rec_act == 1 else "TIME ATTACK  ·  ",pos_txt,mini(rec_lap+1,rec_laps),rec_laps,_rw_fmt(rec_t),"  ·  OFF TRACK!" if offtrack else ""]
 	speed_label.text = "%d km/h%s%s" % [int(absf(car_speed)*3.6),"  ·  BOOST!" if boost_t > 0.0 else "","  ·  SPIKED!" if slow_t > 0.0 else ""]
 
 func _peer_car_model(peer: Dictionary, idx: int, race: bool) -> void:
@@ -10330,53 +10442,72 @@ func _peer_car_model(peer: Dictionary, idx: int, race: bool) -> void:
 
 func _smoke_raceway() -> void:
 	blocked_skip_traffic = true
-	# The road in is open for people and cars up to the bollards; the bollards stop cars only.
+	var space := get_world_3d().direct_space_state
 	var q := PhysicsShapeQueryParameters3D.new()
 	var sph := SphereShape3D.new()
 	sph.radius = 0.5
 	q.shape = sph
 	q.exclude = [player.get_rid(),car.get_rid()]
+	# People walk from the road through the lot to the Pit Desk.
 	q.collision_mask = player.collision_mask
-	for x in range(100,230,5):
-		q.transform = Transform3D(Basis.IDENTITY,Vector3(float(x),1.0,-150))
-		assert(get_world_3d().direct_space_state.intersect_shape(q,1).is_empty(),"Raceway road blocked for people at x=%d" % x)
-	q.transform = Transform3D(Basis.IDENTITY,Vector3(RW_BARRIER_X,1.0,-148))
-	q.exclude = [player.get_rid(),car.get_rid()]
+	for x in range(100,int(RW_DESK.x)-1,4):
+		q.transform = Transform3D(Basis.IDENTITY,Vector3(float(x),1.0,-150 if x < 230 else -138))
+		assert(space.intersect_shape(q,1).is_empty(),"Walk to the Pit Desk blocked at x=%d" % x)
+	# Cars drive in up to the lot; the bollards keep own cars out of the pits and track.
 	q.collision_mask = car.collision_mask
-	assert(not get_world_3d().direct_space_state.intersect_shape(q,1).is_empty(),"Raceway bollards stop cars")
-	# Track, jump runway, landing zone and drag strip are clear.
+	for x in range(100,250,5):
+		q.transform = Transform3D(Basis.IDENTITY,Vector3(float(x),1.0,-150))
+		assert(space.intersect_shape(q,1).is_empty(),"Road into the parking lot blocked at x=%d" % x)
+	for z in range(-60,-240,-30):
+		q.transform = Transform3D(Basis.IDENTITY,Vector3(222,1.0,float(z)))
+		assert(space.intersect_shape(q,1).is_empty(),"Parking aisle blocked at z=%d" % z)
+	q.transform = Transform3D(Basis.IDENTITY,Vector3(RW_LOT_X1,1.0,-148))
+	assert(not space.intersect_shape(q,1).is_empty(),"Bollards stop cars at the lot edge")
+	q.transform = Transform3D(Basis.IDENTITY,Vector3(230,1.0,RW_LOT_Z0))
+	assert(not space.intersect_shape(q,1).is_empty(),"Bollards stop cars at the north edge of the lot")
+	assert(_in_rw_lot(RACE_PARK) and not _in_rw_lot(RW_PIT) and _in_raceway(RW_PIT),"Parking is in the lot, race cars start in the pit lane")
+	# The whole circuit is clear, smooth, and the pit lane leads onto it.
 	var total := float(rw_path["total"])
-	assert(total > 900.0,"Track is about 1 km (%.0f m)" % total)
+	assert(total > 1300.0,"Circuit is over 1.3 km (%.0f m)" % total)
 	var d := 0.0
 	while d < total:
 		var smp := _path_sample(rw_path,d)
 		var p2: Vector2 = smp[0]
 		assert(not _blocked_at(Vector3(p2.x,1.0,p2.y),0.8),"Track blocked at %s by %s" % [str(p2),_blocker(Vector3(p2.x,1.0,p2.y),0.8)])
+		for side in [-1.0,1.0]:
+			var e: Vector2 = p2+Vector2(-(smp[1] as Vector2).y,(smp[1] as Vector2).x)*side*(RW_TRACK_W/2.0-0.5)
+			assert(not _blocked_at(Vector3(e.x,1.0,e.y),0.4),"Track edge blocked at %s" % str(e))
 		d += 5.0
-	for z in range(-188,-236,-4):
-		assert(not _blocked_at(Vector3(250,1.0,float(z)),0.8),"Jump runway blocked at z=%d" % z)
-	for z in range(-252,-362,-6):
-		assert(not _blocked_at(Vector3(250,1.0,float(z)),0.8),"Jump landing blocked at z=%d" % z)
-	for x in range(int(DRAG_START.x),int(DRAG_FINISH_X)+12,6):
-		assert(not _blocked_at(Vector3(float(x),1.0,DRAG_START.z),0.8),"Drag strip blocked at x=%d" % x)
+	var way: Array = rw_path["way"]
+	for i in way.size():
+		var turn := absf(_rw_dir(i).angle_to(_rw_dir(i+1)))
+		assert(turn < 0.2,"Track has no sharp kinks (%.2f rad at %s)" % [turn,str(way[i])])
+	for z in range(-110,-330,-10):
+		assert(not _blocked_at(Vector3(RW_PIT.x,1.0,float(z)),0.8),"Pit lane blocked at z=%d" % z)
+	assert(not _blocked_at(Vector3(306,1.0,-345),0.8) and not _blocked_at(Vector3(306,1.0,-96),0.8),"Pit exit and entry are open")
 	blocked_skip_traffic = false
-	var was := [cash,boosts,spikes,rw_best_lap,rw_best_gp,rw_best_jump,rw_best_drag,car_id,car.position,driving,player.position,view_mode]
+	var was := [cash,boosts,spikes,rw_best_lap,rw_best_gp,car_id,car.position,driving,player.position,view_mode]
 	view_mode = 0
 	_apply_view()
-	# Get a race car at the pit desk: same stats for everyone, own car parked outside.
+	# Get a race car at the pit desk: same stats for everyone, own car stays in the lot.
 	cash = 1000
 	car_id = 4
 	_apply_car()
 	var own_max := car_max
 	driving = false
-	player.position = RW_DESK+Vector3(0,0.75,-2.0)
-	car.position = RACE_PARK
+	player.position = RW_DESK+Vector3(-2.0,0.75,0)
+	car.position = Vector3(222,0.8,-90)
 	_interact()
 	assert(paused and rw_panel.visible and rw_buttons["car"].visible,"Pit desk opens the Raceway menu")
+	assert(not rw_buttons.has("jump") and not rw_buttons.has("drag"),"Only track events are offered")
 	_race_car_start()
 	assert(race_car and driving and not paused and car_max == RACE_MAX and car_accel == RACE_ACCEL,"Race car has the same stats for everyone")
-	assert(own_max != RACE_MAX and race_ghost != null and race_parked_pos.distance_to(RACE_PARK) < 0.1,"Own car waits in the parking")
-	assert(_in_raceway(car.position),"Race car starts inside the raceway")
+	assert(own_max != RACE_MAX and race_ghost != null and race_parked_pos.distance_to(Vector3(222,0.8,-90)) < 0.1,"Own car stays where it was parked in the lot")
+	assert(car.position.distance_to(RW_PIT) < 0.1,"Race car starts in the pit lane")
+	_race_car_end(true)
+	car.position = Vector3(150,0.8,-150)
+	_race_car_start()
+	assert(race_parked_pos.distance_to(RACE_PARK) < 0.1,"A car left outside is parked in the lot")
 	# Shop.
 	boosts = 0
 	spikes = 0
@@ -10390,18 +10521,24 @@ func _smoke_raceway() -> void:
 	_load_progress()
 	assert(boosts == 0 and spikes == 2,"Inventory is saved")
 	boosts = 2
-	# Grand Prix against three AI racers.
+	# Grand Prix against three AI racers in identical cars.
 	cash = 1000
 	_rw_start(1)
 	assert(rec_act == 1 and rec_ai.size() == 3 and cash == 1000-GP_PRICE and rec_count > 0.0,"Grand Prix starts with AI and a countdown")
+	assert(rec_ai.all(func(a): return float(a["vmax"]) == RACE_MAX and float(a["accel"]) == RACE_ACCEL),"AI racers drive the same race car as players")
+	_rw_start(3)
+	assert(rec_act == 1,"Removed events cannot be started")
 	_rw_tick(1.0)
 	assert(car_speed == 0.0,"Cars wait for the countdown")
 	rec_count = 0.0
 	_rw_tick(0.016)
 	var s0 := float(rec_ai[0]["s"])
-	for i in 60:
+	var top := 0.0
+	for i in 120:
 		_rw_ai_tick(0.1)
-	assert(float(rec_ai[0]["s"]) > s0+80.0,"AI racers drive the track")
+		top = maxf(top,float(rec_ai[0]["v"]))
+	assert(float(rec_ai[0]["s"]) > s0+200.0,"AI racers drive the track")
+	assert(top <= RACE_MAX*1.45+0.01,"AI never goes faster than a boosted player car (%.1f)" % top)
 	_rw_use_boost()
 	assert(boost_t > 0.0 and boosts == 1 and _eff_max() > car_max*1.4,"Booster gives a speed boost")
 	boost_t = 0.0
@@ -10423,7 +10560,7 @@ func _smoke_raceway() -> void:
 	assert(slow_t > 0.0 and car_speed <= car_max*0.41,"Spikes slow the player down")
 	slow_t = 0.0
 	# Leaving the track slows you.
-	car.position = Vector3(420,0.8,-200)
+	car.position = Vector3(520,0.8,-240)
 	_rw_tick(0.016)
 	assert(offtrack and _eff_max() < car_max*0.6,"Off track is slower")
 	# Drive through every gate for two laps, ahead of the AI, and win.
@@ -10433,7 +10570,7 @@ func _smoke_raceway() -> void:
 		a["v"] = 0.0
 	var before := cash
 	var guard := 0
-	while rec_act == 1 and guard < 100:
+	while rec_act == 1 and guard < 200:
 		var g: Vector2 = RW_TRACK[rec_gate]
 		car.position = Vector3(g.x,0.8,g.y)
 		rec_t += 2.0
@@ -10441,34 +10578,16 @@ func _smoke_raceway() -> void:
 		guard += 1
 	assert(rec_act == 0 and cash == before+GP_PRIZES[0] and rw_best_gp > 0.0 and rw_best_lap > 0.0,"Winning the Grand Prix pays $%d and saves times" % GP_PRIZES[0])
 	assert(rec_ai.is_empty() and spike_strips.is_empty(),"Race cleans up")
-	# Long jump with real physics: full throttle up the ramp, fly, land.
-	cash = 1000
-	rw_best_jump = 0.0
-	_rw_start(3)
-	view_mode = 2
-	_apply_view()
-	rec_count = 0.01
-	_rw_tick(0.02)
-	assert(rec_started,"Countdown finishes and the jump starts")
-	stick = Vector2(0,-1)
-	var max_y := 0.0
-	for i in 420:
-		await get_tree().physics_frame
-		max_y = maxf(max_y,car.position.y)
-		if rec_act == 0:
-			break
-	stick = Vector2.ZERO
-	assert(max_y > 3.6,"The car takes off from the ramp (max height %.1f)" % max_y)
-	assert(rec_act == 0 and rw_best_jump > 18.0,"Long jump is measured (%.1f m)" % rw_best_jump)
-	# Drag strip.
-	_rw_start(4)
+	# Progress follows the track between gates.
+	_rw_start(2)
 	rec_count = 0.0
-	_rw_tick(0.016)
-	rec_t = 12.9
-	car.position = Vector3(DRAG_FINISH_X+1.0,0.8,DRAG_START.z)
-	before = cash
-	_rw_tick(0.016)
-	assert(rec_act == 0 and absf(rw_best_drag-12.9) < 0.1 and cash == before+40,"Drag strip timed and paid under par")
+	rec_started = true
+	rec_gate = 3
+	var mid: Vector2 = _path_sample(rw_path,(float(rw_path["cum"][rw_gate_idx[2]])+float(rw_path["cum"][rw_gate_idx[3]]))/2.0)[0]
+	car.position = Vector3(mid.x,0.8,mid.y)
+	var pr := _rw_player_progress()
+	assert(pr > float(rw_path["cum"][rw_gate_idx[2]]) and pr < float(rw_path["cum"][rw_gate_idx[3]]),"Race position follows the track")
+	_rec_stop()
 	# Online Grand Prix: another player starts a race, we JOIN, results are shared.
 	_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"rcs","payload":{"i":"p7","n":"Mia","rid":"race42","left":8.0}}}))
 	assert(feed.any(func(f): return f["from"] == "p7" and (f["invite"] as Dictionary).has("race")),"Race invite shows with JOIN")
@@ -10481,41 +10600,48 @@ func _smoke_raceway() -> void:
 	# Return the race car: own car and stats come back.
 	_race_car_end()
 	assert(not race_car and not driving and car.position.distance_to(RACE_PARK) < 0.5 and car_max == _car_stats(car_id).x and car_max != RACE_MAX and race_ghost == null,"Returning the race car restores your own car")
-	# A normal car that gets inside is parked outside.
+	# A normal car that gets onto the track is moved to the lot; one in the lot stays.
 	car.position = Vector3(400,0.8,-200)
 	_race_keep_cars_out()
-	assert(car.position.distance_to(RACE_PARK) < 0.1,"Own cars cannot enter the raceway")
+	assert(car.position.distance_to(RACE_PARK) < 0.1,"Own cars cannot enter the track")
+	car.position = Vector3(222,0.8,-200)
+	_race_keep_cars_out()
+	assert(car.position.distance_to(Vector3(222,0.8,-200)) < 0.1,"Own cars can park anywhere in the lot")
 	cash = was[0]
 	boosts = was[1]
 	spikes = was[2]
 	rw_best_lap = was[3]
 	rw_best_gp = was[4]
-	rw_best_jump = was[5]
-	rw_best_drag = was[6]
-	car_id = was[7]
+	car_id = was[5]
 	_apply_car()
-	car.position = was[8]
-	driving = was[9]
-	player.position = was[10]
-	view_mode = was[11]
+	car.position = was[6]
+	driving = was[7]
+	player.position = was[8]
+	view_mode = was[9]
 	_apply_view()
 	_save_progress()
 
 func _race_shots() -> void:
 	# Developer-only: Harbor Raceway. Never saves.
-	player.position = RW_DESK+Vector3(0,0.75,-2.0)
-	car.position = RACE_PARK
+	player.position = RW_DESK+Vector3(-2.0,0.75,0)
+	car.position = Vector3(222,0.8,-120)
+	car.rotation.y = PI/2.0
 	_race_car_start()
 	for i in 20:
 		await get_tree().physics_frame
-	await _skyline_shot("race-aerial",Vector3(420,0,-220),Vector3(190,180,-20))
+	await _skyline_shot("race-aerial",Vector3(430,0,-240),Vector3(250,230,10))
+	await _skyline_shot("race-pits",Vector3(270,0,-190),Vector3(215,45,-95))
+	await _skyline_shot("race-corner",Vector3(345,0,-395),Vector3(300,25,-345))
+	await _skyline_shot("race-hairpin",Vector3(428,0,-275),Vector3(440,32,-205))
+	paused = false
 	_rw_start(1)
 	rec_count = 0.0
 	_rw_tick(0.016)
 	for i in 12:
 		_rw_ai_tick(0.1)
-	car.position = Vector3(300,0.8,-170)
-	_rw_drop_spike_at(Vector2(300,-160),"me")
+	car.position = Vector3(312,0.8,-175)
+	car.rotation.y = 0.0
+	_rw_drop_spike_at(Vector2(312,-165),"me")
 	view_mode = 1
 	_apply_view()
 	for i in 30:
@@ -10529,25 +10655,6 @@ func _race_shots() -> void:
 	_rec_stop()
 	view_mode = 0
 	_apply_view()
-	_rw_start(3)
-	view_mode = 2
-	_apply_view()
-	rec_count = 0.01
-	_rw_tick(0.02)
-	stick = Vector2(0,-1)
-	var shot := false
-	for i in 420:
-		await get_tree().physics_frame
-		if jump_air and car.position.y > 3.0 and not shot:
-			shot = true
-			paused = true
-			camera.position = car.position+Vector3(18,4,6)
-			camera.look_at(car.position)
-			await _save_shot("race-jump")
-			paused = false
-		if rec_act == 0:
-			break
-	stick = Vector2.ZERO
 	_rw_open()
 	await _save_shot("race-menu")
 	get_tree().quit()

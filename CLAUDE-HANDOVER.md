@@ -1,6 +1,6 @@
 # Harbor City — current handover
 
-Version 0.20.0, code 22 (see the v0.20.0 section at the end; 0.11 and 0.12 were never released on their own). Original single-player Android game, Godot 4.7.2 standard / Compatibility, Samsung Galaxy Z Fold5.
+Version 0.21.0, code 23 (see the v0.21.0 section at the end; 0.11 and 0.12 were never released on their own). Original single-player Android game, Godot 4.7.2 standard / Compatibility, Samsung Galaxy Z Fold5.
 
 The canonical project has moved to **/Users/koko/GTA2027**, repository **https://github.com/kokolo2020/GTA2027**. Read PUBLISHING.md for the new self-contained GitHub release process. The old /Users/koko/harbor-city folder is retained for toolchain and historical recovery; develop here going forward.
 
@@ -225,3 +225,14 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.19.0 (source 42b6
 ## v0.20.0 publication completed by Claude
 
 Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.20.0 (source 295a274). Browser /play rebuilt (0c2c04c). Pages deployed; live page shows 0.20.0. Publisher verified the downloaded APK hash.
+
+## v0.21.0 Raceway rebuild — 18 November 2026
+
+- User asked: track only (no other events), AI at the same speed, park inside near the pit with a big lot, real-looking track.
+- Removed long jump and drag strip (events 3/4, ramp, `_race_takeoff`, car_on_floor tracking). `rw_best` still saves 4 values so old saves are unchanged. `_rw_start` only accepts 1 (GP) and 2 (time attack).
+- Circuit: RW_TRACK is 39 control points smoothed by centripetal Catmull-Rom (`_cr_point`, `_rw_build_path`, RW_STEP 2.5 m) into rw_path (~1.42 km). Gates = control points; `rw_gate_idx` maps them to path indices; `_rw_seg_progress` projects only between the last and next gate. Width RW_TRACK_W 14.
+- Visuals are flat ribbon meshes (`_ribbon`, `_rw_band`) raised 0.09–0.17 m to avoid depth fighting at distance: asphalt, edge lines, kerbs on corners, gravel on corner outsides. Walls at RW_WALL 16 m (armco/tyres) with one multi-shape collider, skipped inside `_rw_keepout` (pit area, grandstands, bridge towers) or near other track parts.
+- New Blender models (blender-src/make_raceway.py): pit_building, grandstand, start_gantry, footbridge.
+- Parking lot inside the gate: x RW_X0..RW_LOT_X1 (257.5), z RW_LOT_Z0 (-250.5)..RW_Z1, with car-only (HUB_CAR_LAYER) bollards on its east and north edges. `_in_rw_lot`. Own car stays where parked; it is moved to RACE_PARK only if it is outside the lot. Pit desk RW_DESK (262,-138) faces the lot. Race car spawns at RW_PIT in the pit lane (x 295.5).
+- AI: vmax = RACE_MAX, accel = RACE_ACCEL, boost x1.45 and accel x2 like the player; no rubber-banding. AI_CORNER sets per-driver corner lift; rw_corner = max heading change over the next 35 m.
+- Map re-baked. Shots in docs/shots-0.21.0.

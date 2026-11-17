@@ -110,3 +110,11 @@ Mac regression passed including chase bust, arrest payout and exit behavior. APK
 - Web build in site/play is still the 0.12 one (not rebuilt; each rebuild adds ~40 MB to git history).
 - NOT tested on the Fold5: shop panels on touch, premium car handling at 130+ km/h, Marina performance, update-over-install from 0.10.
 - Next (Koko's Level 5 plan): v0.14 new map extension with new quests (Blender).
+
+## v0.13.0 publication completed by Claude
+
+Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.13.0
+APK: https://github.com/kokolo2020/GTA2027/releases/download/v0.13.0/Harbor-City-Android-debug.apk
+Release source commit/tag: c37b9cc / v0.13.0. Download metadata commit: 9bf12b0 (Pages run 44065798063 succeeded; live page shows 0.13.0).
+SHA256: e37ba39cde0a84eb88baeb28aa579d512f019c3308b74fbf6b72563c58849cf1
+The publisher verified the APK, uploaded it, and downloaded it back to check the hash. 0.11 and 0.12 were never released on their own; 0.13.0 includes them. Fold5 testing is still outstanding.

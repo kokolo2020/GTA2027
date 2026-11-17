@@ -81,6 +81,16 @@ const NORTH := [
 	{"name":"Summit Pass Overlook","pos":Vector3(178,5.7,-270),"pay":800},
 ]
 const NORTH_BONUS := 2000
+const BUS_STOPS := [
+	{"name":"Harbor Waterfront","z":44.0},
+	{"name":"Downtown","z":-12.0},
+	{"name":"North Gate","z":-48.0},
+	{"name":"Industrial Quarter","z":-90.0},
+	{"name":"Maple Suburbs","z":-180.0},
+	{"name":"Harbor Airfield","z":-288.0}]
+const BUS_SPEED := 9.0
+const BUS_DWELL := 7.0
+const BUS_LANE := 2.6
 const TRIALS := [
 	{"name":"City Sprint","area":0,"start":Vector3(-32,0,32),"cps":[Vector3(32,0,32),Vector3(32,0,-32),Vector3(-32,0,-32),Vector3(-32,0,32)],"par":40.0,"pay":300},
 	{"name":"Ridge Sprint","area":1,"start":Vector3(52,0,0),"cps":[Vector3(68,0,0),Vector3(100,0,0),Vector3(118,2.5,0),Vector3(144,5.7,0)],"par":16.0,"pay":500},
@@ -166,6 +176,14 @@ var status_label: Label
 var action_button: Button
 var menu: PanelContainer
 var driving := false
+var bus: Node3D
+var bus_label: Label3D
+var bus_z := 44.0
+var bus_idx := 0
+var bus_next := 1
+var bus_fwd := true
+var bus_dwell := 5.0
+var bus_riding := false
 var carrying := false
 var cash := 0
 var deliveries := 0
@@ -243,6 +261,7 @@ func _ready() -> void:
 	_build_bay()
 	_build_north()
 	_build_marina()
+	_build_bus()
 	_build_landscape()
 	_build_peds()
 	radio_player = AudioStreamPlayer.new()
@@ -257,7 +276,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.13: reach Level 5 to open Marina Heights with a showroom, style shop and paint shop.")
+	_show_toast("Harbor City 0.14: hop on the new Airport Line bus at the Waterfront stop.")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -1395,6 +1414,120 @@ func _shop_pad(i: int) -> void:
 	mat.emission = tint.darkened(0.4)
 	_sign(String(SHOPS[i]["name"]).to_upper(),pos+Vector3(0,5.2,0),tint.lightened(0.3),40)
 
+# ---------- v0.14 public bus: Waterfront <-> Harbor Airfield, hop on and off at the stops ----------
+func _bus_last() -> int:
+	return BUS_STOPS.size()-1 if _north_open() else 2
+
+func _build_bus() -> void:
+	for i in BUS_STOPS.size():
+		var z: float = BUS_STOPS[i]["z"]
+		_box(self,Vector3(6.6,1.7,z),Vector3(0.3,3.4,0.3),Color("2f7fb8"))
+		_box(self,Vector3(6.6,3.5,z),Vector3(1.6,0.9,0.2),Color("f4f7fa"))
+		_box(self,Vector3(7.6,0.15,z),Vector3(2.6,0.1,4.2),Color("8fa0aa"))
+		_sign("BUS STOP\n"+String(BUS_STOPS[i]["name"]),Vector3(6.6,5.2,z),Color("bfe4ff"),40)
+	bus = Node3D.new()
+	add_child(bus)
+	_box(bus,Vector3(0,1.55,0),Vector3(2.7,2.5,9.6),Color("2f7fb8"))
+	_box(bus,Vector3(0,0.95,0),Vector3(2.74,0.5,9.64),Color("f4f7fa"))
+	_box(bus,Vector3(0,2.0,0),Vector3(2.76,0.9,8.6),Color("1d3442"))
+	_box(bus,Vector3(0,2.85,0),Vector3(2.5,0.25,9.2),Color("e8eef2"))
+	for wx in [-1.2,1.2]:
+		for wz in [-3.0,3.0]:
+			_box(bus,Vector3(wx,0.45,wz),Vector3(0.45,0.9,1.1),Color("20262b"))
+	_box(bus,Vector3(0,1.3,-4.82),Vector3(2.3,0.5,0.1),Color("ffe9a8"))
+	bus_label = Label3D.new()
+	bus_label.font_size = 46
+	bus_label.modulate = Color("d8f0ff")
+	bus_label.position = Vector3(0,4.6,0)
+	bus_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	bus_label.outline_size = 8
+	bus_label.pixel_size = 0.014
+	bus.add_child(bus_label)
+	_bus_reset()
+
+func _bus_reset() -> void:
+	bus_idx = 0
+	bus_next = 1
+	bus_fwd = true
+	bus_dwell = 5.0
+	bus_z = float(BUS_STOPS[0]["z"])
+	bus.position = Vector3(BUS_LANE,0,bus_z)
+	bus.rotation.y = 0.0
+
+func _bus_text() -> String:
+	if bus_dwell > 0.0:
+		return "AIRPORT LINE\nAt %s" % BUS_STOPS[bus_idx]["name"]
+	return "AIRPORT LINE\nNext: %s" % BUS_STOPS[bus_next]["name"]
+
+func _bus_tick(delta: float) -> void:
+	if bus == null:
+		return
+	var last := _bus_last()
+	if bus_dwell > 0.0:
+		bus_dwell -= delta
+		if bus_dwell <= 0.0:
+			if bus_fwd and bus_idx >= last:
+				bus_fwd = false
+			elif not bus_fwd and bus_idx <= 0:
+				bus_fwd = true
+			bus_next = clampi(bus_idx+(1 if bus_fwd else -1),0,BUS_STOPS.size()-1)
+			if bus_riding:
+				_show_toast("Next stop: %s" % BUS_STOPS[bus_next]["name"])
+	else:
+		var target_z: float = BUS_STOPS[bus_next]["z"]
+		var remaining := absf(target_z-bus_z)
+		var speed := minf(BUS_SPEED,2.0+remaining*1.1)
+		var step := minf(speed*delta,remaining)
+		bus_z += step*(-1.0 if bus_fwd else 1.0)
+		if remaining-step < 0.02:
+			bus_z = target_z
+			bus_idx = bus_next
+			bus_dwell = BUS_DWELL+(3.0 if bus_idx == 0 or bus_idx >= last else 0.0)
+			if bus_riding:
+				_show_toast("%s  ·  tap GET OFF to hop off" % BUS_STOPS[bus_idx]["name"])
+	var lane := BUS_LANE if bus_fwd else -BUS_LANE
+	bus.position.x = move_toward(bus.position.x,lane,delta*2.2)
+	bus.position.z = bus_z
+	bus.rotation.y = lerp_angle(bus.rotation.y,0.0 if bus_fwd else PI,minf(delta*3.0,1.0))
+	bus_label.text = _bus_text()
+	if bus_riding:
+		player.position = bus.position+Vector3(0,1.3,0)
+		player.velocity = Vector3.ZERO
+
+func _bus_near() -> bool:
+	if bus == null or driving or bus_riding or bus_dwell <= 0.0:
+		return false
+	if exploring and _nearest_find() >= 0:
+		return false
+	if not exploring:
+		var dest := _destination()
+		if Vector2(player.position.x-dest.x,player.position.z-dest.z).length() < 4.8:
+			return false
+	return Vector2(player.position.x-bus.position.x,player.position.z-bus.position.z).length() < 9.0
+
+func _bus_board() -> void:
+	if chase_mode != 0 or online_role != 0:
+		_show_toast("No bus rides during a chase.")
+		return
+	bus_riding = true
+	player.hide()
+	player.get_child(0).set_deferred("disabled",true)
+	_show_toast("Riding the Airport Line  ·  next stop: %s" % BUS_STOPS[bus_next if bus_dwell <= 0.0 else clampi(bus_idx+(1 if bus_fwd else -1),0,BUS_STOPS.size()-1)]["name"])
+
+func _bus_alight(force := false) -> void:
+	if not bus_riding:
+		return
+	if bus_dwell <= 0.0 and not force:
+		_show_toast("Wait for the next stop: %s" % BUS_STOPS[bus_next]["name"])
+		return
+	bus_riding = false
+	var z := bus.position.z
+	player.position = Vector3(5.2,0.9,z+3.2)
+	player.velocity = Vector3.ZERO
+	player.show()
+	player.get_child(0).set_deferred("disabled",false)
+	_show_toast("Hopped off at %s." % BUS_STOPS[bus_idx]["name"])
+
 func _build_marina() -> void:
 	var asphalt := Color("354653")
 	var line := Color("e7d9a4")
@@ -1730,6 +1863,7 @@ func _orole_ready() -> bool:
 	return orole_test or (online_on and online_state == 3)
 
 func _orole_start(role: int) -> void:
+	_bus_alight(true)
 	if not _orole_ready():
 		_show_toast("Turn Online on first (top right), then pick a role.")
 		return
@@ -1879,6 +2013,7 @@ func _chase_spawn_point(center: Vector3, dist: float) -> Vector3:
 	return center+Vector3(dist,0.3,0)
 
 func _chase_start(mode: int) -> void:
+	_bus_alight(true)
 	if trial_active >= 0:
 		_show_toast("Finish or cancel your trial first.")
 		return
@@ -2905,6 +3040,8 @@ func _physics_process(delta: float) -> void:
 		float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT))-float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)),
 		float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))-float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
 	var control := keyboard.limit_length() if keyboard.length() > 0 else stick
+	if bus_riding:
+		control = Vector2.ZERO
 	# Align movement to the camera's horizontal axes.
 	var forward := -camera.global_basis.z
 	forward.y = 0
@@ -2933,6 +3070,7 @@ func _physics_process(delta: float) -> void:
 	car.move_and_slide()
 	if car.is_on_floor():
 		car.velocity.y = 0
+	_bus_tick(delta)
 	if player.position.y < -5 or car.position.y < -5:
 		_rescue()
 	if driving:
@@ -2978,6 +3116,14 @@ func _interact() -> void:
 	var shop := _nearest_shop()
 	if shop >= 0:
 		_shop_open(shop)
+		return
+	if bus_riding:
+		_bus_alight()
+		_refresh_hud()
+		return
+	if _bus_near():
+		_bus_board()
+		_refresh_hud()
 		return
 	var body: CharacterBody3D = car if driving else player
 	if not exploring and next_job_pending:
@@ -3082,7 +3228,15 @@ func _refresh_hud() -> void:
 		compass.text = "%s  Buy a Ridge Rover in Menu > Garage" % arrows[arrow_index]
 	speed_label.text = "%d km/h  •  Release stick to brake" % int(Vector2(car.velocity.x,car.velocity.z).length()*3.6) if driving else "On foot  •  Tokens: collect  •  Ridge sites: just arrive"
 	action_button.disabled = false
-	if not exploring and next_job_pending:
+	if bus_riding:
+		objective.text = "Airport Line  ·  next: %s" % BUS_STOPS[bus_idx if bus_dwell > 0.0 else bus_next]["name"]
+		speed_label.text = "On the bus  •  Tap GET OFF at a stop"
+	if bus_riding:
+		action_button.text = "GET OFF" if bus_dwell > 0.0 else "RIDING…"
+		action_button.disabled = bus_dwell <= 0.0
+	elif _bus_near() and _nearest_shop() < 0:
+		action_button.text = "BOARD BUS"
+	elif not exploring and next_job_pending:
 		action_button.text = "NEXT JOB"
 	elif _nearest_shop() >= 0:
 		action_button.text = "OPEN " + String(SHOPS[_nearest_shop()]["verb"])
@@ -3139,6 +3293,7 @@ func _toggle_menu() -> void:
 	joystick.queue_redraw()
 
 func _rescue() -> void:
+	bus_riding = false
 	car.position = Vector3(1.7,0.8,4)
 	car.rotation = Vector3.ZERO
 	car.velocity = Vector3.ZERO
@@ -3611,6 +3766,7 @@ func _smoke_test() -> void:
 	await _smoke_orole()
 	_smoke_levels()
 	_smoke_marina()
+	_smoke_bus()
 	_smoke_models()
 	cash = original_cash
 	deliveries = original_deliveries
@@ -3736,6 +3892,60 @@ func _smoke_levels() -> void:
 	trial_done = saved[4]
 	claimed_mask = saved[5]
 	deliveries = saved[6]
+
+func _smoke_bus() -> void:
+	var saved_north := north_mask
+	var saved_bay := bay_mask
+	var saved_driving := driving
+	var saved_pos := player.position
+	bay_mask = 0
+	_update_gate()
+	assert(not _north_open() and _bus_last() == 2,"Bus line is limited to the city while the North Gate is closed")
+	_bus_reset()
+	for i in 600:
+		_bus_tick(0.25)
+		assert(bus_z > -49.0,"Bus must not cross the closed North Gate")
+	bay_mask = (1 << BAY.size())-1
+	_update_gate()
+	assert(_bus_last() == BUS_STOPS.size()-1,"Bus line reaches the airfield once the highway is open")
+	_bus_reset()
+	driving = false
+	player.show()
+	player.get_child(0).set_deferred("disabled",false)
+	player.position = bus.position+Vector3(5,0.9,2)
+	assert(_bus_near(),"Player is near the waiting bus")
+	_interact()
+	assert(bus_riding,"BOARD BUS did not work")
+	var reached := false
+	for i in 400:
+		_bus_tick(0.25)
+		if bus_idx == 1 and bus_dwell > 0.0:
+			reached = true
+			break
+	assert(reached,"Bus never reached Downtown")
+	assert(player.position.distance_to(bus.position) < 3.0,"Rider moves with the bus")
+	_interact()
+	assert(not bus_riding and player.visible,"GET OFF at a stop did not work")
+	assert(absf(player.position.z-bus.position.z) < 6.0,"Player hops off next to the stop")
+	var airfield := false
+	var turned := false
+	for i in 3000:
+		_bus_tick(0.25)
+		if bus_idx == BUS_STOPS.size()-1:
+			airfield = true
+		if airfield and not bus_fwd and bus_dwell <= 0.0:
+			turned = true
+			break
+	assert(airfield and turned,"Bus loop reaches Harbor Airfield and turns back")
+	north_mask = saved_north
+	bay_mask = saved_bay
+	_update_gate()
+	_bus_reset()
+	driving = saved_driving
+	player.position = saved_pos
+	if driving:
+		player.hide()
+		player.get_child(0).set_deferred("disabled",true)
 
 func _smoke_marina() -> void:
 	var saved := [found_mask,ridge_mask,bay_mask,north_mask,trial_done,claimed_mask,deliveries,marina_mask,shop_visit_mask,owned_mask,car_id,cash,av_shirt,av_pants,av_hat,av_own.duplicate(),car_paint.duplicate(),driving]
@@ -4433,6 +4643,39 @@ func _shots() -> void:
 	await get_tree().process_frame
 	await _save_shot("marina-style")
 	_shop_close()
+	# v0.14 bus line
+	bay_mask = (1 << BAY.size())-1
+	_update_gate()
+	_bus_reset()
+	bus_dwell = 30.0
+	driving = false
+	player.show()
+	player.get_child(0).set_deferred("disabled",false)
+	player.position = Vector3(5.2,0.9,47.0)
+	player.velocity = Vector3.ZERO
+	car.position = Vector3(-30,0.8,10)
+	car.velocity = Vector3.ZERO
+	car_speed = 0.0
+	camera.position = player.position+Vector3(11,17,19)
+	for i in 40:
+		await get_tree().physics_frame
+	await _save_shot("bus-stop")
+	_interact()
+	bus_dwell = 0.0
+	bus_next = 3
+	bus_idx = 2
+	bus_z = -60.0
+	bus_fwd = true
+	bus.position = Vector3(BUS_LANE,0,-60.0)
+	for i in 120:
+		await get_tree().physics_frame
+	await _save_shot("bus-ride")
+	bus_idx = 4
+	bus_next = 5
+	bus_z = -250.0
+	for i in 200:
+		await get_tree().physics_frame
+	await _save_shot("bus-airfield")
 	get_tree().quit()
 
 func _shot_car(pos: Vector3, yaw: float) -> void:

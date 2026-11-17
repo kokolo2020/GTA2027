@@ -208,3 +208,7 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.18.1 (source 102b
 - `_smoke_sites_reachable` checks every discovery site is on walkable ground (Fountain Plaza moved to z 166.5).
 - The full smoke test now takes several minutes; run it in the background with a time guard.
 - APK 30692675 bytes, SHA256 cfe6e8c3...caf1, code 21. NOT tested on the Fold5.
+
+## v0.19.0 publication completed by Claude
+
+Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.19.0 (source 42b69e4). Browser /play rebuilt (614b3f4). Pages deployed; live page shows 0.19.0. Publisher verified the downloaded APK hash.

@@ -278,6 +278,8 @@ func _ready() -> void:
 	_build_landscape()
 	_build_downtown()
 	_build_city_detail()
+	_build_checkpoints()
+	_build_hub()
 	_build_peds()
 	_build_traffic()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
@@ -286,6 +288,13 @@ func _ready() -> void:
 	add_child(radio_player)
 	_build_hud()
 	_load_progress()
+	_refresh_checkpoints()
+	var dev_mode := false
+	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots"]:
+		if flag in OS.get_cmdline_user_args():
+			dev_mode = true
+	if not dev_mode:
+		_spawn_at_checkpoint()
 	_apply_car()
 	_apply_avatar()
 	_update_gate()
@@ -293,7 +302,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.17: tap the minimap for the full map. Try View: In-car to drive from the driver's seat!")
+	_show_toast("Harbor City 0.18: follow the gold arrow, save at blue checkpoints, try View: Eye!")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -307,6 +316,12 @@ func _ready() -> void:
 		await _view_shots()
 	elif "--levelup-shots" in OS.get_cmdline_user_args():
 		await _levelup_shots()
+	elif "--stadium-shots" in OS.get_cmdline_user_args():
+		await _stadium_shots()
+	elif "--guide-shots" in OS.get_cmdline_user_args():
+		await _guide_shots()
+	elif "--hub-shots" in OS.get_cmdline_user_args():
+		await _hub_shots()
 	elif "--bake-map" in OS.get_cmdline_user_args():
 		await _bake_map()
 
@@ -1090,7 +1105,8 @@ func _online_pos_frame() -> Dictionary:
 	var payload := {
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
-		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level()}
+		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -1138,6 +1154,10 @@ func _online_handle(text: String) -> void:
 			var inner = outer.get("payload",{})
 			if inner is Dictionary:
 				_online_peer_update(inner)
+		elif outer is Dictionary and String(outer.get("event","")) == "gm":
+			var inner = outer.get("payload",{})
+			if inner is Dictionary:
+				_hub_game_msg(inner)
 	elif event == "phx_reply" and String(msg.get("topic","")) == ONLINE_TOPIC:
 		var reply = msg.get("payload",{})
 		if reply is Dictionary and String(reply.get("status","")) == "ok":
@@ -1177,6 +1197,18 @@ func _online_peer_update(p: Dictionary) -> void:
 	peer["driving"] = int(p.get("d",1)) == 1
 	peer["role"] = clampi(int(p.get("t",0)),0,2)
 	peer["lvl"] = clampi(int(p.get("l",1)),1,9)
+	var seat := int(p.get("s",-1))
+	peer["seat"] = seat if seat >= 0 and seat < hub_seats.size() else -1
+	var qn := int(p.get("qn",0))
+	var q := int(p.get("q",-1))
+	if qn != int(peer.get("qn",0)) and q >= 0 and q < HUB_PHRASES.size():
+		_bubble(peer["node"],HUB_PHRASES[q],3.0 if peer["driving"] else 2.6)
+	peer["qn"] = qn
+	var en := int(p.get("en",0))
+	var e := int(p.get("e",-1))
+	if en != int(peer.get("en",0)) and e >= 0 and e < HUB_EMOTES.size():
+		_emote(peer.get("person",{}),e)
+	peer["en"] = en
 	var nm := _online_clean_name(String(p.get("n","Driver")))
 	if nm != peer["name"]:
 		peer["name"] = nm
@@ -1201,7 +1233,8 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	blue_light.hide()
 	var foot_node := Node3D.new()
 	node.add_child(foot_node)
-	if _make_person(foot_node,id.hash() & 1,{"Shirt":body_color,"Pants":Color("263d54"),"Skin":Color("e8c9a0"),"Hair":Color("2b1d14"),"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")}).is_empty():
+	var foot_person := _make_person(foot_node,id.hash() & 1,{"Shirt":body_color,"Pants":Color("263d54"),"Skin":Color("e8c9a0"),"Hair":Color("2b1d14"),"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
+	if foot_person.is_empty():
 		_box(foot_node,Vector3(0,0.75,0),Vector3(0.5,1.2,0.35),body_color)
 		_box(foot_node,Vector3(0,1.5,0),Vector3(0.4,0.4,0.4),Color("e8c9a0"))
 	foot_node.hide()
@@ -1215,7 +1248,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	label.pixel_size = 0.012
 	label.no_depth_test = true
 	node.add_child(label)
-	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true,"role":0,"lvl":1,"shown":0,"red":red_light,"blue":blue_light}
+	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true,"role":0,"lvl":1,"shown":0,"red":red_light,"blue":blue_light,"person":foot_person,"seat":-1,"qn":0,"en":0}
 
 func _online_tint(node: Node, color: Color) -> void:
 	if node is MeshInstance3D:
@@ -1243,6 +1276,20 @@ func _online_update_peers(delta: float) -> void:
 			continue
 		var node: Node3D = peer["node"]
 		var target: Vector3 = peer["target"]
+		var pseat := int(peer.get("seat",-1))
+		if pseat >= 0 and not peer["driving"]:
+			# Seated players are drawn in their chair.
+			var st: Dictionary = hub_seats[pseat]
+			node.position = st["pos"]
+			node.rotation.y = float(st["face"])
+			_sit_pose(peer.get("person",{}),float(st["h"]),0.0)
+			peer["sat"] = true
+			(peer["car"] as Node3D).visible = false
+			(peer["foot"] as Node3D).visible = true
+			continue
+		if peer.get("sat",false):
+			peer["sat"] = false
+			_pose_person(peer.get("person",{}),0.0,0.0)
 		if node.position.distance_to(target) > 25.0:
 			node.position = target
 		else:
@@ -3158,6 +3205,9 @@ func _build_hud() -> void:
 	_build_minimap(root)
 	_build_view_controls(root)
 	_build_level_fx(root)
+	_build_guidance(root)
+	_build_game_panel(root)
+	_build_chat(root)
 	status_label = _label("",20,Color("fff1c9"))
 	root.add_child(status_label)
 	status_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
@@ -3257,20 +3307,32 @@ func _input(event: InputEvent) -> void:
 			touch_id = event.index
 			touch_origin = event.position
 			stick = Vector2.ZERO
+		elif event.pressed and look_id == -1 and eye_view and not paused and not _stick_zone(event.position):
+			look_id = event.index
 		elif not event.pressed and event.index == touch_id:
 			touch_id = -1
 			stick = Vector2.ZERO
+		elif not event.pressed and event.index == look_id:
+			look_id = -1
 	if event is InputEventScreenDrag and event.index == touch_id:
 		stick = ((event.position-touch_origin)/65.0).limit_length()
+	if event is InputEventScreenDrag and event.index == look_id and eye_view:
+		_look(event.relative)
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed and _stick_zone(event.position) and not paused:
 			mouse_stick = true
 			touch_origin = event.position
+		elif event.pressed and eye_view and not paused and event.device != InputEvent.DEVICE_ID_EMULATION:
+			mouse_look = true
 		elif not event.pressed and mouse_stick:
 			mouse_stick = false
 			stick = Vector2.ZERO
+		elif not event.pressed and mouse_look:
+			mouse_look = false
 	if event is InputEventMouseMotion and mouse_stick:
 		stick = ((event.position-touch_origin)/65.0).limit_length()
+	if event is InputEventMouseMotion and mouse_look and eye_view:
+		_look(event.relative)
 	if joystick:
 		joystick.queue_redraw()
 
@@ -3309,16 +3371,30 @@ func _physics_process(delta: float) -> void:
 	var right := camera.global_basis.x
 	right.y = 0
 	var direction := (right.normalized()*control.x-forward*control.y).limit_length()
-	if driving and in_car_view:
+	if seat_id >= 0:
+		_seated_tick(delta)
+	elif driving and in_car_view:
 		# In-car: up/down is gas/brake (and reverse), left/right steers like a real car.
+		# Thumbs are never perfectly straight: ignore small sideways input and ease steering in, so
+		# pushing "up" drives straight instead of slowly curving.
 		var throttle := -control.y
+		if absf(throttle) < 0.15:
+			throttle = 0.0
+		var steer := 0.0
+		if absf(control.x) > 0.25:
+			steer = signf(control.x)*pow((absf(control.x)-0.25)/0.75,1.6)
 		var target_speed := throttle*car_max if throttle >= 0.0 else throttle*6.0
 		var rate := car_accel if absf(target_speed) > absf(car_speed) and signf(target_speed) == signf(car_speed) else car_accel*1.8
 		car_speed = move_toward(car_speed,target_speed,delta*rate)
 		var grip := clampf(absf(car_speed)/5.0,0.0,1.0)*signf(car_speed)
-		car.rotation.y -= control.x*grip*car_turn*0.42*delta
+		var speed_damp := lerpf(1.0,0.55,clampf((absf(car_speed)-12.0)/20.0,0.0,1.0))
+		car.rotation.y -= steer*grip*speed_damp*car_turn*0.5*delta
+		var drive := -car.global_basis.z*car_speed
+		car.velocity.x = drive.x
+		car.velocity.z = drive.z
+		player.position = car.position
 		if cockpit_wheel != null:
-			cockpit_wheel.rotation.y = lerpf(cockpit_wheel.rotation.y,-control.x*1.4,minf(delta*10.0,1.0))
+			cockpit_wheel.rotation.y = lerpf(cockpit_wheel.rotation.y,-steer*1.6,minf(delta*10.0,1.0))
 	elif driving:
 		car_speed = move_toward(car_speed,control.length()*car_max,delta*car_accel)
 		if direction.length() > 0.08:
@@ -3327,6 +3403,19 @@ func _physics_process(delta: float) -> void:
 		car.velocity.x = movement.x
 		car.velocity.z = movement.z
 		player.position = car.position
+	elif eye_view:
+		# Eye view: up/down walks forward/back, left/right turns.
+		player.rotation.y -= control.x*2.3*delta
+		var walk := -player.global_basis.z*(-control.y)*(5.0 if control.y < 0.0 else 3.0)
+		player.velocity.x = walk.x
+		player.velocity.z = walk.z
+		player.velocity.y -= 24*delta
+		player.move_and_slide()
+		var stepping := Vector2(player.velocity.x,player.velocity.z).length() > 0.4
+		player_walk = move_toward(player_walk,1.0 if stepping else 0.0,delta*6.0)
+		player_phase += delta*9.0*player_walk
+		car.velocity.x = move_toward(car.velocity.x,0,delta*20)
+		car.velocity.z = move_toward(car.velocity.z,0,delta*20)
 	else:
 		player.velocity.x = direction.x*5.0
 		player.velocity.z = direction.z*5.0
@@ -3354,6 +3443,7 @@ func _physics_process(delta: float) -> void:
 	_check_north()
 	_check_marina()
 	_check_downtown()
+	_check_checkpoints()
 	_traffic_tick(delta)
 	_check_trial()
 	_chase_tick(delta)
@@ -3368,10 +3458,15 @@ func _physics_process(delta: float) -> void:
 		find_nodes[index].position.y = 1.7+sin(clock*2+index)*0.25
 	marker.position = _destination()+Vector3(0,0.25+sin(clock*2)*0.12,0)
 	marker.rotation.y += delta*0.4
-	if (view_mode == 2 and driving) != in_car_view or (car_model != null and car_model.visible == in_car_view):
+	if (view_mode == 2 and driving) != in_car_view or (view_mode == 2 and not driving) != eye_view or (car_model != null and car_model.visible == in_car_view):
 		_apply_view()
 	_follow_camera(delta*(5.0+absf(car_speed)*0.15))
 	_minimap_tick()
+	_guidance_tick(delta)
+	_hub_people_tick(delta)
+	if not hub_welcomed and not driving and player.position.distance_to(HUB_C) < HUB_R-4.0:
+		hub_welcomed = true
+		_show_toast("Welcome to Harbor Dome! Sit at a table to play, or tap Chat to say hi.")
 	_refresh_hud()
 	if toast_time > 0:
 		toast_time -= delta
@@ -3383,6 +3478,11 @@ func _follow_camera(weight: float) -> void:
 		# Driver's eye, left seat, looking slightly down over the bonnet.
 		camera.global_transform = car.global_transform*Transform3D(Basis.from_euler(Vector3(deg_to_rad(-6.0),0,0)),Vector3(-0.38,0.93,0.1))
 		return
+	if view_mode == 2:
+		# Eye view: from the player's head, looking where they face (drag to look up/down and around).
+		var eye_y := 0.82 if seat_id < 0 else 0.82-(0.86-(float(hub_seats[seat_id]["h"])+0.06))
+		camera.global_transform = player.global_transform*Transform3D(Basis.from_euler(Vector3(look_pitch,0,0)),Vector3(0,eye_y,-0.12))
+		return
 	var target: Vector3 = car.position if driving else player.position
 	var offset := Vector3(11,17,19) if view_mode == 0 else Vector3(5.2,7.0,8.6)
 	camera.position = camera.position.lerp(target+offset,minf(weight,1.0))
@@ -3390,6 +3490,15 @@ func _follow_camera(weight: float) -> void:
 
 func _interact() -> void:
 	if paused:
+		return
+	if seat_id >= 0:
+		_stand_up()
+		_refresh_hud()
+		return
+	var near_seat := _nearest_seat()
+	if near_seat >= 0:
+		_sit(near_seat)
+		_refresh_hud()
 		return
 	if trial_active >= 0:
 		if driving:
@@ -3515,11 +3624,17 @@ func _refresh_hud() -> void:
 	speed_label.text = "%d km/h  •  Release stick to brake" % int(Vector2(car.velocity.x,car.velocity.z).length()*3.6) if driving else "On foot  •  Tokens: collect  •  Ridge sites: just arrive"
 	if in_car_view:
 		speed_label.text = "%d km/h  •  Up: gas  •  Down: brake/reverse" % int(Vector2(car.velocity.x,car.velocity.z).length()*3.6)
+	elif eye_view:
+		speed_label.text = "Eye view  •  Stick: walk/turn  •  Drag right side: look"
 	action_button.disabled = false
 	if bus_riding:
 		objective.text = "Airport Line  ·  next: %s" % BUS_STOPS[bus_idx if bus_dwell > 0.0 else bus_next]["name"]
 		speed_label.text = "On the bus  •  Tap GET OFF at a stop"
-	if bus_riding:
+	if seat_id >= 0:
+		action_button.text = "STAND UP"
+	elif not driving and _nearest_seat() >= 0:
+		action_button.text = _seat_label(_nearest_seat())
+	elif bus_riding:
 		action_button.text = "GET OFF" if bus_dwell > 0.0 else "RIDING…"
 		action_button.disabled = bus_dwell <= 0.0
 	elif _bus_near() and _nearest_shop() < 0:
@@ -3587,6 +3702,10 @@ func _rescue() -> void:
 	car.velocity = Vector3.ZERO
 	car_speed = 0
 	player.position = Vector3(4.6,0.9,5.2)
+	if checkpoint_id >= 0:
+		var spots := _checkpoint_spawn()
+		player.position = spots[0]
+		car.position = spots[1]
 	player.velocity = Vector3.ZERO
 	driving = false
 	player.show()
@@ -3599,7 +3718,7 @@ func _rescue() -> void:
 		chase_label.hide()
 	if paused:
 		_toggle_menu()
-	_show_toast("Back at the waterfront. Tap ENTER CAR to drive. Your money is safe.")
+	_show_toast("Back at the waterfront. Tap ENTER CAR to drive. Your money is safe." if checkpoint_id < 0 else "Back at checkpoint %s. Tap ENTER CAR to drive. Your money is safe." % CHECKPOINTS[checkpoint_id]["name"])
 	_refresh_hud()
 
 func _show_toast(message: String) -> void:
@@ -3629,6 +3748,7 @@ func _save_progress() -> void:
 	file.set_value("progress","chase_wins",chase_wins)
 	file.set_value("progress","marina_mask",marina_mask)
 	file.set_value("progress","downtown_mask",downtown_mask)
+	file.set_value("progress","checkpoint",checkpoint_id)
 	file.set_value("progress","shop_visit",shop_visit_mask)
 	file.set_value("progress","car_paint",car_paint)
 	file.set_value("progress","av_look",[av_shirt,av_pants,av_hat])
@@ -3659,6 +3779,9 @@ func _load_progress() -> void:
 		chase_wins = maxi(0,int(file.get_value("progress","chase_wins",0)))
 		marina_mask = int(file.get_value("progress","marina_mask",0)) & ((1 << MARINA.size())-1)
 		downtown_mask = int(file.get_value("progress","downtown_mask",0)) & ((1 << DOWNTOWN.size())-1)
+		checkpoint_id = int(file.get_value("progress","checkpoint",-1))
+		if checkpoint_id < -1 or checkpoint_id >= CHECKPOINTS.size():
+			checkpoint_id = -1
 		shop_visit_mask = int(file.get_value("progress","shop_visit",0)) & 7
 		var saved_paint = file.get_value("progress","car_paint",[])
 		car_paint.fill(0)
@@ -3984,6 +4107,8 @@ func _update_peds(delta: float) -> void:
 
 func _smoke_test() -> void:
 	# Exercise the actual mission and driving transitions; preserve the player's save.
+	var saved_checkpoint := checkpoint_id
+	checkpoint_id = -1
 	await get_tree().physics_frame
 	assert(action_button.position.x > 0 and action_button.position.y > 0,"Action button outside screen")
 	assert(joystick.position.y > 0,"Joystick outside screen")
@@ -4098,6 +4223,7 @@ func _smoke_test() -> void:
 	_smoke_downtown()
 	await _smoke_views()
 	_smoke_level_fx()
+	await _smoke_stadium_eye()
 	_smoke_bus()
 	_smoke_chase_extras()
 	_smoke_models()
@@ -4126,7 +4252,12 @@ func _smoke_test() -> void:
 		restored.close()
 	elif FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
-	print("HARBOR_SMOKE_OK: level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	_smoke_hub()
+	await _smoke_guidance_checkpoints()
+	checkpoint_id = saved_checkpoint
+	_refresh_checkpoints()
+	_save_progress()
+	print("HARBOR_SMOKE_OK: Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -5190,7 +5321,7 @@ const DT_SOUTH := -440.5
 # Road pieces removed where blocks are merged (stadium, station, park, mall): [fixed coordinate, from, to].
 const DT_AVE_GAPS := [[-380.0,-394.0,-306.0],[-180.0,-394.0,-356.0],[-280.0,-294.0,-206.0]]
 const DT_STREET_GAPS := [[-350.0,-424.0,-336.0],[-150.0,-374.0,-336.0],[-250.0,-324.0,-236.0]]
-const DT_SIZES := {"tower_0":Vector3(16,50,16),"tower_1":Vector3(18,58,18),"tower_2":Vector3(24,34,12),"tower_3":Vector3(14,41,14),"tower_4":Vector3(20,90,20),"shops_0":Vector3(24,9,10),"shops_1":Vector3(24,9,10),"garage":Vector3(24,14,24),"police":Vector3(30,9,18),"mall":Vector3(72,14,30.6),"station":Vector3(56,10,18),"stadium":Vector3(82,13,64)}
+const DT_SIZES := {"tower_0":Vector3(16,50,16),"tower_1":Vector3(18,58,18),"tower_2":Vector3(24,34,12),"tower_3":Vector3(14,41,14),"tower_4":Vector3(20,90,20),"shops_0":Vector3(24,9,10),"shops_1":Vector3(24,9,10),"garage":Vector3(24,14,24),"police":Vector3(30,9,18),"mall":Vector3(72,14,30.6),"station":Vector3(56,10,18)}
 const DOWNTOWN := [
 	{"name":"Police HQ","pos":Vector3(-155,0,-160),"pay":600},
 	{"name":"City Hall","pos":Vector3(-155,0,-210),"pay":600},
@@ -5463,7 +5594,8 @@ func _build_downtown() -> void:
 			_place(items,"shops_%d" % ((col+1) % 2),Vector3(x,0,-420),0.0)
 	# Landmarks.
 	_place(items,"mall",Vector3(-355,0,-150),PI/2.0,0.9)
-	_place(items,"stadium",Vector3(-380,0,-350),0.0)
+	_place(items,"stadium",STADIUM_POS,0.0,STADIUM_SCALE,false)
+	_build_stadium_walls()
 	_place(items,"station",Vector3(-180,0,-375),0.0)
 	_collider(self,Vector3(-180,2.2,-391.8),Vector3(54,4.4,3.2))
 	for key in items:
@@ -5476,7 +5608,7 @@ func _build_downtown() -> void:
 	_sign("HARBOR TOWER",Vector3(-205,94,-225),Color("bff4f0"),80)
 	_sign("POLICE HQ",Vector3(-155,11,-170),Color("cfe2ff"),56)
 	_sign("GRAND MALL",Vector3(-355,17,-150),Color("ffd6e0"),64)
-	_sign("HARBOR STADIUM",Vector3(-380,18,-350),Color("fff3c9"),72)
+	_sign("HARBOR STADIUM",STADIUM_POS+Vector3(0,12,27),Color("fff3c9"),64)
 	_sign("UNION STATION",Vector3(-180,13,-375),Color("e8f0ff"),60)
 	_sign("CENTRAL PARK",Vector3(-280,7,-206),Color("d8f5c8"),56)
 	_sign("TIMES PLAZA",Vector3(-305,9,-110),Color("ffe9b8"),56)
@@ -6002,13 +6134,13 @@ func _skyline_shots() -> void:
 	get_tree().quit()
 
 # ---------- v0.17.0: minimap, full map and camera views (Far / Close / In-car) ----------
-const MAP_CENTER := Vector2(-127.5,-99.5)
-const MAP_SIZE := 700.0
+const MAP_CENTER := Vector2(-95.0,-99.5)
+const MAP_SIZE := 720.0
 const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(0,-370)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-278,-250)],["MARINA HEIGHTS",Vector2(0,175)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(0,-370)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-278,-250)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -6042,6 +6174,10 @@ var cockpit: Node3D
 var cockpit_wheel: Node3D
 var world_env_res: Environment
 var in_car_view := false
+var eye_view := false
+var look_pitch := 0.0
+var look_id := -1
+var mouse_look := false
 
 func _world_to_uv(w: Vector3) -> Vector2:
 	return Vector2((w.x-MAP_CENTER.x)/MAP_SIZE+0.5,(w.z-MAP_CENTER.y)/MAP_SIZE+0.5)
@@ -6119,7 +6255,7 @@ func _build_minimap(root: Control) -> void:
 	side.custom_minimum_size = Vector2(230,0)
 	row.add_child(side)
 	side.add_child(_label("HARBOR CITY MAP",24,Color("f0bd62")))
-	var legend := _label("▲  You\n●  Golden ring\n●  Undiscovered sites\n\nNorth is up.",17,Color("cbd8de"))
+	var legend := _label("▲  You\n●  Golden ring\n●  Undiscovered sites\n◆  Checkpoint (green = saved)\n\nNorth is up.",17,Color("cbd8de"))
 	side.add_child(legend)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -6203,6 +6339,10 @@ func _draw_minimap() -> void:
 		var p := _mini_point((u["node"] as Node3D).position,me,cs,sn)
 		if p.length() < limit:
 			ctl.draw_circle(c+p*MINI_SIZE,4.0,Color("e04a3a"))
+	for i in CHECKPOINTS.size():
+		var p := _mini_point(CHECKPOINTS[i]["pos"],me,cs,sn)
+		if p.length() < limit:
+			_draw_checkpoint_icon(ctl,c+p*MINI_SIZE,5.0,i == checkpoint_id)
 	if marker.visible:
 		var p := _mini_point(_destination(),me,cs,sn)
 		if p.length() > limit:
@@ -6226,6 +6366,8 @@ func _draw_full_map() -> void:
 		var w := font.get_string_size(l[0],HORIZONTAL_ALIGNMENT_LEFT,-1,15).x
 		ctl.draw_string_outline(font,p-Vector2(w/2.0,0),l[0],HORIZONTAL_ALIGNMENT_LEFT,-1,15,5,Color("132b3a"))
 		ctl.draw_string(font,p-Vector2(w/2.0,0),l[0],HORIZONTAL_ALIGNMENT_LEFT,-1,15,Color("fff5dc"))
+	for i in CHECKPOINTS.size():
+		_draw_checkpoint_icon(ctl,_world_to_uv(CHECKPOINTS[i]["pos"])*size,6.0,i == checkpoint_id)
 	for m in _site_markers():
 		var p: Vector2 = _world_to_uv(m[0])*size
 		ctl.draw_circle(p,5.0,Color("132b3a"))
@@ -6291,17 +6433,25 @@ func _build_view_controls(root: Control) -> void:
 
 func _cycle_view() -> void:
 	view_mode = (view_mode+1) % VIEW_NAMES.size()
-	view_button.text = "View: %s" % VIEW_NAMES[view_mode]
+	look_pitch = 0.0
 	_apply_view()
 	_follow_camera(1.0)
 
 func _apply_view() -> void:
 	in_car_view = view_mode == 2 and driving
-	camera.fov = 72.0 if in_car_view else 55.0
-	camera.far = 150.0 if in_car_view else 340.0
+	eye_view = view_mode == 2 and not driving
+	var close_up := in_car_view or eye_view
+	if view_button != null:
+		view_button.text = "View: %s" % (("In-car" if driving else "Eye") if view_mode == 2 else VIEW_NAMES[view_mode])
+	camera.fov = 72.0 if close_up else 55.0
+	camera.far = 150.0 if close_up else 340.0
 	camera.near = 0.05
+	if not player_person.is_empty():
+		(player_person["root"] as Node3D).visible = not eye_view
+	if hat_holder != null:
+		hat_holder.visible = not eye_view
 	if world_env_res != null:
-		world_env_res.fog_enabled = in_car_view
+		world_env_res.fog_enabled = close_up
 		world_env_res.fog_mode = Environment.FOG_MODE_DEPTH
 		world_env_res.fog_light_color = Color("82bfc8")
 		world_env_res.fog_depth_begin = 60.0
@@ -6411,6 +6561,7 @@ func _smoke_views() -> void:
 	assert(not paused and not map_open and not map_panel.visible,"Close map resumes")
 	var was := [driving,car.position,car.rotation,view_mode,car_speed,player.position]
 	var col: CollisionShape3D = player.get_child(0)
+	await get_tree().process_frame
 	col.disabled = true
 	driving = true
 	car.position = Vector3(20,0.8,2.3)
@@ -6422,19 +6573,33 @@ func _smoke_views() -> void:
 	assert(view_mode == 2 and in_car_view and cockpit.visible,"In-car view is on")
 	assert(car_model == null or not car_model.visible,"Car body hidden from inside")
 	assert(camera.global_position.distance_to(car.global_position) < 1.5 and camera.far < 200.0,"Camera sits in the driver's seat")
+	car.velocity = Vector3(0,0,6)  # sideways leftover motion must not carry over
+	var p0 := car.global_position
+	var fwd0 := -car.global_basis.z
 	stick = Vector2(0,-1)
 	for i in 45:
 		await get_tree().physics_frame
 	assert(car_speed > 3.0,"Gas drives forward (%.1f)" % car_speed)
+	var moved := car.global_position-p0
+	assert(moved.dot(fwd0) > 2.0 and absf(moved.dot(car.global_basis.x)) < 0.6,"The car really moves forward, no sideways drift (moved %s)" % str(moved))
+	var heading := car.rotation.y
+	stick = Vector2(0.2,-0.98)
+	for i in 60:
+		await get_tree().physics_frame
+	assert(absf(angle_difference(heading,car.rotation.y)) < 0.02,"A slightly sideways thumb still drives straight (turned %.3f rad)" % angle_difference(heading,car.rotation.y))
 	var yaw := car.rotation.y
 	stick = Vector2(1,-1).normalized()
 	for i in 20:
 		await get_tree().physics_frame
 	assert(car.rotation.y < yaw-0.05,"Right steers right")
+	var dir_before := -car.global_basis.z
+	var vel_dir := Vector2(car.velocity.x,car.velocity.z).normalized()
+	assert(vel_dir.dot(Vector2(dir_before.x,dir_before.z)) > 0.98,"After steering the car travels where it points")
 	stick = Vector2(0,1)
 	for i in 120:
 		await get_tree().physics_frame
 	assert(car_speed < -0.5,"Down brakes then reverses (%.1f)" % car_speed)
+	assert(Vector2(car.velocity.x,car.velocity.z).dot(Vector2(-car.global_basis.z.x,-car.global_basis.z.z)) < -0.3,"Reverse really moves backwards")
 	stick = Vector2.ZERO
 	_cycle_view()
 	assert(view_mode == 0 and not in_car_view and not cockpit.visible and (car_model == null or car_model.visible),"Back to the far view")
@@ -6686,4 +6851,1515 @@ func _levelup_shots() -> void:
 	_level_up_fx(5)
 	await get_tree().create_timer(0.5).timeout
 	await _save_shot("levelup-incar")
+	get_tree().quit()
+
+# ---------- v0.18.0: walk-in stadium ----------
+const STADIUM_POS := Vector3(-380,0,-350)
+const STADIUM_SCALE := 0.92
+const STADIUM_GAP := [20,21]
+
+func _collider_yaw(pos: Vector3, size: Vector3, yaw: float) -> void:
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	shape.shape = box
+	body.position = pos
+	body.rotation.y = yaw
+	body.add_child(shape)
+	add_child(body)
+
+func _build_stadium_walls() -> void:
+	# Mirrors the stand segments in blender-src/make_downtown.py (ellipse 38 x 28, 28 segments), leaving the
+	# two street-side segments open as the entrance. Blender (x, y) is (x, -z) in the game.
+	var rx := 38.0
+	var ry := 28.0
+	var n := 28
+	for i in n:
+		if i in STADIUM_GAP:
+			continue
+		var a := TAU*float(i)/float(n)
+		var a2 := TAU*float(i+1)/float(n)
+		var p1 := Vector2(cos(a)*rx,sin(a)*ry)
+		var p2 := Vector2(cos(a2)*rx,sin(a2)*ry)
+		var mid := (p1+p2)/2.0
+		var seg := p1.distance_to(p2)+0.6
+		var ang := atan2(p2.y-p1.y,p2.x-p1.x)
+		_collider_yaw(STADIUM_POS+Vector3(mid.x,6.0,-mid.y)*STADIUM_SCALE,Vector3(seg,12.0,9.0)*STADIUM_SCALE,ang)
+	for x in [-9.0,9.0]:
+		_collider(self,STADIUM_POS+Vector3(x,4.5,ry+4.5)*STADIUM_SCALE,Vector3(1.6,9,1.6)*STADIUM_SCALE)
+	var board := Label3D.new()
+	board.text = "HARBOR CITY  2 - 1  BAY ROVERS\n78:12"
+	board.font_size = 72
+	board.pixel_size = 0.02
+	board.modulate = Color("ffd86a")
+	board.outline_size = 0
+	board.position = STADIUM_POS+Vector3(0,16.0,-(ry+2.7))*STADIUM_SCALE
+	add_child(board)
+
+func _look(rel: Vector2) -> void:
+	player.rotation.y -= rel.x*0.006
+	look_pitch = clampf(look_pitch-rel.y*0.004,-1.1,0.95)
+
+func _smoke_stadium_eye() -> void:
+	# The street-side entrance is open all the way to the centre spot; the stands around it are solid.
+	for k in 13:
+		var pt := STADIUM_POS+Vector3(0,1.0,39.0-float(k)*3.0)
+		assert(not _blocked_at(pt,0.8),"Stadium entrance blocked at %s by %s" % [str(pt),_blocker(pt,0.8)])
+	for pt in [STADIUM_POS+Vector3(38*STADIUM_SCALE,3,0),STADIUM_POS+Vector3(-38*STADIUM_SCALE,3,0),STADIUM_POS+Vector3(0,3,-28*STADIUM_SCALE)]:
+		assert(_blocked_at(pt,0.5),"Stadium stand missing at %s" % str(pt))
+	# Eye view on foot.
+	var was := [driving,player.position,player.rotation,view_mode]
+	driving = false
+	player.position = STADIUM_POS+Vector3(0,0.75,8)
+	player.rotation = Vector3.ZERO
+	view_mode = 1
+	_cycle_view()
+	assert(eye_view and not in_car_view and view_button.text == "View: Eye","Eye view is on when walking")
+	assert(not (player_person["root"] as Node3D).visible,"Own body hidden in eye view")
+	_follow_camera(1.0)
+	assert(camera.global_position.distance_to(player.global_position+Vector3(0,0.82,0)) < 0.4,"Camera at the player's eyes")
+	var start := player.position
+	stick = Vector2(0,-1)
+	for i in 40:
+		await get_tree().physics_frame
+	stick = Vector2.ZERO
+	assert(player.position.z < start.z-3.0 and absf(player.position.x-start.x) < 0.5,"Eye view walks forward (moved %s)" % str(player.position-start))
+	var yaw := player.rotation.y
+	_look(Vector2(100,-500))
+	assert(player.rotation.y < yaw and look_pitch > 0.9 and look_pitch <= 0.95,"Drag turns and looks up (clamped)")
+	_cycle_view()
+	assert(not eye_view and (player_person["root"] as Node3D).visible,"Back to the far view")
+	look_pitch = 0.0
+	driving = was[0]
+	player.position = was[1]
+	player.rotation = was[2]
+	_apply_view()
+
+func _stadium_shots() -> void:
+	# Developer-only: walking into the stadium in eye view. Never saves.
+	player.position = STADIUM_POS+Vector3(0,0.75,46)
+	player.rotation = Vector3.ZERO
+	for i in 30:
+		await get_tree().physics_frame
+	await _save_shot("stadium-outside")
+	view_mode = 1
+	_cycle_view()
+	for i in 10:
+		await get_tree().physics_frame
+	await _save_shot("stadium-entrance-eye")
+	player.position = STADIUM_POS+Vector3(0,0.75,4)
+	look_pitch = 0.18
+	for i in 10:
+		await get_tree().physics_frame
+	await _save_shot("stadium-inside-eye")
+	player.rotation.y = PI*0.75
+	for i in 10:
+		await get_tree().physics_frame
+	await _save_shot("stadium-stands-eye")
+	_shot_stats("stadium-stands-eye")
+	player.position = Vector3(4,0.7,-12)
+	player.rotation.y = 0.0
+	look_pitch = 0.05
+	for i in 10:
+		await get_tree().physics_frame
+	await _save_shot("city-eye")
+	_shot_stats("city-eye")
+	get_tree().quit()
+
+# ---------- v0.18.0: guidance arrows and checkpoints ----------
+const CHECKPOINTS := [
+	{"name":"Harbor Waterfront","pos":Vector3(10,0,27)},
+	{"name":"Ridge Trailhead","pos":Vector3(74,0,4)},
+	{"name":"Bay Promenade","pos":Vector3(-100,0,9)},
+	{"name":"North Highway","pos":Vector3(12,0,-72)},
+	{"name":"Maple Suburbs","pos":Vector3(14,0,-228)},
+	{"name":"Harbor Airfield","pos":Vector3(22,0,-312)},
+	{"name":"Central Park","pos":Vector3(-280,0,-270)},
+	{"name":"Union Station","pos":Vector3(-210,0,-360)},
+	{"name":"Marina Heights","pos":Vector3(-10,0,116)},
+	{"name":"Harbor Dome","pos":Vector3(174,0,40)},
+]
+var checkpoint_id := -1
+var checkpoint_nodes: Array = []
+var checkpoint_mats: Array = []
+var guide_arrow: Node3D
+var goal_arrow: Node3D
+var hud_arrow: Control
+var guide_target_pos := Vector3.ZERO
+var guide_has_target := false
+
+func _arrow_mesh(parent: Node3D, color: Color, length: float, width: float) -> void:
+	# An arrow lying flat, pointing along -Z.
+	var mat := _material(color)
+	mat.emission_enabled = true
+	mat.emission = color.darkened(0.25)
+	var shaft := MeshInstance3D.new()
+	var shaft_mesh := BoxMesh.new()
+	shaft_mesh.size = Vector3(width*0.38,width*0.2,length*0.55)
+	shaft.mesh = shaft_mesh
+	shaft.position = Vector3(0,0,length*0.2)
+	shaft.material_override = mat
+	shaft.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(shaft)
+	var head := MeshInstance3D.new()
+	var prism := PrismMesh.new()
+	prism.size = Vector3(width,length*0.45,width*0.2)
+	head.mesh = prism
+	head.rotation_degrees.x = -90.0
+	head.position = Vector3(0,0,-length*0.27)
+	head.material_override = mat
+	head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(head)
+
+func _build_guidance(root: Control) -> void:
+	guide_arrow = Node3D.new()
+	add_child(guide_arrow)
+	_arrow_mesh(guide_arrow,Color("ffcf4a"),2.2,1.2)
+	guide_arrow.hide()
+	# A big bouncing arrow over the golden ring, pointing down at it.
+	goal_arrow = Node3D.new()
+	marker.add_child(goal_arrow)
+	var down := Node3D.new()
+	down.rotation_degrees.x = -90.0
+	goal_arrow.add_child(down)
+	_arrow_mesh(down,Color("ffcf4a"),3.2,2.2)
+	goal_arrow.position.y = 7.0
+	# Screen arrow for the In-car and Eye views (the floating arrow is behind the camera there).
+	hud_arrow = Control.new()
+	hud_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(hud_arrow)
+	hud_arrow.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	hud_arrow.size = Vector2(140,110)
+	hud_arrow.position = Vector2(root.size.x/2.0-70.0,96)
+	hud_arrow.draw.connect(_draw_hud_arrow)
+	hud_arrow.hide()
+
+func _guide_target() -> Variant:
+	if bus_riding or online_role != 0 or chase_mode == 1:
+		return null
+	if chase_mode == 2:
+		for u in chase_units:
+			if not u["cop"]:
+				return (u["node"] as Node3D).position
+		return null
+	if not marker.visible:
+		return null
+	return _destination()
+
+func _guidance_tick(delta: float) -> void:
+	if guide_arrow == null:
+		return
+	var target = _guide_target()
+	guide_has_target = target != null
+	var body: Node3D = car if driving else player
+	var dist := 0.0
+	if guide_has_target:
+		guide_target_pos = target
+		dist = Vector2(guide_target_pos.x-body.position.x,guide_target_pos.z-body.position.z).length()
+	var first_person := view_mode == 2
+	guide_arrow.visible = guide_has_target and dist > 6.0 and not first_person
+	if guide_arrow.visible:
+		var lift := 3.0 if driving else 2.3
+		guide_arrow.position = body.position+Vector3(0,lift+sin(clock*3.0)*0.18,0)
+		var look := Vector3(guide_target_pos.x,guide_arrow.position.y,guide_target_pos.z)
+		if look.distance_to(guide_arrow.position) > 0.1:
+			guide_arrow.look_at(look,Vector3.UP)
+	goal_arrow.position.y = 7.0+sin(clock*3.0)*0.6
+	hud_arrow.visible = guide_has_target and dist > 6.0 and first_person
+	if hud_arrow.visible:
+		hud_arrow.queue_redraw()
+
+func _draw_hud_arrow() -> void:
+	var body: Node3D = car if driving else player
+	var d := Vector2(guide_target_pos.x-body.position.x,guide_target_pos.z-body.position.z)
+	var f := Vector2(-camera.global_basis.z.x,-camera.global_basis.z.z).normalized()
+	var r := Vector2(camera.global_basis.x.x,camera.global_basis.x.z).normalized()
+	var dir := Vector2(d.dot(r),-d.dot(f)).normalized()
+	var c := Vector2(70,42)
+	hud_arrow.draw_circle(c,34.0,Color(0.07,0.15,0.2,0.75))
+	var pts := PackedVector2Array()
+	var perp := Vector2(-dir.y,dir.x)
+	for p in [c+dir*24.0,c-dir*16.0+perp*17.0,c-dir*7.0,c-dir*16.0-perp*17.0]:
+		pts.append(p)
+	hud_arrow.draw_colored_polygon(pts,Color("ffcf4a"))
+	pts.append(pts[0])
+	hud_arrow.draw_polyline(pts,Color("5a3410"),2.0,true)
+	var font := ThemeDB.fallback_font
+	var txt := "%d m" % int(d.length())
+	var w := font.get_string_size(txt,HORIZONTAL_ALIGNMENT_LEFT,-1,20).x
+	hud_arrow.draw_string_outline(font,Vector2(70.0-w/2.0,100),txt,HORIZONTAL_ALIGNMENT_LEFT,-1,20,6,Color("132b3a"))
+	hud_arrow.draw_string(font,Vector2(70.0-w/2.0,100),txt,HORIZONTAL_ALIGNMENT_LEFT,-1,20,Color("ffcf4a"))
+
+# ---------- checkpoints ----------
+func _build_checkpoints() -> void:
+	for i in CHECKPOINTS.size():
+		var pos: Vector3 = CHECKPOINTS[i]["pos"]
+		var node := Node3D.new()
+		node.position = pos
+		add_child(node)
+		var pad := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 2.4
+		cyl.bottom_radius = 2.6
+		cyl.height = 0.16
+		cyl.radial_segments = 20
+		pad.mesh = cyl
+		pad.position.y = 0.08
+		var mat := _material(Color("3fb6e8"))
+		mat.emission_enabled = true
+		mat.emission = Color("1d6f99")
+		pad.material_override = mat
+		node.add_child(pad)
+		checkpoint_mats.append(mat)
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 2.0
+		torus.outer_radius = 2.25
+		torus.rings = 24
+		torus.ring_segments = 6
+		ring.mesh = torus
+		ring.position.y = 0.2
+		ring.material_override = _material(Color("e8f7ff"))
+		node.add_child(ring)
+		_box(node,Vector3(-2.2,1.6,0),Vector3(0.14,3.2,0.14),Color("d8dde0"))
+		_box(node,Vector3(-1.75,2.85,0),Vector3(0.8,0.55,0.05),Color("3fb6e8"))
+		var label := Label3D.new()
+		label.text = "CHECKPOINT\n" + str(CHECKPOINTS[i]["name"]).to_upper()
+		label.font_size = 40
+		label.pixel_size = 0.013
+		label.modulate = Color("cfefff")
+		label.outline_size = 8
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.position = Vector3(0,4.0,0)
+		node.add_child(label)
+		checkpoint_nodes.append(node)
+	_refresh_checkpoints()
+
+func _refresh_checkpoints() -> void:
+	for i in checkpoint_mats.size():
+		var m: StandardMaterial3D = checkpoint_mats[i]
+		m.albedo_color = Color("5fe08a") if i == checkpoint_id else Color("3fb6e8")
+		m.emission = Color("2a8f4f") if i == checkpoint_id else Color("1d6f99")
+
+func _check_checkpoints() -> void:
+	var body: Node3D = car if driving else player
+	for i in CHECKPOINTS.size():
+		if i == checkpoint_id:
+			continue
+		var pos: Vector3 = CHECKPOINTS[i]["pos"]
+		if Vector2(body.position.x-pos.x,body.position.z-pos.z).length() < 3.2 and absf(body.position.y-pos.y) < 3.0:
+			_activate_checkpoint(i)
+			return
+
+func _activate_checkpoint(i: int) -> void:
+	checkpoint_id = i
+	_refresh_checkpoints()
+	_save_progress()
+	_show_toast("CHECKPOINT SAVED: %s. You will start here next time." % CHECKPOINTS[i]["name"])
+	var fx := Node3D.new()
+	add_child(fx)
+	fx.global_position = (CHECKPOINTS[i]["pos"] as Vector3)+Vector3(0,0.3,0)
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 2.0
+	torus.outer_radius = 2.4
+	ring.mesh = torus
+	ring.material_override = _fx_material(Color("9fe9ff"),0.9)
+	fx.add_child(ring)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(ring,"scale",Vector3(3.5,1,3.5),0.8).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring.material_override,"albedo_color:a",0.0,0.8)
+	tw.chain().tween_callback(fx.queue_free)
+
+func _checkpoint_spawn() -> Array:
+	# [player position, car position] for the saved checkpoint.
+	var pos: Vector3 = CHECKPOINTS[checkpoint_id]["pos"]
+	return [pos+Vector3(0,0.75,0),pos+Vector3(4.5,0.8,0)]
+
+func _spawn_at_checkpoint() -> void:
+	if checkpoint_id < 0 or checkpoint_id >= CHECKPOINTS.size():
+		checkpoint_id = -1
+		return
+	var spots := _checkpoint_spawn()
+	driving = false
+	player.position = spots[0]
+	player.velocity = Vector3.ZERO
+	car.position = spots[1]
+	car.rotation = Vector3.ZERO
+	car.velocity = Vector3.ZERO
+	car_speed = 0.0
+	player.show()
+	player.get_child(0).set_deferred("disabled",false)
+	_follow_camera(1.0)
+
+func _draw_checkpoint_icon(ctl: Control, at: Vector2, r: float, saved: bool) -> void:
+	var pts := PackedVector2Array([at+Vector2(0,-r-1.5),at+Vector2(r+1.5,0),at+Vector2(0,r+1.5),at+Vector2(-r-1.5,0)])
+	ctl.draw_colored_polygon(pts,Color("132b3a"))
+	pts = PackedVector2Array([at+Vector2(0,-r),at+Vector2(r,0),at+Vector2(0,r),at+Vector2(-r,0)])
+	ctl.draw_colored_polygon(pts,Color("5fe08a") if saved else Color("3fb6e8"))
+
+func _smoke_guidance_checkpoints() -> void:
+	var was := [driving,player.position,player.rotation,view_mode,exploring,trial_active,checkpoint_id,car.position]
+	driving = false
+	exploring = true
+	view_mode = 0
+	_apply_view()
+	player.position = Vector3(10,0.75,10)
+	marker.visible = true
+	_guidance_tick(0.016)
+	var target := _destination()
+	assert(guide_has_target and guide_arrow.visible,"Floating arrow shows for the current quest")
+	var aim := Vector2(target.x-guide_arrow.position.x,target.z-guide_arrow.position.z).normalized()
+	var points := Vector2(-guide_arrow.global_basis.z.x,-guide_arrow.global_basis.z.z).normalized()
+	assert(aim.dot(points) > 0.97,"Arrow points at the goal")
+	view_mode = 2
+	_apply_view()
+	_guidance_tick(0.016)
+	assert(hud_arrow.visible and not guide_arrow.visible,"Screen arrow replaces it in eye view")
+	view_mode = 0
+	_apply_view()
+	trial_active = 0
+	trial_cp = 1
+	assert((_guide_target() as Vector3).distance_to(TRIALS[0]["cps"][1]) < 0.01,"Arrow follows the next trial ring")
+	trial_active = -1
+	# Checkpoints: open pads and spawn spots, save, reload, rescue.
+	for i in CHECKPOINTS.size():
+		checkpoint_id = i
+		var spots := _checkpoint_spawn()
+		assert(not _blocked_at((spots[0] as Vector3)+Vector3(0,0.6,0),0.5),"Checkpoint %s: player spot blocked by %s" % [CHECKPOINTS[i]["name"],_blocker((spots[0] as Vector3)+Vector3(0,0.6,0),0.5)])
+		assert(not _blocked_at((spots[1] as Vector3)+Vector3(0,0.5,0),1.0),"Checkpoint %s: car spot blocked by %s" % [CHECKPOINTS[i]["name"],_blocker((spots[1] as Vector3)+Vector3(0,0.5,0),1.0)])
+	checkpoint_id = -1
+	player.position = (CHECKPOINTS[2]["pos"] as Vector3)+Vector3(0.5,0.75,0)
+	_check_checkpoints()
+	assert(checkpoint_id == 2,"Walking onto a pad saves that checkpoint")
+	checkpoint_id = -1
+	_load_progress()
+	assert(checkpoint_id == 2,"Checkpoint survives a reload")
+	_rescue()
+	assert(player.position.distance_to((CHECKPOINTS[2]["pos"] as Vector3)+Vector3(0,0.75,0)) < 0.5 and car.position.distance_to(_checkpoint_spawn()[1]) < 0.5,"Rescue returns to the checkpoint")
+	driving = was[0]
+	player.position = was[1]
+	player.rotation = was[2]
+	view_mode = was[3]
+	exploring = was[4]
+	car.position = was[7]
+	_apply_view()
+
+func _guide_shots() -> void:
+	# Developer-only: quest arrow, goal arrow, screen arrow and a checkpoint. Never saves.
+	exploring = true
+	player.position = (CHECKPOINTS[0]["pos"] as Vector3)+Vector3(-6,0.75,4)
+	for i in 40:
+		await get_tree().physics_frame
+	await _save_shot("guide-far")
+	view_mode = 2
+	_apply_view()
+	for i in 10:
+		await get_tree().physics_frame
+	await _save_shot("guide-eye")
+	view_mode = 0
+	_apply_view()
+	checkpoint_id = 0
+	_refresh_checkpoints()
+	player.position = (CHECKPOINTS[0]["pos"] as Vector3)+Vector3(0,0.75,9)
+	for i in 30:
+		await get_tree().physics_frame
+	await _save_shot("checkpoint")
+	_open_map()
+	await _save_shot("checkpoint-map")
+	get_tree().quit()
+
+# ---------- v0.18.0: Harbor Dome social hub ----------
+const HubJokes := preload("res://hub_jokes.gd")
+const HUB_C := Vector3(210,0,32)
+const HUB_R := 46.0
+const HUB_JOKE_PRICE := 5
+const HUB_JOKE_SET := 5
+const TTT_PRICE := 10
+const RPS_PRICE := 5
+const HUB_PHRASES := ["Hi!","Hello everyone!","Wanna play?","Good game!","Nice one!","Haha!","Thanks!","See you!"]
+const HUB_EMOTES := ["Wave","Clap","Dance","Cheer"]
+const RPS_NAMES := ["ROCK","PAPER","SCISSORS"]
+const TTT_TABLES := [Vector3(194,0,14),Vector3(206,0,9),Vector3(218,0,14),Vector3(206,0,21)]
+const RPS_TABLES := [Vector3(194,0,50),Vector3(206,0,55),Vector3(218,0,50),Vector3(206,0,43)]
+const HUB_STAGE := Vector3(236,0,32)
+var hub_seats: Array = []
+var seat_id := -1
+var hub_bots: Array = []
+var hub_bubbles: Array = []
+var hub_emotes: Array = []
+var hub_tiles: Array = []
+var hub_tile_t := 0.0
+var hub_welcomed := false
+var ttt: Array = []
+var rps: Array = []
+var game_panel: PanelContainer
+var game_title: Label
+var game_status: Label
+var ttt_grid: GridContainer
+var ttt_buttons: Array = []
+var rps_row: HBoxContainer
+var show_row: HBoxContainer
+var game_robot_button: Button
+var robot_node: Node3D
+var joke_label: Label3D
+var joke_left := 0
+var joke_idx := 0
+var joke_timer := 0.0
+var joke_phase := 0
+var rimshot: AudioStreamWAV
+var chat_button: Button
+var chat_panel: PanelContainer
+var my_bubble_n := 0
+var my_bubble := -1
+var my_emote_n := 0
+var my_emote := -1
+var bot_chat_t := 4.0
+
+func _hub_seat(pos: Vector3, face: float, kind: String, table: int, side: int, h: float) -> int:
+	hub_seats.append({"pos":pos,"face":face,"kind":kind,"table":table,"side":side,"h":h,"bot":false})
+	return hub_seats.size()-1
+
+func _build_hub() -> void:
+	var walk := Color("b9b6ad")
+	var water := Color("248caa")
+	_box(self,Vector3(150,-0.65,40),Vector3(220,0.3,150),water)
+	# Causeway from the old city's waterfront street (z = 32) to the dome entrance.
+	_slab(Vector3(110.25,-0.35,32),Vector3(108.5,0.6,14),0,walk)
+	_box(self,Vector3(110.25,0.012,32),Vector3(108.5,0.08,9),Color("394552"))
+	var dashes := []
+	for x in range(60,162,8):
+		dashes.append([Vector3(float(x),0.06,32),Vector3(3,0.02,0.18)])
+	_box_batch(Color("e7d9a4"),dashes)
+	for sz in [-7.2,7.2]:
+		_box(self,Vector3(110.25,0.55,32+sz),Vector3(108.5,1.1,0.4),Color("dfe3e6"),true)
+	var lamps := []
+	for x in range(64,162,16):
+		lamps.append([Vector3(float(x),0,32+6.4),PI/2.0])
+		lamps.append([Vector3(float(x)+8.0,0,32-6.4),-PI/2.0])
+	_model_batch("res://models/lamp.glb",lamps)
+	_sign("HARBOR DOME  →",Vector3(62,6.5,32),Color("e6d9ff"),56)
+	# Round floor (cylinder collider) with rings and a dance floor in the middle.
+	var floor_body := StaticBody3D.new()
+	floor_body.position = HUB_C+Vector3(0,-0.35,0)
+	add_child(floor_body)
+	var fshape := CollisionShape3D.new()
+	var fcyl := CylinderShape3D.new()
+	fcyl.radius = HUB_R+2.0
+	fcyl.height = 0.6
+	fshape.shape = fcyl
+	floor_body.add_child(fshape)
+	var fmesh := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = HUB_R+2.0
+	disc.bottom_radius = HUB_R+2.0
+	disc.height = 0.6
+	disc.radial_segments = 48
+	fmesh.mesh = disc
+	fmesh.material_override = _material(Color("b8b0c8"))
+	floor_body.add_child(fmesh)
+	for ring_r in [14.0,30.0]:
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = ring_r-0.5
+		torus.outer_radius = ring_r+0.5
+		torus.rings = 48
+		torus.ring_segments = 4
+		ring.mesh = torus
+		ring.scale = Vector3(1,0.05,1)
+		ring.position = HUB_C+Vector3(0,0.0,0)
+		ring.material_override = _material(Color("b9a6e6"))
+		add_child(ring)
+	var tile_cols := [Color("ff6fb0"),Color("5ce6ed"),Color("ffd86a")]
+	var tile_sets := [[],[],[]]
+	for gx in 6:
+		for gz in 6:
+			tile_sets[(gx+gz) % 3].append([HUB_C+Vector3(-5.0+float(gx)*2.0,0.03,-5.0+float(gz)*2.0),Vector3(1.9,0.05,1.9)])
+	for k in 3:
+		var inst := _box_batch(tile_cols[k],tile_sets[k])
+		var m := _material(tile_cols[k])
+		m.emission_enabled = true
+		m.emission = tile_cols[k]
+		m.emission_energy_multiplier = 0.4
+		inst.material_override = m
+		hub_tiles.append(m)
+	# Dome shell (glass visible from inside too) and its wall: a ring of colliders with the west entrance open.
+	var dome := _try_model("res://models/dome_shell.glb")
+	if dome != null:
+		dome.position = HUB_C
+		dome.rotation.y = -PI/2.0
+		add_child(dome)
+		_hub_glass(dome)
+	var n := 40
+	for i in n:
+		var a := TAU*(float(i)+0.5)/float(n)
+		if absf(angle_difference(a,PI)) < deg_to_rad(13.5):
+			continue
+		var p := HUB_C+Vector3(cos(a),0,sin(a))*(HUB_R+0.4)
+		_collider_yaw(p+Vector3(0,3,0),Vector3(TAU*(HUB_R+0.4)/float(n)+0.4,6,1.0),-a-PI/2.0)
+	var holo := _sign("HARBOR DOME",HUB_C+Vector3(0,20,0),Color("e6d9ff"),110)
+	holo.outline_size = 14
+	_sign("COMEDY STAGE",HUB_STAGE+Vector3(0,11,0),Color("ffd86a"),60)
+	_sign("TIC-TAC-TOE  $%d" % TTT_PRICE,Vector3(206,5.5,15),Color("bff4f0"),48)
+	_sign("ROCK PAPER SCISSORS  $%d" % RPS_PRICE,Vector3(206,5.5,49),Color("ffd0e6"),48)
+	_sign("LOUNGE",Vector3(180,4.5,51),Color("e8f7ff"),44)
+	# Comedy stage, robot, audience sofas.
+	var stage := Node3D.new()
+	add_child(stage)
+	var st := _try_model("res://models/stage.glb")
+	if st != null:
+		st.position = HUB_STAGE
+		st.rotation.y = -PI/2.0
+		add_child(st)
+	var sbody := StaticBody3D.new()
+	sbody.position = HUB_STAGE+Vector3(0,0.47,0)
+	add_child(sbody)
+	var scol := CollisionShape3D.new()
+	var scyl := CylinderShape3D.new()
+	scyl.radius = 7.6
+	scyl.height = 0.95
+	scol.shape = scyl
+	sbody.add_child(scol)
+	robot_node = Node3D.new()
+	robot_node.position = HUB_STAGE+Vector3(-0.4,0.98,0)
+	robot_node.rotation.y = -PI/2.0
+	add_child(robot_node)
+	var rb := _try_model("res://models/robot.glb")
+	if rb != null:
+		robot_node.add_child(rb)
+	joke_label = Label3D.new()
+	joke_label.font_size = 40
+	joke_label.pixel_size = 0.012
+	joke_label.width = 900.0
+	joke_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	joke_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	joke_label.outline_size = 10
+	joke_label.modulate = Color("fff5dc")
+	joke_label.position = HUB_STAGE+Vector3(-1.0,5.2,0)
+	joke_label.text = "Sit on a sofa and tap START SHOW ($%d)" % HUB_JOKE_PRICE
+	add_child(joke_label)
+	var sofas := []
+	for row in [[222.0,0],[216.0,1]]:
+		for z in [24.0,32.0,40.0]:
+			var pos := Vector3(float(row[0]),0,z)
+			sofas.append([pos,PI/2.0])
+			for lx in [-0.6,0.6]:
+				_hub_seat(pos+Vector3(0.05,0,lx),-PI/2.0,"show",0,0,0.42)
+	_model_batch("res://models/sofa.glb",sofas)
+	# Game tables with two chairs each (x axis). Tables 0-1 have a robot in chair B, 2-3 are for players.
+	var tables := []
+	var chairs := []
+	for kind in ["ttt","rps"]:
+		var spots: Array = TTT_TABLES if kind == "ttt" else RPS_TABLES
+		for t in spots.size():
+			var tp: Vector3 = spots[t]
+			tables.append([tp,0.0])
+			_collider(self,tp+Vector3(0,0.45,0),Vector3(1.9,0.9,1.9))
+			chairs.append([tp+Vector3(-1.5,0,0),PI/2.0])
+			chairs.append([tp+Vector3(1.5,0,0),-PI/2.0])
+			_hub_seat(tp+Vector3(-1.45,0,0),-PI/2.0,kind,t,0,0.46)
+			var b := _hub_seat(tp+Vector3(1.45,0,0),PI/2.0,kind,t,1,0.46)
+			if t < 2:
+				hub_seats[b]["bot"] = true
+			if kind == "ttt":
+				ttt.append({"b":[0,0,0,0,0,0,0,0,0],"turn":1,"over":false,"paid":false,"bot":t < 2,"reset":0.0,"botwait":0.0,"msg":""})
+			else:
+				rps.append({"me":-1,"them":-1,"round":0,"bot":t < 2,"msg":"","reset":0.0})
+			var tag := _sign(("VS ROBOT" if t < 2 else "PLAYER VS PLAYER"),tp+Vector3(0,2.6,0),Color("cfe2ff") if t < 2 else Color("ffe9b8"),30)
+			tag.pixel_size = 0.012
+	_model_batch("res://models/game_table.glb",tables)
+	_model_batch("res://models/chair.glb",chairs)
+	# Lounge and cafe.
+	var bags := []
+	for p in [Vector3(176,0,54),Vector3(180,0,49),Vector3(184,0,55),Vector3(172,0,49)]:
+		bags.append([p,0.0])
+		_hub_seat(p,0.0,"lounge",0,0,0.35)
+	_model_batch("res://models/beanbag.glb",bags)
+	var lounge_sofa := Vector3(180,0,60)
+	_model_batch("res://models/sofa.glb",[[lounge_sofa,PI]])
+	for lx in [-0.6,0.6]:
+		_hub_seat(lounge_sofa+Vector3(lx,0,-0.05),0.0,"lounge",0,0,0.42)
+	_prop("res://models/hub_counter.glb",Vector3(180,0,10),Vector3(6.2,1.2,1.4),0.0,Color("22b5c9"))
+	_collider(self,Vector3(180,1.3,8.4),Vector3(6.2,2.6,0.4))
+	_sign("DOME CAFE",Vector3(180,4.2,8.6),Color("bff4f0"),44)
+	var palms := []
+	for k in 10:
+		var a := TAU*float(k)/10.0+0.3
+		if absf(angle_difference(a,PI)) < 0.45 or absf(angle_difference(a,0.0)) < 0.45:
+			continue
+		palms.append([HUB_C+Vector3(cos(a),0,sin(a))*41.0,a,0.9])
+	_model_batch("res://models/palm.glb",palms)
+	_build_hub_bots()
+
+func _hub_glass(node: Node) -> void:
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		var mi := node as MeshInstance3D
+		for s in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(s)
+			if m != null and m.resource_name.begins_with("DomeGlass"):
+				var g := StandardMaterial3D.new()
+				g.albedo_color = Color(0.66,0.86,0.94,0.22)
+				g.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				g.cull_mode = BaseMaterial3D.CULL_DISABLED
+				g.roughness = 0.05
+				g.metallic = 0.2
+				mi.set_surface_override_material(s,g)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for child in node.get_children():
+		_hub_glass(child)
+
+# ---------- people: sitting pose, bots, bubbles, emotes ----------
+func _sit_pose(person: Dictionary, h: float, base_y: float) -> void:
+	if person.is_empty():
+		return
+	var limbs: Dictionary = person["limbs"]
+	for part in ["LegL","LegR"]:
+		if limbs[part] != null:
+			(limbs[part] as Node3D).rotation = Vector3(1.45,0,0)
+	for part in ["ArmL","ArmR"]:
+		if limbs[part] != null:
+			(limbs[part] as Node3D).rotation = Vector3(0.55,0,0)
+	(person["root"] as Node3D).position.y = base_y-(0.86-(h+0.06))
+
+func _build_hub_bots() -> void:
+	var names := ["Robo-Bob","Chip","Bolt","Sprocket","Pixel","Gizmo"]
+	var shirts := [Color("e07a5f"),Color("3d84a8"),Color("81b29a"),Color("9a6fb0"),Color("f2cc8f"),Color("d4a373")]
+	var spots := []
+	for i in hub_seats.size():
+		if hub_seats[i]["bot"]:
+			spots.append(i)
+	spots.append(_seat_of("lounge",0,0,0))
+	spots.append(_seat_of("lounge",0,0,2))
+	for k in spots.size():
+		var seat: Dictionary = hub_seats[spots[k]]
+		var node := Node3D.new()
+		add_child(node)
+		node.position = seat["pos"]
+		node.rotation.y = float(seat["face"])
+		var person := _make_person(node,k % 2,{"Shirt":shirts[k % shirts.size()],"Pants":Color("263d54"),"Skin":[Color("f0c9a4"),Color("c68a60"),Color("8d5a3b")][k % 3],"Hair":[Color("2b1d14"),Color("c9a25f"),Color("1a1a1a")][k % 3],"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
+		_cull_person(node,95.0)
+		_sit_pose(person,float(seat["h"]),0.0)
+		var tag := Label3D.new()
+		tag.text = "%s · BOT" % names[k % names.size()]
+		tag.font_size = 32
+		tag.pixel_size = 0.01
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.outline_size = 8
+		tag.modulate = Color("cfe2ff")
+		tag.position = Vector3(0,2.0,0)
+		node.add_child(tag)
+		seat["bot"] = true
+		hub_bots.append({"node":node,"person":person,"seat":spots[k],"name":names[k % names.size()]})
+
+func _seat_of(kind: String, table: int, side: int, nth := 0) -> int:
+	var count := 0
+	for i in hub_seats.size():
+		var s: Dictionary = hub_seats[i]
+		if s["kind"] == kind and int(s["table"]) == table and (kind == "lounge" or kind == "show" or int(s["side"]) == side):
+			if count == nth:
+				return i
+			count += 1
+	return -1
+
+func _bubble(parent: Node3D, text: String, height: float) -> void:
+	var lab := Label3D.new()
+	lab.text = text
+	lab.font_size = 44
+	lab.pixel_size = 0.012
+	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lab.outline_size = 12
+	lab.outline_modulate = Color("132b3a")
+	lab.modulate = Color("fff5dc")
+	lab.position = Vector3(0,height,0)
+	lab.no_depth_test = true
+	parent.add_child(lab)
+	hub_bubbles.append({"label":lab,"until":clock+4.0})
+
+func _emote(person: Dictionary, kind: int) -> void:
+	if person.is_empty():
+		return
+	for e in hub_emotes:
+		if e["person"] == person:
+			e["kind"] = kind
+			e["until"] = clock+3.2
+			return
+	var root: Node3D = person["root"]
+	hub_emotes.append({"person":person,"kind":kind,"until":clock+3.2,"root_y":root.position.y,"root_rot":root.rotation.y})
+
+func _hub_people_tick(delta: float) -> void:
+	for i in range(hub_bubbles.size()-1,-1,-1):
+		var b: Dictionary = hub_bubbles[i]
+		if clock > float(b["until"]) or not is_instance_valid(b["label"]):
+			if is_instance_valid(b["label"]):
+				(b["label"] as Node).queue_free()
+			hub_bubbles.remove_at(i)
+	for i in range(hub_emotes.size()-1,-1,-1):
+		var e: Dictionary = hub_emotes[i]
+		var person: Dictionary = e["person"]
+		var limbs: Dictionary = person["limbs"]
+		var root: Node3D = person["root"]
+		if clock > float(e["until"]):
+			for part in ["ArmL","ArmR"]:
+				if limbs[part] != null:
+					(limbs[part] as Node3D).rotation = Vector3.ZERO
+			root.rotation.y = float(e["root_rot"])
+			root.position.y = float(e["root_y"])
+			hub_emotes.remove_at(i)
+			continue
+		var t := clock*10.0
+		var arm_l: Node3D = limbs["ArmL"]
+		var arm_r: Node3D = limbs["ArmR"]
+		match int(e["kind"]):
+			0:
+				arm_r.rotation = Vector3(-2.7,0,sin(t)*0.45)
+			1:
+				arm_l.rotation = Vector3(1.25,0,-0.35-0.3*sin(t*1.4))
+				arm_r.rotation = Vector3(1.25,0,0.35+0.3*sin(t*1.4))
+			2:
+				arm_l.rotation = Vector3(-2.2+sin(t*0.6)*0.6,0,0)
+				arm_r.rotation = Vector3(-2.2-sin(t*0.6)*0.6,0,0)
+				root.rotation.y = float(e["root_rot"])+sin(t*0.3)*0.6
+				root.position.y = float(e["root_y"])+absf(sin(t*0.6))*0.12
+			3:
+				arm_l.rotation = Vector3(-2.9,0,-0.3)
+				arm_r.rotation = Vector3(-2.9,0,0.3)
+				root.position.y = float(e["root_y"])+absf(sin(t*0.5))*0.25
+	# Robot regulars chat now and then.
+	bot_chat_t -= delta
+	if bot_chat_t <= 0.0 and not hub_bots.is_empty():
+		bot_chat_t = randf_range(5.0,9.0)
+		var bot: Dictionary = hub_bots[randi() % hub_bots.size()]
+		if (bot["node"] as Node3D).global_position.distance_to(camera.global_position) < 80.0:
+			_bubble(bot["node"],HUB_PHRASES[randi() % HUB_PHRASES.size()],2.5)
+			if randf() < 0.4:
+				_emote(bot["person"],randi() % 2)
+	hub_tile_t += delta
+	if hub_tile_t > 0.5 and not hub_tiles.is_empty():
+		hub_tile_t = 0.0
+		var first: StandardMaterial3D = hub_tiles[0]
+		var keep := first.albedo_color
+		for k in hub_tiles.size()-1:
+			(hub_tiles[k] as StandardMaterial3D).albedo_color = (hub_tiles[k+1] as StandardMaterial3D).albedo_color
+		(hub_tiles[hub_tiles.size()-1] as StandardMaterial3D).albedo_color = keep
+		for m in hub_tiles:
+			(m as StandardMaterial3D).emission = (m as StandardMaterial3D).albedo_color
+
+# ---------- seats ----------
+func _seat_taken(i: int) -> bool:
+	if hub_seats[i]["bot"]:
+		return true
+	for id in online_peers:
+		if int(online_peers[id].get("seat",-1)) == i:
+			return true
+	return false
+
+func _nearest_seat() -> int:
+	if driving or hub_seats.is_empty() or player.position.distance_to(HUB_C) > HUB_R+2.0:
+		return -1
+	var best := -1
+	var best_d := 1.8
+	for i in hub_seats.size():
+		var d := Vector2(player.position.x-(hub_seats[i]["pos"] as Vector3).x,player.position.z-(hub_seats[i]["pos"] as Vector3).z).length()
+		if d < best_d and not _seat_taken(i):
+			best_d = d
+			best = i
+	return best
+
+func _seat_label(i: int) -> String:
+	match String(hub_seats[i]["kind"]):
+		"ttt":
+			return "SIT · TIC-TAC-TOE"
+		"rps":
+			return "SIT · ROCK PAPER SCISSORS"
+		"show":
+			return "SIT · COMEDY SHOW"
+	return "SIT DOWN"
+
+func _sit(i: int) -> void:
+	seat_id = i
+	var seat: Dictionary = hub_seats[i]
+	player.position = (seat["pos"] as Vector3)+Vector3(0,0.7,0)
+	player.rotation.y = float(seat["face"])
+	player.velocity = Vector3.ZERO
+	player.get_child(0).set_deferred("disabled",true)
+	_sit_pose(player_person,float(seat["h"]),-0.7)
+	if hat_holder != null:
+		hat_holder.position.y = 0.29-(0.86-(float(seat["h"])+0.06))
+	var kind := String(seat["kind"])
+	var t := int(seat["table"])
+	if kind == "ttt":
+		var g: Dictionary = ttt[t]
+		g["b"] = [0,0,0,0,0,0,0,0,0]
+		g["turn"] = 1
+		g["over"] = false
+		g["paid"] = false
+		g["bot"] = t < 2
+		g["msg"] = ""
+	elif kind == "rps":
+		var g: Dictionary = rps[t]
+		g["me"] = -1
+		g["them"] = -1
+		g["bot"] = t < 2
+		g["msg"] = ""
+	_open_game_panel()
+
+func _stand_up() -> void:
+	if seat_id < 0:
+		return
+	var seat: Dictionary = hub_seats[seat_id]
+	if String(seat["kind"]) == "show" and joke_left > 0:
+		joke_left = 0
+		DisplayServer.tts_stop()
+		joke_label.text = "Sit on a sofa and tap START SHOW ($%d)" % HUB_JOKE_PRICE
+	var dir := Vector3(-sin(float(seat["face"])),0,-cos(float(seat["face"])))
+	player.position = (seat["pos"] as Vector3)-dir*1.1+Vector3(0,0.75,0)
+	seat_id = -1
+	player.get_child(0).set_deferred("disabled",false)
+	_pose_person(player_person,0.0,0.0)
+	if hat_holder != null:
+		hat_holder.position.y = 0.29
+	game_panel.hide()
+
+func _seated_tick(delta: float) -> void:
+	player.velocity = Vector3.ZERO
+	var seat: Dictionary = hub_seats[seat_id]
+	var kind := String(seat["kind"])
+	if kind == "ttt":
+		_ttt_tick(int(seat["table"]),delta)
+	elif kind == "rps":
+		_rps_tick(int(seat["table"]),delta)
+	elif kind == "show":
+		_joke_tick(delta)
+
+# ---------- game panel ----------
+func _build_game_panel(root: Control) -> void:
+	game_panel = PanelContainer.new()
+	game_panel.add_theme_stylebox_override("panel",_panel(Color(0.07,0.15,0.2,0.94),20))
+	root.add_child(game_panel)
+	game_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	game_panel.position = Vector2(24,212)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",10)
+	game_panel.add_child(col)
+	game_title = _label("",24,Color("f0bd62"))
+	col.add_child(game_title)
+	game_status = _label("",18,Color("cbd8de"))
+	game_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	game_status.custom_minimum_size = Vector2(360,0)
+	col.add_child(game_status)
+	ttt_grid = GridContainer.new()
+	ttt_grid.columns = 3
+	ttt_grid.add_theme_constant_override("h_separation",8)
+	ttt_grid.add_theme_constant_override("v_separation",8)
+	col.add_child(ttt_grid)
+	for c in 9:
+		var b := _button("",_ttt_tap.bind(c))
+		b.custom_minimum_size = Vector2(112,74)
+		b.add_theme_font_size_override("font_size",40)
+		b.add_theme_color_override("font_disabled_color",Color("fff5dc"))
+		ttt_grid.add_child(b)
+		ttt_buttons.append(b)
+	rps_row = HBoxContainer.new()
+	rps_row.add_theme_constant_override("separation",8)
+	col.add_child(rps_row)
+	for k in 3:
+		var b := _button(RPS_NAMES[k],_rps_pick.bind(k))
+		b.custom_minimum_size = Vector2(116,64)
+		b.add_theme_font_size_override("font_size",19)
+		rps_row.add_child(b)
+	show_row = HBoxContainer.new()
+	col.add_child(show_row)
+	var start := _button("START SHOW  $%d" % HUB_JOKE_PRICE,_joke_start)
+	start.custom_minimum_size = Vector2(360,58)
+	show_row.add_child(start)
+	game_robot_button = _button("PLAY THE ROBOT INSTEAD",_play_robot)
+	game_robot_button.custom_minimum_size = Vector2(360,52)
+	game_robot_button.add_theme_font_size_override("font_size",18)
+	col.add_child(game_robot_button)
+	var stand := _button("STAND UP",_stand_up)
+	stand.custom_minimum_size = Vector2(360,52)
+	col.add_child(stand)
+	game_panel.hide()
+
+func _open_game_panel() -> void:
+	var seat: Dictionary = hub_seats[seat_id]
+	var kind := String(seat["kind"])
+	if kind == "lounge":
+		game_panel.hide()
+		_show_toast("Relaxing in the lounge. Tap Chat to say hi, or STAND UP to leave.")
+		return
+	game_title.text = {"ttt":"TIC-TAC-TOE  ·  $%d to play, win $%d" % [TTT_PRICE,TTT_PRICE*2],"rps":"ROCK PAPER SCISSORS  ·  $%d a round, win $%d" % [RPS_PRICE,RPS_PRICE*2],"show":"COMEDY SHOW  ·  $%d for %d jokes" % [HUB_JOKE_PRICE,HUB_JOKE_SET]}[kind]
+	ttt_grid.visible = kind == "ttt"
+	rps_row.visible = kind == "rps"
+	show_row.visible = kind == "show"
+	game_panel.show()
+	game_panel.reset_size()
+	_refresh_game_panel()
+
+func _refresh_game_panel() -> void:
+	if seat_id < 0 or not game_panel.visible:
+		return
+	var seat: Dictionary = hub_seats[seat_id]
+	var kind := String(seat["kind"])
+	var t := int(seat["table"])
+	game_robot_button.visible = false
+	if kind == "ttt":
+		var g: Dictionary = ttt[t]
+		var mine := int(seat["side"])+1
+		for c in 9:
+			var v := int(g["b"][c])
+			ttt_buttons[c].text = ["","X","O"][v]
+			ttt_buttons[c].disabled = v != 0 or bool(g["over"]) or int(g["turn"]) != mine or not _ttt_ready(t)
+		if not _ttt_ready(t):
+			game_status.text = "Waiting for another player to sit opposite you…"
+			game_robot_button.visible = true
+		elif String(g["msg"]) != "":
+			game_status.text = g["msg"]
+		else:
+			game_status.text = ("Your turn: you are %s." % ["","X","O"][mine]) if int(g["turn"]) == mine else "%s is thinking…" % _opponent_name(t,"ttt")
+	elif kind == "rps":
+		var g: Dictionary = rps[t]
+		for b in rps_row.get_children():
+			(b as Button).disabled = int(g["me"]) >= 0 or not _rps_ready(t)
+		if not _rps_ready(t):
+			game_status.text = "Waiting for another player to sit opposite you…"
+			game_robot_button.visible = true
+		elif String(g["msg"]) != "":
+			game_status.text = g["msg"]
+		else:
+			game_status.text = "Pick one! ($%d)" % RPS_PRICE if int(g["me"]) < 0 else "You picked %s. Waiting for %s…" % [RPS_NAMES[int(g["me"])],_opponent_name(t,"rps")]
+	elif kind == "show":
+		game_status.text = ("Show in progress: %d jokes to go." % joke_left) if joke_left > 0 else "Sit back and enjoy the robot comedian."
+		for b in show_row.get_children():
+			(b as Button).disabled = joke_left > 0
+
+func _play_robot() -> void:
+	if seat_id < 0:
+		return
+	var seat: Dictionary = hub_seats[seat_id]
+	if String(seat["kind"]) == "ttt":
+		ttt[int(seat["table"])]["bot"] = true
+	elif String(seat["kind"]) == "rps":
+		rps[int(seat["table"])]["bot"] = true
+	_refresh_game_panel()
+
+func _peer_at(kind: String, table: int, side: int) -> String:
+	var want := _seat_of(kind,table,side)
+	for id in online_peers:
+		if int(online_peers[id].get("seat",-1)) == want and not bool(online_peers[id]["driving"]):
+			return id
+	return ""
+
+func _opponent_name(t: int, kind: String) -> String:
+	var g: Dictionary = ttt[t] if kind == "ttt" else rps[t]
+	if g["bot"]:
+		return "the robot"
+	var side := 1-int(hub_seats[seat_id]["side"])
+	var id := _peer_at(kind,t,side)
+	return String(online_peers[id]["name"]) if id != "" else "the other player"
+
+func _pay(price: int) -> bool:
+	if cash < price:
+		_show_toast("You need $%d to play. Do a delivery job first!" % price)
+		return false
+	cash -= price
+	_save_progress()
+	return true
+
+# ---------- tic-tac-toe ----------
+const TTT_LINES := [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]]
+
+func _ttt_ready(t: int) -> bool:
+	var g: Dictionary = ttt[t]
+	if g["bot"]:
+		return true
+	return _peer_at("ttt",t,1-int(hub_seats[seat_id]["side"])) != ""
+
+func _ttt_winner(b: Array) -> int:
+	for l in TTT_LINES:
+		var v := int(b[l[0]])
+		if v != 0 and v == int(b[l[1]]) and v == int(b[l[2]]):
+			return v
+	for v in b:
+		if int(v) == 0:
+			return 0
+	return 3
+
+func _ttt_bot_move(b: Array, me: int) -> int:
+	var them := 3-me
+	var free: Array = []
+	for c in 9:
+		if int(b[c]) == 0:
+			free.append(c)
+	if free.is_empty():
+		return -1
+	if randf() < 0.22:
+		return free[randi() % free.size()]
+	for who in [me,them]:
+		for c in free:
+			var test := b.duplicate()
+			test[c] = who
+			if _ttt_winner(test) == who:
+				return c
+	if 4 in free:
+		return 4
+	var corners: Array = []
+	for c in [0,2,6,8]:
+		if c in free:
+			corners.append(c)
+	if not corners.is_empty():
+		return corners[randi() % corners.size()]
+	return free[randi() % free.size()]
+
+func _ttt_tap(c: int) -> void:
+	if seat_id < 0 or String(hub_seats[seat_id]["kind"]) != "ttt":
+		return
+	var t := int(hub_seats[seat_id]["table"])
+	var g: Dictionary = ttt[t]
+	var mine := int(hub_seats[seat_id]["side"])+1
+	if bool(g["over"]) or int(g["turn"]) != mine or int(g["b"][c]) != 0 or not _ttt_ready(t):
+		return
+	if not g["paid"]:
+		if not _pay(TTT_PRICE):
+			return
+		g["paid"] = true
+	g["b"][c] = mine
+	g["turn"] = 3-mine
+	g["botwait"] = 0.7
+	if not g["bot"]:
+		_online_game_send({"k":"t","tb":t,"b":_ttt_code(g["b"]),"n":int(g["turn"])})
+	_ttt_check(t)
+	_refresh_game_panel()
+
+func _ttt_code(b: Array) -> String:
+	var out := ""
+	for v in b:
+		out += str(int(v))
+	return out
+
+func _ttt_check(t: int) -> void:
+	var g: Dictionary = ttt[t]
+	var w := _ttt_winner(g["b"])
+	if w == 0:
+		return
+	var mine := int(hub_seats[seat_id]["side"])+1
+	g["over"] = true
+	g["reset"] = 3.5
+	if w == 3:
+		if g["paid"]:
+			cash += TTT_PRICE
+		g["msg"] = "Draw! Your $%d is back." % TTT_PRICE
+	elif w == mine:
+		if g["paid"]:
+			cash += TTT_PRICE*2
+		g["msg"] = "You win! +$%d" % (TTT_PRICE*2)
+		_emote(player_person,3)
+	else:
+		g["msg"] = "%s wins this one. Try again!" % _opponent_name(t,"ttt").capitalize()
+	g["paid"] = false
+	_save_progress()
+
+func _ttt_tick(t: int, delta: float) -> void:
+	var g: Dictionary = ttt[t]
+	var mine := int(hub_seats[seat_id]["side"])+1
+	if bool(g["over"]):
+		g["reset"] = float(g["reset"])-delta
+		if float(g["reset"]) <= 0.0:
+			g["b"] = [0,0,0,0,0,0,0,0,0]
+			g["turn"] = 1
+			g["over"] = false
+			g["msg"] = ""
+			_refresh_game_panel()
+		return
+	if g["bot"] and int(g["turn"]) != mine:
+		g["botwait"] = float(g["botwait"])-delta
+		if float(g["botwait"]) <= 0.0:
+			if not g["paid"] and _ttt_code(g["b"]) == "000000000":
+				# The robot opens when you are O: you pay as the round starts.
+				if not _pay(TTT_PRICE):
+					return
+				g["paid"] = true
+			var c := _ttt_bot_move(g["b"],3-mine)
+			if c >= 0:
+				g["b"][c] = 3-mine
+				g["turn"] = mine
+				_ttt_check(t)
+			_refresh_game_panel()
+
+# ---------- rock paper scissors ----------
+func _rps_ready(t: int) -> bool:
+	var g: Dictionary = rps[t]
+	if g["bot"]:
+		return true
+	return _peer_at("rps",t,1-int(hub_seats[seat_id]["side"])) != ""
+
+func _rps_pick(k: int) -> void:
+	if seat_id < 0 or String(hub_seats[seat_id]["kind"]) != "rps":
+		return
+	var t := int(hub_seats[seat_id]["table"])
+	var g: Dictionary = rps[t]
+	if int(g["me"]) >= 0 or not _rps_ready(t):
+		return
+	if not _pay(RPS_PRICE):
+		return
+	g["me"] = k
+	g["msg"] = ""
+	if g["bot"]:
+		g["them"] = randi() % 3
+	else:
+		_online_game_send({"k":"r","tb":t,"v":k,"rd":int(g["round"])})
+	_rps_resolve(t)
+	_refresh_game_panel()
+
+func _rps_resolve(t: int) -> void:
+	var g: Dictionary = rps[t]
+	var me := int(g["me"])
+	var them := int(g["them"])
+	if me < 0 or them < 0:
+		return
+	var who := _opponent_name(t,"rps")
+	var res := (me-them+3) % 3
+	if res == 0:
+		cash += RPS_PRICE
+		g["msg"] = "You: %s · %s: %s · Draw, $%d back." % [RPS_NAMES[me],who.capitalize(),RPS_NAMES[them],RPS_PRICE]
+	elif res == 1:
+		cash += RPS_PRICE*2
+		g["msg"] = "You: %s · %s: %s · You win! +$%d" % [RPS_NAMES[me],who.capitalize(),RPS_NAMES[them],RPS_PRICE*2]
+		_emote(player_person,3)
+	else:
+		g["msg"] = "You: %s · %s: %s · %s wins." % [RPS_NAMES[me],who.capitalize(),RPS_NAMES[them],who.capitalize()]
+	g["me"] = -1
+	g["them"] = -1
+	g["round"] = int(g["round"])+1
+	g["reset"] = 0.0
+	_save_progress()
+
+func _rps_tick(_t: int, _delta: float) -> void:
+	pass
+
+# ---------- online table messages ----------
+func _online_game_send(payload: Dictionary) -> void:
+	if not online_on or online_state != 3 or online_ws == null:
+		return
+	payload["i"] = online_id
+	_online_send({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"gm","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"})
+
+func _hub_game_msg(p: Dictionary) -> void:
+	var from := String(p.get("i",""))
+	if from == "" or from == online_id or not online_peers.has(from) or seat_id < 0:
+		return
+	var seat: Dictionary = hub_seats[seat_id]
+	var t := int(p.get("tb",-1))
+	if t != int(seat["table"]):
+		return
+	var side := 1-int(seat["side"])
+	if String(p.get("k","")) == "t" and String(seat["kind"]) == "ttt" and _peer_at("ttt",t,side) == from:
+		var code := String(p.get("b",""))
+		if code.length() != 9:
+			return
+		var g: Dictionary = ttt[t]
+		if g["bot"]:
+			return
+		if code == "000000000" or _ttt_code(g["b"]) == "000000000":
+			if not g["paid"] and code != "000000000":
+				if not _pay(TTT_PRICE):
+					return
+				g["paid"] = true
+		var b: Array = []
+		for ch in code:
+			b.append(clampi(int(ch),0,2))
+		g["b"] = b
+		g["turn"] = clampi(int(p.get("n",1)),1,2)
+		_ttt_check(t)
+		_refresh_game_panel()
+	elif String(p.get("k","")) == "r" and String(seat["kind"]) == "rps" and _peer_at("rps",t,side) == from:
+		var g: Dictionary = rps[t]
+		if g["bot"]:
+			return
+		g["them"] = clampi(int(p.get("v",0)),0,2)
+		_rps_resolve(t)
+		_refresh_game_panel()
+
+# ---------- comedy show ----------
+func _joke_start() -> void:
+	if seat_id < 0 or String(hub_seats[seat_id]["kind"]) != "show" or joke_left > 0:
+		return
+	if not _pay(HUB_JOKE_PRICE):
+		return
+	joke_left = HUB_JOKE_SET
+	joke_idx = randi() % HubJokes.JOKES.size()
+	joke_phase = 0
+	joke_timer = 0.3
+	_refresh_game_panel()
+
+func _joke_tick(delta: float) -> void:
+	if joke_left <= 0:
+		return
+	joke_timer -= delta
+	if robot_node != null:
+		robot_node.position.y = HUB_STAGE.y+0.98+absf(sin(clock*6.0))*0.06
+	if joke_timer > 0.0:
+		return
+	if joke_phase == 0:
+		var text: String = HubJokes.JOKES[joke_idx % HubJokes.JOKES.size()]
+		joke_idx += 1
+		joke_label.text = text
+		_show_toast(text)
+		_speak(text)
+		joke_timer = 2.0+float(text.length())*0.065
+		joke_phase = 1
+	else:
+		joke_label.text = "Ba-dum-tss!"
+		_play_rimshot()
+		joke_left -= 1
+		joke_timer = 2.2
+		joke_phase = 0
+		if joke_left <= 0:
+			joke_label.text = "Thanks, you've been great! Another show? $%d" % HUB_JOKE_PRICE
+		_refresh_game_panel()
+
+func _speak(text: String) -> void:
+	if "--smoke-test" in OS.get_cmdline_user_args() or not ProjectSettings.get_setting("audio/general/text_to_speech",false):
+		return
+	var voices := DisplayServer.tts_get_voices_for_language("en")
+	if voices.is_empty():
+		return
+	DisplayServer.tts_stop()
+	DisplayServer.tts_speak(text,voices[0],70,0.95,1.05)
+
+func _play_rimshot() -> void:
+	if fx_player == null or "--smoke-test" in OS.get_cmdline_user_args():
+		return
+	if rimshot == null:
+		var sr := 22050
+		var total := int(sr*1.2)
+		var bytes := PackedByteArray()
+		bytes.resize(total*2)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 7
+		for i in total:
+			var t := float(i)/sr
+			var v := 0.0
+			for hit in [0.0,0.16]:
+				if t >= hit:
+					var u: float = t-hit
+					v += (rng.randf_range(-1.0,1.0)*0.5+sin(TAU*190.0*u)*0.5)*exp(-u*28.0)*0.5
+			if t >= 0.34:
+				var u := t-0.34
+				v += rng.randf_range(-1.0,1.0)*exp(-u*4.0)*0.22*(0.6+0.4*sin(TAU*6100.0*u))
+			bytes.encode_s16(i*2,int(clampf(v,-1.0,1.0)*28000.0))
+		rimshot = AudioStreamWAV.new()
+		rimshot.format = AudioStreamWAV.FORMAT_16_BITS
+		rimshot.mix_rate = sr
+		rimshot.data = bytes
+	fx_player.stream = rimshot
+	fx_player.play()
+
+# ---------- quick chat and emotes ----------
+func _build_chat(root: Control) -> void:
+	chat_button = _button("Chat",_toggle_chat)
+	chat_button.custom_minimum_size = Vector2(170,48)
+	chat_button.add_theme_font_size_override("font_size",20)
+	root.add_child(chat_button)
+	chat_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	chat_button.position = Vector2(root.size.x-194,412)
+	chat_panel = PanelContainer.new()
+	chat_panel.add_theme_stylebox_override("panel",_panel(Color(0.07,0.15,0.2,0.94),18))
+	root.add_child(chat_panel)
+	chat_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation",8)
+	grid.add_theme_constant_override("v_separation",8)
+	chat_panel.add_child(grid)
+	for k in HUB_PHRASES.size():
+		var b := _button(HUB_PHRASES[k],_say.bind(k))
+		b.custom_minimum_size = Vector2(170,50)
+		b.add_theme_font_size_override("font_size",18)
+		grid.add_child(b)
+	for k in HUB_EMOTES.size():
+		var b := _button("★ "+HUB_EMOTES[k],_do_emote.bind(k))
+		b.custom_minimum_size = Vector2(170,50)
+		b.add_theme_font_size_override("font_size",18)
+		b.add_theme_stylebox_override("normal",_panel(Color("4a3d7a"),18))
+		grid.add_child(b)
+	chat_panel.reset_size()
+	chat_panel.position = Vector2(root.size.x-chat_panel.size.x-212,150)
+	chat_panel.hide()
+
+func _toggle_chat() -> void:
+	if paused:
+		return
+	chat_panel.visible = not chat_panel.visible
+
+func _say(k: int) -> void:
+	chat_panel.hide()
+	my_bubble = k
+	my_bubble_n += 1
+	_bubble(player if not driving else car,HUB_PHRASES[k],2.6 if not driving else 3.2)
+
+func _do_emote(k: int) -> void:
+	chat_panel.hide()
+	if driving:
+		_show_toast("Get out of the car to do emotes.")
+		return
+	my_emote = k
+	my_emote_n += 1
+	_emote(player_person,k)
+
+func _smoke_hub() -> void:
+	# Causeway and entrance are open; the dome wall is solid elsewhere.
+	for x in range(56,170,6):
+		for lane in [-2.3,2.3]:
+			assert(not _blocked_at(Vector3(float(x),1.0,32.0+lane),0.6),"Causeway blocked at x=%d by %s" % [x,_blocker(Vector3(float(x),1.0,32.0+lane),0.6)])
+	for x in range(166,200,4):
+		assert(not _blocked_at(Vector3(float(x),1.0,32.0),0.6),"Dome entrance path blocked at x=%d by %s" % [x,_blocker(Vector3(float(x),1.0,32.0),0.6)])
+	for a in [0.0,PI/2.0,-PI/2.0,PI*0.75]:
+		var pt := HUB_C+Vector3(cos(a),0,sin(a))*(HUB_R+0.4)+Vector3(0,1.5,0)
+		assert(_blocked_at(pt,0.4),"Dome wall missing at angle %.2f" % a)
+	assert(hub_bots.size() >= 6 and hub_seats.size() >= 30,"Dome seats and robot regulars built")
+	var was := [player.position,player.rotation,driving,cash,view_mode]
+	driving = false
+	view_mode = 0
+	_apply_view()
+	# Tic-tac-toe against the robot, played to the end.
+	cash = 100
+	var s0 := _seat_of("ttt",0,0)
+	player.position = (hub_seats[s0]["pos"] as Vector3)+Vector3(0.3,0.75,0.3)
+	assert(_nearest_seat() == s0,"Standing by a table offers its chair")
+	_interact()
+	assert(seat_id == s0 and game_panel.visible and ttt_grid.visible,"Sitting opens the tic-tac-toe board")
+	var g: Dictionary = ttt[0]
+	for step in 20:
+		if bool(g["over"]):
+			break
+		if int(g["turn"]) == 1:
+			for c in 9:
+				if int(g["b"][c]) == 0:
+					_ttt_tap(c)
+					break
+		else:
+			_ttt_tick(0,1.0)
+	assert(bool(g["over"]),"Tic-tac-toe game finished")
+	assert(cash == 90 or cash == 100 or cash == 110,"Tic-tac-toe pays out correctly (cash %d)" % cash)
+	_interact()
+	assert(seat_id < 0 and not game_panel.visible,"STAND UP leaves the table")
+	# Rock paper scissors against the robot.
+	cash = 100
+	var r0 := _seat_of("rps",0,0)
+	player.position = (hub_seats[r0]["pos"] as Vector3)+Vector3(0.3,0.75,0)
+	_interact()
+	_rps_pick(0)
+	assert(cash == 95 or cash == 100 or cash == 105,"Rock paper scissors pays out correctly (cash %d)" % cash)
+	assert(String(rps[0]["msg"]).contains("ROCK"),"Result shows both picks")
+	_stand_up()
+	# Online match against a simulated player at a player-vs-player table.
+	cash = 100
+	var mine := _seat_of("ttt",2,0)
+	var theirs := _seat_of("ttt",2,1)
+	var peer_pos: Vector3 = hub_seats[theirs]["pos"]
+	_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":{"i":"p2","n":"Mia","x":peer_pos.x,"y":0.0,"z":peer_pos.z,"r":0.0,"c":1,"d":0,"s":theirs,"qn":1,"q":0}}}))
+	assert(online_peers.has("p2") and int(online_peers["p2"]["seat"]) == theirs,"Peer is seated")
+	assert(_seat_taken(theirs),"A seated player's chair is taken")
+	player.position = (hub_seats[mine]["pos"] as Vector3)+Vector3(0.3,0.75,0)
+	_interact()
+	assert(seat_id == mine and _ttt_ready(2),"Match starts when both players sit")
+	var gm := func(code: String, turn: int) -> void:
+		_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"gm","payload":{"i":"p2","k":"t","tb":2,"b":code,"n":turn}}}))
+	_ttt_tap(0)
+	assert(cash == 90 and _ttt_code(ttt[2]["b"]) == "100000000","First move pays $%d" % TTT_PRICE)
+	gm.call("100200000",1)
+	assert(_ttt_code(ttt[2]["b"]) == "100200000" and int(ttt[2]["turn"]) == 1,"Opponent move received")
+	_ttt_tap(1)
+	gm.call("110220000",1)
+	_ttt_tap(2)
+	assert(bool(ttt[2]["over"]) and cash == 110,"Winning an online match pays $%d (cash %d)" % [TTT_PRICE*2,cash])
+	_stand_up()
+	# Comedy show.
+	cash = 100
+	var show := _seat_of("show",0,0)
+	player.position = (hub_seats[show]["pos"] as Vector3)+Vector3(0.2,0.75,0)
+	_interact()
+	assert(seat_id == show and show_row.visible,"Sofa opens the comedy show")
+	_joke_start()
+	assert(cash == 100-HUB_JOKE_PRICE and joke_left == HUB_JOKE_SET,"Show costs $%d" % HUB_JOKE_PRICE)
+	_joke_tick(0.5)
+	assert(HubJokes.JOKES.has(joke_label.text),"Robot tells a joke from the bank")
+	for k in 30:
+		_joke_tick(20.0)
+	assert(joke_left == 0 and joke_label.text.contains("Another show"),"Show ends after %d jokes" % HUB_JOKE_SET)
+	assert(HubJokes.JOKES.size() >= 90,"Joke bank is big enough")
+	_stand_up()
+	# Quick chat and emotes, for us and for a peer.
+	var bubbles := hub_bubbles.size()
+	_say(1)
+	assert(hub_bubbles.size() == bubbles+1 and _online_pos_frame()["payload"]["payload"]["qn"] == my_bubble_n,"Quick chat shows a bubble and is sent online")
+	_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":{"i":"p2","n":"Mia","x":peer_pos.x,"y":0.0,"z":peer_pos.z,"r":0.0,"c":1,"d":0,"s":-1,"qn":2,"q":3,"en":1,"e":2}}}))
+	assert(hub_bubbles.size() == bubbles+2,"Peer chat bubble appears")
+	assert(hub_emotes.any(func(e): return e["person"] == online_peers["p2"]["person"]),"Peer emote plays")
+	_do_emote(0)
+	assert(hub_emotes.any(func(e): return e["person"] == player_person),"Our emote plays")
+	(online_peers["p2"]["node"] as Node3D).queue_free()
+	online_peers.erase("p2")
+	hub_emotes.clear()
+	_pose_person(player_person,0.0,0.0)
+	player.position = was[0]
+	player.rotation = was[1]
+	driving = was[2]
+	cash = was[3]
+	view_mode = was[4]
+	_apply_view()
+
+func _hub_shots() -> void:
+	# Developer-only: Harbor Dome from outside and inside, a game, the comedy show and chat. Never saves.
+	player.position = Vector3(150,0.75,32)
+	player.rotation.y = -PI/2.0
+	for i in 30:
+		await get_tree().physics_frame
+	await _skyline_shot("hub-aerial",HUB_C,HUB_C+Vector3(-95,70,60))
+	await _save_shot("hub-causeway")
+	player.position = Vector3(185,0.75,32)
+	view_mode = 2
+	_apply_view()
+	look_pitch = 0.12
+	for i in 15:
+		await get_tree().physics_frame
+	await _save_shot("hub-inside-eye")
+	_shot_stats("hub-inside-eye")
+	view_mode = 1
+	_apply_view()
+	look_pitch = 0.0
+	var s0 := _seat_of("ttt",0,0)
+	player.position = (hub_seats[s0]["pos"] as Vector3)+Vector3(0.3,0.75,0)
+	_interact()
+	_ttt_tap(4)
+	_ttt_tick(0,1.0)
+	_ttt_tap(0)
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("hub-tictactoe")
+	_stand_up()
+	var show := _seat_of("show",0,1)
+	player.position = (hub_seats[show]["pos"] as Vector3)+Vector3(0.2,0.75,0)
+	_interact()
+	_joke_start()
+	view_mode = 2
+	_apply_view()
+	for i in 30:
+		await get_tree().physics_frame
+	await _save_shot("hub-comedy")
+	_stand_up()
+	view_mode = 1
+	_apply_view()
+	player.position = HUB_C+Vector3(-3,0.75,6)
+	for i in 10:
+		await get_tree().physics_frame
+	_say(0)
+	_do_emote(2)
+	_toggle_chat()
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("hub-chat")
 	get_tree().quit()

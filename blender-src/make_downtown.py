@@ -237,13 +237,20 @@ def station():
         block((16.6, 3.05, 0.4), (x, d / 2 + 6.8, 1.0), AWN[3])
     export("station")
 
+STADIUM_GAP = (20, 21)
+
 def stadium():
     rx, ry = 38, 28
     block((56, 36, 0.3), (0, 0, 0.15), GRASS)
     for x in range(-24, 25, 8):
         block((0.25, 34, 0.32), (x, 0, 0.16), WHITE)
     n = 28
+    crowd_mats = [mat("Crowd%d" % k, c, 0.8) for k, c in enumerate(["d33a3a", "2f5fd0", "f2d046", "eef1f2", "22b5c9", "f07f2e"])]
+    crowd = [bmesh.new() for _ in crowd_mats]
+    rng = __import__("random").Random(1700)
     for i in range(n):
+        if i in STADIUM_GAP:
+            continue  # the entrance faces the street (-Y here, +Z in the game)
         a = 2 * math.pi * i / n
         a2 = 2 * math.pi * (i + 1) / n
         x1, y1 = math.cos(a) * rx, math.sin(a) * ry
@@ -267,6 +274,40 @@ def stadium():
             v.co.y *= 7.0
             v.co.z *= 0.4
         finish(r, WHITE)
+        # Spectators on the sloped stand: rows from the inner (low) edge to the outer (high) edge.
+        ca, sa = math.cos(ang), math.sin(ang)
+        for t in (0.12, 0.3, 0.48, 0.66, 0.84):
+            ly = 4.5 - 9.0 * t
+            z = 2.5 + 9.5 * t
+            lx = -seg / 2 + 0.7
+            while lx < seg / 2 - 0.7:
+                if rng.random() < 0.78:
+                    wx = cx + lx * ca - ly * sa
+                    wy = cy + lx * sa + ly * ca
+                    k = rng.randrange(len(crowd))
+                    m = __import__("mathutils").Matrix.Translation((wx, wy, z + 0.38)) @ __import__("mathutils").Matrix.Rotation(ang, 4, "Z") @ __import__("mathutils").Matrix.Diagonal((0.45, 0.45, 0.75, 1.0))
+                    bmesh.ops.create_cube(crowd[k], size=1.0, matrix=m)
+                lx += 0.95
+    for k, bm in enumerate(crowd):
+        me = bpy.data.meshes.new("crowd%d" % k)
+        bm.to_mesh(me)
+        bm.free()
+        o = bpy.data.objects.new("crowd%d" % k, me)
+        bpy.context.collection.objects.link(o)
+        finish(o, crowd_mats[k])
+    # Entrance arch over the gap, scoreboard on the far stand, goals on the pitch.
+    for x in (-9.0, 9.0):
+        block((1.6, 1.6, 9), (x, -ry - 4.5, 4.5), STONE2)
+    block((20, 1.8, 1.6), (0, -ry - 4.5, 9.6), AWN[3])
+    block((18, 1.2, 7), (0, ry + 3.5, 16), DARK)
+    block((17, 0.2, 6.2), (0, ry + 2.85, 16), mat("Screen", "0d2a3a", 0.4, 0.0, 0.6))
+    for x in (-6, 6):
+        block((0.6, 0.6, 12), (x, ry + 3.5, 6), DARK)
+    for gx in (-27.0, 27.0):
+        for gy in (-3.7, 3.7):
+            cyl(0.12, 2.5, (gx, gy, 1.55), WHITE, verts=6)
+        block((0.24, 7.6, 0.24), (gx, 0, 2.8), WHITE)
+        block((1.8, 7.4, 2.4), (gx + (1.0 if gx > 0 else -1.0), 0, 1.5), mat("Net", "dfe6ea", 0.9))
     for (x, y) in ((-34, -24), (34, -24), (-34, 24), (34, 24)):
         cyl(0.4, 22, (x, y, 11), STEEL, verts=6)
         block((4, 1.0, 2.2), (x, y, 22), LAMPGLOW)

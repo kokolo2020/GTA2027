@@ -12,6 +12,10 @@ config_version=5
 
 compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
+[audio]
+
+general/text_to_speech=true
+
 [application]
 
 config/name="Harbor City"

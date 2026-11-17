@@ -293,7 +293,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.16: the Skyline District is open west of the North Highway. Watch for traffic lights!")
+	_show_toast("Harbor City 0.17: tap the minimap for the full map. Try View: In-car to drive from the driver's seat!")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -303,6 +303,12 @@ func _ready() -> void:
 		await _people_shots()
 	elif "--skyline-shots" in OS.get_cmdline_user_args():
 		await _skyline_shots()
+	elif "--view-shots" in OS.get_cmdline_user_args():
+		await _view_shots()
+	elif "--levelup-shots" in OS.get_cmdline_user_args():
+		await _levelup_shots()
+	elif "--bake-map" in OS.get_cmdline_user_args():
+		await _bake_map()
 
 func _material(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -350,6 +356,7 @@ func _build_world() -> void:
 	env.ambient_light_color = Color("d4e5f1")
 	env.ambient_light_energy = 0.65
 	world_env.environment = env
+	world_env_res = env
 	add_child(world_env)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55, -30, 0)
@@ -1907,6 +1914,7 @@ func _check_level() -> void:
 		last_level = lv
 		var extra := " Max level! Marina Heights is open: cross the bridge south of the Ferry Steps." if lv >= LEVEL_XP.size() else ""
 		_show_toast("LEVEL UP! You are now Level %d.%s" % [lv,extra])
+		_level_up_fx(lv)
 
 # ---------- v0.11.0: online police vs thief ----------
 func _orole_ready() -> bool:
@@ -3147,6 +3155,9 @@ func _build_hud() -> void:
 	action_button.add_theme_color_override("font_pressed_color",Color("182b38"))
 	action_button.add_theme_stylebox_override("hover",_panel(Color("ffd58c"),24))
 	action_button.add_theme_stylebox_override("pressed",_panel(Color("dba54d"),24))
+	_build_minimap(root)
+	_build_view_controls(root)
+	_build_level_fx(root)
 	status_label = _label("",20,Color("fff1c9"))
 	root.add_child(status_label)
 	status_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
@@ -3219,7 +3230,14 @@ func _input(event: InputEvent) -> void:
 		if event.keycode == KEY_F12:
 			_capture_preview()
 		elif event.keycode == KEY_ESCAPE:
-			_toggle_menu()
+			if map_open:
+				_close_map()
+			else:
+				_toggle_menu()
+		elif event.keycode == KEY_M and not paused:
+			_open_map()
+		elif event.keycode == KEY_V and not paused:
+			_cycle_view()
 		elif event.keycode == KEY_E and not paused:
 			_interact()
 	if event is InputEventScreenTouch:
@@ -3227,7 +3245,7 @@ func _input(event: InputEvent) -> void:
 			# Godot mouse emulation handles only the first finger; dispatch touch UI explicitly.
 			for button: Button in touch_buttons:
 				if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
-					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button)
+					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button))
 					if not paused and in_overlay:
 						continue
 					if paused and not in_overlay:
@@ -3268,7 +3286,10 @@ func _notification(what: int) -> void:
 		if booted:
 			_save_progress()
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and booted:
-		_toggle_menu()
+		if map_open:
+			_close_map()
+		else:
+			_toggle_menu()
 
 func _physics_process(delta: float) -> void:
 	if not booted or paused:
@@ -3288,7 +3309,17 @@ func _physics_process(delta: float) -> void:
 	var right := camera.global_basis.x
 	right.y = 0
 	var direction := (right.normalized()*control.x-forward*control.y).limit_length()
-	if driving:
+	if driving and in_car_view:
+		# In-car: up/down is gas/brake (and reverse), left/right steers like a real car.
+		var throttle := -control.y
+		var target_speed := throttle*car_max if throttle >= 0.0 else throttle*6.0
+		var rate := car_accel if absf(target_speed) > absf(car_speed) and signf(target_speed) == signf(car_speed) else car_accel*1.8
+		car_speed = move_toward(car_speed,target_speed,delta*rate)
+		var grip := clampf(absf(car_speed)/5.0,0.0,1.0)*signf(car_speed)
+		car.rotation.y -= control.x*grip*car_turn*0.42*delta
+		if cockpit_wheel != null:
+			cockpit_wheel.rotation.y = lerpf(cockpit_wheel.rotation.y,-control.x*1.4,minf(delta*10.0,1.0))
+	elif driving:
 		car_speed = move_toward(car_speed,control.length()*car_max,delta*car_accel)
 		if direction.length() > 0.08:
 			car.rotation.y = lerp_angle(car.rotation.y,atan2(-direction.x,-direction.z),delta*car_turn)
@@ -3337,7 +3368,10 @@ func _physics_process(delta: float) -> void:
 		find_nodes[index].position.y = 1.7+sin(clock*2+index)*0.25
 	marker.position = _destination()+Vector3(0,0.25+sin(clock*2)*0.12,0)
 	marker.rotation.y += delta*0.4
+	if (view_mode == 2 and driving) != in_car_view or (car_model != null and car_model.visible == in_car_view):
+		_apply_view()
 	_follow_camera(delta*(5.0+absf(car_speed)*0.15))
+	_minimap_tick()
 	_refresh_hud()
 	if toast_time > 0:
 		toast_time -= delta
@@ -3345,8 +3379,13 @@ func _physics_process(delta: float) -> void:
 			status_label.text = ""
 
 func _follow_camera(weight: float) -> void:
+	if view_mode == 2 and driving:
+		# Driver's eye, left seat, looking slightly down over the bonnet.
+		camera.global_transform = car.global_transform*Transform3D(Basis.from_euler(Vector3(deg_to_rad(-6.0),0,0)),Vector3(-0.38,0.93,0.1))
+		return
 	var target: Vector3 = car.position if driving else player.position
-	camera.position = camera.position.lerp(target+Vector3(11,17,19),minf(weight,1.0))
+	var offset := Vector3(11,17,19) if view_mode == 0 else Vector3(5.2,7.0,8.6)
+	camera.position = camera.position.lerp(target+offset,minf(weight,1.0))
 	camera.look_at(target+Vector3(0,0.5,0))
 
 func _interact() -> void:
@@ -3474,6 +3513,8 @@ func _refresh_hud() -> void:
 	elif exploring and index < 0 and not _ridge_open():
 		compass.text = "%s  Buy a Ridge Rover in Menu > Garage" % arrows[arrow_index]
 	speed_label.text = "%d km/h  •  Release stick to brake" % int(Vector2(car.velocity.x,car.velocity.z).length()*3.6) if driving else "On foot  •  Tokens: collect  •  Ridge sites: just arrive"
+	if in_car_view:
+		speed_label.text = "%d km/h  •  Up: gas  •  Down: brake/reverse" % int(Vector2(car.velocity.x,car.velocity.z).length()*3.6)
 	action_button.disabled = false
 	if bus_riding:
 		objective.text = "Airport Line  ·  next: %s" % BUS_STOPS[bus_idx if bus_dwell > 0.0 else bus_next]["name"]
@@ -3834,6 +3875,7 @@ func _radio_refresh() -> void:
 	radio_caption.visible = radio_station > 0 and not loading
 
 func _process(delta: float) -> void:
+	_level_fx_tick(delta)
 	if radio_station > 0 and radio_streams.has(radio_station):
 		radio_line_time += delta
 		if radio_line_time > 9.0:
@@ -4054,6 +4096,8 @@ func _smoke_test() -> void:
 	_smoke_levels()
 	_smoke_marina()
 	_smoke_downtown()
+	await _smoke_views()
+	_smoke_level_fx()
 	_smoke_bus()
 	_smoke_chase_extras()
 	_smoke_models()
@@ -4082,7 +4126,7 @@ func _smoke_test() -> void:
 		restored.close()
 	elif FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
-	print("HARBOR_SMOKE_OK: Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -5955,4 +5999,691 @@ func _skyline_shots() -> void:
 	await _save_shot("menu-journal")
 	_journal_flip()
 	await _save_shot("menu-missions")
+	get_tree().quit()
+
+# ---------- v0.17.0: minimap, full map and camera views (Far / Close / In-car) ----------
+const MAP_CENTER := Vector2(-127.5,-99.5)
+const MAP_SIZE := 700.0
+const MAP_PATH := "res://map/world_map.png"
+const MINI_SIZE := 190.0
+const MINI_SPAN := 150.0
+const VIEW_NAMES := ["Far","Close","In-car"]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(0,-370)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-278,-250)],["MARINA HEIGHTS",Vector2(0,175)]]
+const MINIMAP_SHADER := """
+shader_type canvas_item;
+uniform vec2 center = vec2(0.5);
+uniform float span = 0.2;
+uniform float angle = 0.0;
+uniform vec4 sea : source_color = vec4(0.51,0.75,0.78,1.0);
+void fragment() {
+	vec2 p = UV - vec2(0.5);
+	float r = length(p);
+	if (r > 0.5) { discard; }
+	float c = cos(angle);
+	float s = sin(angle);
+	vec2 q = vec2(c*p.x - s*p.y, s*p.x + c*p.y) * span + center;
+	vec4 col = sea;
+	if (q.x >= 0.0 && q.y >= 0.0 && q.x <= 1.0 && q.y <= 1.0) { col = texture(TEXTURE, q); }
+	float ring = smoothstep(0.455, 0.475, r);
+	COLOR = mix(col, vec4(0.07,0.15,0.2,1.0), ring);
+}
+"""
+var map_tex: Texture2D
+var minimap: Control
+var minimap_mat: ShaderMaterial
+var minimap_overlay: Control
+var minimap_button: Button
+var map_panel: PanelContainer
+var map_overlay: Control
+var map_open := false
+var view_mode := 0
+var view_button: Button
+var cockpit: Node3D
+var cockpit_wheel: Node3D
+var world_env_res: Environment
+var in_car_view := false
+
+func _world_to_uv(w: Vector3) -> Vector2:
+	return Vector2((w.x-MAP_CENTER.x)/MAP_SIZE+0.5,(w.z-MAP_CENTER.y)/MAP_SIZE+0.5)
+
+func _map_angle() -> float:
+	var f := -camera.global_basis.z
+	var f2 := Vector2(f.x,f.z)
+	if f2.length() < 0.01:
+		f2 = Vector2(-camera.global_basis.y.x,-camera.global_basis.y.z)
+	f2 = f2.normalized()
+	return atan2(f2.x,-f2.y)
+
+func _build_minimap(root: Control) -> void:
+	if ResourceLoader.exists(MAP_PATH):
+		map_tex = load(MAP_PATH)
+	if map_tex == null:
+		return
+	minimap = Control.new()
+	minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(minimap)
+	minimap.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	minimap.position = Vector2(root.size.x-218,154)
+	minimap.size = Vector2(MINI_SIZE,MINI_SIZE)
+	var rect := TextureRect.new()
+	rect.texture = map_tex
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.size = Vector2(MINI_SIZE,MINI_SIZE)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var shader := Shader.new()
+	shader.code = MINIMAP_SHADER
+	minimap_mat = ShaderMaterial.new()
+	minimap_mat.shader = shader
+	minimap_mat.set_shader_parameter("span",MINI_SPAN/MAP_SIZE)
+	rect.material = minimap_mat
+	minimap.add_child(rect)
+	minimap_overlay = Control.new()
+	minimap_overlay.size = Vector2(MINI_SIZE,MINI_SIZE)
+	minimap_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	minimap_overlay.draw.connect(_draw_minimap)
+	minimap.add_child(minimap_overlay)
+	minimap_button = _button("",_open_map)
+	minimap_button.flat = true
+	for state in ["normal","hover","pressed","focus"]:
+		minimap_button.add_theme_stylebox_override(state,StyleBoxEmpty.new())
+	minimap_button.custom_minimum_size = Vector2(MINI_SIZE,MINI_SIZE)
+	minimap_button.size = Vector2(MINI_SIZE,MINI_SIZE)
+	minimap.add_child(minimap_button)
+	# The radio caption moves left so it does not cover the minimap.
+	radio_caption.position = Vector2(root.size.x-604,150)
+	# Full map panel.
+	map_panel = PanelContainer.new()
+	root.add_child(map_panel)
+	map_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),20))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",18)
+	map_panel.add_child(row)
+	var box := Control.new()
+	box.custom_minimum_size = Vector2(560,560)
+	row.add_child(box)
+	var big := TextureRect.new()
+	big.texture = map_tex
+	big.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	big.stretch_mode = TextureRect.STRETCH_SCALE
+	big.size = Vector2(560,560)
+	big.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(big)
+	map_overlay = Control.new()
+	map_overlay.size = Vector2(560,560)
+	map_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	map_overlay.draw.connect(_draw_full_map)
+	box.add_child(map_overlay)
+	var side := VBoxContainer.new()
+	side.add_theme_constant_override("separation",12)
+	side.custom_minimum_size = Vector2(230,0)
+	row.add_child(side)
+	side.add_child(_label("HARBOR CITY MAP",24,Color("f0bd62")))
+	var legend := _label("▲  You\n●  Golden ring\n●  Undiscovered sites\n\nNorth is up.",17,Color("cbd8de"))
+	side.add_child(legend)
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	side.add_child(spacer)
+	side.add_child(_button("Close map",_close_map))
+	map_panel.hide()
+
+func _open_map() -> void:
+	if paused or map_tex == null:
+		return
+	paused = true
+	map_open = true
+	map_panel.show()
+	map_panel.reset_size()
+	var view := get_viewport().get_visible_rect().size
+	map_panel.position = Vector2((view.x-map_panel.size.x)/2.0,maxf(8.0,(view.y-map_panel.size.y)/2.0))
+	map_overlay.queue_redraw()
+
+func _close_map() -> void:
+	map_open = false
+	map_panel.hide()
+	paused = false
+	stick = Vector2.ZERO
+	touch_id = -1
+
+func _mini_point(w: Vector3, me: Vector2, cs: float, sn: float) -> Vector2:
+	var d := (Vector2(w.x,w.z)-me)/MINI_SPAN
+	return Vector2(cs*d.x+sn*d.y,-sn*d.x+cs*d.y)
+
+func _site_markers() -> Array:
+	# [world position, colour] for every undiscovered site in an open area.
+	var out := []
+	if exploring:
+		for i in FINDS.size():
+			if not (found_mask & (1 << i)):
+				out.append([FINDS[i]["pos"],Color("5ce6ed")])
+	if _ridge_open():
+		for i in RIDGE.size():
+			if not (ridge_mask & (1 << i)):
+				out.append([RIDGE[i]["pos"],Color("8be37a")])
+	if _bay_open():
+		for i in BAY.size():
+			if not (bay_mask & (1 << i)):
+				out.append([BAY[i]["pos"],Color("c78cff")])
+	if _north_open():
+		for i in NORTH.size():
+			if not (north_mask & (1 << i)):
+				out.append([NORTH[i]["pos"],Color("ffb35c")])
+	if _downtown_open():
+		for i in DOWNTOWN.size():
+			if not (downtown_mask & (1 << i)):
+				out.append([DOWNTOWN[i]["pos"],Color("ff6fb0")])
+	if _marina_open():
+		for i in MARINA.size():
+			if not (marina_mask & (1 << i)):
+				out.append([MARINA[i]["pos"],Color("7fc8ff")])
+	return out
+
+func _draw_arrow(ctl: Control, at: Vector2, dir: Vector2, size: float) -> void:
+	var perp := Vector2(-dir.y,dir.x)
+	var pts := PackedVector2Array([at+dir*size,at-dir*size*0.65+perp*size*0.7,at-dir*size*0.3,at-dir*size*0.65-perp*size*0.7])
+	ctl.draw_colored_polygon(pts,Color("fff5dc"))
+	pts.append(pts[0])
+	ctl.draw_polyline(pts,Color("132b3a"),2.0,true)
+
+func _draw_minimap() -> void:
+	var ctl := minimap_overlay
+	var c := Vector2(MINI_SIZE,MINI_SIZE)/2.0
+	var ang := _map_angle()
+	var cs := cos(ang)
+	var sn := sin(ang)
+	var body: Node3D = car if driving else player
+	var me := Vector2(body.position.x,body.position.z)
+	var limit := 0.43
+	for m in _site_markers():
+		var p := _mini_point(m[0],me,cs,sn)
+		if p.length() < limit:
+			ctl.draw_circle(c+p*MINI_SIZE,4.5,Color("132b3a"))
+			ctl.draw_circle(c+p*MINI_SIZE,3.2,m[1])
+	for u in chase_units:
+		var p := _mini_point((u["node"] as Node3D).position,me,cs,sn)
+		if p.length() < limit:
+			ctl.draw_circle(c+p*MINI_SIZE,4.0,Color("e04a3a"))
+	if marker.visible:
+		var p := _mini_point(_destination(),me,cs,sn)
+		if p.length() > limit:
+			p = p.normalized()*limit
+		ctl.draw_circle(c+p*MINI_SIZE,7.0,Color("132b3a"))
+		ctl.draw_circle(c+p*MINI_SIZE,5.5,Color("f4d06c"))
+	var h := -body.global_basis.z
+	var hd := _mini_point(body.position+Vector3(h.x,0,h.z)*MINI_SPAN,me,cs,sn)
+	_draw_arrow(ctl,c,hd.normalized() if hd.length() > 0.001 else Vector2(0,-1),10.0)
+	var n := _mini_point(body.position+Vector3(0,0,-1)*MINI_SPAN,me,cs,sn).normalized()
+	var font := ThemeDB.fallback_font
+	ctl.draw_circle(c+n*MINI_SIZE*0.47,9.0,Color("132b3a"))
+	ctl.draw_string(font,c+n*MINI_SIZE*0.47+Vector2(-5,5),"N",HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color("f0bd62"))
+
+func _draw_full_map() -> void:
+	var ctl := map_overlay
+	var size := 560.0
+	var font := ThemeDB.fallback_font
+	for l in MAP_LABELS:
+		var p: Vector2 = _world_to_uv(Vector3((l[1] as Vector2).x,0,(l[1] as Vector2).y))*size
+		var w := font.get_string_size(l[0],HORIZONTAL_ALIGNMENT_LEFT,-1,15).x
+		ctl.draw_string_outline(font,p-Vector2(w/2.0,0),l[0],HORIZONTAL_ALIGNMENT_LEFT,-1,15,5,Color("132b3a"))
+		ctl.draw_string(font,p-Vector2(w/2.0,0),l[0],HORIZONTAL_ALIGNMENT_LEFT,-1,15,Color("fff5dc"))
+	for m in _site_markers():
+		var p: Vector2 = _world_to_uv(m[0])*size
+		ctl.draw_circle(p,5.0,Color("132b3a"))
+		ctl.draw_circle(p,3.6,m[1])
+	if marker.visible:
+		var p: Vector2 = _world_to_uv(_destination())*size
+		ctl.draw_circle(p,8.0,Color("132b3a"))
+		ctl.draw_circle(p,6.0,Color("f4d06c"))
+	var body: Node3D = car if driving else player
+	var h := -body.global_basis.z
+	_draw_arrow(ctl,_world_to_uv(body.position)*size,Vector2(h.x,h.z).normalized() if Vector2(h.x,h.z).length() > 0.01 else Vector2(0,-1),11.0)
+
+func _minimap_tick() -> void:
+	if minimap == null:
+		return
+	var body: Node3D = car if driving else player
+	minimap_mat.set_shader_parameter("center",_world_to_uv(body.position))
+	minimap_mat.set_shader_parameter("angle",_map_angle())
+	minimap_overlay.queue_redraw()
+
+# ---------- camera views ----------
+func _build_view_controls(root: Control) -> void:
+	view_button = _button("View: Far",_cycle_view)
+	view_button.custom_minimum_size = Vector2(170,48)
+	view_button.add_theme_font_size_override("font_size",20)
+	root.add_child(view_button)
+	view_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	view_button.position = Vector2(root.size.x-194,356)
+	# Simple cockpit, only shown in the in-car view (the car model is hidden there).
+	cockpit = Node3D.new()
+	car.add_child(cockpit)
+	var bonnet := MeshInstance3D.new()
+	var bonnet_mesh := BoxMesh.new()
+	bonnet_mesh.size = Vector3(1.9,0.3,1.25)
+	bonnet.mesh = bonnet_mesh
+	bonnet.position = Vector3(0,0.1,-1.25)
+	bonnet.material_override = car_body_mat
+	cockpit.add_child(bonnet)
+	var dark := Color("23292f")
+	_box(cockpit,Vector3(0,0.36,-0.55),Vector3(1.9,0.24,0.42),dark)
+	_box(cockpit,Vector3(0,0.49,-0.67),Vector3(1.86,0.03,0.2),Color("3b444c"))
+	for sx in [-0.92,0.92]:
+		var pillar := _box(cockpit,Vector3(sx*1.12,0.9,-0.56),Vector3(0.05,0.85,0.05),dark)
+		pillar.rotation_degrees.x = -30.0
+	_box(cockpit,Vector3(0,1.38,-0.62),Vector3(1.9,0.06,0.1),dark)
+	cockpit_wheel = Node3D.new()
+	cockpit_wheel.position = Vector3(-0.38,0.53,-0.36)
+	cockpit_wheel.rotation_degrees.x = 62.0
+	cockpit.add_child(cockpit_wheel)
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.15
+	torus.outer_radius = 0.185
+	torus.rings = 20
+	torus.ring_segments = 8
+	ring.mesh = torus
+	ring.material_override = _material(Color("15191d"))
+	cockpit_wheel.add_child(ring)
+	_box(cockpit_wheel,Vector3(0,0,0),Vector3(0.32,0.03,0.04),Color("15191d"))
+	_box(cockpit_wheel,Vector3(0,0,0.06),Vector3(0.04,0.03,0.14),Color("15191d"))
+	_cull_person(cockpit,1000.0)
+	cockpit.hide()
+
+func _cycle_view() -> void:
+	view_mode = (view_mode+1) % VIEW_NAMES.size()
+	view_button.text = "View: %s" % VIEW_NAMES[view_mode]
+	_apply_view()
+	_follow_camera(1.0)
+
+func _apply_view() -> void:
+	in_car_view = view_mode == 2 and driving
+	camera.fov = 72.0 if in_car_view else 55.0
+	camera.far = 150.0 if in_car_view else 340.0
+	camera.near = 0.05
+	if world_env_res != null:
+		world_env_res.fog_enabled = in_car_view
+		world_env_res.fog_mode = Environment.FOG_MODE_DEPTH
+		world_env_res.fog_light_color = Color("82bfc8")
+		world_env_res.fog_depth_begin = 60.0
+		world_env_res.fog_depth_end = 146.0
+		world_env_res.fog_density = 1.0
+	if cockpit != null:
+		cockpit.visible = in_car_view
+	if car_model != null:
+		car_model.visible = not in_car_view
+	elif car_boxes != null:
+		car_boxes.visible = not in_car_view
+
+func _hide_labels(node: Node) -> void:
+	for child in node.get_children():
+		if child is Label3D:
+			(child as Label3D).hide()
+		_hide_labels(child)
+
+func _bake_map() -> void:
+	# Developer-only: renders the whole world from straight above into res://map/world_map.png.
+	# Run with a square window:  Godot --path game --resolution 1024x1024 -- --bake-map
+	paused = true
+	hud.hide()
+	_hide_labels(self)
+	for n in [player,car,marker,bus]:
+		if n != null:
+			(n as Node3D).hide()
+	for p in peds:
+		(p["node"] as Node3D).hide()
+	for t in traffic:
+		(t["node"] as Node3D).hide()
+	for arr in [find_nodes,ridge_nodes,bay_nodes,north_nodes,marina_nodes,downtown_nodes]:
+		for n in arr:
+			(n as Node3D).hide()
+	for g in [gate_body,bay_gate_body,north_gate_body,marina_gate_body]:
+		if g != null:
+			g.hide()
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = MAP_SIZE
+	camera.near = 1.0
+	camera.far = 600.0
+	camera.global_transform = Transform3D(Basis.from_euler(Vector3(-PI/2.0,0,0)),Vector3(MAP_CENTER.x,300,MAP_CENTER.y))
+	for i in 8:
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	var side := mini(img.get_width(),img.get_height())
+	img = img.get_region(Rect2i((img.get_width()-side)/2,(img.get_height()-side)/2,side,side))
+	if side != 1024:
+		img.resize(1024,1024,Image.INTERPOLATE_LANCZOS)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://map"))
+	img.save_png(ProjectSettings.globalize_path(MAP_PATH))
+	print("MAP_BAKED %dx%d" % [img.get_width(),img.get_height()])
+	get_tree().quit()
+
+func _shot_stats(name: String) -> void:
+	print("SHOT %s draw_calls=%d objects=%d primitives=%d" % [name,Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)])
+
+func _view_shots() -> void:
+	# Developer-only: minimap, full map and the three camera views. Never saves.
+	driving = true
+	player.hide()
+	player.get_child(0).set_deferred("disabled",true)
+	car.position = Vector3(20,0.8,2.3)
+	car.rotation = Vector3(0,PI/2.0,0)
+	for i in 120:
+		await get_tree().physics_frame
+	await _save_shot("view-far")
+	_shot_stats("view-far")
+	_cycle_view()
+	for i in 30:
+		await get_tree().physics_frame
+	await _save_shot("view-close")
+	_shot_stats("view-close")
+	_cycle_view()
+	for i in 30:
+		await get_tree().physics_frame
+	await _save_shot("view-incar-city")
+	_shot_stats("view-incar-city")
+	car.position = Vector3(-133,0.8,-112)
+	car.rotation = Vector3.ZERO
+	for i in 40:
+		await get_tree().physics_frame
+	await _save_shot("view-incar-skyline")
+	_shot_stats("view-incar-skyline")
+	car.position = Vector3(-227,0.8,-330)
+	car.rotation = Vector3(0,PI,0)
+	for i in 40:
+		await get_tree().physics_frame
+	await _save_shot("view-incar-skyline2")
+	_shot_stats("view-incar-skyline2")
+	_cycle_view()
+	for i in 30:
+		await get_tree().physics_frame
+	_open_map()
+	await _save_shot("view-full-map")
+	_close_map()
+	get_tree().quit()
+
+func _smoke_views() -> void:
+	assert(map_tex != null and minimap != null and map_panel != null and view_button != null,"Minimap, map and View button built")
+	assert(_world_to_uv(Vector3(MAP_CENTER.x,0,MAP_CENTER.y)).distance_to(Vector2(0.5,0.5)) < 0.001,"Map centre maps to the middle")
+	assert(_world_to_uv(Vector3(-446,0,-440)).x > 0.0 and _world_to_uv(Vector3(190,0,242)).y < 1.0,"Whole world fits the map")
+	_open_map()
+	assert(paused and map_open and map_panel.visible,"Tapping the minimap opens the map")
+	_close_map()
+	assert(not paused and not map_open and not map_panel.visible,"Close map resumes")
+	var was := [driving,car.position,car.rotation,view_mode,car_speed,player.position]
+	var col: CollisionShape3D = player.get_child(0)
+	col.disabled = true
+	driving = true
+	car.position = Vector3(20,0.8,2.3)
+	car.rotation = Vector3(0,PI/2.0,0)
+	car.velocity = Vector3.ZERO
+	car_speed = 0.0
+	view_mode = 1
+	_cycle_view()
+	assert(view_mode == 2 and in_car_view and cockpit.visible,"In-car view is on")
+	assert(car_model == null or not car_model.visible,"Car body hidden from inside")
+	assert(camera.global_position.distance_to(car.global_position) < 1.5 and camera.far < 200.0,"Camera sits in the driver's seat")
+	stick = Vector2(0,-1)
+	for i in 45:
+		await get_tree().physics_frame
+	assert(car_speed > 3.0,"Gas drives forward (%.1f)" % car_speed)
+	var yaw := car.rotation.y
+	stick = Vector2(1,-1).normalized()
+	for i in 20:
+		await get_tree().physics_frame
+	assert(car.rotation.y < yaw-0.05,"Right steers right")
+	stick = Vector2(0,1)
+	for i in 120:
+		await get_tree().physics_frame
+	assert(car_speed < -0.5,"Down brakes then reverses (%.1f)" % car_speed)
+	stick = Vector2.ZERO
+	_cycle_view()
+	assert(view_mode == 0 and not in_car_view and not cockpit.visible and (car_model == null or car_model.visible),"Back to the far view")
+	driving = was[0]
+	car.position = was[1]
+	car.rotation = was[2]
+	car_speed = was[4]
+	car.velocity = Vector3.ZERO
+	player.position = was[5]
+	col.disabled = driving
+	_apply_view()
+
+# ---------- v0.17.0: level-up celebration ----------
+var lvl_root: Control
+var lvl_flash: ColorRect
+var lvl_rays: Control
+var lvl_title: Label
+var lvl_sub: Label
+var lvl_tween: Tween
+var lvl_spin := 0.0
+var fx_player: AudioStreamPlayer
+var lvl_sound: AudioStreamWAV
+
+func _build_level_fx(root: Control) -> void:
+	lvl_flash = ColorRect.new()
+	lvl_flash.color = Color(1.0,0.86,0.45,0.0)
+	lvl_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lvl_flash.size = root.size
+	root.add_child(lvl_flash)
+	lvl_root = Control.new()
+	lvl_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lvl_root.size = Vector2(620,260)
+	lvl_root.position = Vector2(root.size.x/2.0-310.0,root.size.y*0.3-130.0)
+	lvl_root.pivot_offset = lvl_root.size/2.0
+	root.add_child(lvl_root)
+	lvl_rays = Control.new()
+	lvl_rays.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lvl_rays.size = lvl_root.size
+	lvl_rays.draw.connect(_draw_level_rays)
+	lvl_root.add_child(lvl_rays)
+	lvl_title = _label("LEVEL UP!",76,Color("ffd86a"))
+	lvl_title.add_theme_constant_override("outline_size",14)
+	lvl_title.add_theme_color_override("font_outline_color",Color("5a3410"))
+	lvl_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lvl_title.size = Vector2(620,100)
+	lvl_title.position = Vector2(0,48)
+	lvl_root.add_child(lvl_title)
+	lvl_sub = _label("",30,Color("fff5dc"))
+	lvl_sub.add_theme_constant_override("outline_size",9)
+	lvl_sub.add_theme_color_override("font_outline_color",Color("132b3a"))
+	lvl_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lvl_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lvl_sub.size = Vector2(620,80)
+	lvl_sub.position = Vector2(0,148)
+	lvl_root.add_child(lvl_sub)
+	lvl_root.hide()
+	fx_player = AudioStreamPlayer.new()
+	fx_player.volume_db = -3.0
+	add_child(fx_player)
+
+func _draw_level_rays() -> void:
+	var c := lvl_rays.size/2.0+Vector2(0,-10)
+	for i in 14:
+		var a := lvl_spin+TAU*float(i)/14.0
+		var w := 0.09
+		var r := 300.0 if i % 2 == 0 else 220.0
+		var col := Color(1.0,0.84,0.4,0.28) if i % 2 == 0 else Color(1.0,0.95,0.75,0.2)
+		lvl_rays.draw_colored_polygon(PackedVector2Array([c,c+Vector2(cos(a-w),sin(a-w))*r,c+Vector2(cos(a+w),sin(a+w))*r]),col)
+	lvl_rays.draw_circle(c,70.0,Color(1.0,0.9,0.55,0.22))
+
+func _level_fx_tick(delta: float) -> void:
+	if lvl_root != null and lvl_root.visible:
+		lvl_spin += delta*0.9
+		lvl_rays.queue_redraw()
+
+func _level_sound() -> AudioStreamWAV:
+	if lvl_sound != null:
+		return lvl_sound
+	var sr := 22050
+	var total := int(sr*1.25)
+	var buf := PackedFloat32Array()
+	buf.resize(total)
+	# Rising arpeggio C5 E5 G5 C6, then a bright chord with a little shimmer.
+	var notes := [[0.0,72.0,0.5],[0.09,76.0,0.5],[0.18,79.0,0.55],[0.27,84.0,0.95],[0.27,88.0,0.95],[0.27,91.0,0.95]]
+	for n in notes:
+		var start := int(float(n[0])*sr)
+		var freq := 440.0*pow(2.0,(float(n[1])-69.0)/12.0)
+		var length := int(float(n[2])*sr)
+		for i in length:
+			var k := start+i
+			if k >= total:
+				break
+			var t := float(i)/sr
+			var env := minf(1.0,t*60.0)*exp(-t*4.2)
+			buf[k] += (sin(TAU*freq*t)+0.35*sin(TAU*freq*2.0*t)+0.12*sin(TAU*freq*3.0*t))*env*0.2
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 99
+	for s in 26:
+		var start := int((0.3+rng.randf()*0.75)*sr)
+		var freq := rng.randf_range(2400.0,4200.0)
+		for i in int(0.08*sr):
+			var k := start+i
+			if k >= total:
+				break
+			var t := float(i)/sr
+			buf[k] += sin(TAU*freq*t)*exp(-t*55.0)*0.05
+	var bytes := PackedByteArray()
+	bytes.resize(total*2)
+	for i in total:
+		bytes.encode_s16(i*2,int(clampf(buf[i],-1.0,1.0)*30000.0))
+	lvl_sound = AudioStreamWAV.new()
+	lvl_sound.format = AudioStreamWAV.FORMAT_16_BITS
+	lvl_sound.mix_rate = sr
+	lvl_sound.stereo = false
+	lvl_sound.data = bytes
+	return lvl_sound
+
+func _fx_material(color: Color, alpha: float) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(color.r,color.g,color.b,alpha)
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+func _level_up_fx(lv: int) -> void:
+	# Banner.
+	if lvl_root != null:
+		lvl_sub.text = ("You reached Level %d (MAX)\nMarina Heights is open!" % lv) if lv >= LEVEL_XP.size() else "You are now Level %d" % lv
+		lvl_root.show()
+		lvl_root.scale = Vector2(0.25,0.25)
+		lvl_root.modulate = Color(1,1,1,0)
+		lvl_flash.color.a = 0.0
+		if lvl_tween != null and lvl_tween.is_valid():
+			lvl_tween.kill()
+		lvl_tween = create_tween()
+		lvl_tween.set_parallel(true)
+		lvl_tween.tween_property(lvl_flash,"color:a",0.42,0.08)
+		lvl_tween.tween_property(lvl_root,"modulate:a",1.0,0.15)
+		lvl_tween.tween_property(lvl_root,"scale",Vector2(1.12,1.12),0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		lvl_tween.chain().tween_property(lvl_flash,"color:a",0.0,0.5)
+		lvl_tween.tween_property(lvl_root,"scale",Vector2.ONE,0.2)
+		lvl_tween.chain().tween_interval(2.3)
+		lvl_tween.chain().tween_property(lvl_root,"modulate:a",0.0,0.6)
+		lvl_tween.chain().tween_callback(lvl_root.hide)
+	# Sound.
+	if fx_player != null and "--smoke-test" not in OS.get_cmdline_user_args():
+		fx_player.stream = _level_sound()
+		fx_player.play()
+	# Light pillar, ground ring and confetti at the player (or the car).
+	var body: Node3D = car if driving else player
+	var fx := Node3D.new()
+	add_child(fx)
+	fx.global_position = Vector3(body.global_position.x,0.1,body.global_position.z)
+	var pillar := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 1.3
+	cyl.bottom_radius = 1.9
+	cyl.height = 40.0
+	cyl.radial_segments = 16
+	cyl.cap_top = false
+	cyl.cap_bottom = false
+	pillar.mesh = cyl
+	pillar.material_override = _fx_material(Color("ffd86a"),0.45)
+	pillar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	pillar.position.y = 20.0
+	pillar.scale = Vector3(1,0.05,1)
+	fx.add_child(pillar)
+	# From the driver's seat you would be standing inside the pillar, so it is left out there.
+	pillar.visible = not in_car_view
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 1.7
+	torus.outer_radius = 2.2
+	torus.rings = 32
+	torus.ring_segments = 6
+	ring.mesh = torus
+	ring.material_override = _fx_material(Color("fff2b0"),0.85)
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring.scale = Vector3(1,0.2,1)
+	fx.add_child(ring)
+	var sparks := CPUParticles3D.new()
+	sparks.one_shot = true
+	sparks.explosiveness = 0.92
+	sparks.amount = 90
+	sparks.lifetime = 2.4
+	sparks.local_coords = false
+	var bit := BoxMesh.new()
+	bit.size = Vector3(0.22,0.22,0.06)
+	var bit_mat := StandardMaterial3D.new()
+	bit_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bit_mat.vertex_color_use_as_albedo = true
+	bit.material = bit_mat
+	sparks.mesh = bit
+	sparks.position.y = 1.2
+	sparks.direction = Vector3.UP
+	sparks.spread = 55.0
+	sparks.initial_velocity_min = 7.0
+	sparks.initial_velocity_max = 14.0
+	sparks.gravity = Vector3(0,-9.0,0)
+	sparks.angular_velocity_min = -540.0
+	sparks.angular_velocity_max = 540.0
+	sparks.damping_min = 1.0
+	sparks.damping_max = 2.5
+	var colors := Gradient.new()
+	colors.offsets = PackedFloat32Array([0.0,0.25,0.5,0.75,1.0])
+	colors.colors = PackedColorArray([Color("ffd86a"),Color("5ce6ed"),Color("ff6fb0"),Color("8be37a"),Color("fff5dc")])
+	sparks.color_initial_ramp = colors
+	fx.add_child(sparks)
+	sparks.emitting = true
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(pillar,"scale",Vector3(1,1,1),0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring,"scale",Vector3(7,0.2,7),1.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring.material_override,"albedo_color:a",0.0,1.1)
+	tw.tween_property(pillar.material_override,"albedo_color:a",0.0,1.6).set_delay(0.9)
+	tw.chain().tween_interval(1.0)
+	tw.chain().tween_callback(fx.queue_free)
+
+func _smoke_level_fx() -> void:
+	var before := get_child_count()
+	_level_up_fx(3)
+	assert(lvl_root.visible and lvl_sub.text.contains("Level 3"),"Level-up banner shows")
+	assert(get_child_count() == before+1,"Level-up world effect spawned")
+	_level_up_fx(5)
+	assert(lvl_sub.text.contains("MAX") and lvl_sub.text.contains("Marina"),"Max level banner mentions Marina")
+	assert(_level_sound().data.size() > 40000,"Level-up jingle generated")
+
+func _levelup_shots() -> void:
+	# Developer-only: the level-up celebration on foot and from the driver's seat. Never saves.
+	player.position = Vector3(20,0.7,2.3)
+	for i in 30:
+		await get_tree().physics_frame
+	_level_up_fx(3)
+	await get_tree().create_timer(0.3).timeout
+	await _save_shot("levelup-foot-a")
+	await get_tree().create_timer(0.6).timeout
+	await _save_shot("levelup-foot-b")
+	await get_tree().create_timer(3.5).timeout
+	driving = true
+	player.hide()
+	player.get_child(0).set_deferred("disabled",true)
+	car.position = Vector3(20,0.8,2.3)
+	car.rotation = Vector3(0,PI/2.0,0)
+	view_mode = 1
+	_cycle_view()
+	for i in 20:
+		await get_tree().physics_frame
+	_level_up_fx(5)
+	await get_tree().create_timer(0.5).timeout
+	await _save_shot("levelup-incar")
 	get_tree().quit()

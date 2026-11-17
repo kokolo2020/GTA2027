@@ -1,6 +1,6 @@
 # Harbor City — current handover
 
-Version 0.18.1, code 19 (see the v0.18.x sections at the end; 0.11 and 0.12 were never released on their own). Original single-player Android game, Godot 4.7.2 standard / Compatibility, Samsung Galaxy Z Fold5.
+Version 0.19.0, code 21 (see the v0.19.0 section at the end; 0.11 and 0.12 were never released on their own). Original single-player Android game, Godot 4.7.2 standard / Compatibility, Samsung Galaxy Z Fold5.
 
 The canonical project has moved to **/Users/koko/GTA2027**, repository **https://github.com/kokolo2020/GTA2027**. Read PUBLISHING.md for the new self-contained GitHub release process. The old /Users/koko/harbor-city folder is retained for toolchain and historical recovery; develop here going forward.
 
@@ -199,3 +199,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.18.0 (source 76b6
 ## v0.18.1 publication completed by Claude
 
 Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.18.1 (source 102b942). Browser /play rebuilt (3c65de1). Pages deployed; live page shows 0.18.1. Publisher verified the downloaded APK hash.
+
+## v0.19.0 Civic Center, nicknames, dome zoom — 17 November 2026
+
+- Civic Center: x -246..-55.5, z 17..106 plus south row x -246..-109.5 to z 152 (CIV_* consts). Avenues CIV_AVES, streets CIV_STREETS (32 is the old waterfront street continued west). Models from blender-src/make_civic.py (hospital, school, hotel, bank, fire_station, library) plus police, tower_1 (Grand Hotel), mall. CIVIC sites (save key civic_mask, 10 sites, bonus 1500) are guided right after the 8 FINDS. Checkpoint "Civic Center" appended at the END of CHECKPOINTS (never insert in the middle: saves store the index). Traffic loop and 16 pedestrians added (78 total). Old garage smoke test marks civic sites found while it runs.
+- Nicknames: Menu > Nickname (`_build_nick_panel`, `_clean_nick` 3-14 chars + NICK_BLOCK filter, `_online_clean_name` hides rude peer names). Save key nick_chosen; first Online prompts once. `_relayout_hud` repositions every HUD control on resize (fold/unfold).
+- Dome zoom: `_hub_focus` + `hub_zoom` in `_follow_camera`. Invites only from PvP tables (`_at_pvp_table`), lfp payload carries k/tb/s; `_accept_invite` seats the accepter opposite.
+- `_smoke_sites_reachable` checks every discovery site is on walkable ground (Fountain Plaza moved to z 166.5).
+- The full smoke test now takes several minutes; run it in the background with a time guard.
+- APK 30692675 bytes, SHA256 cfe6e8c3...caf1, code 21. NOT tested on the Fold5.

@@ -278,6 +278,7 @@ func _ready() -> void:
 	_build_landscape()
 	_build_downtown()
 	_build_city_detail()
+	_build_civic()
 	_build_checkpoints()
 	_build_hub()
 	_build_peds()
@@ -290,7 +291,7 @@ func _ready() -> void:
 	_load_progress()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots"]:
+	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -302,7 +303,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.18: follow the gold arrow, save at blue checkpoints, try View: Eye!")
+	_show_toast("Harbor City 0.19: the new Civic Center is west of the waterfront. Set your nickname in Menu!")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -322,6 +323,10 @@ func _ready() -> void:
 		await _guide_shots()
 	elif "--hub-shots" in OS.get_cmdline_user_args():
 		await _hub_shots()
+	elif "--nick-shots" in OS.get_cmdline_user_args():
+		await _nick_shots()
+	elif "--civic-shots" in OS.get_cmdline_user_args():
+		await _civic_shots()
 	elif "--bake-map" in OS.get_cmdline_user_args():
 		await _bake_map()
 
@@ -485,6 +490,9 @@ func _destination() -> Vector3:
 		var index := _nearest_find()
 		if index >= 0:
 			return FINDS[index]["pos"]
+		var civic_index := _nearest_civic()
+		if civic_index >= 0:
+			return CIVIC[civic_index]["pos"]
 		if not _ridge_open():
 			return RIDGE_GATE
 		var ridge_index := _nearest_ridge()
@@ -1069,6 +1077,10 @@ func _online_toggle() -> void:
 		online_retry = 0.0
 		_online_connect()
 		_show_toast("Connecting as %s ..." % online_name)
+		if not nick_chosen and not paused:
+			nick_from_online = true
+			_toggle_menu()
+			_open_nick()
 	_online_refresh_button()
 
 func _online_connect() -> void:
@@ -1180,6 +1192,8 @@ func _online_clean_name(raw: String) -> String:
 	for ch in raw.substr(0,14):
 		if ch.unicode_at(0) >= 32 and ch.unicode_at(0) < 127:
 			out += ch
+	if out != "" and _nick_rude(out):
+		return "Player"
 	return out if out != "" else "Driver"
 
 func _online_peer_update(p: Dictionary) -> void:
@@ -1343,7 +1357,7 @@ const PAINT_PRICE := 150
 const MARINA_GATE := Vector3(0,0,58)
 const MARINA := [
 	{"name":"Bridge Midpoint","pos":Vector3(0,0,82),"pay":500},
-	{"name":"Fountain Plaza","pos":Vector3(-35,0,178),"pay":600},
+	{"name":"Fountain Plaza","pos":Vector3(-35,0,166.5),"pay":600},
 	{"name":"Yacht Club","pos":Vector3(-62,0,216),"pay":700},
 	{"name":"Sunset Boardwalk","pos":Vector3(70,0,222),"pay":700},
 	{"name":"Marina Lighthouse","pos":Vector3(0,0,232),"pay":900},
@@ -1935,7 +1949,7 @@ func _xp() -> int:
 	for i in MISSIONS.size():
 		if claimed_mask & (1 << i):
 			missions += 1
-	return _find_count()*20+(_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count())*25+_trial_count()*40+missions*60+mini(deliveries,ROUTES.size())*10
+	return _find_count()*20+(_civic_count()+_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count())*25+_trial_count()*40+missions*60+mini(deliveries,ROUTES.size())*10
 
 func _level_for(xp: int) -> int:
 	var level := 1
@@ -2735,6 +2749,7 @@ func _refresh_journal() -> void:
 	if journal_page == 0:
 		lines.append(_level_text()+"   (finds 20 XP, sites 25, trials 40, missions 60, jobs 10)")
 		lines.append("")
+		lines.append("CIVIC CENTER  %d/%d   (west of the waterfront: police, hospital, school, hotels, mall, park)" % [_civic_count(),CIVIC.size()])
 		lines.append("RIDGE DISCOVERIES  %d/%d%s" % [_ridge_count(),RIDGE.size(),"" if _ridge_open() else "   (gate locked)"])
 		var names: PackedStringArray = []
 		for i in RIDGE.size():
@@ -3260,23 +3275,16 @@ func _build_hud() -> void:
 	shop_row.add_child(chase_open)
 	mode_button = _button("Switch activity",_toggle_activity)
 	items.add_child(mode_button)
+	nick_button = _button("Nickname: (not set)",_open_nick)
+	items.add_child(nick_button)
 	items.add_child(_button("Continue",_toggle_menu))
 	items.add_child(_button("Return to the car",_rescue))
 	items.add_child(_label("Built with Godot Engine • MIT license\nLicense and attribution: credits.txt in the project",14,Color("8ddacb")))
 	_build_panels(root)
+	_build_nick_panel(root)
 	menu.hide()
-	get_viewport().size_changed.connect(func():
-		var view := get_viewport().get_visible_rect().size
-		pause_button.position = Vector2(view.x-194,24)
-		radio_button.position = Vector2(view.x-194,92)
-		online_button.position = Vector2(view.x-376,92)
-		radio_caption.position = Vector2(view.x-394,150)
-		chase_label.position = Vector2(view.x/2-260,24)
-		joystick.position = Vector2(32,view.y-210)
-		action_button.position = Vector2(view.x-248,view.y-124)
-		status_label.position = Vector2(view.x/2-340,view.y-48)
-		_layout_panels()
-	)
+	hud_pause_button = pause_button
+	get_viewport().size_changed.connect(_relayout_hud)
 
 func _draw_joystick() -> void:
 	joystick.draw_circle(Vector2(90,90),86,Color(0.05,0.12,0.18,0.55))
@@ -3303,7 +3311,7 @@ func _input(event: InputEvent) -> void:
 			# Godot mouse emulation handles only the first finger; dispatch touch UI explicitly.
 			for button: Button in touch_buttons:
 				if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
-					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button))
+					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button))
 					if not paused and in_overlay:
 						continue
 					if paused and not in_overlay:
@@ -3451,6 +3459,7 @@ func _physics_process(delta: float) -> void:
 	_check_north()
 	_check_marina()
 	_check_downtown()
+	_check_civic()
 	_check_checkpoints()
 	_traffic_tick(delta)
 	_check_trial()
@@ -3459,7 +3468,7 @@ func _physics_process(delta: float) -> void:
 	_online_tick(delta)
 	_check_missions()
 	_check_level()
-	marker.visible = trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0 or (_north_open() and _nearest_north() >= 0) or (_downtown_open() and _nearest_downtown() >= 0) or (_marina_open() and _nearest_marina() >= 0)))
+	marker.visible = trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or _nearest_civic() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0 or (_north_open() and _nearest_north() >= 0) or (_downtown_open() and _nearest_downtown() >= 0) or (_marina_open() and _nearest_marina() >= 0)))
 	for index in find_nodes.size():
 		find_nodes[index].visible = not bool(found_mask & (1 << index))
 		find_nodes[index].rotation.y += delta
@@ -3495,8 +3504,19 @@ func _follow_camera(weight: float) -> void:
 		return
 	var target: Vector3 = car.position if driving else player.position
 	var offset := Vector3(11,17,19) if view_mode == 0 else Vector3(5.2,7.0,8.6)
+	# Inside Harbor Dome the camera eases in as you walk up to a table, the bar or the stage.
+	var spot := _hub_focus()
+	var want := 0.0
+	if spot != Vector3.INF:
+		want = 1.0 if seat_id >= 0 else clampf((7.0-Vector2(target.x-spot.x,target.z-spot.z).length())/5.0,0.0,1.0)
+	hub_zoom = move_toward(hub_zoom,want,clampf(weight,0.0,1.0)*0.6) if weight < 1.0 else want
+	var look := target+Vector3(0,0.5,0)
+	if hub_zoom > 0.0:
+		offset = offset.lerp(Vector3(2.4,3.2,4.0),smoothstep(0.0,1.0,hub_zoom))
+		look = look.lerp((target+spot)/2.0+Vector3(0,0.9,0),hub_zoom)
 	camera.position = camera.position.lerp(target+offset,minf(weight,1.0))
-	camera.look_at(target+Vector3(0,0.5,0))
+	if camera.position.distance_to(look) > 0.05:
+		camera.look_at(look)
 
 func _interact() -> void:
 	if paused:
@@ -3595,6 +3615,8 @@ func _refresh_hud() -> void:
 	if exploring:
 		if index >= 0:
 			objective.text = "Find " + str(FINDS[index]["name"])+"  ·  "+str(distance)+"m"
+		elif _nearest_civic() >= 0:
+			objective.text = "Discover " + str(CIVIC[_nearest_civic()]["name"])+"  ·  "+str(distance)+"m"
 		elif not _ridge_open():
 			objective.text = "Ridge Gate  ·  %dm  ·  needs a Ridge Rover" % distance
 		elif _nearest_ridge() >= 0:
@@ -3618,7 +3640,7 @@ func _refresh_hud() -> void:
 		mission_label.text = "HARBOR CITY  /  TIME TRIAL"
 		objective.text = "%s  ring %d/%d  ·  %.1fs / par %ds" % [running["name"],trial_cp+1,running["cps"].size(),clock-trial_start,int(running["par"])]
 	mission_label.text += "  ·  LV %d" % _level()
-	balance_label.text = "$%d  ·  %d/8 finds  ·  %d/%d sites  ·  %d jobs" % [cash,count,_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count(),RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size()+DOWNTOWN.size(),deliveries]
+	balance_label.text = "$%d  ·  %d/8 finds  ·  %d/%d sites  ·  %d jobs" % [cash,count,_civic_count()+_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count(),CIVIC.size()+RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size()+DOWNTOWN.size(),deliveries]
 	var offset: Vector3 = destination-body.position
 	var screen_right := camera.global_basis.x
 	var screen_forward := -camera.global_basis.z
@@ -3627,9 +3649,9 @@ func _refresh_hud() -> void:
 	var arrows := ["↑","↗","→","↘","↓","↙","←","↖"]
 	var arrow_index := posmod(int(round(compass_angle/(PI/4.0))),8)
 	compass.text = "%s  %s" % [arrows[arrow_index],"Destination is here" if distance < 5 else "Follow the golden ring"]
-	if exploring and index < 0 and _ridge_open() and _nearest_ridge() < 0 and _nearest_bay() < 0 and not (_north_open() and _nearest_north() >= 0) and not (_downtown_open() and _nearest_downtown() >= 0) and not (_marina_open() and _nearest_marina() >= 0):
+	if exploring and index < 0 and _nearest_civic() < 0 and _ridge_open() and _nearest_ridge() < 0 and _nearest_bay() < 0 and not (_north_open() and _nearest_north() >= 0) and not (_downtown_open() and _nearest_downtown() >= 0) and not (_marina_open() and _nearest_marina() >= 0):
 		compass.text = "Everything found! Free roam, or pick Jobs in Menu."
-	elif exploring and index < 0 and not _ridge_open():
+	elif exploring and index < 0 and _nearest_civic() < 0 and not _ridge_open():
 		compass.text = "%s  Buy a Ridge Rover in Menu > Garage" % arrows[arrow_index]
 	speed_label.text = "%d km/h  •  Release stick to brake" % int(Vector2(car.velocity.x,car.velocity.z).length()*3.6) if driving else "On foot  •  Tokens: collect  •  Ridge sites: just arrive"
 	if in_car_view:
@@ -3661,6 +3683,7 @@ func _refresh_hud() -> void:
 		action_button.text = "EXIT CAR" if driving else "ENTER CAR"
 		action_button.disabled = not driving and player.position.distance_to(car.position) >= 5.0
 	mode_button.text = "Switch to delivery jobs" if exploring else "Switch to exploring"
+	_refresh_nick_button()
 	var discovered: PackedStringArray = []
 	for find_index in FINDS.size():
 		if found_mask & (1 << find_index):
@@ -3675,6 +3698,8 @@ func _open_panel(panel: Control) -> void:
 	trial_panel.hide()
 	chase_panel.hide()
 	shop_panel.hide()
+	if nick_panel != null:
+		nick_panel.hide()
 	panel.show()
 	panel.reset_size()
 	_layout_panels()
@@ -3683,6 +3708,8 @@ func _layout_panels() -> void:
 	var view := get_viewport().get_visible_rect().size
 	for panel: Control in [menu,garage,journal,tune_panel,trial_panel,chase_panel,shop_panel]:
 		panel.position = Vector2((view.x-panel.size.x)/2.0,maxf(8.0,(view.y-panel.size.y)/2.0))
+	if nick_panel != null:
+		nick_panel.position = Vector2((view.x-nick_panel.size.x)/2.0,maxf(8.0,(view.y-nick_panel.size.y)/2.0-120.0))
 
 func _toggle_menu() -> void:
 	if shop_kind >= 0:
@@ -3696,6 +3723,8 @@ func _toggle_menu() -> void:
 	trial_panel.hide()
 	chase_panel.hide()
 	shop_panel.hide()
+	if nick_panel != null:
+		nick_panel.hide()
 	if paused:
 		_open_panel(menu)
 	else:
@@ -3755,9 +3784,11 @@ func _save_progress() -> void:
 	file.set_value("progress","best_times",best_times)
 	file.set_value("progress","radio",radio_station)
 	file.set_value("progress","online_name",online_name)
+	file.set_value("progress","nick_chosen",nick_chosen)
 	file.set_value("progress","chase_wins",chase_wins)
 	file.set_value("progress","marina_mask",marina_mask)
 	file.set_value("progress","downtown_mask",downtown_mask)
+	file.set_value("progress","civic_mask",civic_mask)
 	file.set_value("progress","checkpoint",checkpoint_id)
 	file.set_value("progress","shop_visit",shop_visit_mask)
 	file.set_value("progress","car_paint",car_paint)
@@ -3786,9 +3817,13 @@ func _load_progress() -> void:
 		trial_done = int(file.get_value("progress","trial_done",0)) & ((1 << TRIALS.size())-1)
 		radio_station = clampi(int(file.get_value("progress","radio",0)),0,RADIO.size()-1)
 		online_name = String(file.get_value("progress","online_name",""))
+		nick_chosen = bool(file.get_value("progress","nick_chosen",false))
+		if online_name != "" and _clean_nick(online_name) == "":
+			online_name = ""
 		chase_wins = maxi(0,int(file.get_value("progress","chase_wins",0)))
 		marina_mask = int(file.get_value("progress","marina_mask",0)) & ((1 << MARINA.size())-1)
 		downtown_mask = int(file.get_value("progress","downtown_mask",0)) & ((1 << DOWNTOWN.size())-1)
+		civic_mask = int(file.get_value("progress","civic_mask",0)) & ((1 << CIVIC.size())-1)
 		checkpoint_id = int(file.get_value("progress","checkpoint",-1))
 		if checkpoint_id < -1 or checkpoint_id >= CHECKPOINTS.size():
 			checkpoint_id = -1
@@ -4046,6 +4081,12 @@ func _build_peds() -> void:
 			dt_lines.append([Vector3(east,0,z+sz),Vector3(-435,0,z+sz)])
 	for i in 28:
 		plan.append([dt_lines[i % dt_lines.size()][0],dt_lines[i % dt_lines.size()][1],false])
+	# Civic Center sidewalks (6.2 m from the road centre) and people at the school, park and mall.
+	var civ_lines := [[Vector3(-60,0,25.8),Vector3(-238,0,25.8)],[Vector3(-62,0,38.2),Vector3(-238,0,38.2)],[Vector3(-62,0,65.8),Vector3(-238,0,65.8)],[Vector3(-62,0,78.2),Vector3(-238,0,78.2)]]
+	for i in 12:
+		plan.append([civ_lines[i % civ_lines.size()][0],civ_lines[i % civ_lines.size()][1],false])
+	for spot in [Vector3(-204,0,58),Vector3(-211,0,58),Vector3(-203,0,84),Vector3(-145,0,76.5)]:
+		plan.append([spot,spot,true])
 	for spot in [Vector3(-300,0,-121),Vector3(-310,0,-129),Vector3(-298,0,-131),Vector3(-312,0,-119),Vector3(-262,0,-246),Vector3(-298,0,-254),Vector3(-175,0,-362),Vector3(-186,0,-362),Vector3(-15,0,35),Vector3(15,0,35)]:
 		plan.append([spot,spot,true])
 	var rng := RandomNumberGenerator.new()
@@ -4213,7 +4254,12 @@ func _smoke_test() -> void:
 	_load_progress()
 	assert(found_mask == 255 and cash == collection_cash+550,"Collection persistence failed")
 	_refresh_hud()
+	assert(objective.text.begins_with("Discover") and CIVIC.any(func(c): return objective.text.contains(c["name"])),"After the tokens, Civic Center comes next: "+objective.text)
+	var saved_civic := civic_mask
+	civic_mask = (1 << CIVIC.size())-1
+	_refresh_hud()
 	assert(objective.text.begins_with("Ridge Gate"),"Collection end state failed: "+objective.text)
+	civic_mask = saved_civic
 	exploring = false
 	next_job_pending = false
 	_rescue()
@@ -4263,11 +4309,13 @@ func _smoke_test() -> void:
 	elif FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
 	_smoke_hub()
+	_smoke_sites_reachable()
+	_smoke_nick()
 	await _smoke_guidance_checkpoints()
 	checkpoint_id = saved_checkpoint
 	_refresh_checkpoints()
 	_save_progress()
-	print("HARBOR_SMOKE_OK: Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -4337,7 +4385,9 @@ func _smoke_orole() -> void:
 func _smoke_levels() -> void:
 	var saved := [found_mask,ridge_mask,bay_mask,north_mask,trial_done,claimed_mask,deliveries,marina_mask]
 	var saved_dt := downtown_mask
+	var saved_civ := civic_mask
 	downtown_mask = 0
+	civic_mask = 0
 	found_mask = 0
 	ridge_mask = 0
 	bay_mask = 0
@@ -4355,10 +4405,11 @@ func _smoke_levels() -> void:
 	north_mask = (1 << NORTH.size())-1
 	marina_mask = (1 << MARINA.size())-1
 	downtown_mask = (1 << DOWNTOWN.size())-1
+	civic_mask = (1 << CIVIC.size())-1
 	trial_done = (1 << TRIALS.size())-1
 	claimed_mask = (1 << MISSIONS.size())-1
 	deliveries = 50
-	var total := 160+(RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size()+DOWNTOWN.size())*25+TRIALS.size()*40+MISSIONS.size()*60+ROUTES.size()*10
+	var total := 160+(CIVIC.size()+RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size()+DOWNTOWN.size())*25+TRIALS.size()*40+MISSIONS.size()*60+ROUTES.size()*10
 	assert(_xp() == total and _level() == 5,"Completing everything reaches level 5")
 	assert(_level_text().contains("MAX"),"Max level text")
 	assert(_online_pos_frame()["payload"]["payload"]["l"] == 5,"Position frame carries the level")
@@ -4370,6 +4421,7 @@ func _smoke_levels() -> void:
 	claimed_mask = saved[5]
 	deliveries = saved[6]
 	downtown_mask = saved_dt
+	civic_mask = saved_civ
 
 func _smoke_bus() -> void:
 	var saved := [found_mask,ridge_mask,bay_mask,north_mask,trial_done,claimed_mask,deliveries,marina_mask,cash,driving,player.position,exploring]
@@ -4625,7 +4677,7 @@ func _wait_radio(station: int) -> void:
 	assert(radio_streams.has(station),"Radio station %d did not generate" % station)
 
 func _smoke_radio_peds() -> void:
-	assert(peds.size() == 62,"Pedestrians missing: %d" % peds.size())
+	assert(peds.size() == 78,"Pedestrians missing: %d" % peds.size())
 	assert(not player_person.is_empty() and player_person["mats"].has("Shirt"),"Player person model missing")
 	for p in peds:
 		assert(not (p["person"] as Dictionary).is_empty(),"Pedestrian person model missing")
@@ -4709,6 +4761,9 @@ func _smoke_models() -> void:
 	print("models ok")
 
 func _smoke_garage_ridge() -> void:
+	# This older test predates the Civic Center: treat its sites as found here.
+	var saved_civic_all := civic_mask
+	civic_mask = (1 << CIVIC.size())-1
 	# A v0.2.0 save has no garage fields: progress must be kept and defaults applied.
 	var legacy := ConfigFile.new()
 	legacy.set_value("progress","cash",3550)
@@ -4724,6 +4779,8 @@ func _smoke_garage_ridge() -> void:
 	_load_progress()
 	assert(cash == 3550 and deliveries == 18 and found_mask == 255,"Legacy progress lost")
 	assert(owned_mask == 1 and car_id == 0 and ridge_mask == 0 and claimed_mask == 0,"Legacy defaults wrong")
+	assert(civic_mask == 0,"Old saves start with no Civic Center sites")
+	civic_mask = (1 << CIVIC.size())-1
 	_apply_car()
 	_update_gate()
 	claimed_mask = (1 << MISSIONS.size())-1
@@ -5078,6 +5135,7 @@ func _smoke_garage_ridge() -> void:
 	assert(not online_on and online_ws == null,"Online must start off")
 	_rescue()
 
+	civic_mask = saved_civic_all
 func _save_shot(name: String) -> void:
 	for i in 6:
 		await get_tree().process_frame
@@ -5331,7 +5389,7 @@ const DT_SOUTH := -440.5
 # Road pieces removed where blocks are merged (stadium, station, park, mall): [fixed coordinate, from, to].
 const DT_AVE_GAPS := [[-380.0,-394.0,-306.0],[-180.0,-394.0,-356.0],[-280.0,-294.0,-206.0]]
 const DT_STREET_GAPS := [[-350.0,-424.0,-336.0],[-150.0,-374.0,-336.0],[-250.0,-324.0,-236.0]]
-const DT_SIZES := {"tower_0":Vector3(16,50,16),"tower_1":Vector3(18,58,18),"tower_2":Vector3(24,34,12),"tower_3":Vector3(14,41,14),"tower_4":Vector3(20,90,20),"shops_0":Vector3(24,9,10),"shops_1":Vector3(24,9,10),"garage":Vector3(24,14,24),"police":Vector3(30,9,18),"mall":Vector3(72,14,30.6),"station":Vector3(56,10,18)}
+const DT_SIZES := {"tower_0":Vector3(16,50,16),"tower_1":Vector3(18,58,18),"tower_2":Vector3(24,34,12),"tower_3":Vector3(14,41,14),"tower_4":Vector3(20,90,20),"shops_0":Vector3(24,9,10),"shops_1":Vector3(24,9,10),"garage":Vector3(24,14,24),"police":Vector3(30,9,18),"mall":Vector3(72,14,30.6),"station":Vector3(56,10,18),"hospital":Vector3(30,13,22),"school":Vector3(30,10,14),"hotel":Vector3(30,15,16),"bank":Vector3(30,13,22),"fire_station":Vector3(24,9,14),"library":Vector3(30,12,18)}
 const DOWNTOWN := [
 	{"name":"Police HQ","pos":Vector3(-155,0,-160),"pay":600},
 	{"name":"City Hall","pos":Vector3(-155,0,-210),"pay":600},
@@ -5353,6 +5411,7 @@ const TRAFFIC_LOOPS := [
 	{"lane":3.0,"speed":9.0,"cars":3,"pts":[Vector2(-130,-300),Vector2(-130,-400),Vector2(-230,-400),Vector2(-230,-300)]},
 	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(32,-32),Vector2(32,32),Vector2(-32,32)]},
 	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(-32,32),Vector2(32,32),Vector2(32,-32)]},
+	{"lane":2.5,"speed":9.0,"cars":4,"pts":[Vector2(-95,32),Vector2(-230,32),Vector2(-230,72),Vector2(-95,72)]},
 ]
 const TRAFFIC_COLORS := [Color("d33a3a"),Color("eef1f2"),Color("23262b"),Color("2f5fd0"),Color("f2d046"),Color("7ac74f"),Color("9aa3aa"),Color("f07f2e"),Color("22b5c9")]
 var downtown_mask := 0
@@ -6051,7 +6110,7 @@ func _smoke_downtown() -> void:
 	player.position = was_pos
 	driving = was_driving
 	# Traffic: built, moves, stops at a red light and behind an obstacle.
-	assert(traffic.size() == 22 and light_spots.size() >= 50,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
+	assert(traffic.size() == 26 and light_spots.size() >= 58,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
 	var was_car := car.position
 	var was_clock := clock
 	car.position = Vector3(400,0.8,400)
@@ -6150,7 +6209,7 @@ const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(0,-370)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-278,-250)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(0,-370)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-278,-250)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["CIVIC CENTER",Vector2(-150,60)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -6302,6 +6361,9 @@ func _site_markers() -> Array:
 		for i in FINDS.size():
 			if not (found_mask & (1 << i)):
 				out.append([FINDS[i]["pos"],Color("5ce6ed")])
+	for i in CIVIC.size():
+		if not (civic_mask & (1 << i)):
+			out.append([CIVIC[i]["pos"],Color("8fe36b")])
 	if _ridge_open():
 		for i in RIDGE.size():
 			if not (ridge_mask & (1 << i)):
@@ -6989,6 +7051,7 @@ const CHECKPOINTS := [
 	{"name":"Union Station","pos":Vector3(-210,0,-360)},
 	{"name":"Marina Heights","pos":Vector3(-10,0,116)},
 	{"name":"Harbor Dome","pos":Vector3(148,0,36)},
+	{"name":"Civic Center","pos":Vector3(-150,0,23)},
 ]
 var checkpoint_id := -1
 var checkpoint_nodes: Array = []
@@ -7809,6 +7872,11 @@ func _build_game_panel(root: Control) -> void:
 	var start := _button("START SHOW  $%d" % HUB_JOKE_PRICE,_joke_start)
 	start.custom_minimum_size = Vector2(360,58)
 	show_row.add_child(start)
+	game_invite_button = _button("LOOKING FOR PLAYERS",_send_lfp)
+	game_invite_button.custom_minimum_size = Vector2(360,52)
+	game_invite_button.add_theme_font_size_override("font_size",18)
+	game_invite_button.add_theme_stylebox_override("normal",_panel(Color("8a5a12"),18))
+	col.add_child(game_invite_button)
 	game_robot_button = _button("PLAY THE ROBOT INSTEAD",_play_robot)
 	game_robot_button.custom_minimum_size = Vector2(360,52)
 	game_robot_button.add_theme_font_size_override("font_size",18)
@@ -7840,9 +7908,11 @@ func _refresh_game_panel() -> void:
 	var kind := String(seat["kind"])
 	var t := int(seat["table"])
 	game_robot_button.visible = false
+	game_invite_button.visible = false
 	if kind == "ttt":
 		var g: Dictionary = ttt[t]
 		var mine := int(seat["side"])+1
+		ttt_grid.visible = _ttt_ready(t)
 		for c in 9:
 			var v := int(g["b"][c])
 			ttt_buttons[c].text = ["","X","O"][v]
@@ -7850,17 +7920,20 @@ func _refresh_game_panel() -> void:
 		if not _ttt_ready(t):
 			game_status.text = "Waiting for another player to sit opposite you…"
 			game_robot_button.visible = true
+			game_invite_button.visible = true
 		elif String(g["msg"]) != "":
 			game_status.text = g["msg"]
 		else:
 			game_status.text = ("Your turn: you are %s." % ["","X","O"][mine]) if int(g["turn"]) == mine else "%s is thinking…" % _opponent_name(t,"ttt")
 	elif kind == "rps":
 		var g: Dictionary = rps[t]
+		rps_row.visible = _rps_ready(t)
 		for b in rps_row.get_children():
 			(b as Button).disabled = int(g["me"]) >= 0 or not _rps_ready(t)
 		if not _rps_ready(t):
 			game_status.text = "Waiting for another player to sit opposite you…"
 			game_robot_button.visible = true
+			game_invite_button.visible = true
 		elif String(g["msg"]) != "":
 			game_status.text = g["msg"]
 		else:
@@ -7869,6 +7942,7 @@ func _refresh_game_panel() -> void:
 		game_status.text = ("Show in progress: %d jokes to go." % joke_left) if joke_left > 0 else "Sit back and enjoy the robot comedian."
 		for b in show_row.get_children():
 			(b as Button).disabled = joke_left > 0
+	game_panel.reset_size()
 
 func _play_robot() -> void:
 	if seat_id < 0:
@@ -8215,6 +8289,7 @@ func _build_chat(root: Control) -> void:
 		b.add_theme_font_size_override("font_size",18)
 		grid.add_child(b)
 	var lfp := _button("Looking for players!",_send_lfp)
+	lfp_button = lfp
 	lfp.custom_minimum_size = Vector2(170,50)
 	lfp.add_theme_font_size_override("font_size",16)
 	lfp.add_theme_stylebox_override("normal",_panel(Color("8a5a12"),18))
@@ -8233,6 +8308,10 @@ func _toggle_chat() -> void:
 	if paused:
 		return
 	chat_panel.visible = not chat_panel.visible
+	if lfp_button != null:
+		var ok := _at_pvp_table()
+		lfp_button.disabled = not ok
+		lfp_button.text = "Looking for players!" if ok else "Invite: sit at a\nPvP table first"
 
 func _say(k: int) -> void:
 	chat_panel.hide()
@@ -8281,6 +8360,14 @@ func _smoke_hub() -> void:
 	driving = false
 	view_mode = 0
 	_apply_view()
+	# Walking up to a table zooms the camera in.
+	player.position = HUB_C+Vector3(0,0.75,0)
+	_follow_camera(1.0)
+	var far_d := camera.global_position.distance_to(player.global_position)
+	player.position = (TTT_TABLES[0] as Vector3)+Vector3(-2.2,0.75,0)
+	_follow_camera(1.0)
+	var near_d := camera.global_position.distance_to(player.global_position)
+	assert(near_d < far_d*0.5,"Camera zooms in near a table (%.1f vs %.1f)" % [near_d,far_d])
 	# Tic-tac-toe against the robot, played to the end.
 	cash = 100
 	var s0 := _seat_of("ttt",0,0)
@@ -8360,8 +8447,12 @@ func _smoke_hub() -> void:
 	assert(hub_emotes.any(func(e): return e["person"] == player_person),"Our emote plays")
 	# Looking for players: an invite shows in the chat feed with ACCEPT, which teleports to the dome.
 	assert(feed.any(func(f): return String(f["text"]).begins_with("Mia: ")),"Peer quick chat shows in the main chat")
-	_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"lfp","payload":{"i":"p2","n":"Mia"}}}))
-	assert(feed.any(func(f): return f["from"] == "p2"),"Invite appears in the main chat")
+	# Invites: Mia sits at player-vs-player tic-tac-toe table 3 and invites; ACCEPT seats us opposite her.
+	var her_seat := _seat_of("ttt",3,1)
+	var her_pos: Vector3 = hub_seats[her_seat]["pos"]
+	_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":{"i":"p2","n":"Mia","x":her_pos.x,"y":0.0,"z":her_pos.z,"r":0.0,"c":1,"d":0,"s":her_seat,"qn":2,"q":3,"en":1,"e":2}}}))
+	_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"lfp","payload":{"i":"p2","n":"Mia","k":"ttt","tb":3,"s":her_seat}}}))
+	assert(feed.any(func(f): return f["from"] == "p2" and String(f["text"]).contains("tic-tac-toe")),"Invite appears in the main chat with the game")
 	var accept_found := false
 	for row in feed_box.get_children():
 		for sub in row.get_children():
@@ -8371,10 +8462,32 @@ func _smoke_hub() -> void:
 	driving = true
 	car.position = Vector3(20,0.8,2.3)
 	_accept_invite("p2")
-	assert(not driving and player.position.distance_to(Vector3(168,0.75,32)) < 0.1 and car.position.distance_to(HUB_PARK) < 0.1,"ACCEPT teleports to the dome on foot, car parked outside")
+	assert(not driving and seat_id == _seat_of("ttt",3,0) and car.position.distance_to(HUB_PARK) < 0.1,"ACCEPT seats us opposite the inviter, car parked outside")
+	assert(_ttt_ready(3) and game_panel.visible and ttt_grid.visible,"The match is ready to play")
 	assert(not feed.any(func(f): return f["from"] == "p2"),"Accepted invite leaves the chat")
+	_stand_up()
+	# An invite from someone who already stood up does not teleport.
+	_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"lfp","payload":{"i":"p2","n":"Mia","k":"ttt","tb":3,"s":her_seat}}}))
+	online_peers["p2"]["seat"] = -1
+	var before_pos := player.position
+	_accept_invite("p2")
+	assert(seat_id < 0 and player.position == before_pos,"Stale invite does not teleport")
+	# Looking for players needs a player-vs-player seat.
+	lfp_last = -1000.0
 	_send_lfp()
-	assert(lfp_last < 0.0,"Looking for players needs Online on")
+	assert(lfp_last < 0.0,"Invites need a player-vs-player table")
+	player.position = (hub_seats[_seat_of("ttt",0,0)]["pos"] as Vector3)+Vector3(0.3,0.75,0)
+	_interact()
+	assert(not _at_pvp_table(),"Robot tables are not player-vs-player")
+	_send_lfp()
+	assert(lfp_last < 0.0,"No invites from robot tables")
+	_stand_up()
+	player.position = (hub_seats[_seat_of("ttt",2,0)]["pos"] as Vector3)+Vector3(0.3,0.75,0)
+	_interact()
+	assert(_at_pvp_table() and game_invite_button.visible,"Waiting at a PvP table shows LOOKING FOR PLAYERS")
+	_send_lfp()
+	assert(lfp_last < 0.0,"Looking for players still needs Online on")
+	_stand_up()
 	(online_peers["p2"]["node"] as Node3D).queue_free()
 	online_peers.erase("p2")
 	hub_emotes.clear()
@@ -8405,6 +8518,18 @@ func _hub_shots() -> void:
 	view_mode = 1
 	_apply_view()
 	look_pitch = 0.0
+	view_mode = 0
+	_apply_view()
+	player.position = (RPS_TABLES[1] as Vector3)+Vector3(0,0.75,9)
+	for i in 30:
+		await get_tree().physics_frame
+	await _save_shot("hub-zoom-far")
+	player.position = (RPS_TABLES[1] as Vector3)+Vector3(0,0.75,2.4)
+	for i in 60:
+		await get_tree().physics_frame
+	await _save_shot("hub-zoom-near")
+	view_mode = 1
+	_apply_view()
 	var s0 := _seat_of("ttt",0,0)
 	player.position = (hub_seats[s0]["pos"] as Vector3)+Vector3(0.3,0.75,0)
 	_interact()
@@ -8414,6 +8539,13 @@ func _hub_shots() -> void:
 	for i in 20:
 		await get_tree().physics_frame
 	await _save_shot("hub-tictactoe")
+	print("ZOOM_SHOT")
+	_stand_up()
+	player.position = (hub_seats[_seat_of("ttt",2,0)]["pos"] as Vector3)+Vector3(0.3,0.75,0)
+	_interact()
+	for i in 10:
+		await get_tree().physics_frame
+	await _save_shot("hub-pvp-waiting")
 	_stand_up()
 	var show := _seat_of("show",0,1)
 	player.position = (hub_seats[show]["pos"] as Vector3)+Vector3(0.2,0.75,0)
@@ -8463,6 +8595,8 @@ const INVITE_TIME := 30.0
 var feed_box: VBoxContainer
 var feed: Array = []
 var lfp_last := -1000.0
+var lfp_button: Button
+var game_invite_button: Button
 
 func _build_feed(root: Control) -> void:
 	feed_box = VBoxContainer.new()
@@ -8473,8 +8607,8 @@ func _build_feed(root: Control) -> void:
 	feed_box.position = Vector2(root.size.x/2.0-330.0,root.size.y-250.0)
 	feed_box.custom_minimum_size = Vector2(660,0)
 
-func _feed_add(text: String, invite_from: String) -> void:
-	feed.append({"text":text,"until":clock+(INVITE_TIME if invite_from != "" else 12.0),"from":invite_from})
+func _feed_add(text: String, invite_from: String, invite := {}) -> void:
+	feed.append({"text":text,"until":clock+(INVITE_TIME if invite_from != "" else 12.0),"from":invite_from,"invite":invite})
 	while feed.size() > 4:
 		feed.pop_front()
 	_feed_render()
@@ -8523,8 +8657,21 @@ func _online_event_send(event: String, payload: Dictionary) -> void:
 	payload["n"] = online_name
 	_online_send({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":event,"payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"})
 
+func _at_pvp_table() -> bool:
+	if seat_id < 0:
+		return false
+	var seat: Dictionary = hub_seats[seat_id]
+	var kind := String(seat["kind"])
+	return (kind == "ttt" or kind == "rps") and int(seat["table"]) >= 2
+
+func _game_name(kind: String) -> String:
+	return "tic-tac-toe" if kind == "ttt" else "rock paper scissors"
+
 func _send_lfp() -> void:
 	chat_panel.hide()
+	if not _at_pvp_table():
+		_show_toast("Sit at a PLAYER VS PLAYER table in Harbor Dome first, then invite players.")
+		return
 	if not online_on or online_state != 3:
 		_show_toast("Turn Online on first (top right), then look for players.")
 		return
@@ -8532,9 +8679,10 @@ func _send_lfp() -> void:
 		_show_toast("Invite sent recently. Try again in %d s." % int(LFP_COOLDOWN-(clock-lfp_last)))
 		return
 	lfp_last = clock
-	_online_event_send("lfp",{})
-	_feed_add("You are looking for players at Harbor Dome…","")
-	_bubble(player if not driving else car,"Looking for players!",2.6 if not driving else 3.2)
+	var seat: Dictionary = hub_seats[seat_id]
+	_online_event_send("lfp",{"k":seat["kind"],"tb":int(seat["table"]),"s":seat_id})
+	_feed_add("You invited players to %s…" % _game_name(String(seat["kind"])),"")
+	_bubble(player,"Looking for players!",2.0)
 
 func _lfp_msg(event: String, p: Dictionary) -> void:
 	var from := String(p.get("i",""))
@@ -8542,13 +8690,19 @@ func _lfp_msg(event: String, p: Dictionary) -> void:
 		return
 	var nm := _online_clean_name(String(p.get("n","Player")))
 	if event == "lfp":
+		var kind := String(p.get("k",""))
+		var seat := int(p.get("s",-1))
+		if (kind != "ttt" and kind != "rps") or seat < 0 or seat >= hub_seats.size() or String(hub_seats[seat]["kind"]) != kind:
+			return
+		var invite := {"k":kind,"tb":int(hub_seats[seat]["table"]),"s":seat}
 		for item in feed:
 			if item["from"] == from:
 				item["until"] = clock+INVITE_TIME
+				item["invite"] = invite
 				return
-		_feed_add("%s is looking for players at Harbor Dome!" % nm,from)
+		_feed_add("%s wants to play %s at Harbor Dome!" % [nm,_game_name(kind)],from,invite)
 	elif event == "lfa" and String(p.get("to","")) == online_id:
-		_feed_add("%s accepted! On the way to Harbor Dome." % nm,"")
+		_feed_add("%s accepted! Taking the seat opposite you." % nm,"")
 		_show_toast("%s accepted your invite!" % nm)
 
 func _accept_invite(from: String) -> void:
@@ -8557,26 +8711,563 @@ func _accept_invite(from: String) -> void:
 	if trial_active >= 0 or chase_mode != 0 or online_role != 0 or bus_riding:
 		_show_toast("Finish your trial, chase or bus ride first, then accept.")
 		return
+	var invite := {}
 	for i in range(feed.size()-1,-1,-1):
 		if feed[i]["from"] == from:
+			invite = feed[i]["invite"]
 			feed.remove_at(i)
 	_feed_render()
+	if invite.is_empty():
+		return
+	var nm := String(online_peers[from]["name"]) if online_peers.has(from) else "The other player"
+	var their_seat := int(invite["s"])
+	if online_peers.has(from) and int(online_peers[from].get("seat",-1)) != their_seat:
+		_show_toast("%s has already left the table." % nm)
+		return
+	var target := _seat_of(String(invite["k"]),int(invite["tb"]),1-int(hub_seats[their_seat]["side"]))
+	if target < 0 or (_seat_taken(target) and target != seat_id):
+		_show_toast("Someone already took that seat. Try the next invite!")
+		return
 	if seat_id >= 0:
 		_stand_up()
 	if driving:
 		driving = false
 		player.show()
-		player.get_child(0).set_deferred("disabled",false)
 	car.position = HUB_PARK
 	car.rotation = Vector3(0,PI/2.0,0)
 	car.velocity = Vector3.ZERO
 	car_speed = 0.0
-	player.position = Vector3(168,0.75,32)
-	player.rotation = Vector3(0,-PI/2.0,0)
-	player.velocity = Vector3.ZERO
+	_sit(target)
 	_apply_view()
 	_follow_camera(1.0)
 	_online_event_send("lfa",{"to":from})
-	var nm := String(online_peers[from]["name"]) if online_peers.has(from) else "Your friend"
-	_show_toast("Welcome to Harbor Dome! %s is waiting. Your car is parked outside." % nm)
+	_show_toast("You joined %s at %s. Have fun!" % [nm,_game_name(String(invite["k"]))])
 	_refresh_hud()
+
+# ---------- v0.18.2: nickname and HUD relayout ----------
+const NICK_MIN := 3
+const NICK_MAX := 14
+const NICK_BLOCK := ["fuck","fuk","shit","bitch","cunt","dick","cock","pussy","nigg","fag","whore","slut","rape","nazi","hitler","asshole","bastard","porn","penis","vagina","retard","wank","twat"]
+var nick_chosen := false
+var nick_from_online := false
+var nick_button: Button
+var nick_panel: PanelContainer
+var nick_edit: LineEdit
+var nick_info: Label
+var hud_pause_button: Button
+
+func _nick_rude(name: String) -> bool:
+	var squash := ""
+	for ch in name.to_lower():
+		if ch >= "a" and ch <= "z":
+			squash += ch
+	var leet := name.to_lower().replace("0","o").replace("1","i").replace("3","e").replace("4","a").replace("5","s").replace("7","t").replace("@","a").replace("$","s")
+	var leet_squash := ""
+	for ch in leet:
+		if ch >= "a" and ch <= "z":
+			leet_squash += ch
+	for w in NICK_BLOCK:
+		if squash.contains(w) or leet_squash.contains(w):
+			return true
+	return false
+
+func _clean_nick(raw: String) -> String:
+	# Returns the cleaned nickname, or "" if it is not allowed.
+	var out := ""
+	for ch in raw.strip_edges():
+		var ok := (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or (ch >= "0" and ch <= "9") or ch == " " or ch == "_" or ch == "-"
+		if ok and not (ch == " " and out.ends_with(" ")):
+			out += ch
+	out = out.strip_edges()
+	if out.length() < NICK_MIN or out.length() > NICK_MAX or _nick_rude(out):
+		return ""
+	return out
+
+func _build_nick_panel(root: Control) -> void:
+	nick_panel = PanelContainer.new()
+	root.add_child(nick_panel)
+	nick_panel.custom_minimum_size = Vector2(520,0)
+	nick_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",12)
+	nick_panel.add_child(col)
+	col.add_child(_label("YOUR NICKNAME",26,Color("f0bd62")))
+	var help := _label("Other online players see it on your name tag, in chat and in invites.\n%d-%d letters, numbers, spaces, - or _." % [NICK_MIN,NICK_MAX],17,Color("cbd8de"))
+	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help.custom_minimum_size.x = 470
+	col.add_child(help)
+	nick_edit = LineEdit.new()
+	nick_edit.max_length = NICK_MAX
+	nick_edit.placeholder_text = "Type a nickname"
+	nick_edit.custom_minimum_size = Vector2(470,60)
+	nick_edit.add_theme_font_size_override("font_size",26)
+	nick_edit.virtual_keyboard_enabled = true
+	nick_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
+	nick_edit.text_submitted.connect(func(_t): _save_nick())
+	col.add_child(nick_edit)
+	nick_info = _label("",17,Color("ff9a8a"))
+	col.add_child(nick_info)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",12)
+	col.add_child(row)
+	var save := _button("Save",_save_nick)
+	save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(save)
+	var random := _button("Random",_random_nick)
+	random.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(random)
+	var back := _button("Back",_close_nick)
+	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(back)
+	nick_panel.hide()
+
+func _open_nick() -> void:
+	if not paused:
+		_toggle_menu()
+	nick_edit.text = online_name if nick_chosen else ""
+	nick_info.text = ""
+	_open_panel(nick_panel)
+	nick_edit.grab_focus()
+	nick_edit.select_all()
+
+func _random_nick() -> void:
+	var a := ["Swift","Lucky","Harbor","Neon","Sunny","Turbo","Misty","Rocket","Coral","Pixel"]
+	var b := ["Fox","Racer","Gull","Comet","Tiger","Otter","Rider","Wave","Star","Panda"]
+	nick_edit.text = "%s%s%d" % [a[randi() % a.size()],b[randi() % b.size()],randi() % 90+10]
+	nick_info.text = ""
+
+func _save_nick() -> void:
+	var nick := _clean_nick(nick_edit.text)
+	if nick == "":
+		var raw := nick_edit.text.strip_edges()
+		nick_info.text = "Please use %d-%d characters." % [NICK_MIN,NICK_MAX] if raw.length() < NICK_MIN or raw.length() > NICK_MAX else "That name is not allowed. Try another one."
+		return
+	online_name = nick
+	nick_chosen = true
+	_save_progress()
+	_refresh_nick_button()
+	nick_edit.release_focus()
+	DisplayServer.virtual_keyboard_hide()
+	_show_toast("Nickname saved: %s" % nick)
+	if nick_from_online:
+		nick_from_online = false
+		_toggle_menu()
+	else:
+		_close_sub()
+
+func _close_nick() -> void:
+	nick_edit.release_focus()
+	DisplayServer.virtual_keyboard_hide()
+	if nick_from_online:
+		nick_from_online = false
+		_toggle_menu()
+	else:
+		_close_sub()
+
+func _refresh_nick_button() -> void:
+	if nick_button != null:
+		nick_button.text = "Nickname: %s" % (online_name if nick_chosen and online_name != "" else "(not set)")
+
+func _relayout_hud() -> void:
+	var view := get_viewport().get_visible_rect().size
+	if hud_pause_button != null:
+		hud_pause_button.position = Vector2(view.x-194,24)
+	radio_button.position = Vector2(view.x-194,92)
+	online_button.position = Vector2(view.x-376,92)
+	radio_caption.position = Vector2(view.x-(604 if minimap != null else 394),150)
+	chase_label.position = Vector2(view.x/2-260,24)
+	joystick.position = Vector2(32,view.y-210)
+	action_button.position = Vector2(view.x-248,view.y-124)
+	status_label.position = Vector2(view.x/2-340,view.y-48)
+	if minimap != null:
+		minimap.position = Vector2(view.x-218,154)
+	if view_button != null:
+		view_button.position = Vector2(view.x-194,356)
+	if chat_button != null:
+		chat_button.position = Vector2(view.x-194,412)
+	if chat_panel != null:
+		chat_panel.position = Vector2(view.x-chat_panel.size.x-212,150)
+	if feed_box != null:
+		feed_box.position = Vector2(view.x/2.0-330.0,view.y-250.0)
+	if hud_arrow != null:
+		hud_arrow.position = Vector2(view.x/2.0-70.0,96)
+	if lvl_root != null:
+		lvl_root.position = Vector2(view.x/2.0-310.0,view.y*0.3-130.0)
+		lvl_flash.size = view
+	_layout_panels()
+
+func _smoke_nick() -> void:
+	assert(_clean_nick("  Koko  ") == "Koko" and _clean_nick("Night  Rider_7") == "Night Rider_7","Nicknames are tidied")
+	assert(_clean_nick("ab") == "" and _clean_nick("abcdefghijklmnop") == "","Nickname length 3-14")
+	assert(_clean_nick("K<o>k!o") == "Koko","Odd symbols are removed")
+	assert(_clean_nick("BigShit") == "" and _clean_nick("sh1t head") == "" and _clean_nick("Hitler99") == "","Rude names are refused")
+	assert(_online_clean_name("f.u.c.k") == "Player" and _online_clean_name("Mia") == "Mia","Rude names from other players are hidden")
+	var was := [online_name,nick_chosen,paused]
+	_open_nick()
+	assert(paused and nick_panel.visible and not menu.visible,"Nickname panel opens from the menu")
+	nick_edit.text = "x"
+	_save_nick()
+	assert(nick_panel.visible and nick_info.text.contains("3-14"),"Too-short name explains the rule")
+	nick_edit.text = "Captain Koko"
+	_save_nick()
+	assert(online_name == "Captain Koko" and nick_chosen and menu.visible,"Nickname saved, back to the menu")
+	assert(nick_button.text == "Nickname: Captain Koko","Menu shows the nickname")
+	assert(_online_pos_frame()["payload"]["payload"]["n"] == "Captain Koko","Nickname is sent to other players")
+	online_name = "Someone"
+	_load_progress()
+	assert(online_name == "Captain Koko" and nick_chosen,"Nickname survives a reload")
+	nick_from_online = true
+	_open_nick()
+	nick_edit.text = "Racer_9"
+	_save_nick()
+	assert(not paused and not nick_panel.visible,"First-time prompt returns straight to the game")
+	online_name = was[0]
+	nick_chosen = was[1]
+	_save_progress()
+	_refresh_nick_button()
+	if paused != was[2]:
+		_toggle_menu()
+
+func _nick_shots() -> void:
+	# Developer-only: the nickname panel. Never saves.
+	for i in 20:
+		await get_tree().physics_frame
+	_open_nick()
+	nick_edit.text = "Captain Koko"
+	for i in 5:
+		await get_tree().process_frame
+	await _save_shot("nickname")
+	_close_nick()
+	if paused:
+		_toggle_menu()
+	DisplayServer.window_set_size(Vector2i(1843,720))
+	for i in 20:
+		await get_tree().process_frame
+	await _save_shot("relayout-wide")
+	get_tree().quit()
+
+func _smoke_sites_reachable() -> void:
+	# Every discovery site must stand on open ground at walking height (players cannot jump).
+	blocked_skip_traffic = true
+	var groups := [["find",FINDS],["civic",CIVIC],["ridge",RIDGE],["bay",BAY],["north",NORTH],["marina",MARINA],["skyline",DOWNTOWN]]
+	for g in groups:
+		for site in g[1]:
+			var pos: Vector3 = site["pos"]
+			assert(not _blocked_at(pos+Vector3(0,1.0,0),0.4),"%s site %s is inside something (%s)" % [g[0],site["name"],_blocker(pos+Vector3(0,1.0,0),0.4)])
+			var ray := PhysicsRayQueryParameters3D.create(pos+Vector3(0,2.5,0),pos+Vector3(0,-1.5,0))
+			var skip: Array[RID] = [player.get_rid(),car.get_rid()]
+			for t in traffic:
+				skip.append((t["node"] as CollisionObject3D).get_rid())
+			ray.exclude = skip
+			var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+			assert(not hit.is_empty() and absf((hit["position"] as Vector3).y-pos.y) < 0.4,"%s site %s is not on walkable ground (ground at %s)" % [g[0],site["name"],str(hit.get("position","none"))])
+	for x in CIV_AVES:
+		for r in _civ_ranges(true,x):
+			var z := float(r[0])+3.0
+			while z < float(r[1])-3.0:
+				for lane in [-2.5,2.5]:
+					assert(not _blocked_at(Vector3(x+lane,1.0,z),0.7),"Civic avenue blocked at %s by %s" % [str(Vector3(x+lane,0,z)),_blocker(Vector3(x+lane,1.0,z),0.7)])
+				z += 6.0
+	for z in CIV_STREETS:
+		for r in _civ_ranges(false,z):
+			var x := float(r[0])+3.0
+			while x < float(r[1])-1.0:
+				for lane in [-2.5,2.5]:
+					assert(not _blocked_at(Vector3(x,1.0,z+lane),0.7),"Civic street blocked at %s by %s" % [str(Vector3(x,0,z+lane)),_blocker(Vector3(x,1.0,z+lane),0.7)])
+				x += 6.0
+	blocked_skip_traffic = false
+
+# ---------- v0.19.0: Civic Center (bigger starting area: police, hospital, school, hotels, mall, park) ----------
+const CIV_AVES := [-95.0,-140.0,-185.0,-230.0]
+const CIV_STREETS := [32.0,72.0,112.0]
+const CIV_SOUTH := 152.0
+const CIV_SOUTH_EAST := -109.5
+const CIV_X0 := -246.0
+const CIV_X1 := -55.5
+const CIV_Z0 := 17.0
+const CIV_Z1 := 106.0
+const CIV_AVE_GAPS := [[-140.0,77.0,107.0]]
+const CIVIC := [
+	{"name":"Police Station","pos":Vector3(-74,0,39.5),"pay":300},
+	{"name":"Harbor Hospital","pos":Vector3(-114,0,38.5),"pay":300},
+	{"name":"Grand Hotel","pos":Vector3(-162.5,0,39),"pay":350},
+	{"name":"Harbor High School","pos":Vector3(-207.5,0,39),"pay":350},
+	{"name":"Seaside Hotel","pos":Vector3(-74,0,80),"pay":300},
+	{"name":"Civic Mall","pos":Vector3(-140,0,74.5),"pay":400},
+	{"name":"Civic Park","pos":Vector3(-207.5,0,81),"pay":300},
+	{"name":"Harbor Bank","pos":Vector3(-162.5,0,119.5),"pay":400},
+	{"name":"Fire Station","pos":Vector3(-212,0,119.5),"pay":350},
+	{"name":"City Library","pos":Vector3(-123.5,0,119.5),"pay":300},
+]
+const CIVIC_BONUS := 1500
+var civic_mask := 0
+var civic_nodes: Array[Node3D] = []
+
+func _civic_count() -> int:
+	var n := 0
+	for i in CIVIC.size():
+		if civic_mask & (1 << i):
+			n += 1
+	return n
+
+func _nearest_civic() -> int:
+	var closest := -1
+	var best := INF
+	var body: CharacterBody3D = car if driving else player
+	for i in CIVIC.size():
+		if civic_mask & (1 << i):
+			continue
+		var pos: Vector3 = CIVIC[i]["pos"]
+		var d := Vector2(body.position.x-pos.x,body.position.z-pos.z).length()
+		if d < best:
+			best = d
+			closest = i
+	return closest
+
+func _check_civic() -> void:
+	var body: CharacterBody3D = car if driving else player
+	for i in CIVIC.size():
+		var found := (civic_mask & (1 << i)) != 0
+		var pos: Vector3 = CIVIC[i]["pos"]
+		civic_nodes[i].visible = not found
+		civic_nodes[i].rotation.y = clock
+		civic_nodes[i].position.y = pos.y+1.7+sin(clock*2+i)*0.25
+		if found:
+			continue
+		if Vector2(body.position.x-pos.x,body.position.z-pos.z).length() < 4.5 and absf(body.position.y-pos.y) < 3.5:
+			_discover_civic(i)
+
+func _discover_civic(i: int) -> void:
+	if civic_mask & (1 << i):
+		return
+	civic_mask |= 1 << i
+	var count := _civic_count()
+	var reward := int(CIVIC[i]["pay"])
+	if count == CIVIC.size():
+		reward += CIVIC_BONUS
+	cash += reward
+	civic_nodes[i].hide()
+	_save_progress()
+	_show_toast("%s discovered!  %d/%d  +$%d%s" % [CIVIC[i]["name"],count,CIVIC.size(),reward,"  CIVIC CENTER COMPLETE!" if count == CIVIC.size() else ""])
+
+func _civ_ranges(is_ave: bool, c: float) -> Array:
+	var ranges: Array
+	if is_ave:
+		ranges = [[CIV_Z0,(CIV_Z1 if c > CIV_SOUTH_EAST else CIV_SOUTH)]]
+	elif is_equal_approx(c,112.0):
+		ranges = [[CIV_X0,CIV_SOUTH_EAST]]
+	else:
+		ranges = [[CIV_X0,(-52.0 if is_equal_approx(c,32.0) else CIV_X1)]]
+	if is_ave:
+		for g in CIV_AVE_GAPS:
+			if is_equal_approx(float(g[0]),c):
+				ranges = _cut_ranges(ranges,float(g[1]),float(g[2]))
+	return ranges
+
+func _civ_has(is_ave: bool, c: float, t: float) -> bool:
+	for r in _civ_ranges(is_ave,c):
+		if t >= float(r[0])-0.01 and t <= float(r[1])+0.01:
+			return true
+	return false
+
+func _civ_near_cross(is_ave: bool, t: float, margin: float) -> bool:
+	for c in (CIV_STREETS if is_ave else CIV_AVES):
+		if absf(t-float(c)) < margin:
+			return true
+	return false
+
+func _build_civic() -> void:
+	var walk := Color("a9a69e")
+	var asphalt := Color("394552")
+	var rock := Color("8a8377")
+	var cx := (CIV_X0+CIV_X1)/2.0
+	var cz := (CIV_Z0+CIV_Z1)/2.0
+	_slab(Vector3(cx,-0.35,cz),Vector3(CIV_X1-CIV_X0,0.6,CIV_Z1-CIV_Z0),0,walk)
+	_box(self,Vector3(CIV_X0-0.5,1.0,cz),Vector3(1,2,CIV_Z1-CIV_Z0+1),rock,true)
+	# South row (bank, fire station, library) beyond the mall and park.
+	_slab(Vector3((CIV_X0+CIV_SOUTH_EAST)/2.0,-0.35,(CIV_Z1+CIV_SOUTH)/2.0),Vector3(CIV_SOUTH_EAST-CIV_X0,0.6,CIV_SOUTH-CIV_Z1),0,walk)
+	_box(self,Vector3((CIV_X0+CIV_SOUTH_EAST)/2.0,1.0,CIV_SOUTH+0.5),Vector3(CIV_SOUTH_EAST-CIV_X0+1,2,1),rock,true)
+	_box(self,Vector3(CIV_SOUTH_EAST+0.5,1.0,(CIV_Z1+CIV_SOUTH)/2.0),Vector3(1,2,CIV_SOUTH-CIV_Z1+1),rock,true)
+	_box(self,Vector3((CIV_SOUTH_EAST+CIV_X1)/2.0+0.5,1.0,CIV_Z1+0.5),Vector3(CIV_X1-CIV_SOUTH_EAST,2,1),rock,true)
+	_box(self,Vector3(CIV_X0-0.5,1.0,(CIV_Z1+CIV_SOUTH)/2.0),Vector3(1,2,CIV_SOUTH-CIV_Z1+1),rock,true)
+	_box(self,Vector3((CIV_X0-76.0)/2.0,1.0,CIV_Z0-0.4),Vector3(-76.0-CIV_X0,2,0.8),rock,true)
+	_box(self,Vector3(-66.0,1.0,CIV_Z0-0.4),Vector3(20,2,0.8),rock,true)
+	_box(self,Vector3(CIV_X1-0.3,1.0,81.0),Vector3(0.6,2,50),rock,true)
+	var roads := []
+	var dashes := []
+	var zebra := []
+	var poles := []
+	var ns_caps := []
+	var ew_caps := []
+	for x in CIV_AVES:
+		for r in _civ_ranges(true,x):
+			roads.append([Vector3(x,0.01,(float(r[0])+float(r[1]))/2.0),Vector3(10,0.08,float(r[1])-float(r[0]))])
+			var z := float(r[0])+4.0
+			while z < float(r[1])-2.0:
+				if not _civ_near_cross(true,z,7.0):
+					dashes.append([Vector3(x,0.06,z),Vector3(0.18,0.02,3)])
+				z += 8.0
+	for z in CIV_STREETS:
+		for r in _civ_ranges(false,z):
+			roads.append([Vector3((float(r[0])+float(r[1]))/2.0,0.012,z),Vector3(float(r[1])-float(r[0]),0.08,10)])
+			var x := float(r[0])+4.0
+			while x < float(r[1])-2.0:
+				if not _civ_near_cross(false,x,7.0):
+					dashes.append([Vector3(x,0.062,z),Vector3(3,0.02,0.18)])
+				x += 8.0
+	for x in CIV_AVES:
+		for z in CIV_STREETS:
+			if not (_civ_has(true,x,z) and _civ_has(false,z,x)):
+				continue
+			light_spots.append(Vector3(x,0,z))
+			for s in [-1.0,1.0]:
+				if _civ_has(true,x,z+s*8.0):
+					for k in 6:
+						zebra.append([Vector3(x-4.0+1.6*k,0.065,z+s*7.2),Vector3(0.7,0.02,2.6)])
+				if _civ_has(false,z,x+s*8.0):
+					for k in 6:
+						zebra.append([Vector3(x+s*7.2,0.067,z-4.0+1.6*k),Vector3(2.6,0.02,0.7)])
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+6.2,0,z+6.2),PI,true,3.7)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-6.2,0,z-6.2),0.0,true,3.7)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-6.2,0,z+6.2),PI/2.0,false,3.7)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+6.2,0,z-6.2),-PI/2.0,false,3.7)
+	_box_batch(asphalt,roads)
+	_box_batch(Color("e7d9a4"),dashes)
+	_box_batch(Color("eef0ec"),zebra)
+	_model_batch("res://models/traffic_light.glb",poles)
+	var ns_inst := _box_batch(Color.WHITE,ns_caps)
+	var ew_inst := _box_batch(Color.WHITE,ew_caps)
+	if ns_inst != null:
+		ns_inst.material_override = light_ns_mat
+	if ew_inst != null:
+		ew_inst.material_override = light_ew_mat
+	# Landmark buildings (fronts face the street to the north, so yaw PI).
+	var items := {}
+	_place(items,"police",Vector3(-74,0,52),PI,0.9)
+	_place(items,"hospital",Vector3(-114,0,52),PI,0.85)
+	_collider(self,Vector3(-114-19.0*0.85,2.1*0.85,52+2.0*0.85),Vector3(8,4.2,7)*0.85)
+	_place(items,"tower_1",Vector3(-162.5,0,52),PI)
+	_place(items,"school",Vector3(-207.5,0,48),PI)
+	_place(items,"hotel",Vector3(-74,0,93),PI)
+	_place(items,"mall",Vector3(-140,0,93),PI,0.8)
+	_place(items,"bank",Vector3(-162.5,0,134),PI)
+	_place(items,"fire_station",Vector3(-207.5,0,134),PI)
+	_collider(self,Vector3(-200,1.4,120.4),Vector3(2.6,2.8,9.6))
+	_place(items,"library",Vector3(-123.5,0,134),PI,0.7)
+	for key in items:
+		_model_batch("res://models/%s.glb" % key,items[key])
+	_box_batch(Color("b9b4a8"),[[Vector3(-74,0.03,52),Vector3(30,0.06,28)],[Vector3(-117.5,0.03,52),Vector3(33,0.06,28)],[Vector3(-162.5,0.03,52),Vector3(33,0.06,28)],[Vector3(-74,0.03,91.5),Vector3(30,0.06,27)],[Vector3(-140,0.03,91.5),Vector3(78,0.06,27)]])
+	# School basketball court and the park.
+	_box_batch(Color("c96a3f"),[[Vector3(-207.5,0.04,61.5),Vector3(18,0.06,9)]])
+	_box_batch(Color("f4f1e8"),[[Vector3(-207.5,0.075,61.5),Vector3(0.15,0.02,9)],[Vector3(-207.5,0.075,57.1),Vector3(18,0.02,0.15)],[Vector3(-207.5,0.075,65.9),Vector3(18,0.02,0.15)]])
+	for hx in [-216.0,-199.0]:
+		_box(self,Vector3(hx,1.6,61.5),Vector3(0.12,3.2,0.12),Color("3b444c"))
+		_box(self,Vector3(hx+(0.3 if hx < -207.5 else -0.3),3.1,61.5),Vector3(0.1,0.9,1.4),Color("f4f1e8"))
+	var park := Vector3(-207.5,0,91.5)
+	_box_batch(Color("74b062"),[[park+Vector3(0,0.035,0),Vector3(33,0.06,27)]])
+	_box_batch(Color("e3cfa3"),[[park+Vector3(0,0.07,0),Vector3(31,0.04,3)],[park+Vector3(0,0.072,0),Vector3(3,0.04,25)]])
+	_model_batch("res://models/fountain.glb",[[park,0.0,0.6]])
+	_collider(self,park+Vector3(0,0.5,0),Vector3(8.4,1.0,8.4))
+	var trees := []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1900
+	for p in [Vector3(-218,0,84),Vector3(-198,0,84),Vector3(-219,0,99),Vector3(-196,0,100),Vector3(-212,0,103),Vector3(-201,0,95)]:
+		trees.append([p,rng.randf()*TAU,rng.randf_range(0.8,1.1)])
+	for x in range(-238,-60,12):
+		trees.append([Vector3(float(x),0,21.0),rng.randf()*TAU,0.7])
+	for z in range(22,150,10):
+		if absf(float(z)-112.0) > 7.0 and absf(float(z)-72.0) > 7.0:
+			trees.append([Vector3(-240.5,0,float(z)),rng.randf()*TAU,0.7])
+	_model_batch("res://models/tree_round.glb",trees)
+	# Playground: slide and swings (visual).
+	_box(self,Vector3(-216,1.0,96),Vector3(0.8,2.0,0.8),Color("e8685a"))
+	var slide := _box(self,Vector3(-216,0.9,98.2),Vector3(0.8,0.1,3.4),Color("f2c94c"))
+	slide.rotation_degrees.x = 30.0
+	for sx in [-200.0,-196.0]:
+		_box(self,Vector3(sx,1.3,100),Vector3(0.12,2.6,0.12),Color("3b444c"))
+	_box(self,Vector3(-198,2.6,100),Vector3(4.2,0.12,0.12),Color("3b444c"))
+	_model_batch("res://models/bench.glb",[[park+Vector3(-8,0,-1.7),0.0],[park+Vector3(8,0,-1.7),0.0],[park+Vector3(-1.7,0,8),PI/2.0]])
+	# Lamps along the streets.
+	var lamps := []
+	for z in CIV_STREETS:
+		for x in range(-236,(-118 if z > 100.0 else -60),18):
+			if not _civ_near_cross(false,float(x),8.0):
+				lamps.append([Vector3(float(x),0,z+5.6),PI/2.0])
+				lamps.append([Vector3(float(x)+9.0,0,z-5.6),-PI/2.0])
+	_model_batch("res://models/lamp.glb",lamps)
+	_sign("CIVIC CENTER",Vector3(-58,7.5,32),Color("ffe9b8"),58)
+	_box_batch(Color("b9b4a8"),[[Vector3(-162.5,0.03,135),Vector3(33,0.06,34)],[Vector3(-207.5,0.03,135),Vector3(33,0.06,34)],[Vector3(-123.5,0.03,135),Vector3(23,0.06,34)]])
+	_sign("POLICE",Vector3(-74,10.5,44),Color("cfe2ff"),56)
+	_sign("HARBOR HOSPITAL",Vector3(-117.5,16,44),Color("ffd0d0"),56)
+	_sign("GRAND HOTEL",Vector3(-162.5,62,52),Color("ffe2a8"),72)
+	_sign("HARBOR HIGH SCHOOL",Vector3(-207.5,13,42),Color("ffe9b8"),52)
+	_sign("SEASIDE HOTEL",Vector3(-74,17.6,94.6),Color("e8f7ff"),60)
+	_sign("CIVIC MALL",Vector3(-140,15,80),Color("ffd6e0"),60)
+	_sign("CIVIC PARK",Vector3(-207.5,6,79),Color("d8f5c8"),48)
+	_sign("HARBOR BANK",Vector3(-162.5,15.5,121),Color("ffe9b8"),58)
+	_sign("FIRE STATION",Vector3(-207.5,11,124),Color("ffd0c8"),56)
+	_sign("CITY LIBRARY",Vector3(-123.5,11,126),Color("c8f0ef"),52)
+	for site in CIVIC:
+		civic_nodes.append(_civic_token(site["pos"],site["name"]))
+
+func _civic_token(pos: Vector3, label: String) -> Node3D:
+	var token := Node3D.new()
+	token.position = pos+Vector3(0,1.7,0)
+	add_child(token)
+	var gem := MeshInstance3D.new()
+	var crystal := PrismMesh.new()
+	crystal.size = Vector3(0.9,1.3,0.9)
+	gem.mesh = crystal
+	var mat := _material(Color("8fe36b"))
+	mat.emission_enabled = true
+	mat.emission = Color("3f8a2a")
+	gem.material_override = mat
+	token.add_child(gem)
+	_sign(label.to_upper(),pos+Vector3(0,4.4,0),Color("d9ffc8"),36)
+	_box(self,pos+Vector3(0,0.1,0),Vector3(2.4,0.18,2.4),Color("2f5a26"))
+	return token
+
+func _civic_shots() -> void:
+	# Developer-only: the Civic Center. Never saves.
+	driving = true
+	player.hide()
+	player.get_child(0).set_deferred("disabled",true)
+	car.position = Vector3(-100,0.8,34.5)
+	car.rotation = Vector3(0,PI/2.0,0)
+	for i in 150:
+		await get_tree().physics_frame
+	await _skyline_shot("civic-aerial",Vector3(-150,0,62),Vector3(-40,95,-15))
+	await _skyline_shot("civic-street",Vector3(-150,6,52),Vector3(-88,8,28))
+	await _skyline_shot("civic-school-park",Vector3(-207,2,72),Vector3(-170,24,40))
+	await _skyline_shot("civic-south-row",Vector3(-165,4,132),Vector3(-150,22,98))
+	_follow_camera(1.0)
+	await _save_shot("civic-game")
+	_open_map()
+	await _save_shot("civic-map")
+	get_tree().quit()
+
+var hub_zoom := 0.0
+
+func _hub_focus() -> Vector3:
+	# The nearest thing worth zooming in on inside the dome, or INF.
+	if driving or player.position.distance_to(HUB_C) > HUB_R:
+		return Vector3.INF
+	if seat_id >= 0:
+		var seat: Dictionary = hub_seats[seat_id]
+		var k := String(seat["kind"])
+		if k == "ttt":
+			return TTT_TABLES[int(seat["table"])]
+		if k == "rps":
+			return RPS_TABLES[int(seat["table"])]
+		if k == "show":
+			return HUB_STAGE
+		return seat["pos"]
+	var best := Vector3.INF
+	var best_d := 7.0
+	var spots: Array = TTT_TABLES+RPS_TABLES+[Vector3(180,0,10),HUB_STAGE+Vector3(-7.5,0,0),Vector3(180,0,54)]
+	for p in spots:
+		var d := Vector2(player.position.x-(p as Vector3).x,player.position.z-(p as Vector3).z).length()
+		if d < best_d:
+			best_d = d
+			best = p
+	return best

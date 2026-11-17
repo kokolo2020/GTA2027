@@ -27,6 +27,9 @@ const CARS := [
 	{"name":"Ridge Rover","price":1400,"speed":20.0,"accel":12.0,"turn":3.6,"color":Color("e2893a"),"roof":Color("6a3d1c"),"note":"Trail pass: opens the Ridge Gate"},
 	{"name":"Coast Runner","price":2600,"speed":25.0,"accel":13.0,"turn":4.3,"color":Color("e3555a"),"roof":Color("5a1f27"),"note":"Fast and sharp through corners"},
 	{"name":"Night Comet","price":4500,"speed":29.0,"accel":15.0,"turn":4.7,"color":Color("7b5bd6"),"roof":Color("2a1f55"),"note":"Top speed, quick grip"},
+	{"name":"Marina GT","price":7500,"speed":32.0,"accel":16.0,"turn":4.9,"color":Color("22b5c9"),"roof":Color("0f4a55"),"note":"Showroom grand tourer","premium":true,"model":4},
+	{"name":"Skyline Racer","price":12000,"speed":36.0,"accel":18.0,"turn":5.2,"color":Color("f2d046"),"roof":Color("5a4a10"),"note":"Showroom supercar","premium":true,"model":4},
+	{"name":"Phantom Black","price":18000,"speed":40.0,"accel":20.0,"turn":5.5,"color":Color("23262b"),"roof":Color("0b0c0e"),"note":"Showroom flagship","premium":true,"model":4},
 ]
 const RIDGE_GATE := Vector3(57,0,0)
 const RIDGE := [
@@ -51,6 +54,10 @@ const MISSIONS := [
 	{"name":"Bay Master","desc":"Discover all 6 Bay sites","pay":1500},
 	{"name":"Trial Runner","desc":"Clear every time trial and street event","pay":700},
 	{"name":"North Explorer","desc":"Discover all 8 North sites","pay":2000},
+	{"name":"Marina Arrival","desc":"Cross the bridge to Marina Heights (Level 5)","pay":500},
+	{"name":"Window Shopper","desc":"Visit the showroom, style shop and paint shop","pay":800},
+	{"name":"Showroom Dream","desc":"Own a showroom car","pay":2000},
+	{"name":"Marina Explorer","desc":"Discover all 5 Marina sites","pay":3000},
 ]
 const BAY_GATE := Vector3(-57,0,0)
 const BAY := [
@@ -82,6 +89,7 @@ const TRIALS := [
 	{"name":"Waterfront Dash","area":0,"start":Vector3(-50,0,0),"cps":[Vector3(-20,0,0),Vector3(20,0,0),Vector3(50,0,0)],"par":11.0,"pay":250},
 	{"name":"North Highway","area":3,"start":Vector3(0,0,-70),"cps":[Vector3(0,0,-130),Vector3(0,0,-200),Vector3(0,0,-270),Vector3(0,0,-330)],"par":15.0,"pay":700},
 	{"name":"Runway Dash","area":3,"start":Vector3(0,0,-305),"cps":[Vector3(0,0,-340),Vector3(0,0,-385),Vector3(0,0,-425)],"par":8.0,"pay":600},
+	{"name":"Marina Boulevard","area":4,"start":Vector3(0,0,114),"cps":[Vector3(0,0,150),Vector3(0,0,205),Vector3(0,0,234)],"par":9.0,"pay":900},
 ]
 const UPGRADES := [
 	{"name":"Engine","desc":"top speed","per":0.06},
@@ -96,7 +104,7 @@ const RADIO := [{"name":"Off"},{"name":"Harbor FM"},{"name":"Bay Waves"},{"name"
 var tunes: Array = []
 var bay_mask := 0
 var trial_done := 0
-var best_times: Array = [0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+var best_times: Array = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 var north_mask := 0
 var north_nodes: Array[Node3D] = []
 var north_gate_body: StaticBody3D
@@ -225,6 +233,8 @@ func _ready() -> void:
 	Input.emulate_mouse_from_touch = false
 	tunes.resize(CARS.size()*UPGRADES.size())
 	tunes.fill(0)
+	car_paint.resize(CARS.size())
+	car_paint.fill(0)
 	_build_world()
 	_build_collectibles()
 	_build_player()
@@ -232,6 +242,7 @@ func _ready() -> void:
 	_build_ridge()
 	_build_bay()
 	_build_north()
+	_build_marina()
 	_build_landscape()
 	_build_peds()
 	radio_player = AudioStreamPlayer.new()
@@ -240,12 +251,13 @@ func _ready() -> void:
 	_build_hud()
 	_load_progress()
 	_apply_car()
+	_apply_avatar()
 	_update_gate()
 	_refresh_hud()
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.12: levels! Finish quests to level up. Chase and Online are in the Menu.")
+	_show_toast("Harbor City 0.13: reach Level 5 to open Marina Heights with a showroom, style shop and paint shop.")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -420,8 +432,12 @@ func _destination() -> Vector3:
 		if bay_index >= 0:
 			return BAY[bay_index]["pos"]
 		var north_index := _nearest_north()
-		if north_index >= 0:
+		if _north_open() and north_index >= 0:
 			return NORTH[north_index]["pos"]
+		if _marina_open():
+			var marina_index := _nearest_marina()
+			if marina_index >= 0:
+				return MARINA[marina_index]["pos"]
 		return car.position if driving else player.position
 	return ROUTES[route_index]["dropoff"] if carrying else ROUTES[route_index]["pickup"]
 
@@ -485,8 +501,14 @@ func _apply_car() -> void:
 	car_max = stats.x
 	car_accel = stats.y
 	car_turn = stats.z
-	car_body_mat.albedo_color = spec["color"]
-	car_roof_mat.albedo_color = spec["roof"]
+	var paint := int(car_paint[car_id]) if car_paint.size() > car_id else 0
+	if paint > 0:
+		var paint_color: Color = PAINTS[paint]["color"]
+		car_body_mat.albedo_color = paint_color
+		car_roof_mat.albedo_color = paint_color.darkened(0.55)
+	else:
+		car_body_mat.albedo_color = spec["color"]
+		car_roof_mat.albedo_color = spec["roof"]
 	spoiler.visible = car_id >= 3
 	_apply_car_model()
 
@@ -552,7 +574,7 @@ func _bay_open() -> bool:
 	return _ridge_count() == RIDGE.size()
 
 func _area_open(area: int) -> bool:
-	return area == 0 or (area == 1 and _ridge_open()) or (area == 2 and _bay_open()) or (area == 3 and _north_open())
+	return area == 0 or (area == 1 and _ridge_open()) or (area == 2 and _bay_open()) or (area == 3 and _north_open()) or (area == 4 and _marina_open())
 
 func _bay_count() -> int:
 	var n := 0
@@ -1110,7 +1132,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	var body_color := Color.from_hsv(hue,0.65,0.9)
 	var car_node := Node3D.new()
 	node.add_child(car_node)
-	var model := _try_model("res://models/car_%d.glb" % car_index)
+	var model := _try_model("res://models/car_%d.glb" % int(CARS[car_index].get("model",car_index)))
 	if model != null:
 		car_node.add_child(model)
 		_online_tint(model,body_color)
@@ -1203,6 +1225,464 @@ func _online_refresh_button() -> void:
 	else:
 		online_button.text = "Online: %d" % (online_peers.size()+1)
 
+# ---------- v0.13.0: Marina Heights (Level 5 district: showroom, style shop, paint shop) ----------
+const BASE_CARS := 5
+const BASE_TRIALS := 7
+const PAINT_PRICE := 150
+const MARINA_GATE := Vector3(0,0,58)
+const MARINA := [
+	{"name":"Bridge Midpoint","pos":Vector3(0,0,82),"pay":500},
+	{"name":"Fountain Plaza","pos":Vector3(-35,0,178),"pay":600},
+	{"name":"Yacht Club","pos":Vector3(-62,0,216),"pay":700},
+	{"name":"Sunset Boardwalk","pos":Vector3(70,0,222),"pay":700},
+	{"name":"Marina Lighthouse","pos":Vector3(0,0,232),"pay":900},
+]
+const MARINA_BONUS := 3000
+const SHOPS := [
+	{"name":"Harbor Motors Showroom","pos":Vector3(-15,0,128),"tint":Color("5aa7d6"),"verb":"SHOWROOM"},
+	{"name":"Style Shop","pos":Vector3(15,0,128),"tint":Color("e8685a"),"verb":"STYLE SHOP"},
+	{"name":"Paint Shop","pos":Vector3(15,0,178),"tint":Color("f2c94c"),"verb":"PAINT SHOP"},
+]
+const PAINTS := [
+	{"name":"Factory colors","color":Color("438fd0")},
+	{"name":"Pearl White","color":Color("eef1f2")},
+	{"name":"Jet Black","color":Color("23262b")},
+	{"name":"Racing Red","color":Color("d33a3a")},
+	{"name":"Sunset Orange","color":Color("f07f2e")},
+	{"name":"Lemon","color":Color("f2d046")},
+	{"name":"Lime","color":Color("7ac74f")},
+	{"name":"Lagoon Teal","color":Color("22b5c9")},
+	{"name":"Royal Blue","color":Color("2f5fd0")},
+	{"name":"Violet","color":Color("7b5bd6")},
+	{"name":"Hot Pink","color":Color("e8559a")},
+]
+const SHIRTS := [
+	{"name":"Sunrise Yellow","color":Color("f2b24a"),"price":0},
+	{"name":"Sky Blue","color":Color("5aa7d6"),"price":120},
+	{"name":"Coral","color":Color("e8685a"),"price":120},
+	{"name":"Mint","color":Color("52c79a"),"price":120},
+	{"name":"Violet","color":Color("7b5bd6"),"price":200},
+	{"name":"Midnight","color":Color("23262b"),"price":200},
+]
+const PANTS := [
+	{"name":"Navy","color":Color("263d54"),"price":0},
+	{"name":"Khaki","color":Color("b89a64"),"price":100},
+	{"name":"Charcoal","color":Color("3b3f45"),"price":100},
+	{"name":"Cream","color":Color("e9edef"),"price":150},
+	{"name":"Crimson","color":Color("b03a3a"),"price":150},
+]
+const HATS := [
+	{"name":"No hat","color":Color("ffffff"),"price":0},
+	{"name":"Cap","color":Color("5aa7d6"),"price":150},
+	{"name":"Top hat","color":Color("23262b"),"price":300},
+	{"name":"Helmet","color":Color("e8685a"),"price":250},
+	{"name":"Crown","color":Color("f2c94c"),"price":800},
+]
+var marina_mask := 0
+var marina_nodes: Array[Node3D] = []
+var marina_gate_body: StaticBody3D
+var marina_gate_sign: Label3D
+var shop_visit_mask := 0
+var car_paint: Array = []
+var av_shirt := 0
+var av_pants := 0
+var av_hat := 0
+var av_own: Array = [1,1,1]
+var shirt_mat: StandardMaterial3D
+var pants_mats: Array = []
+var hat_holder: Node3D
+var shop_panel: PanelContainer
+var shop_title: Label
+var shop_info: Label
+var shop_rows: Array = []
+var shop_row_labels: Array = []
+var shop_buy: Button
+var shop_kind := -1
+var shop_sel: Array = [0,0,0]
+var journal_page := 0
+var journal_next: Button
+
+func _marina_open() -> bool:
+	return _level() >= LEVEL_XP.size()
+
+func _marina_count() -> int:
+	var n := 0
+	for i in MARINA.size():
+		if marina_mask & (1 << i):
+			n += 1
+	return n
+
+func _nearest_marina() -> int:
+	var closest := -1
+	var best := INF
+	var body: CharacterBody3D = car if driving else player
+	for i in MARINA.size():
+		if marina_mask & (1 << i):
+			continue
+		var pos: Vector3 = MARINA[i]["pos"]
+		var d := Vector2(body.position.x-pos.x,body.position.z-pos.z).length()
+		if d < best:
+			best = d
+			closest = i
+	return closest
+
+func _check_marina() -> void:
+	var body: CharacterBody3D = car if driving else player
+	for i in MARINA.size():
+		var found := (marina_mask & (1 << i)) != 0
+		var pos: Vector3 = MARINA[i]["pos"]
+		marina_nodes[i].visible = not found
+		marina_nodes[i].rotation.y = clock
+		marina_nodes[i].position.y = pos.y+1.7+sin(clock*2+i)*0.25
+		if found:
+			continue
+		if Vector2(body.position.x-pos.x,body.position.z-pos.z).length() < 4.5 and absf(body.position.y-pos.y) < 3.5:
+			_discover_marina(i)
+
+func _discover_marina(i: int) -> void:
+	if marina_mask & (1 << i):
+		return
+	marina_mask |= 1 << i
+	var count := _marina_count()
+	var reward := int(MARINA[i]["pay"])
+	if count == MARINA.size():
+		reward += MARINA_BONUS
+	cash += reward
+	marina_nodes[i].hide()
+	_save_progress()
+	_show_toast("%s discovered!  %d/%d  +$%d%s" % [MARINA[i]["name"],count,MARINA.size(),reward,"  MARINA COMPLETE!" if count == MARINA.size() else ""])
+
+func _shop_available(i: int) -> bool:
+	return (i == 1) != driving
+
+func _nearest_shop() -> int:
+	var body: CharacterBody3D = car if driving else player
+	for i in SHOPS.size():
+		var pos: Vector3 = SHOPS[i]["pos"]
+		if _shop_available(i) and Vector2(body.position.x-pos.x,body.position.z-pos.z).length() < 5.5 and absf(body.position.y-pos.y) < 3.0:
+			return i
+	return -1
+
+func _premium_cars() -> Array:
+	var list: Array = []
+	for i in CARS.size():
+		if bool(CARS[i].get("premium",false)):
+			list.append(i)
+	return list
+
+func _glass(pos: Vector3, size: Vector3) -> void:
+	var g := _box(self,pos,size,Color("9fd3e8"),true)
+	var mat := g.material_override as StandardMaterial3D
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.55,0.8,0.92,0.3)
+
+func _shop_building(cx: float, cz: float, front_x: float, back_x: float, depth: float, wall_color: Color, roof_color: Color) -> void:
+	var width := absf(front_x-back_x)
+	var mid := (front_x+back_x)/2.0
+	_box(self,Vector3(mid,0.06,cz),Vector3(width+2.0,0.12,depth+2.0),Color("e8e6dd"))
+	_box(self,Vector3(back_x,3.5,cz),Vector3(1,7,depth),wall_color,true)
+	_box(self,Vector3(mid,3.5,cz-depth/2.0),Vector3(width,7,1),wall_color,true)
+	_box(self,Vector3(mid,3.5,cz+depth/2.0),Vector3(width,7,1),wall_color,true)
+	_box(self,Vector3(mid,7.3,cz),Vector3(width+1.5,0.6,depth+1.5),roof_color)
+	_glass(Vector3(front_x,3.0,cz),Vector3(0.3,6,depth))
+
+func _shop_pad(i: int) -> void:
+	var pos: Vector3 = SHOPS[i]["pos"]
+	var tint: Color = SHOPS[i]["tint"]
+	var pad := _box(self,pos+Vector3(0,0.04,0),Vector3(4.2,0.08,4.2),tint)
+	var mat := pad.material_override as StandardMaterial3D
+	mat.emission_enabled = true
+	mat.emission = tint.darkened(0.4)
+	_sign(String(SHOPS[i]["name"]).to_upper(),pos+Vector3(0,5.2,0),tint.lightened(0.3),40)
+
+func _build_marina() -> void:
+	var asphalt := Color("354653")
+	var line := Color("e7d9a4")
+	var wall := Color("c9ccc4")
+	_box(self,Vector3(0,-0.65,185),Vector3(430,0.3,180),Color("248caa"))
+	# Bridge from the Ferry Steps beach to the island.
+	_slab(Vector3(0,-0.35,84),Vector3(12,0.6,52),0,Color("8d9498"))
+	_box(self,Vector3(0,0.01,84),Vector3(9,0.08,52),asphalt)
+	for z in range(62,108,8):
+		_box(self,Vector3(0,0.07,float(z)),Vector3(0.15,0.02,3),line)
+	for sx in [-6.0,6.0]:
+		_box(self,Vector3(sx,0.6,84),Vector3(0.4,1.2,52),wall,true)
+	for z in [70.0,90.0,106.0]:
+		for sx in [-4.0,4.0]:
+			_box(self,Vector3(sx,-2.0,z),Vector3(1.4,3.4,1.4),Color("737b80"))
+	marina_gate_body = _slab(MARINA_GATE+Vector3(0,2,0),Vector3(12,4,1),0,Color("5aa7d6"))
+	_box(marina_gate_body,Vector3(0,1.0,0.52),Vector3(11,0.8,0.1),Color("fff3d0"))
+	_box(marina_gate_body,Vector3(0,-0.8,0.52),Vector3(11,0.8,0.1),Color("fff3d0"))
+	marina_gate_sign = _sign("",Vector3(0,5.8,58),Color("cfe6ff"),38)
+	_sign("MARINA HEIGHTS",Vector3(0,7.2,112),Color("cfe6ff"),52)
+	# Island deck with a perimeter wall.
+	_slab(Vector3(0,-0.35,175),Vector3(210,0.6,134),0,Color("cfcab8"))
+	_box(self,Vector3(-56,0.7,108),Vector3(98,1.4,1),wall,true)
+	_box(self,Vector3(56,0.7,108),Vector3(98,1.4,1),wall,true)
+	_box(self,Vector3(0,0.7,242),Vector3(210,1.4,1),wall,true)
+	for sx in [-105.5,105.5]:
+		_box(self,Vector3(sx,0.7,175),Vector3(1,1.4,134),wall,true)
+	# Boulevard and cross streets.
+	_box(self,Vector3(0,0.01,175),Vector3(10,0.08,134),asphalt)
+	for z in range(112,240,8):
+		_box(self,Vector3(0,0.07,float(z)),Vector3(0.15,0.02,3),line)
+	for cz in [150.0,205.0]:
+		_box(self,Vector3(0,0.015,cz),Vector3(206,0.08,8),asphalt)
+		for x in range(-100,101,8):
+			if absi(x) > 6:
+				_box(self,Vector3(float(x),0.075,cz),Vector3(3,0.02,0.15),line)
+	# Harbor Motors Showroom (west side, glass front facing the boulevard).
+	_shop_building(-36,128,-22,-50,32,Color("f2f0e8"),Color("2f5f86"))
+	var showcase := [Color("22b5c9"),Color("f2d046"),Color("23262b")]
+	for k in 3:
+		var sz := 118.0+float(k)*10.0
+		_box(self,Vector3(-38,0.25,sz),Vector3(7,0.5,7),Color("2c3a45"))
+		var display := _prop("res://models/car_4.glb",Vector3(-38,0.5,sz),Vector3(1.8,1.2,3.6),-90.0,showcase[k],false)
+		_online_tint(display,showcase[k])
+	_shop_pad(0)
+	# Style Shop (east side).
+	_shop_building(36,128,22,50,32,Color("fbe9e4"),Color("e8685a"))
+	var dress := [Color("5aa7d6"),Color("e8685a"),Color("52c79a")]
+	for k in 3:
+		var mz := 119.0+float(k)*9.0
+		_box(self,Vector3(32,0.9,mz),Vector3(0.7,1.4,0.5),dress[k])
+		_box(self,Vector3(32,1.85,mz),Vector3(0.5,0.5,0.5),Color("e8c9a0"))
+		_box(self,Vector3(32,0.2,mz),Vector3(1.4,0.4,1.4),Color("3a3f45"))
+	_box(self,Vector3(20,4.4,128),Vector3(5,0.3,30),Color("e8685a"))
+	_shop_pad(1)
+	# Paint Shop (east side, further south).
+	_shop_building(36,178,22,50,32,Color("fff6d8"),Color("c89a22"))
+	var cans := [Color("d33a3a"),Color("f2d046"),Color("22b5c9"),Color("7b5bd6"),Color("52c79a")]
+	for k in 5:
+		_box(self,Vector3(30,0.6,164.0+float(k)*7.0),Vector3(1.3,1.2,1.3),cans[k])
+	_shop_pad(2)
+	# Fountain plaza.
+	_box(self,Vector3(-35,0.3,178),Vector3(17,0.6,17),Color("d9d4c4"),true)
+	_box(self,Vector3(-35,0.65,178),Vector3(14,0.3,14),Color("4fa8c9"))
+	_box(self,Vector3(-35,1.8,178),Vector3(1.6,3.0,1.6),Color("e8e6dd"),true)
+	_box(self,Vector3(-35,3.4,178),Vector3(4.5,0.4,4.5),Color("4fa8c9"))
+	_sign("FOUNTAIN PLAZA",Vector3(-35,7,178),Color("d8f0ff"),44)
+	for bx in [-48.0,-22.0]:
+		_box(self,Vector3(bx,0.5,170),Vector3(4,0.5,1.2),Color("866743"),true)
+		_box(self,Vector3(bx,0.5,186),Vector3(4,0.5,1.2),Color("866743"),true)
+	# Yacht club, boardwalk, lighthouse.
+	_prop("res://models/building_2.glb",Vector3(-62,0,226),Vector3(26,9,14),0.0,Color("eef1f2"))
+	_sign("YACHT CLUB",Vector3(-62,11,226),Color("ffffff"),44)
+	_box(self,Vector3(70,0.04,222),Vector3(54,0.1,16),Color("a98562"))
+	_sign("SUNSET BOARDWALK",Vector3(70,6,226),Color("ffd9a0"),40)
+	for bx in [-40.0,-10.0,22.0,50.0]:
+		_box(self,Vector3(bx,-0.2,248),Vector3(3,0.7,8),Color("eef1f2"))
+		_box(self,Vector3(bx,0.4,248),Vector3(1.4,0.8,3),Color("5aa7d6"))
+	_prop("res://models/lighthouse.glb",Vector3(16,0,236),Vector3(5,20,5),0.0,Color("f2f0e8"))
+	# Skyline towers, trees and lamps.
+	var tower_index := 0
+	for tz in [128.0,178.0]:
+		for tx in [-82.0,82.0]:
+			_prop("res://models/building_%d.glb" % (tower_index % 4),Vector3(tx,0,tz),Vector3(11,14,10),0.0,Color("b3a2ad"))
+			tower_index += 1
+	var trees: Array = []
+	for tx in [-14.0,14.0]:
+		for tz in range(116,236,12):
+			if not (absf(tx) < 16.0 and (tz > 120 and tz < 136 or tz > 170 and tz < 186)):
+				trees.append(Vector3(tx,0,float(tz)))
+	_scatter("res://models/tree_round.glb",trees,0.9,1.1)
+	var lamps_a: Array = []
+	var lamps_b: Array = []
+	for z in range(116,236,14):
+		lamps_a.append(Vector3(5.8,0,float(z)))
+		lamps_b.append(Vector3(-5.8,0,float(z)+6.0))
+	for z in range(62,108,12):
+		lamps_a.append(Vector3(5.2,0,float(z)))
+		lamps_b.append(Vector3(-5.2,0,float(z)+6.0))
+	_scatter("res://models/lamp.glb",lamps_a,1.0,1.0,0.0)
+	_scatter("res://models/lamp.glb",lamps_b,1.0,1.0,PI)
+	for i in MARINA.size():
+		marina_nodes.append(_north_token(MARINA[i]["pos"],MARINA[i]["name"]))
+
+# Avatar and shop UI.
+func _set_hat(index: int) -> void:
+	for child in hat_holder.get_children():
+		child.queue_free()
+	var col: Color = HATS[index]["color"]
+	match index:
+		1:
+			_box(hat_holder,Vector3(0,0.93,0),Vector3(0.5,0.16,0.5),col)
+			_box(hat_holder,Vector3(0,0.87,-0.3),Vector3(0.46,0.05,0.2),col.darkened(0.25))
+		2:
+			_box(hat_holder,Vector3(0,0.92,0),Vector3(0.72,0.05,0.72),col)
+			_box(hat_holder,Vector3(0,1.14,0),Vector3(0.44,0.42,0.44),col)
+			_box(hat_holder,Vector3(0,0.98,0),Vector3(0.46,0.07,0.46),Color("d33a3a"))
+		3:
+			_box(hat_holder,Vector3(0,0.98,0),Vector3(0.58,0.3,0.58),col)
+			_box(hat_holder,Vector3(0,0.88,-0.28),Vector3(0.42,0.1,0.06),Color("23262b"))
+		4:
+			_box(hat_holder,Vector3(0,0.96,0),Vector3(0.5,0.18,0.5),col)
+			for sx in [-0.2,0.2]:
+				for sz in [-0.2,0.2]:
+					_box(hat_holder,Vector3(sx,1.1,sz),Vector3(0.1,0.16,0.1),col)
+
+func _apply_avatar() -> void:
+	shirt_mat.albedo_color = SHIRTS[av_shirt]["color"]
+	for m in pants_mats:
+		(m as StandardMaterial3D).albedo_color = PANTS[av_pants]["color"]
+	_set_hat(av_hat)
+
+func _shop_count(row: int) -> int:
+	match shop_kind:
+		0:
+			return _premium_cars().size()
+		1:
+			return [SHIRTS.size(),PANTS.size(),HATS.size()][row]
+		2:
+			return PAINTS.size()
+	return 1
+
+func _shop_open(kind: int) -> void:
+	shop_kind = kind
+	shop_sel = [0,0,0]
+	if kind == 1:
+		shop_sel = [av_shirt,av_pants,av_hat]
+	elif kind == 2:
+		shop_sel[0] = int(car_paint[car_id])
+	shop_visit_mask |= 1 << kind
+	_save_progress()
+	if not paused:
+		paused = true
+		stick = Vector2.ZERO
+		touch_id = -1
+		mouse_stick = false
+		joystick.queue_redraw()
+	_refresh_shop()
+	_open_panel(shop_panel)
+
+func _shop_step(row: int, step: int) -> void:
+	if shop_kind < 0:
+		return
+	shop_sel[row] = posmod(int(shop_sel[row])+step,_shop_count(row))
+	_refresh_shop()
+
+func _shop_close() -> void:
+	if shop_kind < 0:
+		return
+	shop_kind = -1
+	shop_panel.hide()
+	paused = false
+	_apply_car()
+	_apply_avatar()
+	stick = Vector2.ZERO
+	touch_id = -1
+	mouse_stick = false
+	joystick.queue_redraw()
+
+func _owned_text(owned: bool, price: int) -> String:
+	return "owned" if owned else ("$%d" % price)
+
+func _refresh_shop() -> void:
+	for r in 3:
+		(shop_rows[r] as Control).visible = shop_kind == 1 or r == 0
+	match shop_kind:
+		0:
+			var idx: int = _premium_cars()[int(shop_sel[0])]
+			var spec: Dictionary = CARS[idx]
+			var owned := (owned_mask & (1 << idx)) != 0
+			var price := int(spec["price"])
+			var st := _car_stats(idx)
+			shop_title.text = "HARBOR MOTORS SHOWROOM"
+			(shop_row_labels[0] as Label).text = "%s   %s" % [spec["name"],_owned_text(owned,price)]
+			shop_info.text = "%s\nTop speed  %s  %d km/h\nPickup       %s\nHandling    %s\nYour cash: $%d" % [spec["note"],_bar(st.x,45.0),int(st.x*3.6),_bar(st.y,22.0),_bar(st.z,6.5),cash]
+			if idx == car_id:
+				shop_buy.text = "IN USE"
+				shop_buy.disabled = true
+			elif owned:
+				shop_buy.text = "DRIVE THIS CAR"
+				shop_buy.disabled = false
+			else:
+				shop_buy.text = "BUY  $%d%s" % [price,"" if cash >= price else "  (need $%d more)" % (price-cash)]
+				shop_buy.disabled = false
+		1:
+			shop_title.text = "STYLE SHOP"
+			var cost := 0
+			var lists := [SHIRTS,PANTS,HATS]
+			var names := ["Shirt","Pants","Hat"]
+			for r in 3:
+				var entry: Dictionary = (lists[r] as Array)[int(shop_sel[r])]
+				var owned := (int(av_own[r]) & (1 << int(shop_sel[r]))) != 0
+				if not owned:
+					cost += int(entry["price"])
+				(shop_row_labels[r] as Label).text = "%s: %s   %s" % [names[r],entry["name"],_owned_text(owned,int(entry["price"]))]
+			shop_info.text = "Preview your look on the character, then buy and wear it.\nTotal to pay: $%d   Your cash: $%d" % [cost,cash]
+			shop_buy.text = "WEAR THIS LOOK" if cost == 0 else "BUY & WEAR  $%d" % cost
+			shop_buy.disabled = false
+			shirt_mat.albedo_color = SHIRTS[int(shop_sel[0])]["color"]
+			for m in pants_mats:
+				(m as StandardMaterial3D).albedo_color = PANTS[int(shop_sel[1])]["color"]
+			_set_hat(int(shop_sel[2]))
+		2:
+			var sel := int(shop_sel[0])
+			var cur := int(car_paint[car_id])
+			var cost2 := 0 if (sel == 0 or sel == cur) else PAINT_PRICE
+			shop_title.text = "PAINT SHOP"
+			(shop_row_labels[0] as Label).text = "%s   %s" % [PAINTS[sel]["name"],"$%d" % PAINT_PRICE if cost2 > 0 else ("current" if sel == cur else "free")]
+			shop_info.text = "Painting your %s. Preview is live on your car.\nYour cash: $%d" % [CARS[car_id]["name"],cash]
+			shop_buy.text = "PAINT  $%d" % cost2 if cost2 > 0 else ("KEEP THIS PAINT" if sel == cur else "RESTORE FACTORY COLORS")
+			shop_buy.disabled = false
+			var base: Color = CARS[car_id]["color"] if sel == 0 else PAINTS[sel]["color"]
+			car_body_mat.albedo_color = base
+			car_roof_mat.albedo_color = (CARS[car_id]["roof"] as Color) if sel == 0 else base.darkened(0.55)
+
+func _shop_action() -> void:
+	match shop_kind:
+		0:
+			var idx: int = _premium_cars()[int(shop_sel[0])]
+			var spec: Dictionary = CARS[idx]
+			if not (owned_mask & (1 << idx)):
+				var price := int(spec["price"])
+				if cash < price:
+					_show_toast("Need $%d more for the %s." % [price-cash,spec["name"]])
+					_refresh_shop()
+					return
+				cash -= price
+				owned_mask |= 1 << idx
+				_show_toast("You own the %s!" % spec["name"])
+			car_id = idx
+			_apply_car()
+			_update_gate()
+		1:
+			var cost := 0
+			var lists := [SHIRTS,PANTS,HATS]
+			for r in 3:
+				if not (int(av_own[r]) & (1 << int(shop_sel[r]))):
+					cost += int((lists[r] as Array)[int(shop_sel[r])]["price"])
+			if cash < cost:
+				_show_toast("Need $%d more for this look." % (cost-cash))
+				_refresh_shop()
+				return
+			cash -= cost
+			for r in 3:
+				av_own[r] = int(av_own[r]) | (1 << int(shop_sel[r]))
+			av_shirt = int(shop_sel[0])
+			av_pants = int(shop_sel[1])
+			av_hat = int(shop_sel[2])
+			_show_toast("Looking sharp!")
+		2:
+			var sel := int(shop_sel[0])
+			var cur := int(car_paint[car_id])
+			var cost2 := 0 if (sel == 0 or sel == cur) else PAINT_PRICE
+			if cash < cost2:
+				_show_toast("Need $%d more for paint." % (cost2-cash))
+				_refresh_shop()
+				return
+			cash -= cost2
+			car_paint[car_id] = sel
+			_apply_car()
+			_show_toast("Fresh paint!" if sel > 0 else "Factory colors restored.")
+	_save_progress()
+	_refresh_shop()
+
+func _journal_flip() -> void:
+	journal_page = 1-journal_page
+	_refresh_journal()
+
 # ---------- v0.12.0: player level (derived from progress, so old saves convert automatically) ----------
 const LEVEL_XP := [0,150,450,900,1500]
 var last_level := 0
@@ -1212,7 +1692,7 @@ func _xp() -> int:
 	for i in MISSIONS.size():
 		if claimed_mask & (1 << i):
 			missions += 1
-	return _find_count()*20+(_ridge_count()+_bay_count()+_north_count())*25+_trial_count()*40+missions*60+mini(deliveries,ROUTES.size())*10
+	return _find_count()*20+(_ridge_count()+_bay_count()+_north_count()+_marina_count())*25+_trial_count()*40+missions*60+mini(deliveries,ROUTES.size())*10
 
 func _level_for(xp: int) -> int:
 	var level := 1
@@ -1235,12 +1715,14 @@ func _level_text() -> String:
 
 func _check_level() -> void:
 	var lv := _level()
+	if lv != last_level and marina_gate_body != null:
+		_update_gate()
 	if last_level == 0 or lv < last_level:
 		last_level = lv
 		return
 	if lv > last_level:
 		last_level = lv
-		var extra := " Max level! Showroom, avatars and a new map are coming soon." if lv >= LEVEL_XP.size() else ""
+		var extra := " Max level! Marina Heights is open: cross the bridge south of the Ferry Steps." if lv >= LEVEL_XP.size() else ""
 		_show_toast("LEVEL UP! You are now Level %d.%s" % [lv,extra])
 
 # ---------- v0.11.0: online police vs thief ----------
@@ -1629,6 +2111,10 @@ func _update_gate() -> void:
 	north_gate_body.get_child(0).set_deferred("disabled",north_is_open)
 	north_gate_body.visible = not north_is_open
 	north_gate_sign.text = "NORTH HIGHWAY OPEN" if north_is_open else "NORTH GATE\nDiscover 3 Bay sites"
+	var marina_is_open := _marina_open()
+	marina_gate_body.get_child(0).set_deferred("disabled",marina_is_open)
+	marina_gate_body.visible = not marina_is_open
+	marina_gate_sign.text = "MARINA HEIGHTS OPEN" if marina_is_open else "MARINA HEIGHTS\nReach Level 5 to cross"
 	var open := _ridge_open()
 	gate_body.get_child(0).set_deferred("disabled",open)
 	gate_body.visible = not open
@@ -1767,11 +2253,35 @@ func _mission_progress(i: int) -> Vector2i:
 		6:
 			return Vector2i(_ridge_count(),RIDGE.size())
 		7:
-			return Vector2i(_owned_count(),CARS.size())
+			var base_owned := 0
+			for c in BASE_CARS:
+				if owned_mask & (1 << c):
+					base_owned += 1
+			return Vector2i(base_owned,BASE_CARS)
 		9:
 			return Vector2i(_bay_count(),BAY.size())
 		10:
-			return Vector2i(_trial_count(),TRIALS.size())
+			var base_done := 0
+			for t in BASE_TRIALS:
+				if trial_done & (1 << t):
+					base_done += 1
+			return Vector2i(base_done,BASE_TRIALS)
+		12:
+			return Vector2i(1 if (marina_mask & 1) != 0 else 0,1)
+		13:
+			var visited := 0
+			for k in 3:
+				if shop_visit_mask & (1 << k):
+					visited += 1
+			return Vector2i(visited,3)
+		14:
+			var premium_owned := 0
+			for c in _premium_cars():
+				if owned_mask & (1 << int(c)):
+					premium_owned = 1
+			return Vector2i(premium_owned,1)
+		15:
+			return Vector2i(_marina_count(),MARINA.size())
 		11:
 			return Vector2i(_north_count(),NORTH.size())
 		8:
@@ -1801,6 +2311,7 @@ func _open_garage() -> void:
 	_open_panel(garage)
 
 func _open_journal() -> void:
+	journal_page = 0
 	_refresh_journal()
 	_open_panel(journal)
 
@@ -1826,6 +2337,10 @@ func _refresh_garage() -> void:
 		garage_state.text = "Owned"
 		garage_button.text = "DRIVE THIS CAR"
 		garage_button.disabled = false
+	elif bool(spec.get("premium",false)):
+		garage_state.text = "Showroom exclusive: Harbor Motors, Marina Heights (Level 5)  $%d" % price
+		garage_button.text = "BUY AT THE SHOWROOM"
+		garage_button.disabled = true
 	else:
 		garage_state.text = "Price $%d%s" % [price,"" if cash >= price else "  (need $%d more)" % (price-cash)]
 		garage_button.text = "BUY  $%d" % price
@@ -1839,6 +2354,9 @@ func _garage_step(step: int) -> void:
 func _garage_action() -> void:
 	var spec: Dictionary = CARS[garage_view]
 	if not (owned_mask & (1 << garage_view)):
+		if bool(spec.get("premium",false)):
+			_show_toast("The %s is sold at the Harbor Motors showroom in Marina Heights." % spec["name"])
+			return
 		var price := int(spec["price"])
 		if cash < price:
 			_show_toast("Need $%d more for the %s." % [price-cash,spec["name"]])
@@ -1855,23 +2373,38 @@ func _garage_action() -> void:
 
 func _refresh_journal() -> void:
 	var lines: PackedStringArray = []
-	lines.append(_level_text()+"   (finds 20 XP, sites 25, trials 40, missions 60, jobs 10)")
-	lines.append("")
-	lines.append("RIDGE DISCOVERIES  %d/%d%s" % [_ridge_count(),RIDGE.size(),"" if _ridge_open() else "   (gate locked)"])
-	var names: PackedStringArray = []
-	for i in RIDGE.size():
-		if ridge_mask & (1 << i):
-			names.append(RIDGE[i]["name"])
-	lines.append(", ".join(names) if names.size() > 0 else "None yet. Own a Ridge Rover to open the Ridge Gate.")
-	lines.append("BAY DISCOVERIES  %d/%d%s" % [_bay_count(),BAY.size(),"" if _bay_open() else "   (gate locked: find all Ridge sites)"])
-	lines.append("NORTH DISCOVERIES  %d/%d%s" % [_north_count(),NORTH.size(),"" if _north_open() else "   (gate locked: find 3 Bay sites)"])
-	lines.append("")
-	lines.append("MISSIONS")
-	for i in MISSIONS.size():
-		var progress := _mission_progress(i)
-		var done := (claimed_mask & (1 << i)) != 0
-		lines.append("%s  %s: %s  (+$%d)" % ["[DONE]" if done else "[%d/%d]" % [progress.x,progress.y],MISSIONS[i]["name"],MISSIONS[i]["desc"],MISSIONS[i]["pay"]])
+	if journal_page == 0:
+		lines.append(_level_text()+"   (finds 20 XP, sites 25, trials 40, missions 60, jobs 10)")
+		lines.append("")
+		lines.append("RIDGE DISCOVERIES  %d/%d%s" % [_ridge_count(),RIDGE.size(),"" if _ridge_open() else "   (gate locked)"])
+		var names: PackedStringArray = []
+		for i in RIDGE.size():
+			if ridge_mask & (1 << i):
+				names.append(RIDGE[i]["name"])
+		lines.append(", ".join(names) if names.size() > 0 else "None yet. Own a Ridge Rover to open the Ridge Gate.")
+		lines.append("BAY DISCOVERIES  %d/%d%s" % [_bay_count(),BAY.size(),"" if _bay_open() else "   (gate locked: find all Ridge sites)"])
+		lines.append("NORTH DISCOVERIES  %d/%d%s" % [_north_count(),NORTH.size(),"" if _north_open() else "   (gate locked: find 3 Bay sites)"])
+		lines.append("MARINA DISCOVERIES  %d/%d%s" % [_marina_count(),MARINA.size(),"" if _marina_open() else "   (bridge locked: reach Level 5)"])
+		lines.append("")
+		lines.append("MARINA HEIGHTS (Level 5)")
+		lines.append("Shops visited %d/3.  Showroom cars: %s." % [_visited_shops(),"owned" if _mission_progress(14).x > 0 else "none yet"])
+		lines.append("Cross the bridge south of the Ferry Steps once you reach Level 5.")
+		journal_next.text = "Next page: missions >"
+	else:
+		lines.append("MISSIONS")
+		for i in MISSIONS.size():
+			var progress := _mission_progress(i)
+			var done := (claimed_mask & (1 << i)) != 0
+			lines.append("%s  %s: %s  (+$%d)" % ["[DONE]" if done else "[%d/%d]" % [progress.x,progress.y],MISSIONS[i]["name"],MISSIONS[i]["desc"],MISSIONS[i]["pay"]])
+		journal_next.text = "< Previous page"
 	journal_label.text = "\n".join(lines)
+
+func _visited_shops() -> int:
+	var visited := 0
+	for k in 3:
+		if shop_visit_mask & (1 << k):
+			visited += 1
+	return visited
 
 func _build_panels(root: Control) -> void:
 	garage = PanelContainer.new()
@@ -1918,6 +2451,8 @@ func _build_panels(root: Control) -> void:
 	journal_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	journal_label.custom_minimum_size.x = 620
 	j.add_child(journal_label)
+	journal_next = _button("Next page >",_journal_flip)
+	j.add_child(journal_next)
 	j.add_child(_button("Back",_close_sub))
 	journal.hide()
 	tune_panel = PanelContainer.new()
@@ -1984,6 +2519,40 @@ func _build_panels(root: Control) -> void:
 	c.add_child(chase_end_button)
 	c.add_child(_button("Back",_close_sub))
 	chase_panel.hide()
+	shop_panel = PanelContainer.new()
+	root.add_child(shop_panel)
+	shop_panel.custom_minimum_size = Vector2(640,0)
+	shop_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	var sp := VBoxContainer.new()
+	sp.add_theme_constant_override("separation",10)
+	shop_panel.add_child(sp)
+	shop_title = _label("",26,Color("f0bd62"))
+	sp.add_child(shop_title)
+	shop_info = _label("",17,Color("cbd8de"))
+	shop_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	shop_info.custom_minimum_size.x = 580
+	sp.add_child(shop_info)
+	for ri in 3:
+		var shop_row := HBoxContainer.new()
+		shop_row.add_theme_constant_override("separation",10)
+		var shop_prev := _button("<",_shop_step.bind(ri,-1))
+		shop_prev.custom_minimum_size = Vector2(80,46)
+		shop_row.add_child(shop_prev)
+		var shop_label := _label("",19,Color.WHITE)
+		shop_label.custom_minimum_size.x = 400
+		shop_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		shop_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		shop_row.add_child(shop_label)
+		var shop_next := _button(">",_shop_step.bind(ri,1))
+		shop_next.custom_minimum_size = Vector2(80,46)
+		shop_row.add_child(shop_next)
+		shop_rows.append(shop_row)
+		shop_row_labels.append(shop_label)
+		sp.add_child(shop_row)
+	shop_buy = _button("",_shop_action)
+	sp.add_child(shop_buy)
+	sp.add_child(_button("Leave shop",_shop_close))
+	shop_panel.hide()
 
 func _build_player() -> void:
 	player = CharacterBody3D.new()
@@ -1996,10 +2565,12 @@ func _build_player() -> void:
 	capsule.height = 1.4
 	collision.shape = capsule
 	player.add_child(collision)
-	_box(player, Vector3(0,0,0),Vector3(0.65,0.85,0.4),Color("f2b24a"))
+	shirt_mat = _box(player, Vector3(0,0,0),Vector3(0.65,0.85,0.4),Color("f2b24a")).material_override as StandardMaterial3D
 	_box(player, Vector3(0,0.68,0),Vector3(0.46,0.46,0.46),Color("ac7552"))
-	_box(player, Vector3(-0.18,-0.58,0),Vector3(0.22,0.55,0.26),Color("263d54"))
-	_box(player, Vector3(0.18,-0.58,0),Vector3(0.22,0.55,0.26),Color("263d54"))
+	pants_mats.append(_box(player, Vector3(-0.18,-0.58,0),Vector3(0.22,0.55,0.26),Color("263d54")).material_override)
+	pants_mats.append(_box(player, Vector3(0.18,-0.58,0),Vector3(0.22,0.55,0.26),Color("263d54")).material_override)
+	hat_holder = Node3D.new()
+	player.add_child(hat_holder)
 	camera = Camera3D.new()
 	camera.fov = 55
 	camera.far = 340
@@ -2064,7 +2635,7 @@ func _apply_car_model() -> void:
 		car_model.free()
 		car_model = null
 	car_model_id = car_id
-	var model := _try_model("res://models/car_%d.glb" % car_id)
+	var model := _try_model("res://models/car_%d.glb" % int(CARS[car_id].get("model",car_id)))
 	if model == null:
 		car_boxes.visible = true
 		return
@@ -2369,13 +2940,14 @@ func _physics_process(delta: float) -> void:
 	_check_ridge()
 	_check_bay()
 	_check_north()
+	_check_marina()
 	_check_trial()
 	_chase_tick(delta)
 	_orole_tick(delta)
 	_online_tick(delta)
 	_check_missions()
 	_check_level()
-	marker.visible = trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0))
+	marker.visible = trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0 or (_north_open() and _nearest_north() >= 0) or (_marina_open() and _nearest_marina() >= 0)))
 	for index in find_nodes.size():
 		find_nodes[index].visible = not bool(found_mask & (1 << index))
 		find_nodes[index].rotation.y += delta
@@ -2403,6 +2975,10 @@ func _interact() -> void:
 			return
 		trial_active = -1
 		_show_toast("Trial ended.")
+	var shop := _nearest_shop()
+	if shop >= 0:
+		_shop_open(shop)
+		return
 	var body: CharacterBody3D = car if driving else player
 	if not exploring and next_job_pending:
 		next_job_pending = false
@@ -2476,6 +3052,10 @@ func _refresh_hud() -> void:
 			objective.text = "Discover " + str(RIDGE[_nearest_ridge()]["name"])+"  ·  "+str(distance)+"m"
 		elif _nearest_bay() >= 0:
 			objective.text = "Discover " + str(BAY[_nearest_bay()]["name"])+"  ·  "+str(distance)+"m"
+		elif _north_open() and _nearest_north() >= 0:
+			objective.text = "Discover " + str(NORTH[_nearest_north()]["name"])+"  ·  "+str(distance)+"m"
+		elif _marina_open() and _nearest_marina() >= 0:
+			objective.text = "Discover " + str(MARINA[_nearest_marina()]["name"])+"  ·  "+str(distance)+"m"
 		else:
 			objective.text = "Harbor City fully explored!"
 	elif next_job_pending:
@@ -2487,7 +3067,7 @@ func _refresh_hud() -> void:
 		mission_label.text = "HARBOR CITY  /  TIME TRIAL"
 		objective.text = "%s  ring %d/%d  ·  %.1fs / par %ds" % [running["name"],trial_cp+1,running["cps"].size(),clock-trial_start,int(running["par"])]
 	mission_label.text += "  ·  LV %d" % _level()
-	balance_label.text = "$%d  ·  %d/8 finds  ·  %d/20 sites  ·  %d jobs" % [cash,count,_ridge_count()+_bay_count()+_north_count(),deliveries]
+	balance_label.text = "$%d  ·  %d/8 finds  ·  %d/%d sites  ·  %d jobs" % [cash,count,_ridge_count()+_bay_count()+_north_count()+_marina_count(),RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size(),deliveries]
 	var offset: Vector3 = destination-body.position
 	var screen_right := camera.global_basis.x
 	var screen_forward := -camera.global_basis.z
@@ -2496,7 +3076,7 @@ func _refresh_hud() -> void:
 	var arrows := ["↑","↗","→","↘","↓","↙","←","↖"]
 	var arrow_index := posmod(int(round(compass_angle/(PI/4.0))),8)
 	compass.text = "%s  %s" % [arrows[arrow_index],"Destination is here" if distance < 5 else "Follow the golden ring"]
-	if exploring and index < 0 and _ridge_open() and _nearest_ridge() < 0 and _nearest_bay() < 0:
+	if exploring and index < 0 and _ridge_open() and _nearest_ridge() < 0 and _nearest_bay() < 0 and not (_north_open() and _nearest_north() >= 0) and not (_marina_open() and _nearest_marina() >= 0):
 		compass.text = "Everything found! Free roam, or pick Jobs in Menu."
 	elif exploring and index < 0 and not _ridge_open():
 		compass.text = "%s  Buy a Ridge Rover in Menu > Garage" % arrows[arrow_index]
@@ -2504,6 +3084,8 @@ func _refresh_hud() -> void:
 	action_button.disabled = false
 	if not exploring and next_job_pending:
 		action_button.text = "NEXT JOB"
+	elif _nearest_shop() >= 0:
+		action_button.text = "OPEN " + String(SHOPS[_nearest_shop()]["verb"])
 	elif exploring and index >= 0 and distance < 5 and not driving:
 		action_button.text = "COLLECT TOKEN"
 	elif not exploring and distance < 5:
@@ -2525,22 +3107,28 @@ func _open_panel(panel: Control) -> void:
 	tune_panel.hide()
 	trial_panel.hide()
 	chase_panel.hide()
+	shop_panel.hide()
 	panel.show()
 	panel.reset_size()
 	_layout_panels()
 
 func _layout_panels() -> void:
 	var view := get_viewport().get_visible_rect().size
-	for panel: Control in [menu,garage,journal,tune_panel,trial_panel,chase_panel]:
+	for panel: Control in [menu,garage,journal,tune_panel,trial_panel,chase_panel,shop_panel]:
 		panel.position = Vector2((view.x-panel.size.x)/2.0,maxf(8.0,(view.y-panel.size.y)/2.0))
 
 func _toggle_menu() -> void:
+	if shop_kind >= 0:
+		shop_kind = -1
+		_apply_car()
+		_apply_avatar()
 	paused = not paused
 	garage.hide()
 	journal.hide()
 	tune_panel.hide()
 	trial_panel.hide()
 	chase_panel.hide()
+	shop_panel.hide()
 	if paused:
 		_open_panel(menu)
 	else:
@@ -2596,6 +3184,11 @@ func _save_progress() -> void:
 	file.set_value("progress","radio",radio_station)
 	file.set_value("progress","online_name",online_name)
 	file.set_value("progress","chase_wins",chase_wins)
+	file.set_value("progress","marina_mask",marina_mask)
+	file.set_value("progress","shop_visit",shop_visit_mask)
+	file.set_value("progress","car_paint",car_paint)
+	file.set_value("progress","av_look",[av_shirt,av_pants,av_hat])
+	file.set_value("progress","av_own",av_own)
 	file.save(SAVE_PATH)
 
 func _load_progress() -> void:
@@ -2620,8 +3213,32 @@ func _load_progress() -> void:
 		radio_station = clampi(int(file.get_value("progress","radio",0)),0,RADIO.size()-1)
 		online_name = String(file.get_value("progress","online_name",""))
 		chase_wins = maxi(0,int(file.get_value("progress","chase_wins",0)))
+		marina_mask = int(file.get_value("progress","marina_mask",0)) & ((1 << MARINA.size())-1)
+		shop_visit_mask = int(file.get_value("progress","shop_visit",0)) & 7
+		var saved_paint = file.get_value("progress","car_paint",[])
+		car_paint.fill(0)
+		if saved_paint is Array:
+			for i in mini(saved_paint.size(),car_paint.size()):
+				car_paint[i] = clampi(int(saved_paint[i]),0,PAINTS.size()-1)
+		var saved_look = file.get_value("progress","av_look",[0,0,0])
+		var saved_own = file.get_value("progress","av_own",[1,1,1])
+		var own_limits := [SHIRTS.size(),PANTS.size(),HATS.size()]
+		av_own = [1,1,1]
+		if saved_own is Array and saved_own.size() >= 3:
+			for r in 3:
+				av_own[r] = (int(saved_own[r]) & ((1 << int(own_limits[r]))-1)) | 1
+		if saved_look is Array and saved_look.size() >= 3:
+			av_shirt = clampi(int(saved_look[0]),0,SHIRTS.size()-1)
+			av_pants = clampi(int(saved_look[1]),0,PANTS.size()-1)
+			av_hat = clampi(int(saved_look[2]),0,HATS.size()-1)
+			if not (int(av_own[0]) & (1 << av_shirt)):
+				av_shirt = 0
+			if not (int(av_own[1]) & (1 << av_pants)):
+				av_pants = 0
+			if not (int(av_own[2]) & (1 << av_hat)):
+				av_hat = 0
 		var saved_times = file.get_value("progress","best_times",[])
-		best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+		best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 		if saved_times is Array:
 			for i in mini(saved_times.size(),best_times.size()):
 				best_times[i] = maxf(0.0,float(saved_times[i]))
@@ -2993,6 +3610,7 @@ func _smoke_test() -> void:
 	await _smoke_chase()
 	await _smoke_orole()
 	_smoke_levels()
+	_smoke_marina()
 	_smoke_models()
 	cash = original_cash
 	deliveries = original_deliveries
@@ -3019,7 +3637,7 @@ func _smoke_test() -> void:
 		restored.close()
 	elif FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
-	print("HARBOR_SMOKE_OK: two-finger input, driving, chase mode, online roles, player levels, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -3087,7 +3705,7 @@ func _smoke_orole() -> void:
 	_rescue()
 
 func _smoke_levels() -> void:
-	var saved := [found_mask,ridge_mask,bay_mask,north_mask,trial_done,claimed_mask,deliveries]
+	var saved := [found_mask,ridge_mask,bay_mask,north_mask,trial_done,claimed_mask,deliveries,marina_mask]
 	found_mask = 0
 	ridge_mask = 0
 	bay_mask = 0
@@ -3095,6 +3713,7 @@ func _smoke_levels() -> void:
 	trial_done = 0
 	claimed_mask = 0
 	deliveries = 0
+	marina_mask = 0
 	assert(_xp() == 0 and _level() == 1,"Fresh player is level 1")
 	assert(_level_for(149) == 1 and _level_for(150) == 2 and _level_for(449) == 2 and _level_for(450) == 3 and _level_for(1499) == 4 and _level_for(1500) == 5 and _level_for(99999) == 5,"Level thresholds")
 	found_mask = 255
@@ -3102,10 +3721,11 @@ func _smoke_levels() -> void:
 	ridge_mask = (1 << RIDGE.size())-1
 	bay_mask = (1 << BAY.size())-1
 	north_mask = (1 << NORTH.size())-1
+	marina_mask = (1 << MARINA.size())-1
 	trial_done = (1 << TRIALS.size())-1
 	claimed_mask = (1 << MISSIONS.size())-1
 	deliveries = 50
-	var total := 160+(RIDGE.size()+BAY.size()+NORTH.size())*25+TRIALS.size()*40+MISSIONS.size()*60+ROUTES.size()*10
+	var total := 160+(RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size())*25+TRIALS.size()*40+MISSIONS.size()*60+ROUTES.size()*10
 	assert(_xp() == total and _level() == 5,"Completing everything reaches level 5")
 	assert(_level_text().contains("MAX"),"Max level text")
 	assert(_online_pos_frame()["payload"]["payload"]["l"] == 5,"Position frame carries the level")
@@ -3116,6 +3736,108 @@ func _smoke_levels() -> void:
 	trial_done = saved[4]
 	claimed_mask = saved[5]
 	deliveries = saved[6]
+
+func _smoke_marina() -> void:
+	var saved := [found_mask,ridge_mask,bay_mask,north_mask,trial_done,claimed_mask,deliveries,marina_mask,shop_visit_mask,owned_mask,car_id,cash,av_shirt,av_pants,av_hat,av_own.duplicate(),car_paint.duplicate(),driving]
+	found_mask = 0
+	ridge_mask = 0
+	bay_mask = 0
+	north_mask = 0
+	trial_done = 0
+	claimed_mask = 0
+	deliveries = 0
+	marina_mask = 0
+	shop_visit_mask = 0
+	_check_level()
+	_update_gate()
+	assert(not _marina_open() and not _area_open(4),"Marina is locked below level 5")
+	assert(marina_gate_body.visible,"Marina gate is closed below level 5")
+	found_mask = 255
+	ridge_mask = (1 << RIDGE.size())-1
+	bay_mask = (1 << BAY.size())-1
+	north_mask = (1 << NORTH.size())-1
+	trial_done = (1 << BASE_TRIALS)-1
+	claimed_mask = (1 << 12)-1
+	deliveries = 6
+	_update_gate()
+	assert(_level() == 5 and _marina_open() and _area_open(4),"The original content alone reaches level 5 and opens Marina Heights")
+	assert(not marina_gate_body.visible,"Marina gate opens at level 5")
+	driving = true
+	car.position = (MARINA[0]["pos"] as Vector3)+Vector3(0,0.8,0)
+	var before := cash
+	_check_marina()
+	assert((marina_mask & 1) != 0 and cash == before+int(MARINA[0]["pay"]),"Marina site pays once")
+	_check_marina()
+	assert(cash == before+int(MARINA[0]["pay"]),"Marina site does not pay twice")
+	car.position = (SHOPS[0]["pos"] as Vector3)+Vector3(0,0.8,0)
+	assert(_nearest_shop() == 0,"Showroom door is detected when driving")
+	_shop_open(0)
+	assert(paused and shop_kind == 0,"Showroom opens and pauses")
+	cash = 8000
+	shop_sel[0] = 0
+	_shop_action()
+	var first_premium: int = _premium_cars()[0]
+	assert((owned_mask & (1 << first_premium)) != 0 and car_id == first_premium and cash == 500,"Showroom purchase")
+	assert(car_max > 30.0,"Showroom car is fast")
+	_shop_close()
+	assert(not paused,"Leaving the shop resumes")
+	car.position = (SHOPS[2]["pos"] as Vector3)+Vector3(0,0.8,0)
+	assert(_nearest_shop() == 2,"Paint shop door is detected")
+	_shop_open(2)
+	cash = 1000
+	shop_sel[0] = 3
+	_shop_action()
+	assert(int(car_paint[car_id]) == 3 and cash == 1000-PAINT_PRICE and car_body_mat.albedo_color == (PAINTS[3]["color"] as Color),"Paint purchase")
+	_shop_close()
+	assert(car_body_mat.albedo_color == (PAINTS[3]["color"] as Color),"Paint persists after the shop")
+	driving = false
+	player.position = (SHOPS[1]["pos"] as Vector3)+Vector3(0,0.7,0)
+	assert(_nearest_shop() == 1,"Style shop door is detected on foot")
+	_shop_open(1)
+	cash = 1000
+	shop_sel = [1,1,2]
+	_shop_action()
+	assert(av_shirt == 1 and av_pants == 1 and av_hat == 2 and cash == 1000-120-100-300,"Style purchase")
+	assert(hat_holder.get_child_count() > 0,"Hat is worn")
+	_shop_close()
+	driving = true
+	car.position = (SHOPS[1]["pos"] as Vector3)+Vector3(0,0.8,0)
+	assert(_nearest_shop() == -1,"Style shop needs the player on foot")
+	_save_progress()
+	av_shirt = 0
+	av_hat = 0
+	car_paint.fill(0)
+	marina_mask = 0
+	_load_progress()
+	assert(av_shirt == 1 and av_hat == 2 and int(car_paint[first_premium]) == 3 and (marina_mask & 1) != 0 and shop_visit_mask == 7,"Marina progress persists")
+	journal_page = 1
+	_refresh_journal()
+	assert(journal_label.text.contains("Marina Arrival"),"Journal missions page lists Marina quests")
+	journal_page = 0
+	_refresh_journal()
+	assert(journal_label.text.contains("MARINA"),"Journal discoveries page lists Marina")
+	found_mask = saved[0]
+	ridge_mask = saved[1]
+	bay_mask = saved[2]
+	north_mask = saved[3]
+	trial_done = saved[4]
+	claimed_mask = saved[5]
+	deliveries = saved[6]
+	marina_mask = saved[7]
+	shop_visit_mask = saved[8]
+	owned_mask = saved[9]
+	car_id = saved[10]
+	cash = saved[11]
+	av_shirt = saved[12]
+	av_pants = saved[13]
+	av_hat = saved[14]
+	av_own = saved[15]
+	car_paint = saved[16]
+	driving = saved[17]
+	_apply_car()
+	_apply_avatar()
+	_update_gate()
+	_check_level()
 
 func _blocked_at(pos: Vector3, radius := 0.5) -> bool:
 	var query := PhysicsShapeQueryParameters3D.new()
@@ -3429,7 +4151,7 @@ func _smoke_garage_ridge() -> void:
 	assert(not _start_trial(2),"Locked trial started")
 	ridge_mask = 63
 	trial_done = 0
-	best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+	best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 	assert(_start_trial(0) and trial_active == 0 and driving,"City trial did not start")
 	var cash_trial := cash
 	for cp in TRIALS[0]["cps"]:
@@ -3540,6 +4262,9 @@ func _smoke_garage_ridge() -> void:
 	trial_done = (1 << TRIALS.size())-1
 	for u in UPGRADES.size():
 		tunes[u] = MAX_TUNE
+	marina_mask = (1 << MARINA.size())-1
+	shop_visit_mask = 7
+	owned_mask = 31 | (1 << 5)
 	_check_missions()
 	var total := 0
 	for m in MISSIONS:
@@ -3547,8 +4272,15 @@ func _smoke_garage_ridge() -> void:
 	assert(claimed_mask == (1 << MISSIONS.size())-1 and cash == total,"Mission rewards wrong")
 	_check_missions()
 	assert(cash == total,"Mission paid twice")
+	marina_mask = 0
+	shop_visit_mask = 0
+	owned_mask = 31
+	journal_page = 1
+	journal_page = 1
 	_refresh_journal()
 	assert("[DONE]" in journal_label.text,"Journal did not show progress")
+	journal_page = 0
+	journal_page = 0
 	# Online: offline-safe message handling (no network used).
 	online_id = "me"
 	online_name = "Tester"
@@ -3594,7 +4326,7 @@ func _shots() -> void:
 	claimed_mask = 1023
 	best_kmh = 95.0
 	trial_done = 3
-	best_times = [31.4,12.9,0.0,0.0,0.0,0.0,0.0]
+	best_times = [31.4,12.9,0.0,0.0,0.0,0.0,0.0,0.0]
 	for u in UPGRADES.size():
 		tunes[3*UPGRADES.size()+u] = 2+u
 	_apply_car()
@@ -3667,6 +4399,40 @@ func _shots() -> void:
 	for i in 25:
 		await get_tree().physics_frame
 	await _save_shot("chase-thief")
+	chase_mode = 0
+	_chase_clear()
+	chase_label.hide()
+	await _shot_car(Vector3(-8,0.8,136),0.0)
+	await _save_shot("marina-showroom")
+	_shop_open(0)
+	shop_sel[0] = 1
+	_refresh_shop()
+	await get_tree().process_frame
+	await _save_shot("marina-showroom-menu")
+	_shop_close()
+	await _shot_car(Vector3(0,0.8,96),0.0)
+	await _save_shot("marina-bridge")
+	await _shot_car(Vector3(-4,0.8,176),0.0)
+	await _save_shot("marina-plaza")
+	_shop_open(2)
+	shop_sel[0] = 7
+	_refresh_shop()
+	await get_tree().process_frame
+	await _save_shot("marina-paint")
+	_shop_close()
+	driving = false
+	player.show()
+	player.get_child(0).set_deferred("disabled",false)
+	player.position = Vector3(18,0.8,134)
+	car.position = Vector3(8,0.8,128)
+	for i in 40:
+		await get_tree().physics_frame
+	_shop_open(1)
+	shop_sel = [2,3,4]
+	_refresh_shop()
+	await get_tree().process_frame
+	await _save_shot("marina-style")
+	_shop_close()
 	get_tree().quit()
 
 func _shot_car(pos: Vector3, yaw: float) -> void:

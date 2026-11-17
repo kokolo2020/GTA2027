@@ -221,3 +221,7 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.19.0 (source 42b6
 - Shop/inventory: boosts, spikes (max 5), records rw_best (lap, gp, jump, drag) saved. Online: events rcs (start, JOIN in feed), rcf (finish times), spk (spikes); pos frame has rc (peers render the race car).
 - Map widened to MAP_CENTER (82,-99.5), MAP_SIZE 1090 (re-baked). Dev mode --race-shots.
 - APK 30614851 bytes, SHA256 44b47830...1f2c, code 22. NOT tested on the Fold5 or with two phones racing.
+
+## v0.20.0 publication completed by Claude
+
+Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.20.0 (source 295a274). Browser /play rebuilt (0c2c04c). Pages deployed; live page shows 0.20.0. Publisher verified the downloaded APK hash.

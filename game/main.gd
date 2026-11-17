@@ -182,6 +182,21 @@ var radio_t0 := 0
 var radio_line := 0
 var radio_line_time := 0.0
 var radio_button: Button
+const ONLINE_TOPIC := "realtime:harbor-city-lobby"
+const ONLINE_MAX_PEERS := 12
+const ONLINE_TIMEOUT := 6.0
+var online_on := false
+var online_state := 0
+var online_ws: WebSocketPeer
+var online_config := {}
+var online_id := ""
+var online_name := ""
+var online_ref := 1
+var online_hb := 0.0
+var online_send_t := 0.0
+var online_retry := 0.0
+var online_peers := {}
+var online_button: Button
 var radio_caption: Label
 var peds: Array = []
 var touch_buttons: Array[Button] = []
@@ -212,7 +227,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.8: huge new North map, Blender buildings and trees.")
+	_show_toast("Harbor City 0.9: online mode (Menu row: Online) shows other drivers.")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -911,6 +926,247 @@ func _build_landscape() -> void:
 	_scatter("res://models/tree_pine.glb",pines,0.9,1.3)
 	_scatter("res://models/rock.glb",[Vector3(75,0,-8),Vector3(96,0,6),Vector3(108,0,-9),Vector3(-100,0,-8),Vector3(-134,0,10),Vector3(-152,0,-10)],0.8,1.4)
 
+# ---- Online (v0.9.0): Supabase Realtime broadcast, other players shown as ghost cars. ----
+func _online_load_config() -> bool:
+	if not online_config.is_empty():
+		return true
+	if not FileAccess.file_exists("res://multiplayer.local.json"):
+		return false
+	var file := FileAccess.open("res://multiplayer.local.json",FileAccess.READ)
+	if file == null:
+		return false
+	var data = JSON.parse_string(file.get_as_text())
+	if data is Dictionary and data.has("url") and data.has("anon"):
+		online_config = data
+		return true
+	return false
+
+func _online_toggle() -> void:
+	if online_on:
+		_online_stop()
+		_show_toast("Online play off. Back to single player.")
+	else:
+		if not _online_load_config():
+			_show_toast("Online play is not set up in this build.")
+			return
+		online_on = true
+		if online_id == "":
+			online_id = "%x%x" % [randi(),randi()]
+		if online_name == "":
+			online_name = "Driver%d" % (100+randi() % 900)
+		online_retry = 0.0
+		_online_connect()
+		_show_toast("Connecting as %s ..." % online_name)
+	_online_refresh_button()
+
+func _online_connect() -> void:
+	online_ws = WebSocketPeer.new()
+	var host := String(online_config["url"]).replace("https://","").replace("/","")
+	var url := "wss://%s/realtime/v1/websocket?apikey=%s&vsn=1.0.0" % [host,String(online_config["anon"])]
+	online_state = 1 if online_ws.connect_to_url(url) == OK else 0
+	online_hb = 0.0
+
+func _online_stop() -> void:
+	if online_ws != null and online_ws.get_ready_state() == WebSocketPeer.STATE_OPEN and online_state >= 2:
+		_online_send({"topic":ONLINE_TOPIC,"event":"phx_leave","payload":{},"ref":str(_online_next_ref()),"join_ref":"1"})
+		online_ws.poll()
+	if online_ws != null:
+		online_ws.close()
+	online_ws = null
+	online_on = false
+	online_state = 0
+	_online_clear_peers()
+
+func _online_next_ref() -> int:
+	online_ref += 1
+	return online_ref
+
+func _online_send(msg: Dictionary) -> void:
+	if online_ws != null and online_ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		online_ws.send_text(JSON.stringify(msg))
+
+func _online_join_frame() -> Dictionary:
+	return {"topic":ONLINE_TOPIC,"event":"phx_join","payload":{"config":{"broadcast":{"ack":false,"self":false},"presence":{"enabled":false},"private":false}},"ref":"1","join_ref":"1"}
+
+func _online_pos_frame() -> Dictionary:
+	var body: CharacterBody3D = car if driving else player
+	var payload := {
+		"i":online_id,"n":online_name,
+		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
+		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0}
+	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
+
+func _online_tick(delta: float) -> void:
+	_online_update_peers(delta)
+	if not online_on:
+		return
+	if online_ws == null:
+		online_retry -= delta
+		if online_retry <= 0.0:
+			_online_connect()
+		return
+	online_ws.poll()
+	var ready := online_ws.get_ready_state()
+	if ready == WebSocketPeer.STATE_OPEN:
+		if online_state == 1:
+			_online_send(_online_join_frame())
+			online_state = 2
+			_online_refresh_button()
+		while online_ws.get_available_packet_count() > 0:
+			_online_handle(online_ws.get_packet().get_string_from_utf8())
+		online_hb += delta
+		if online_hb >= 20.0:
+			online_hb = 0.0
+			_online_send({"topic":"phoenix","event":"heartbeat","payload":{},"ref":str(_online_next_ref())})
+		if online_state == 3:
+			online_send_t += delta
+			if online_send_t >= 0.2:
+				online_send_t = 0.0
+				_online_send(_online_pos_frame())
+	elif ready == WebSocketPeer.STATE_CLOSED:
+		online_ws = null
+		online_state = 0
+		online_retry = 3.0
+		_online_clear_peers()
+		_online_refresh_button()
+
+func _online_handle(text: String) -> void:
+	var msg = JSON.parse_string(text)
+	if not msg is Dictionary:
+		return
+	var event := String(msg.get("event",""))
+	if event == "broadcast":
+		var outer = msg.get("payload",{})
+		if outer is Dictionary and String(outer.get("event","")) == "pos":
+			var inner = outer.get("payload",{})
+			if inner is Dictionary:
+				_online_peer_update(inner)
+	elif event == "phx_reply" and String(msg.get("topic","")) == ONLINE_TOPIC:
+		var reply = msg.get("payload",{})
+		if reply is Dictionary and String(reply.get("status","")) == "ok":
+			if online_state == 2:
+				online_state = 3
+				_show_toast("Online! You are %s." % online_name)
+				_online_refresh_button()
+		elif reply is Dictionary and String(reply.get("status","")) == "error":
+			_show_toast("Online join failed.")
+	elif event == "phx_error" or event == "phx_close":
+		if online_state == 3:
+			online_state = 1
+
+func _online_clean_name(raw: String) -> String:
+	var out := ""
+	for ch in raw.substr(0,14):
+		if ch.unicode_at(0) >= 32 and ch.unicode_at(0) < 127:
+			out += ch
+	return out if out != "" else "Driver"
+
+func _online_peer_update(p: Dictionary) -> void:
+	var id := String(p.get("i",""))
+	if id == "" or id == online_id or id.length() > 24:
+		return
+	var pos := Vector3(float(p.get("x",0.0)),float(p.get("y",0.0)),float(p.get("z",0.0)))
+	if absf(pos.x) > 600.0 or absf(pos.z) > 600.0 or absf(pos.y) > 60.0:
+		return
+	if not online_peers.has(id):
+		if online_peers.size() >= ONLINE_MAX_PEERS:
+			return
+		online_peers[id] = _online_make_peer(id,_online_clean_name(String(p.get("n","Driver"))),clampi(int(p.get("c",0)),0,CARS.size()-1))
+		(online_peers[id]["node"] as Node3D).position = pos
+	var peer: Dictionary = online_peers[id]
+	peer["target"] = pos
+	peer["yaw"] = float(p.get("r",0.0))
+	peer["seen"] = Time.get_ticks_msec()/1000.0
+	peer["driving"] = int(p.get("d",1)) == 1
+	var nm := _online_clean_name(String(p.get("n","Driver")))
+	if nm != peer["name"]:
+		peer["name"] = nm
+		(peer["label"] as Label3D).text = nm
+
+func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
+	var node := Node3D.new()
+	add_child(node)
+	var hue := float(id.hash() % 360)/360.0
+	var body_color := Color.from_hsv(hue,0.65,0.9)
+	var car_node := Node3D.new()
+	node.add_child(car_node)
+	var model := _try_model("res://models/car_%d.glb" % car_index)
+	if model != null:
+		car_node.add_child(model)
+		_online_tint(model,body_color)
+	else:
+		_box(car_node,Vector3(0,0.5,0),Vector3(1.8,0.8,3.6),body_color)
+	var foot_node := Node3D.new()
+	node.add_child(foot_node)
+	_box(foot_node,Vector3(0,0.75,0),Vector3(0.5,1.2,0.35),body_color)
+	_box(foot_node,Vector3(0,1.5,0),Vector3(0.4,0.4,0.4),Color("e8c9a0"))
+	foot_node.hide()
+	var label := Label3D.new()
+	label.text = nm
+	label.font_size = 40
+	label.modulate = Color("ffffff")
+	label.position = Vector3(0,3.2,0)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.outline_size = 10
+	label.pixel_size = 0.012
+	label.no_depth_test = true
+	node.add_child(label)
+	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true}
+
+func _online_tint(node: Node, color: Color) -> void:
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		if mi.mesh != null:
+			for surface in mi.mesh.get_surface_count():
+				var m := mi.mesh.surface_get_material(surface)
+				var mat_name := m.resource_name if m != null else ""
+				if mat_name.begins_with("Body"):
+					mi.set_surface_override_material(surface,_material(color))
+				elif mat_name.begins_with("Cabin"):
+					mi.set_surface_override_material(surface,_material(color.darkened(0.5)))
+	for child in node.get_children():
+		_online_tint(child,color)
+
+func _online_update_peers(delta: float) -> void:
+	if online_peers.is_empty():
+		return
+	var now := Time.get_ticks_msec()/1000.0
+	var gone: Array = []
+	for id in online_peers:
+		var peer: Dictionary = online_peers[id]
+		if now-float(peer["seen"]) > ONLINE_TIMEOUT:
+			gone.append(id)
+			continue
+		var node: Node3D = peer["node"]
+		var target: Vector3 = peer["target"]
+		if node.position.distance_to(target) > 25.0:
+			node.position = target
+		else:
+			node.position = node.position.lerp(target,minf(1.0,delta*8.0))
+		node.rotation.y = lerp_angle(node.rotation.y,float(peer["yaw"]),minf(1.0,delta*8.0))
+		(peer["car"] as Node3D).visible = peer["driving"]
+		(peer["foot"] as Node3D).visible = not peer["driving"]
+	for id in gone:
+		(online_peers[id]["node"] as Node3D).queue_free()
+		online_peers.erase(id)
+	if not gone.is_empty():
+		_online_refresh_button()
+
+func _online_clear_peers() -> void:
+	for id in online_peers:
+		(online_peers[id]["node"] as Node3D).queue_free()
+	online_peers.clear()
+
+func _online_refresh_button() -> void:
+	if online_button == null:
+		return
+	if not online_on:
+		online_button.text = "Online: OFF"
+	elif online_state < 3:
+		online_button.text = "Online: ..."
+	else:
+		online_button.text = "Online: %d" % (online_peers.size()+1)
+
 func _start_trial(i: int) -> bool:
 	var trial: Dictionary = TRIALS[i]
 	if not _area_open(int(trial["area"])):
@@ -1518,6 +1774,12 @@ func _build_hud() -> void:
 	radio_caption.position = Vector2(root.size.x-394,150)
 	radio_caption.size = Vector2(366,10)
 	radio_caption.hide()
+	online_button = _button("Online: OFF",_online_toggle)
+	online_button.custom_minimum_size = Vector2(170,48)
+	online_button.add_theme_font_size_override("font_size",20)
+	root.add_child(online_button)
+	online_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	online_button.position = Vector2(root.size.x-376,92)
 	joystick = Control.new()
 	joystick.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(joystick)
@@ -1586,6 +1848,7 @@ func _build_hud() -> void:
 		var view := get_viewport().get_visible_rect().size
 		pause_button.position = Vector2(view.x-194,24)
 		radio_button.position = Vector2(view.x-194,92)
+		online_button.position = Vector2(view.x-376,92)
 		radio_caption.position = Vector2(view.x-394,150)
 		joystick.position = Vector2(32,view.y-210)
 		action_button.position = Vector2(view.x-248,view.y-124)
@@ -1699,6 +1962,7 @@ func _physics_process(delta: float) -> void:
 	_check_bay()
 	_check_north()
 	_check_trial()
+	_online_tick(delta)
 	_check_missions()
 	marker.visible = trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0))
 	for index in find_nodes.size():
@@ -1911,6 +2175,7 @@ func _save_progress() -> void:
 	file.set_value("progress","trial_done",trial_done)
 	file.set_value("progress","best_times",best_times)
 	file.set_value("progress","radio",radio_station)
+	file.set_value("progress","online_name",online_name)
 	file.save(SAVE_PATH)
 
 func _load_progress() -> void:
@@ -1933,6 +2198,7 @@ func _load_progress() -> void:
 		north_mask = int(file.get_value("progress","north_mask",0)) & ((1 << NORTH.size())-1)
 		trial_done = int(file.get_value("progress","trial_done",0)) & ((1 << TRIALS.size())-1)
 		radio_station = clampi(int(file.get_value("progress","radio",0)),0,RADIO.size()-1)
+		online_name = String(file.get_value("progress","online_name",""))
 		var saved_times = file.get_value("progress","best_times",[])
 		best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 		if saved_times is Array:
@@ -2766,6 +3032,27 @@ func _smoke_garage_ridge() -> void:
 	assert(cash == total,"Mission paid twice")
 	_refresh_journal()
 	assert("[DONE]" in journal_label.text,"Journal did not show progress")
+	# Online: offline-safe message handling (no network used).
+	online_id = "me"
+	online_name = "Tester"
+	var frame := _online_pos_frame()
+	assert(frame["event"] == "broadcast" and frame["payload"]["event"] == "pos" and frame["payload"]["payload"]["i"] == "me","Online frame wrong")
+	assert(JSON.parse_string(JSON.stringify(frame)) is Dictionary,"Online frame not JSON")
+	assert(_online_join_frame()["event"] == "phx_join","Join frame wrong")
+	var incoming := {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":{"i":"p1","n":"Rival\n\u00e9","x":12.5,"y":0.0,"z":-80.0,"r":1.0,"c":2,"d":1}}}
+	_online_handle(JSON.stringify(incoming))
+	assert(online_peers.size() == 1 and online_peers.has("p1"),"Online peer not created")
+	assert(online_peers["p1"]["name"] == "Rival","Online name not cleaned: "+str(online_peers["p1"]["name"]))
+	_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":{"i":"me","x":1,"y":0,"z":1}}}))
+	_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":{"i":"far","x":99999,"y":0,"z":1}}}))
+	_online_handle("not json")
+	assert(online_peers.size() == 1,"Online accepted own or invalid peer")
+	_online_update_peers(0.5)
+	assert((online_peers["p1"]["node"] as Node3D).position.distance_to(Vector3(12.5,0,-80)) < 0.1,"Online peer did not move")
+	online_peers["p1"]["seen"] = Time.get_ticks_msec()/1000.0-100.0
+	_online_update_peers(0.1)
+	assert(online_peers.is_empty(),"Stale online peer not removed")
+	assert(not online_on and online_ws == null,"Online must start off")
 	_rescue()
 
 func _save_shot(name: String) -> void:

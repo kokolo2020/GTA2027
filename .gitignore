@@ -16,3 +16,5 @@ blender-src/blender-log.txt
 *.tar.gz
 *.zip
 .openai/
+game/multiplayer.local.json
+multiplayer.local.json

@@ -1158,6 +1158,10 @@ func _online_handle(text: String) -> void:
 			var inner = outer.get("payload",{})
 			if inner is Dictionary:
 				_hub_game_msg(inner)
+		elif outer is Dictionary and (String(outer.get("event","")) == "lfp" or String(outer.get("event","")) == "lfa"):
+			var inner = outer.get("payload",{})
+			if inner is Dictionary:
+				_lfp_msg(String(outer.get("event","")),inner)
 	elif event == "phx_reply" and String(msg.get("topic","")) == ONLINE_TOPIC:
 		var reply = msg.get("payload",{})
 		if reply is Dictionary and String(reply.get("status","")) == "ok":
@@ -1203,6 +1207,8 @@ func _online_peer_update(p: Dictionary) -> void:
 	var q := int(p.get("q",-1))
 	if qn != int(peer.get("qn",0)) and q >= 0 and q < HUB_PHRASES.size():
 		_bubble(peer["node"],HUB_PHRASES[q],3.0 if peer["driving"] else 2.6)
+		if int(peer.get("qn",0)) != 0 or qn == 1:
+			_feed_add("%s: %s" % [peer["name"],HUB_PHRASES[q]],"")
 	peer["qn"] = qn
 	var en := int(p.get("en",0))
 	var e := int(p.get("e",-1))
@@ -2967,6 +2973,7 @@ func _build_car() -> void:
 	box.size = Vector3(1.7,1.3,3.3)
 	collision.shape = box
 	car.add_child(collision)
+	car.collision_mask |= HUB_CAR_LAYER
 	car_boxes = Node3D.new()
 	car.add_child(car_boxes)
 	car_body_mat = _box(car_boxes,Vector3(0,0,0),Vector3(1.8,0.65,3.4),Color("438fd0")).material_override
@@ -3208,6 +3215,7 @@ func _build_hud() -> void:
 	_build_guidance(root)
 	_build_game_panel(root)
 	_build_chat(root)
+	_build_feed(root)
 	status_label = _label("",20,Color("fff1c9"))
 	root.add_child(status_label)
 	status_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
@@ -3464,6 +3472,8 @@ func _physics_process(delta: float) -> void:
 	_minimap_tick()
 	_guidance_tick(delta)
 	_hub_people_tick(delta)
+	_hub_keep_cars_out()
+	_feed_tick()
 	if not hub_welcomed and not driving and player.position.distance_to(HUB_C) < HUB_R-4.0:
 		hub_welcomed = true
 		_show_toast("Welcome to Harbor Dome! Sit at a table to play, or tap Chat to say hi.")
@@ -6978,7 +6988,7 @@ const CHECKPOINTS := [
 	{"name":"Central Park","pos":Vector3(-280,0,-270)},
 	{"name":"Union Station","pos":Vector3(-210,0,-360)},
 	{"name":"Marina Heights","pos":Vector3(-10,0,116)},
-	{"name":"Harbor Dome","pos":Vector3(174,0,40)},
+	{"name":"Harbor Dome","pos":Vector3(148,0,36)},
 ]
 var checkpoint_id := -1
 var checkpoint_nodes: Array = []
@@ -7285,6 +7295,9 @@ const RPS_NAMES := ["ROCK","PAPER","SCISSORS"]
 const TTT_TABLES := [Vector3(194,0,14),Vector3(206,0,9),Vector3(218,0,14),Vector3(206,0,21)]
 const RPS_TABLES := [Vector3(194,0,50),Vector3(206,0,55),Vector3(218,0,50),Vector3(206,0,43)]
 const HUB_STAGE := Vector3(236,0,32)
+const HUB_CAR_LAYER := 2
+const HUB_BARRIER_X := 161.5
+const HUB_PARK := Vector3(155,0.8,32)
 var hub_seats: Array = []
 var seat_id := -1
 var hub_bots: Array = []
@@ -7341,6 +7354,28 @@ func _build_hub() -> void:
 		lamps.append([Vector3(float(x)+8.0,0,32-6.4),-PI/2.0])
 	_model_batch("res://models/lamp.glb",lamps)
 	_sign("HARBOR DOME  →",Vector3(62,6.5,32),Color("e6d9ff"),56)
+	# The dome is for people only: bollards that stop cars (collision layer 2) but not people, and parking.
+	var barrier := StaticBody3D.new()
+	barrier.collision_layer = HUB_CAR_LAYER
+	barrier.collision_mask = 0
+	barrier.position = Vector3(HUB_BARRIER_X,1.0,32)
+	add_child(barrier)
+	var bshape := CollisionShape3D.new()
+	var bbox := BoxShape3D.new()
+	bbox.size = Vector3(0.6,2.0,14)
+	bshape.shape = bbox
+	barrier.add_child(bshape)
+	var posts := []
+	for k in 11:
+		posts.append([Vector3(HUB_BARRIER_X,0.45,26.0+float(k)*1.2),Vector3(0.28,0.9,0.28)])
+	_box_batch(Color("f2c94c"),posts)
+	var bays := []
+	for k in 6:
+		var z := 26.6+float(k)*2.2
+		bays.append([Vector3(HUB_PARK.x,0.065,z-1.1),Vector3(5.0,0.02,0.12)])
+	bays.append([Vector3(HUB_PARK.x,0.065,26.6+6.0*2.2-1.1),Vector3(5.0,0.02,0.12)])
+	_box_batch(Color("f4f1e8"),bays)
+	_sign("NO CARS PAST THIS POINT\nPARK HERE · WALK IN",Vector3(HUB_BARRIER_X-0.5,4.2,32),Color("ffe9b8"),40)
 	# Round floor (cylinder collider) with rings and a dance floor in the middle.
 	var floor_body := StaticBody3D.new()
 	floor_body.position = HUB_C+Vector3(0,-0.35,0)
@@ -8179,6 +8214,11 @@ func _build_chat(root: Control) -> void:
 		b.custom_minimum_size = Vector2(170,50)
 		b.add_theme_font_size_override("font_size",18)
 		grid.add_child(b)
+	var lfp := _button("Looking for players!",_send_lfp)
+	lfp.custom_minimum_size = Vector2(170,50)
+	lfp.add_theme_font_size_override("font_size",16)
+	lfp.add_theme_stylebox_override("normal",_panel(Color("8a5a12"),18))
+	grid.add_child(lfp)
 	for k in HUB_EMOTES.size():
 		var b := _button("★ "+HUB_EMOTES[k],_do_emote.bind(k))
 		b.custom_minimum_size = Vector2(170,50)
@@ -8220,6 +8260,23 @@ func _smoke_hub() -> void:
 		var pt := HUB_C+Vector3(cos(a),0,sin(a))*(HUB_R+0.4)+Vector3(0,1.5,0)
 		assert(_blocked_at(pt,0.4),"Dome wall missing at angle %.2f" % a)
 	assert(hub_bots.size() >= 6 and hub_seats.size() >= 30,"Dome seats and robot regulars built")
+	# People walk in; cars are stopped by the bollards and evicted if they get inside anyway.
+	var q := PhysicsShapeQueryParameters3D.new()
+	var sph := SphereShape3D.new()
+	sph.radius = 0.5
+	q.shape = sph
+	q.transform = Transform3D(Basis.IDENTITY,Vector3(HUB_BARRIER_X,1.0,30.0))
+	q.exclude = [player.get_rid(),car.get_rid()]
+	q.collision_mask = car.collision_mask
+	assert(not get_world_3d().direct_space_state.intersect_shape(q,1).is_empty(),"Bollards stop cars")
+	q.collision_mask = player.collision_mask
+	assert(get_world_3d().direct_space_state.intersect_shape(q,1).is_empty(),"Bollards let people through")
+	var was_car := [car.position,driving,cash]
+	car.position = HUB_C+Vector3(0,0.8,5)
+	_hub_keep_cars_out()
+	assert(car.position.distance_to(HUB_PARK) < 0.1,"A car inside the dome is parked outside")
+	car.position = was_car[0]
+	driving = was_car[1]
 	var was := [player.position,player.rotation,driving,cash,view_mode]
 	driving = false
 	view_mode = 0
@@ -8301,6 +8358,23 @@ func _smoke_hub() -> void:
 	assert(hub_emotes.any(func(e): return e["person"] == online_peers["p2"]["person"]),"Peer emote plays")
 	_do_emote(0)
 	assert(hub_emotes.any(func(e): return e["person"] == player_person),"Our emote plays")
+	# Looking for players: an invite shows in the chat feed with ACCEPT, which teleports to the dome.
+	assert(feed.any(func(f): return String(f["text"]).begins_with("Mia: ")),"Peer quick chat shows in the main chat")
+	_online_handle(JSON.stringify({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"lfp","payload":{"i":"p2","n":"Mia"}}}))
+	assert(feed.any(func(f): return f["from"] == "p2"),"Invite appears in the main chat")
+	var accept_found := false
+	for row in feed_box.get_children():
+		for sub in row.get_children():
+			if sub is Button and (sub as Button).text == "ACCEPT":
+				accept_found = true
+	assert(accept_found,"Invite has an ACCEPT button")
+	driving = true
+	car.position = Vector3(20,0.8,2.3)
+	_accept_invite("p2")
+	assert(not driving and player.position.distance_to(Vector3(168,0.75,32)) < 0.1 and car.position.distance_to(HUB_PARK) < 0.1,"ACCEPT teleports to the dome on foot, car parked outside")
+	assert(not feed.any(func(f): return f["from"] == "p2"),"Accepted invite leaves the chat")
+	_send_lfp()
+	assert(lfp_last < 0.0,"Looking for players needs Online on")
 	(online_peers["p2"]["node"] as Node3D).queue_free()
 	online_peers.erase("p2")
 	hub_emotes.clear()
@@ -8356,6 +8430,8 @@ func _hub_shots() -> void:
 	player.position = HUB_C+Vector3(-3,0.75,6)
 	for i in 10:
 		await get_tree().physics_frame
+	_feed_add("Mia: Hi!","")
+	_feed_add("Mia is looking for players at Harbor Dome!","p9")
 	_say(0)
 	_do_emote(2)
 	_toggle_chat()
@@ -8363,3 +8439,144 @@ func _hub_shots() -> void:
 		await get_tree().physics_frame
 	await _save_shot("hub-chat")
 	get_tree().quit()
+
+func _hub_keep_cars_out() -> void:
+	# Cars never belong inside the dome (old saves, rescues or pushes): park them outside.
+	if Vector2(car.position.x-HUB_C.x,car.position.z-HUB_C.z).length() > HUB_R-0.5:
+		return
+	if driving:
+		driving = false
+		player.position = Vector3(168,0.75,32)
+		player.rotation.y = -PI/2.0
+		player.show()
+		player.get_child(0).set_deferred("disabled",false)
+		_apply_view()
+	car.position = HUB_PARK
+	car.rotation = Vector3(0,PI/2.0,0)
+	car.velocity = Vector3.ZERO
+	car_speed = 0.0
+	_show_toast("Harbor Dome is for people only. Your car is parked just outside the entrance.")
+
+# ---------- v0.18.1: main chat feed and "looking for players" invites ----------
+const LFP_COOLDOWN := 30.0
+const INVITE_TIME := 30.0
+var feed_box: VBoxContainer
+var feed: Array = []
+var lfp_last := -1000.0
+
+func _build_feed(root: Control) -> void:
+	feed_box = VBoxContainer.new()
+	feed_box.add_theme_constant_override("separation",4)
+	feed_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(feed_box)
+	feed_box.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	feed_box.position = Vector2(root.size.x/2.0-330.0,root.size.y-250.0)
+	feed_box.custom_minimum_size = Vector2(660,0)
+
+func _feed_add(text: String, invite_from: String) -> void:
+	feed.append({"text":text,"until":clock+(INVITE_TIME if invite_from != "" else 12.0),"from":invite_from})
+	while feed.size() > 4:
+		feed.pop_front()
+	_feed_render()
+
+func _feed_render() -> void:
+	if feed_box == null:
+		return
+	for child in feed_box.get_children():
+		if child is Button:
+			touch_buttons.erase(child)
+		for sub in child.get_children():
+			if sub is Button:
+				touch_buttons.erase(sub)
+		child.queue_free()
+	for item in feed:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation",8)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		feed_box.add_child(row)
+		var lab := _label(String(item["text"]),18,Color("fff5dc") if item["from"] == "" else Color("ffd86a"))
+		lab.add_theme_constant_override("outline_size",6)
+		lab.add_theme_color_override("font_outline_color",Color("132b3a"))
+		lab.add_theme_stylebox_override("normal",_panel(Color(0.06,0.13,0.18,0.72),10))
+		row.add_child(lab)
+		if item["from"] != "":
+			var accept := _button("ACCEPT",_accept_invite.bind(String(item["from"])))
+			accept.custom_minimum_size = Vector2(120,40)
+			accept.add_theme_font_size_override("font_size",18)
+			accept.add_theme_stylebox_override("normal",_panel(Color("f0bd62"),12))
+			accept.add_theme_color_override("font_color",Color("182b38"))
+			row.add_child(accept)
+
+func _feed_tick() -> void:
+	var changed := false
+	for i in range(feed.size()-1,-1,-1):
+		if clock > float(feed[i]["until"]):
+			feed.remove_at(i)
+			changed = true
+	if changed:
+		_feed_render()
+
+func _online_event_send(event: String, payload: Dictionary) -> void:
+	if not online_on or online_state != 3 or online_ws == null:
+		return
+	payload["i"] = online_id
+	payload["n"] = online_name
+	_online_send({"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":event,"payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"})
+
+func _send_lfp() -> void:
+	chat_panel.hide()
+	if not online_on or online_state != 3:
+		_show_toast("Turn Online on first (top right), then look for players.")
+		return
+	if clock-lfp_last < LFP_COOLDOWN:
+		_show_toast("Invite sent recently. Try again in %d s." % int(LFP_COOLDOWN-(clock-lfp_last)))
+		return
+	lfp_last = clock
+	_online_event_send("lfp",{})
+	_feed_add("You are looking for players at Harbor Dome…","")
+	_bubble(player if not driving else car,"Looking for players!",2.6 if not driving else 3.2)
+
+func _lfp_msg(event: String, p: Dictionary) -> void:
+	var from := String(p.get("i",""))
+	if from == "" or from == online_id or from.length() > 24:
+		return
+	var nm := _online_clean_name(String(p.get("n","Player")))
+	if event == "lfp":
+		for item in feed:
+			if item["from"] == from:
+				item["until"] = clock+INVITE_TIME
+				return
+		_feed_add("%s is looking for players at Harbor Dome!" % nm,from)
+	elif event == "lfa" and String(p.get("to","")) == online_id:
+		_feed_add("%s accepted! On the way to Harbor Dome." % nm,"")
+		_show_toast("%s accepted your invite!" % nm)
+
+func _accept_invite(from: String) -> void:
+	if paused:
+		return
+	if trial_active >= 0 or chase_mode != 0 or online_role != 0 or bus_riding:
+		_show_toast("Finish your trial, chase or bus ride first, then accept.")
+		return
+	for i in range(feed.size()-1,-1,-1):
+		if feed[i]["from"] == from:
+			feed.remove_at(i)
+	_feed_render()
+	if seat_id >= 0:
+		_stand_up()
+	if driving:
+		driving = false
+		player.show()
+		player.get_child(0).set_deferred("disabled",false)
+	car.position = HUB_PARK
+	car.rotation = Vector3(0,PI/2.0,0)
+	car.velocity = Vector3.ZERO
+	car_speed = 0.0
+	player.position = Vector3(168,0.75,32)
+	player.rotation = Vector3(0,-PI/2.0,0)
+	player.velocity = Vector3.ZERO
+	_apply_view()
+	_follow_camera(1.0)
+	_online_event_send("lfa",{"to":from})
+	var nm := String(online_peers[from]["name"]) if online_peers.has(from) else "Your friend"
+	_show_toast("Welcome to Harbor Dome! %s is waiting. Your car is parked outside." % nm)
+	_refresh_hud()

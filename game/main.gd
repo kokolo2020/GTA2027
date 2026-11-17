@@ -197,6 +197,12 @@ var online_send_t := 0.0
 var online_retry := 0.0
 var online_peers := {}
 var online_button: Button
+const ORO_POLICE_PAY := 400
+var online_role := 0
+var orole_t := 0.0
+var orole_bust := 0.0
+var orole_cool := 0.0
+var orole_test := false
 const CHASE_TIME := 90.0
 const CHASE_PAY := 600
 const CHASE_COPS := 3
@@ -1005,7 +1011,7 @@ func _online_pos_frame() -> Dictionary:
 	var payload := {
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
-		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0}
+		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -1090,10 +1096,11 @@ func _online_peer_update(p: Dictionary) -> void:
 	peer["yaw"] = float(p.get("r",0.0))
 	peer["seen"] = Time.get_ticks_msec()/1000.0
 	peer["driving"] = int(p.get("d",1)) == 1
+	peer["role"] = clampi(int(p.get("t",0)),0,2)
 	var nm := _online_clean_name(String(p.get("n","Driver")))
 	if nm != peer["name"]:
 		peer["name"] = nm
-		(peer["label"] as Label3D).text = nm
+		peer["shown"] = -1
 
 func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	var node := Node3D.new()
@@ -1108,6 +1115,10 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 		_online_tint(model,body_color)
 	else:
 		_box(car_node,Vector3(0,0.5,0),Vector3(1.8,0.8,3.6),body_color)
+	var red_light := _box(car_node,Vector3(-0.35,1.45,0.1),Vector3(0.6,0.18,0.3),Color("ff2a2a"))
+	var blue_light := _box(car_node,Vector3(0.35,1.45,0.1),Vector3(0.6,0.18,0.3),Color("2a4aff"))
+	red_light.hide()
+	blue_light.hide()
 	var foot_node := Node3D.new()
 	node.add_child(foot_node)
 	_box(foot_node,Vector3(0,0.75,0),Vector3(0.5,1.2,0.35),body_color)
@@ -1123,7 +1134,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	label.pixel_size = 0.012
 	label.no_depth_test = true
 	node.add_child(label)
-	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true}
+	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true,"role":0,"shown":0,"red":red_light,"blue":blue_light}
 
 func _online_tint(node: Node, color: Color) -> void:
 	if node is MeshInstance3D:
@@ -1158,6 +1169,17 @@ func _online_update_peers(delta: float) -> void:
 		node.rotation.y = lerp_angle(node.rotation.y,float(peer["yaw"]),minf(1.0,delta*8.0))
 		(peer["car"] as Node3D).visible = peer["driving"]
 		(peer["foot"] as Node3D).visible = not peer["driving"]
+		var role := int(peer["role"])
+		var cop := role == 2
+		var flash := int(clock*6.0) % 2 == 0
+		(peer["red"] as Node3D).visible = cop and flash
+		(peer["blue"] as Node3D).visible = cop and not flash
+		if role != int(peer["shown"]):
+			peer["shown"] = role
+			var tag := String(peer["name"])
+			var lab: Label3D = peer["label"]
+			lab.text = tag if role == 0 else tag+(" · THIEF" if role == 1 else " · POLICE")
+			lab.modulate = Color("ffb020") if role == 1 else (Color("9cc4ff") if role == 2 else Color.WHITE)
 	for id in gone:
 		(online_peers[id]["node"] as Node3D).queue_free()
 		online_peers.erase(id)
@@ -1179,10 +1201,112 @@ func _online_refresh_button() -> void:
 	else:
 		online_button.text = "Online: %d" % (online_peers.size()+1)
 
+# ---------- v0.11.0: online police vs thief ----------
+func _orole_ready() -> bool:
+	return orole_test or (online_on and online_state == 3)
+
+func _orole_start(role: int) -> void:
+	if not _orole_ready():
+		_show_toast("Turn Online on first (top right), then pick a role.")
+		return
+	if trial_active >= 0:
+		_show_toast("Finish or cancel your trial first.")
+		return
+	if chase_mode != 0:
+		_chase_end("Chase ended.",0)
+	if not driving:
+		car.position = player.position+Vector3(0,0.8,0)
+		car.velocity = Vector3.ZERO
+		car_speed = 0.0
+		driving = true
+		player.hide()
+		player.get_child(0).set_deferred("disabled",true)
+	player.position = car.position
+	online_role = role
+	orole_t = 0.0
+	orole_bust = 0.0
+	orole_cool = 0.0
+	if paused:
+		_toggle_menu()
+	chase_label.show()
+	_show_toast("Online THIEF: escape the police for %ds. Others see you as the thief." % int(CHASE_TIME) if role == 1 else "Online POLICE: catch any player who is a thief. Each arrest pays $%d." % ORO_POLICE_PAY)
+
+func _orole_end(message: String, reward: int) -> void:
+	online_role = 0
+	chase_label.hide()
+	if reward > 0:
+		cash += reward
+		chase_wins += 1
+		_save_progress()
+	_show_toast(message)
+
+func _orole_tick(delta: float) -> void:
+	if online_role == 0:
+		return
+	if not _orole_ready():
+		_orole_end("Online lost. Role ended.",0)
+		return
+	if not driving:
+		_orole_end("You left the car. Role ended.",0)
+		return
+	orole_cool = maxf(0.0,orole_cool-delta)
+	var want := 2 if online_role == 1 else 1
+	var now := Time.get_ticks_msec()/1000.0
+	var nearest := 9999.0
+	var nearest_pos := car.position
+	var count := 0
+	for id in online_peers:
+		var peer: Dictionary = online_peers[id]
+		if int(peer["role"]) != want or now-float(peer["seen"]) > 2.0 or not bool(peer["driving"]):
+			continue
+		count += 1
+		var tp: Vector3 = peer["target"]
+		var d := tp.distance_to(car.position)
+		if d < nearest:
+			nearest = d
+			nearest_pos = tp
+	if count > 0 and online_role == 1:
+		orole_t += delta
+	if count > 0 and nearest < 5.0:
+		orole_bust += delta
+	else:
+		orole_bust = maxf(0.0,orole_bust-delta*0.6)
+	if orole_bust >= 2.5:
+		orole_bust = 0.0
+		if online_role == 1:
+			_orole_end("BUSTED! A police player caught you. No money lost.",0)
+			return
+		if orole_cool <= 0.0:
+			orole_cool = 20.0
+			cash += ORO_POLICE_PAY
+			chase_wins += 1
+			_save_progress()
+			_show_toast("Thief arrested!  +$%d" % ORO_POLICE_PAY)
+	if online_role == 1 and orole_t >= CHASE_TIME:
+		_orole_end("You escaped the police!  +$%d" % CHASE_PAY,CHASE_PAY)
+		return
+	var offset := nearest_pos-car.position
+	var screen_right := camera.global_basis.x
+	var screen_forward := -camera.global_basis.z
+	screen_forward.y = 0
+	var angle := atan2(offset.dot(screen_right),offset.dot(screen_forward.normalized()))
+	var arrows := ["↑","↗","→","↘","↓","↙","←","↖"]
+	var arrow: String = arrows[posmod(int(round(angle/(PI/4.0))),8)]
+	if online_role == 1:
+		if count == 0:
+			chase_label.text = "ONLINE THIEF  ·  waiting for police players\nTimer starts when a police car is online"
+		else:
+			chase_label.text = "ONLINE THIEF  ·  escape in %ds\nNearest police %dm %s   Busted %s" % [int(ceil(CHASE_TIME-orole_t)),int(nearest),arrow,_bar(orole_bust,2.5)]
+	else:
+		if count == 0:
+			chase_label.text = "ONLINE POLICE  ·  no thief online yet\nAsk a friend to pick THIEF"
+		else:
+			chase_label.text = "ONLINE POLICE  ·  thief %dm %s\nArrest %s" % [int(nearest),arrow,_bar(orole_bust,2.5)]
+
 # ---------- v0.10.0: chase mode (offline) ----------
 func _chase_open() -> void:
-	chase_info.text = "THIEF: drive away from 3 police cars for %d seconds. If a cop stays close for 2.5s you are busted (no money lost).\nPOLICE: catch the fleeing thief car by staying within 5m for 2.5s.\nWin pays $%d. Chases won so far: %d." % [int(CHASE_TIME),CHASE_PAY,chase_wins]
-	chase_end_button.disabled = chase_mode == 0
+	chase_info.text = "THIEF: drive away from 3 police cars for %d seconds. If a cop stays close for 2.5s you are busted (no money lost).\nPOLICE: catch the fleeing thief car by staying within 5m for 2.5s.\nWin pays $%d. Chases won so far: %d.\nONLINE: turn Online on, then pick a role. Other players see you as THIEF or POLICE. Police arrests pay $%d each." % [int(CHASE_TIME),CHASE_PAY,chase_wins,ORO_POLICE_PAY]
+	chase_end_button.disabled = chase_mode == 0 and online_role == 0
 	_open_panel(chase_panel)
 
 func _chase_clear() -> void:
@@ -1234,6 +1358,7 @@ func _chase_start(mode: int) -> void:
 	if trial_active >= 0:
 		_show_toast("Finish or cancel your trial first.")
 		return
+	online_role = 0
 	_chase_clear()
 	if not driving:
 		car.position = player.position+Vector3(0,0.8,0)
@@ -1262,6 +1387,7 @@ func _chase_start(mode: int) -> void:
 
 func _chase_end(message: String, reward: int) -> void:
 	chase_mode = 0
+	online_role = 0
 	_chase_clear()
 	chase_label.hide()
 	if reward > 0:
@@ -1808,6 +1934,8 @@ func _build_panels(root: Control) -> void:
 	c.add_child(chase_info)
 	c.add_child(_button("Be the THIEF (run from police)",_chase_start.bind(1)))
 	c.add_child(_button("Be the POLICE (catch the thief)",_chase_start.bind(2)))
+	c.add_child(_button("ONLINE: be THIEF (needs Online ON)",_orole_start.bind(1)))
+	c.add_child(_button("ONLINE: be POLICE (needs Online ON)",_orole_start.bind(2)))
 	chase_end_button = _button("End chase",_chase_end.bind("Chase ended.",0))
 	c.add_child(chase_end_button)
 	c.add_child(_button("Back",_close_sub))
@@ -2199,6 +2327,7 @@ func _physics_process(delta: float) -> void:
 	_check_north()
 	_check_trial()
 	_chase_tick(delta)
+	_orole_tick(delta)
 	_online_tick(delta)
 	_check_missions()
 	marker.visible = trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0))
@@ -2386,8 +2515,9 @@ func _rescue() -> void:
 	player.show()
 	player.get_child(0).set_deferred("disabled",false)
 	trial_active = -1
-	if chase_mode != 0:
+	if chase_mode != 0 or online_role != 0:
 		chase_mode = 0
+		online_role = 0
 		_chase_clear()
 		chase_label.hide()
 	if paused:
@@ -2815,6 +2945,7 @@ func _smoke_test() -> void:
 	await _smoke_garage_ridge()
 	await _smoke_radio_peds()
 	await _smoke_chase()
+	await _smoke_orole()
 	_smoke_models()
 	cash = original_cash
 	deliveries = original_deliveries
@@ -2841,7 +2972,7 @@ func _smoke_test() -> void:
 		restored.close()
 	elif FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
-	print("HARBOR_SMOKE_OK: two-finger input, driving, chase mode, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: two-finger input, driving, chase mode, online roles, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -2876,6 +3007,35 @@ func _smoke_chase() -> void:
 	driving = false
 	await get_tree().physics_frame
 	assert(chase_mode == 0,"Leaving the car ends the chase")
+	cash = before
+	_rescue()
+
+func _smoke_orole() -> void:
+	var before := cash
+	orole_test = true
+	_rescue()
+	var spot := Vector3(1.7,0.8,4)
+	_orole_start(1)
+	assert(online_role == 1 and driving,"Online thief role should start")
+	for i in 220:
+		_online_peer_update({"i":"cop1","n":"Cop","x":car.position.x,"y":car.position.y,"z":car.position.z+3.0,"r":0.0,"c":0,"d":1,"t":2})
+		await get_tree().physics_frame
+		if online_role == 0:
+			break
+	assert(online_role == 0 and cash == before,"Police player should bust the online thief without money loss")
+	_orole_start(2)
+	assert(online_role == 2,"Online police role should start")
+	for i in 220:
+		_online_peer_update({"i":"rob1","n":"Rob","x":car.position.x,"y":car.position.y,"z":car.position.z+3.0,"r":0.0,"c":0,"d":1,"t":1})
+		await get_tree().physics_frame
+		if cash > before:
+			break
+	assert(cash == before+ORO_POLICE_PAY,"Online arrest should pay the police player")
+	assert(int(online_peers["rob1"]["role"]) == 1 and int(online_peers["cop1"]["role"]) == 2,"Peer roles should be stored")
+	assert(_online_pos_frame()["payload"]["payload"]["t"] == 2,"Position frame should carry the role")
+	_orole_end("done",0)
+	_online_clear_peers()
+	orole_test = false
 	cash = before
 	_rescue()
 

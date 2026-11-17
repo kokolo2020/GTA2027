@@ -1,6 +1,6 @@
 # Harbor City — current handover
 
-Version 0.19.0, code 21 (see the v0.19.0 section at the end; 0.11 and 0.12 were never released on their own). Original single-player Android game, Godot 4.7.2 standard / Compatibility, Samsung Galaxy Z Fold5.
+Version 0.20.0, code 22 (see the v0.20.0 section at the end; 0.11 and 0.12 were never released on their own). Original single-player Android game, Godot 4.7.2 standard / Compatibility, Samsung Galaxy Z Fold5.
 
 The canonical project has moved to **/Users/koko/GTA2027**, repository **https://github.com/kokolo2020/GTA2027**. Read PUBLISHING.md for the new self-contained GitHub release process. The old /Users/koko/harbor-city folder is retained for toolchain and historical recovery; develop here going forward.
 
@@ -212,3 +212,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.18.1 (source 102b
 ## v0.19.0 publication completed by Claude
 
 Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.19.0 (source 42b69e4). Browser /play rebuilt (614b3f4). Pages deployed; live page shows 0.19.0. Publisher verified the downloaded APK hash.
+
+## v0.20.0 Harbor Raceway — 18 November 2026
+
+- Area RW_X0..RW_X1 (205..620) x RW_Z0..RW_Z1 (-440..-40). Road from the North east wall gap at z=-150 (wall split into two boxes). Car-only bollards at RW_BARRIER_X, parking RACE_PARK, pit desk RW_DESK, race car spawn RW_PIT. Checkpoint "Harbor Raceway" appended to CHECKPOINTS.
+- Race car: `race_car` flag reuses the player car body with fixed RACE_* stats and car_4 model (`_apply_car`, `_model_key`); own car shown as a parked copy (`race_ghost`) and restored by `_race_car_end`. `_race_keep_cars_out` keeps normal cars out and race cars in.
+- Events in `_rw_start` (1 GP, 2 time attack, 3 long jump, 4 drag), ticked by `_rw_tick`; track RW_TRACK polyline -> rw_path, gates = vertices, laps via rec_gate; AI racers `rec_ai` move along the path with corner slowdown, rubber-banding, boosts and spikes. `_eff_max`/`_eff_accel` apply boost/spike/off-track. Ramp takeoff: `_race_takeoff` gives vertical speed from the floor normal (race car only). The ramp is sunk 0.35 m so it has no lip.
+- Shop/inventory: boosts, spikes (max 5), records rw_best (lap, gp, jump, drag) saved. Online: events rcs (start, JOIN in feed), rcf (finish times), spk (spikes); pos frame has rc (peers render the race car).
+- Map widened to MAP_CENTER (82,-99.5), MAP_SIZE 1090 (re-baked). Dev mode --race-shots.
+- APK 30614851 bytes, SHA256 44b47830...1f2c, code 22. NOT tested on the Fold5 or with two phones racing.

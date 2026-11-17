@@ -236,3 +236,8 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.20.0 (source 295a
 - Parking lot inside the gate: x RW_X0..RW_LOT_X1 (257.5), z RW_LOT_Z0 (-250.5)..RW_Z1, with car-only (HUB_CAR_LAYER) bollards on its east and north edges. `_in_rw_lot`. Own car stays where parked; it is moved to RACE_PARK only if it is outside the lot. Pit desk RW_DESK (262,-138) faces the lot. Race car spawns at RW_PIT in the pit lane (x 295.5).
 - AI: vmax = RACE_MAX, accel = RACE_ACCEL, boost x1.45 and accel x2 like the player; no rubber-banding. AI_CORNER sets per-driver corner lift; rw_corner = max heading change over the next 35 m.
 - Map re-baked. Shots in docs/shots-0.21.0.
+- APK 30865519 bytes, SHA256 d67903ef...5f52, code 23. NOT tested on the Fold5 or with two phones racing.
+
+## v0.21.0 publication completed by Claude
+
+Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.21.0 (tag at dc6034f). Download page and browser /play rebuilt (02ca86e). Pages deployed; live page and release.json show 0.21.0. Publisher verified the downloaded APK hash.

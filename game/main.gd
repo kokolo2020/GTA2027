@@ -58,6 +58,8 @@ const MISSIONS := [
 	{"name":"Window Shopper","desc":"Visit the showroom, style shop and paint shop","pay":800},
 	{"name":"Showroom Dream","desc":"Own a showroom car","pay":2000},
 	{"name":"Marina Explorer","desc":"Discover all 5 Marina sites","pay":3000},
+	{"name":"Skyline Explorer","desc":"Discover all 8 Skyline District sites","pay":3000},
+	{"name":"Rush Hour","desc":"Clear the Skyline Dash time trial","pay":1000},
 ]
 const BAY_GATE := Vector3(-57,0,0)
 const BAY := [
@@ -105,6 +107,7 @@ const TRIALS := [
 	{"name":"North Highway","area":3,"start":Vector3(0,0,-70),"cps":[Vector3(0,0,-130),Vector3(0,0,-200),Vector3(0,0,-270),Vector3(0,0,-330)],"par":15.0,"pay":700},
 	{"name":"Runway Dash","area":3,"start":Vector3(0,0,-305),"cps":[Vector3(0,0,-340),Vector3(0,0,-385),Vector3(0,0,-425)],"par":8.0,"pay":600},
 	{"name":"Marina Boulevard","area":4,"start":Vector3(0,0,114),"cps":[Vector3(0,0,150),Vector3(0,0,205),Vector3(0,0,234)],"par":9.0,"pay":900},
+	{"name":"Skyline Dash","area":5,"start":Vector3(-133,0,-108),"cps":[Vector3(-133,0,-190),Vector3(-133,0,-290),Vector3(-133,0,-390),Vector3(-230,0,-397),Vector3(-330,0,-397)],"par":36.0,"pay":1200},
 ]
 const UPGRADES := [
 	{"name":"Engine","desc":"top speed","per":0.06},
@@ -119,7 +122,7 @@ const RADIO := [{"name":"Off"},{"name":"Harbor FM"},{"name":"Bay Waves"},{"name"
 var tunes: Array = []
 var bay_mask := 0
 var trial_done := 0
-var best_times: Array = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+var best_times: Array = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 var north_mask := 0
 var north_nodes: Array[Node3D] = []
 var north_gate_body: StaticBody3D
@@ -273,7 +276,11 @@ func _ready() -> void:
 	_build_marina()
 	_build_bus()
 	_build_landscape()
+	_build_downtown()
+	_build_city_detail()
 	_build_peds()
+	_build_traffic()
+	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
 	radio_player = AudioStreamPlayer.new()
 	radio_player.volume_db = -6.0
 	add_child(radio_player)
@@ -286,7 +293,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.15: Airport Line bus fares, Marina stop, police helicopter and roadblocks.")
+	_show_toast("Harbor City 0.16: the Skyline District is open west of the North Highway. Watch for traffic lights!")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -294,6 +301,8 @@ func _ready() -> void:
 		await _shots()
 	elif "--people-shots" in OS.get_cmdline_user_args():
 		await _people_shots()
+	elif "--skyline-shots" in OS.get_cmdline_user_args():
+		await _skyline_shots()
 
 func _material(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -465,6 +474,10 @@ func _destination() -> Vector3:
 		var north_index := _nearest_north()
 		if _north_open() and north_index >= 0:
 			return NORTH[north_index]["pos"]
+		if _downtown_open():
+			var dt_index := _nearest_downtown()
+			if dt_index >= 0:
+				return DOWNTOWN[dt_index]["pos"]
 		if _marina_open():
 			var marina_index := _nearest_marina()
 			if marina_index >= 0:
@@ -605,7 +618,7 @@ func _bay_open() -> bool:
 	return _ridge_count() == RIDGE.size()
 
 func _area_open(area: int) -> bool:
-	return area == 0 or (area == 1 and _ridge_open()) or (area == 2 and _bay_open()) or (area == 3 and _north_open()) or (area == 4 and _marina_open())
+	return area == 0 or (area == 1 and _ridge_open()) or (area == 2 and _bay_open()) or (area == 3 and _north_open()) or (area == 4 and _marina_open()) or (area == 5 and _downtown_open())
 
 func _bay_count() -> int:
 	var n := 0
@@ -639,8 +652,10 @@ func _build_bay() -> void:
 		_box(self,Vector3(-66,1.5,z),Vector3(20,3,1),rock,true)
 	for z in [-10.75,10.75]:
 		_box(self,Vector3(-76.5,1.2,z),Vector3(1,2.4,9.5),rock,true)
-	for z in [-15.5,15.5]:
-		_box(self,Vector3(-126,1.0,z),Vector3(100,2,1),rock,true)
+	_box(self,Vector3(-126,1.0,15.5),Vector3(100,2,1),rock,true)
+	# Gap at x -136..-124 for the Skyline District link road.
+	_box(self,Vector3(-156,1.0,-15.5),Vector3(40,2,1),rock,true)
+	_box(self,Vector3(-100,1.0,-15.5),Vector3(48,2,1),rock,true)
 	_box(self,Vector3(-176.5,1.0,0),Vector3(1,2,31),rock,true)
 	bay_gate_body = _slab(BAY_GATE+Vector3(0,2,0),Vector3(1,4,12),0,Color("3d7cc4"))
 	_box(bay_gate_body,Vector3(0.52,1.0,0),Vector3(0.1,0.8,11),Color("fff3d0"))
@@ -649,10 +664,11 @@ func _build_bay() -> void:
 	_sign("BAY ROAD",Vector3(-66,5.2,-2),Color("f7edd4"),48)
 	for x in [-90.0,-108.0,-126.0,-144.0,-160.0]:
 		_box(self,Vector3(x,0.02,-12 if int(x) % 4 == 0 else 12),Vector3(12,0.06,5),sand)
-	for p in [Vector2(-84,-12),Vector2(-100,12),Vector2(-118,-12),Vector2(-136,12),Vector2(-152,-12),Vector2(-166,12)]:
-		_box(self,Vector3(p.x,1.5,p.y),Vector3(0.4,3,0.4),Color("8a6a43"))
-		_box(self,Vector3(p.x,3.1,p.y),Vector3(3.6,0.4,0.6),Color("3f9a5a"))
-		_box(self,Vector3(p.x,3.1,p.y),Vector3(0.6,0.4,3.6),Color("3f9a5a"))
+	if not ResourceLoader.exists("res://models/palm.glb"):
+		for p in [Vector2(-84,-12),Vector2(-100,12),Vector2(-118,-12),Vector2(-136,12),Vector2(-152,-12),Vector2(-166,12)]:
+			_box(self,Vector3(p.x,1.5,p.y),Vector3(0.4,3,0.4),Color("8a6a43"))
+			_box(self,Vector3(p.x,3.1,p.y),Vector3(3.6,0.4,0.6),Color("3f9a5a"))
+			_box(self,Vector3(p.x,3.1,p.y),Vector3(0.6,0.4,3.6),Color("3f9a5a"))
 	_box(self,Vector3(-90,2,13),Vector3(6,4,3),Color("f0d6a8"),true)
 	_box(self,Vector3(-90,4.2,12),Vector3(6.8,0.4,4),Color("d8584e"))
 	_box(self,Vector3(-108,0.05,-12),Vector3(8,0.1,4),Color("8a6a43"))
@@ -846,7 +862,10 @@ func _build_north() -> void:
 	var line := Color("e7d9a4")
 	# One big joined ground slab with solid rock borders, so many cars can share it later.
 	_slab(Vector3(0,-0.35,-248),Vector3(220,0.6,384),0,grass)
-	_box(self,Vector3(-110.5,1.25,-248),Vector3(1,2.5,384),rock,true)
+	# West wall with openings at z=-150 and z=-250 into the Skyline District.
+	_box(self,Vector3(-110.5,1.25,-100),Vector3(1,2.5,88),rock,true)
+	_box(self,Vector3(-110.5,1.25,-200),Vector3(1,2.5,88),rock,true)
+	_box(self,Vector3(-110.5,1.25,-348),Vector3(1,2.5,184),rock,true)
 	_box(self,Vector3(110.5,1.25,-358),Vector3(1,2.5,164),rock,true)
 	_box(self,Vector3(110.5,1.25,-160),Vector3(1,2.5,208),rock,true)
 	_box(self,Vector3(0,1.25,-440.5),Vector3(222,2.5,1),rock,true)
@@ -1844,7 +1863,7 @@ func _shop_action() -> void:
 	_refresh_shop()
 
 func _journal_flip() -> void:
-	journal_page = 1-journal_page
+	journal_page = (journal_page+1) % 3
 	_refresh_journal()
 
 # ---------- v0.12.0: player level (derived from progress, so old saves convert automatically) ----------
@@ -1856,7 +1875,7 @@ func _xp() -> int:
 	for i in MISSIONS.size():
 		if claimed_mask & (1 << i):
 			missions += 1
-	return _find_count()*20+(_ridge_count()+_bay_count()+_north_count()+_marina_count())*25+_trial_count()*40+missions*60+mini(deliveries,ROUTES.size())*10
+	return _find_count()*20+(_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count())*25+_trial_count()*40+missions*60+mini(deliveries,ROUTES.size())*10
 
 func _level_for(xp: int) -> int:
 	var level := 1
@@ -2370,9 +2389,9 @@ func _refresh_trials() -> void:
 	for i in TRIALS.size():
 		var trial: Dictionary = TRIALS[i]
 		var best := float(best_times[i])
-		var label := "%s   par %ds   $%d   best %s" % [trial["name"],int(trial["par"]),int(trial["pay"]),("%.1fs" % best) if best > 0.0 else "--"]
+		var label := "%s · %ds · $%d · best %s" % [trial["name"],int(trial["par"]),int(trial["pay"]),("%.1fs" % best) if best > 0.0 else "--"]
 		if not _area_open(int(trial["area"])):
-			label = "%s   LOCKED (open its area first)" % trial["name"]
+			label = "%s · LOCKED" % trial["name"]
 		trial_buttons[i].text = label
 		trial_buttons[i].disabled = not _area_open(int(trial["area"]))
 	trial_cancel.disabled = trial_active < 0
@@ -2557,6 +2576,10 @@ func _mission_progress(i: int) -> Vector2i:
 			return Vector2i(premium_owned,1)
 		15:
 			return Vector2i(_marina_count(),MARINA.size())
+		16:
+			return Vector2i(_downtown_count(),DOWNTOWN.size())
+		17:
+			return Vector2i(1 if (trial_done & (1 << 8)) != 0 else 0,1)
 		11:
 			return Vector2i(_north_count(),NORTH.size())
 		8:
@@ -2659,6 +2682,7 @@ func _refresh_journal() -> void:
 		lines.append(", ".join(names) if names.size() > 0 else "None yet. Own a Ridge Rover to open the Ridge Gate.")
 		lines.append("BAY DISCOVERIES  %d/%d%s" % [_bay_count(),BAY.size(),"" if _bay_open() else "   (gate locked: find all Ridge sites)"])
 		lines.append("NORTH DISCOVERIES  %d/%d%s" % [_north_count(),NORTH.size(),"" if _north_open() else "   (gate locked: find 3 Bay sites)"])
+		lines.append("SKYLINE DISCOVERIES  %d/%d%s" % [_downtown_count(),DOWNTOWN.size(),"   (west of the North Highway, or up from Bay Road)" if _downtown_open() else "   (open all Bay Road: find all Ridge sites)"])
 		lines.append("MARINA DISCOVERIES  %d/%d%s" % [_marina_count(),MARINA.size(),"" if _marina_open() else "   (bridge locked: reach Level 5)"])
 		lines.append("")
 		lines.append("MARINA HEIGHTS (Level 5)")
@@ -2666,12 +2690,15 @@ func _refresh_journal() -> void:
 		lines.append("Cross the bridge south of the Ferry Steps once you reach Level 5.")
 		journal_next.text = "Next page: missions >"
 	else:
-		lines.append("MISSIONS")
-		for i in MISSIONS.size():
+		var half := (MISSIONS.size()+1)/2
+		var first := 0 if journal_page == 1 else half
+		var last := half if journal_page == 1 else MISSIONS.size()
+		lines.append("MISSIONS  (%d-%d of %d)" % [first+1,last,MISSIONS.size()])
+		for i in range(first,last):
 			var progress := _mission_progress(i)
 			var done := (claimed_mask & (1 << i)) != 0
 			lines.append("%s  %s: %s  (+$%d)" % ["[DONE]" if done else "[%d/%d]" % [progress.x,progress.y],MISSIONS[i]["name"],MISSIONS[i]["desc"],MISSIONS[i]["pay"]])
-		journal_next.text = "< Previous page"
+		journal_next.text = "More missions >" if journal_page == 1 else "< First page"
 	journal_label.text = "\n".join(lines)
 
 func _visited_shops() -> int:
@@ -2750,7 +2777,7 @@ func _build_panels(root: Control) -> void:
 	tune_panel.hide()
 	trial_panel = PanelContainer.new()
 	root.add_child(trial_panel)
-	trial_panel.custom_minimum_size = Vector2(620,0)
+	trial_panel.custom_minimum_size = Vector2(760,0)
 	trial_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
 	var r := VBoxContainer.new()
 	r.add_theme_constant_override("separation",10)
@@ -2758,21 +2785,33 @@ func _build_panels(root: Control) -> void:
 	r.add_child(_label("TIME TRIALS & STREET EVENTS",26,Color("f0bd62")))
 	trial_info = _label("",17,Color("cbd8de"))
 	trial_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	trial_info.custom_minimum_size.x = 560
+	trial_info.custom_minimum_size.x = 700
 	r.add_child(trial_info)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation",10)
+	grid.add_theme_constant_override("v_separation",8)
+	r.add_child(grid)
 	for i in TRIALS.size():
 		var trial_button := _button("",_start_trial.bind(i))
-		trial_button.custom_minimum_size = Vector2(560,40)
+		trial_button.custom_minimum_size = Vector2(345,42)
+		trial_button.add_theme_font_size_override("font_size",17)
 		for state in ["normal","hover","pressed"]:
 			var sb := trial_button.get_theme_stylebox(state).duplicate() as StyleBoxFlat
 			sb.content_margin_top = 4
 			sb.content_margin_bottom = 4
 			trial_button.add_theme_stylebox_override(state,sb)
 		trial_buttons.append(trial_button)
-		r.add_child(trial_button)
+		grid.add_child(trial_button)
+	var trial_row := HBoxContainer.new()
+	trial_row.add_theme_constant_override("separation",10)
+	r.add_child(trial_row)
 	trial_cancel = _button("Cancel running trial",_cancel_trial)
-	r.add_child(trial_cancel)
-	r.add_child(_button("Back",_close_sub))
+	trial_cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	trial_row.add_child(trial_cancel)
+	var trial_back := _button("Back",_close_sub)
+	trial_back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	trial_row.add_child(trial_back)
 	trial_panel.hide()
 	chase_panel = PanelContainer.new()
 	root.add_child(chase_panel)
@@ -2936,6 +2975,14 @@ func _pose_person(person: Dictionary, phase: float, amount: float) -> void:
 		if limbs[part] != null:
 			(limbs[part] as Node3D).rotation.x = -swing*(0.6 if part.begins_with("Leg") else 0.5)
 	(person["root"] as Node3D).position.y = (person.get("base_y",0.0) as float)+absf(cos(phase))*0.035*amount
+
+func _cull_person(node: Node, distance: float, shadows := false) -> void:
+	if node is GeometryInstance3D:
+		(node as GeometryInstance3D).visibility_range_end = distance
+		if not shadows:
+			(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for child in node.get_children():
+		_cull_person(child,distance,shadows)
 
 func _recolor_car_model(node: Node) -> void:
 	if node is MeshInstance3D:
@@ -3275,13 +3322,15 @@ func _physics_process(delta: float) -> void:
 	_check_bay()
 	_check_north()
 	_check_marina()
+	_check_downtown()
+	_traffic_tick(delta)
 	_check_trial()
 	_chase_tick(delta)
 	_orole_tick(delta)
 	_online_tick(delta)
 	_check_missions()
 	_check_level()
-	marker.visible = trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0 or (_north_open() and _nearest_north() >= 0) or (_marina_open() and _nearest_marina() >= 0)))
+	marker.visible = trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0 or (_north_open() and _nearest_north() >= 0) or (_downtown_open() and _nearest_downtown() >= 0) or (_marina_open() and _nearest_marina() >= 0)))
 	for index in find_nodes.size():
 		find_nodes[index].visible = not bool(found_mask & (1 << index))
 		find_nodes[index].rotation.y += delta
@@ -3396,6 +3445,8 @@ func _refresh_hud() -> void:
 			objective.text = "Discover " + str(BAY[_nearest_bay()]["name"])+"  ·  "+str(distance)+"m"
 		elif _north_open() and _nearest_north() >= 0:
 			objective.text = "Discover " + str(NORTH[_nearest_north()]["name"])+"  ·  "+str(distance)+"m"
+		elif _downtown_open() and _nearest_downtown() >= 0:
+			objective.text = "Discover " + str(DOWNTOWN[_nearest_downtown()]["name"])+"  ·  "+str(distance)+"m"
 		elif _marina_open() and _nearest_marina() >= 0:
 			objective.text = "Discover " + str(MARINA[_nearest_marina()]["name"])+"  ·  "+str(distance)+"m"
 		else:
@@ -3409,7 +3460,7 @@ func _refresh_hud() -> void:
 		mission_label.text = "HARBOR CITY  /  TIME TRIAL"
 		objective.text = "%s  ring %d/%d  ·  %.1fs / par %ds" % [running["name"],trial_cp+1,running["cps"].size(),clock-trial_start,int(running["par"])]
 	mission_label.text += "  ·  LV %d" % _level()
-	balance_label.text = "$%d  ·  %d/8 finds  ·  %d/%d sites  ·  %d jobs" % [cash,count,_ridge_count()+_bay_count()+_north_count()+_marina_count(),RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size(),deliveries]
+	balance_label.text = "$%d  ·  %d/8 finds  ·  %d/%d sites  ·  %d jobs" % [cash,count,_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count(),RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size()+DOWNTOWN.size(),deliveries]
 	var offset: Vector3 = destination-body.position
 	var screen_right := camera.global_basis.x
 	var screen_forward := -camera.global_basis.z
@@ -3418,7 +3469,7 @@ func _refresh_hud() -> void:
 	var arrows := ["↑","↗","→","↘","↓","↙","←","↖"]
 	var arrow_index := posmod(int(round(compass_angle/(PI/4.0))),8)
 	compass.text = "%s  %s" % [arrows[arrow_index],"Destination is here" if distance < 5 else "Follow the golden ring"]
-	if exploring and index < 0 and _ridge_open() and _nearest_ridge() < 0 and _nearest_bay() < 0 and not (_north_open() and _nearest_north() >= 0) and not (_marina_open() and _nearest_marina() >= 0):
+	if exploring and index < 0 and _ridge_open() and _nearest_ridge() < 0 and _nearest_bay() < 0 and not (_north_open() and _nearest_north() >= 0) and not (_downtown_open() and _nearest_downtown() >= 0) and not (_marina_open() and _nearest_marina() >= 0):
 		compass.text = "Everything found! Free roam, or pick Jobs in Menu."
 	elif exploring and index < 0 and not _ridge_open():
 		compass.text = "%s  Buy a Ridge Rover in Menu > Garage" % arrows[arrow_index]
@@ -3536,6 +3587,7 @@ func _save_progress() -> void:
 	file.set_value("progress","online_name",online_name)
 	file.set_value("progress","chase_wins",chase_wins)
 	file.set_value("progress","marina_mask",marina_mask)
+	file.set_value("progress","downtown_mask",downtown_mask)
 	file.set_value("progress","shop_visit",shop_visit_mask)
 	file.set_value("progress","car_paint",car_paint)
 	file.set_value("progress","av_look",[av_shirt,av_pants,av_hat])
@@ -3565,6 +3617,7 @@ func _load_progress() -> void:
 		online_name = String(file.get_value("progress","online_name",""))
 		chase_wins = maxi(0,int(file.get_value("progress","chase_wins",0)))
 		marina_mask = int(file.get_value("progress","marina_mask",0)) & ((1 << MARINA.size())-1)
+		downtown_mask = int(file.get_value("progress","downtown_mask",0)) & ((1 << DOWNTOWN.size())-1)
 		shop_visit_mask = int(file.get_value("progress","shop_visit",0)) & 7
 		var saved_paint = file.get_value("progress","car_paint",[])
 		car_paint.fill(0)
@@ -3589,7 +3642,7 @@ func _load_progress() -> void:
 			if not (int(av_own[2]) & (1 << av_hat)):
 				av_hat = 0
 		var saved_times = file.get_value("progress","best_times",[])
-		best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+		best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 		if saved_times is Array:
 			for i in mini(saved_times.size(),best_times.size()):
 				best_times[i] = maxf(0.0,float(saved_times[i]))
@@ -3802,10 +3855,28 @@ func _build_peds() -> void:
 		[Vector3(-44,0,6),Vector3(44,0,6)],[Vector3(-44,0,-26.5),Vector3(44,0,-26.5)],
 		[Vector3(-44,0,-37.5),Vector3(44,0,-37.5)],
 	]
+	lines.append([Vector3(-38.5,0,-40),Vector3(-38.5,0,40)])
+	lines.append([Vector3(-44,0,26.5),Vector3(44,0,26.5)])
+	var plan: Array = []
+	for i in 24:
+		plan.append([lines[i % lines.size()][0],lines[i % lines.size()][1],false])
+	# Skyline District sidewalks (7.8 m from the road centre) and people standing around.
+	var dt_lines: Array = []
+	for x in [-130.0,-230.0,-330.0]:
+		for sx in [-7.8,7.8]:
+			dt_lines.append([Vector3(x+sx,0,-108),Vector3(x+sx,0,-392)])
+	for z in [-100.0,-200.0,-300.0,-400.0]:
+		for sz in [-7.8,7.8]:
+			var east := -225.0 if (z == -400.0 and sz > 0.0) else -125.0
+			dt_lines.append([Vector3(east,0,z+sz),Vector3(-435,0,z+sz)])
+	for i in 28:
+		plan.append([dt_lines[i % dt_lines.size()][0],dt_lines[i % dt_lines.size()][1],false])
+	for spot in [Vector3(-300,0,-121),Vector3(-310,0,-129),Vector3(-298,0,-131),Vector3(-312,0,-119),Vector3(-262,0,-246),Vector3(-298,0,-254),Vector3(-175,0,-362),Vector3(-186,0,-362),Vector3(-15,0,35),Vector3(15,0,35)]:
+		plan.append([spot,spot,true])
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5150
-	for i in 16:
-		var line: Array = lines[i % lines.size()]
+	for i in plan.size():
+		var line: Array = plan[i]
 		var node := Node3D.new()
 		add_child(node)
 		var shirt_col: Color = shirts[rng.randi() % shirts.size()]
@@ -3824,7 +3895,9 @@ func _build_peds() -> void:
 		else:
 			# Models face -Z; pedestrians are steered with +Z forward.
 			(person["root"] as Node3D).rotation.y = PI
-		peds.append({"node":node,"a":line[0],"b":line[1],"t":rng.randf(),"dir":1.0 if rng.randf() < 0.5 else -1.0,"speed":rng.randf_range(1.1,1.8),"off":Vector3.ZERO,"phase":rng.randf()*TAU,"legs":leg_nodes,"person":person})
+		if not person.is_empty():
+			_cull_person(person["root"],95.0)
+		peds.append({"node":node,"a":line[0],"b":line[1],"t":rng.randf(),"dir":1.0 if rng.randf() < 0.5 else -1.0,"speed":rng.randf_range(1.1,1.8),"off":Vector3.ZERO,"phase":rng.randf()*TAU,"legs":leg_nodes,"person":person,"idle":line[2],"yaw":rng.randf()*TAU})
 	_update_peds(0.0)
 
 func _update_peds(delta: float) -> void:
@@ -3832,8 +3905,10 @@ func _update_peds(delta: float) -> void:
 		var a: Vector3 = p["a"]
 		var b: Vector3 = p["b"]
 		var seg := b-a
-		var seg_len := seg.length()
-		p["t"] = float(p["t"])+float(p["dir"])*float(p["speed"])*delta/seg_len
+		var seg_len := maxf(seg.length(),0.001)
+		var idle := bool(p.get("idle",false))
+		if not idle:
+			p["t"] = float(p["t"])+float(p["dir"])*float(p["speed"])*delta/seg_len
 		if float(p["t"]) >= 1.0:
 			p["t"] = 1.0
 			p["dir"] = -1.0
@@ -3852,6 +3927,10 @@ func _update_peds(delta: float) -> void:
 		p["off"] = (p["off"] as Vector3).move_toward(target,7.0*delta)
 		var node: Node3D = p["node"]
 		node.position = base+(p["off"] as Vector3)
+		if idle:
+			node.rotation.y = float(p["yaw"])
+			_pose_person(p["person"],0.0,0.0)
+			continue
 		var heading := seg.normalized()*float(p["dir"])
 		node.rotation.y = atan2(heading.x,heading.z)
 		p["phase"] = float(p["phase"])+delta*float(p["speed"])*4.5
@@ -3974,6 +4053,7 @@ func _smoke_test() -> void:
 	await _smoke_orole()
 	_smoke_levels()
 	_smoke_marina()
+	_smoke_downtown()
 	_smoke_bus()
 	_smoke_chase_extras()
 	_smoke_models()
@@ -4002,7 +4082,7 @@ func _smoke_test() -> void:
 		restored.close()
 	elif FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
-	print("HARBOR_SMOKE_OK: two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -4071,6 +4151,8 @@ func _smoke_orole() -> void:
 
 func _smoke_levels() -> void:
 	var saved := [found_mask,ridge_mask,bay_mask,north_mask,trial_done,claimed_mask,deliveries,marina_mask]
+	var saved_dt := downtown_mask
+	downtown_mask = 0
 	found_mask = 0
 	ridge_mask = 0
 	bay_mask = 0
@@ -4087,10 +4169,11 @@ func _smoke_levels() -> void:
 	bay_mask = (1 << BAY.size())-1
 	north_mask = (1 << NORTH.size())-1
 	marina_mask = (1 << MARINA.size())-1
+	downtown_mask = (1 << DOWNTOWN.size())-1
 	trial_done = (1 << TRIALS.size())-1
 	claimed_mask = (1 << MISSIONS.size())-1
 	deliveries = 50
-	var total := 160+(RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size())*25+TRIALS.size()*40+MISSIONS.size()*60+ROUTES.size()*10
+	var total := 160+(RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size()+DOWNTOWN.size())*25+TRIALS.size()*40+MISSIONS.size()*60+ROUTES.size()*10
 	assert(_xp() == total and _level() == 5,"Completing everything reaches level 5")
 	assert(_level_text().contains("MAX"),"Max level text")
 	assert(_online_pos_frame()["payload"]["payload"]["l"] == 5,"Position frame carries the level")
@@ -4101,6 +4184,7 @@ func _smoke_levels() -> void:
 	trial_done = saved[4]
 	claimed_mask = saved[5]
 	deliveries = saved[6]
+	downtown_mask = saved_dt
 
 func _smoke_bus() -> void:
 	var saved := [found_mask,ridge_mask,bay_mask,north_mask,trial_done,claimed_mask,deliveries,marina_mask,cash,driving,player.position,exploring]
@@ -4288,9 +4372,9 @@ func _smoke_marina() -> void:
 	marina_mask = 0
 	_load_progress()
 	assert(av_shirt == 1 and av_hat == 2 and int(car_paint[first_premium]) == 3 and (marina_mask & 1) != 0 and shop_visit_mask == 7,"Marina progress persists")
-	journal_page = 1
+	journal_page = 2
 	_refresh_journal()
-	assert(journal_label.text.contains("Marina Arrival"),"Journal missions page lists Marina quests")
+	assert(journal_label.text.contains("Marina Arrival") and journal_label.text.contains("Rush Hour"),"Journal second missions page lists Marina and Skyline quests")
 	journal_page = 0
 	_refresh_journal()
 	assert(journal_label.text.contains("MARINA"),"Journal discoveries page lists Marina")
@@ -4323,8 +4407,25 @@ func _blocked_at(pos: Vector3, radius := 0.5) -> bool:
 	sphere.radius = radius
 	query.shape = sphere
 	query.transform = Transform3D(Basis.IDENTITY,pos)
-	query.exclude = [player.get_rid(),car.get_rid()]
+	var skip: Array[RID] = [player.get_rid(),car.get_rid()]
+	if blocked_skip_traffic:
+		for t in traffic:
+			skip.append((t["node"] as CollisionObject3D).get_rid())
+	query.exclude = skip
 	return not get_world_3d().direct_space_state.intersect_shape(query,1).is_empty()
+
+func _blocker(pos: Vector3, radius: float) -> String:
+	var query := PhysicsShapeQueryParameters3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = radius
+	query.shape = sphere
+	query.transform = Transform3D(Basis.IDENTITY,pos)
+	query.exclude = [player.get_rid(),car.get_rid()]
+	var hits := get_world_3d().direct_space_state.intersect_shape(query,1)
+	if hits.is_empty():
+		return "nothing"
+	var obj: Object = hits[0]["collider"]
+	return "%s at %s" % [obj.get_class(),str((obj as Node3D).global_position) if obj is Node3D else "?"]
 
 func _on_screen(panel: Control) -> bool:
 	var rect := panel.get_global_rect()
@@ -4339,7 +4440,7 @@ func _wait_radio(station: int) -> void:
 	assert(radio_streams.has(station),"Radio station %d did not generate" % station)
 
 func _smoke_radio_peds() -> void:
-	assert(peds.size() == 16,"Pedestrians missing")
+	assert(peds.size() == 62,"Pedestrians missing: %d" % peds.size())
 	assert(not player_person.is_empty() and player_person["mats"].has("Shirt"),"Player person model missing")
 	for p in peds:
 		assert(not (p["person"] as Dictionary).is_empty(),"Pedestrian person model missing")
@@ -4636,7 +4737,7 @@ func _smoke_garage_ridge() -> void:
 	assert(not _start_trial(2),"Locked trial started")
 	ridge_mask = 63
 	trial_done = 0
-	best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+	best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 	assert(_start_trial(0) and trial_active == 0 and driving,"City trial did not start")
 	var cash_trial := cash
 	for cp in TRIALS[0]["cps"]:
@@ -4750,7 +4851,10 @@ func _smoke_garage_ridge() -> void:
 	marina_mask = (1 << MARINA.size())-1
 	shop_visit_mask = 7
 	owned_mask = 31 | (1 << 5)
+	var saved_dt_missions := downtown_mask
+	downtown_mask = (1 << DOWNTOWN.size())-1
 	_check_missions()
+	downtown_mask = saved_dt_missions
 	var total := 0
 	for m in MISSIONS:
 		total += int(m["pay"])
@@ -4832,7 +4936,7 @@ func _shots() -> void:
 	claimed_mask = 1023
 	best_kmh = 95.0
 	trial_done = 3
-	best_times = [31.4,12.9,0.0,0.0,0.0,0.0,0.0,0.0]
+	best_times = [31.4,12.9,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 	for u in UPGRADES.size():
 		tunes[3*UPGRADES.size()+u] = 2+u
 	_apply_car()
@@ -5031,3 +5135,824 @@ func _capture_preview() -> void:
 	var image := get_viewport().get_texture().get_image()
 	image.save_png(folder.path_join("harbor-city-gameplay.png"))
 	_show_toast("Gameplay screenshot saved.")
+
+# ---------- v0.16.0: Skyline District (big downtown), traffic with signals, busier streets ----------
+const DT_AVES := [-130.0,-180.0,-230.0,-280.0,-330.0,-380.0,-430.0]
+const DT_STREETS := [-100.0,-150.0,-200.0,-250.0,-300.0,-350.0,-400.0]
+const DT_EAST := -110.5
+const DT_WEST := -446.0
+const DT_NORTH := -61.5
+const DT_SOUTH := -440.5
+# Road pieces removed where blocks are merged (stadium, station, park, mall): [fixed coordinate, from, to].
+const DT_AVE_GAPS := [[-380.0,-394.0,-306.0],[-180.0,-394.0,-356.0],[-280.0,-294.0,-206.0]]
+const DT_STREET_GAPS := [[-350.0,-424.0,-336.0],[-150.0,-374.0,-336.0],[-250.0,-324.0,-236.0]]
+const DT_SIZES := {"tower_0":Vector3(16,50,16),"tower_1":Vector3(18,58,18),"tower_2":Vector3(24,34,12),"tower_3":Vector3(14,41,14),"tower_4":Vector3(20,90,20),"shops_0":Vector3(24,9,10),"shops_1":Vector3(24,9,10),"garage":Vector3(24,14,24),"police":Vector3(30,9,18),"mall":Vector3(72,14,30.6),"station":Vector3(56,10,18),"stadium":Vector3(82,13,64)}
+const DOWNTOWN := [
+	{"name":"Police HQ","pos":Vector3(-155,0,-160),"pay":600},
+	{"name":"City Hall","pos":Vector3(-155,0,-210),"pay":600},
+	{"name":"Harbor Tower","pos":Vector3(-205,0,-210),"pay":900},
+	{"name":"Times Plaza","pos":Vector3(-305,0,-125),"pay":700},
+	{"name":"Grand Mall","pos":Vector3(-334,0,-150),"pay":700},
+	{"name":"Central Park Fountain","pos":Vector3(-280,0,-238),"pay":800},
+	{"name":"Harbor Stadium","pos":Vector3(-380,0,-311),"pay":900},
+	{"name":"Union Station","pos":Vector3(-180,0,-361),"pay":800},
+]
+const DOWNTOWN_BONUS := 4000
+const LIGHT_CYCLE := 20.0
+const ADS := ["HARBOR FM 101\nHits all day","NIGHT COMET\nFeel the speed","PIZZA RUSH\nHot in 38 seconds","VISIT MARINA\nHEIGHTS","MINT CRUISER\nSmooth city rides","GRAND MALL\nOpen late","STADIUM\nGame night!","AIRPORT LINE\nOnly $15"]
+const TRAFFIC_LOOPS := [
+	{"lane":3.0,"speed":10.0,"cars":5,"pts":[Vector2(-130,-100),Vector2(-430,-100),Vector2(-430,-400),Vector2(-130,-400)]},
+	{"lane":3.0,"speed":9.0,"cars":2,"pts":[Vector2(-130,-100),Vector2(-130,-200),Vector2(-230,-200),Vector2(-230,-100)]},
+	{"lane":3.0,"speed":9.0,"cars":3,"pts":[Vector2(-380,-100),Vector2(-380,-300),Vector2(-430,-300),Vector2(-430,-100)]},
+	{"lane":3.0,"speed":9.0,"cars":3,"pts":[Vector2(-230,-200),Vector2(-330,-200),Vector2(-330,-300),Vector2(-230,-300)]},
+	{"lane":3.0,"speed":9.0,"cars":3,"pts":[Vector2(-130,-300),Vector2(-130,-400),Vector2(-230,-400),Vector2(-230,-300)]},
+	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(32,-32),Vector2(32,32),Vector2(-32,32)]},
+	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(-32,32),Vector2(32,32),Vector2(32,-32)]},
+]
+const TRAFFIC_COLORS := [Color("d33a3a"),Color("eef1f2"),Color("23262b"),Color("2f5fd0"),Color("f2d046"),Color("7ac74f"),Color("9aa3aa"),Color("f07f2e"),Color("22b5c9")]
+var downtown_mask := 0
+var downtown_nodes: Array[Node3D] = []
+var traffic: Array = []
+var traffic_paths: Array = []
+var traffic_on := true
+var light_spots: Array = []
+var light_ns_mat: StandardMaterial3D
+var light_ew_mat: StandardMaterial3D
+var light_state := -1
+var blocked_skip_traffic := false
+
+func _downtown_open() -> bool:
+	return _bay_open()
+
+func _downtown_count() -> int:
+	var n := 0
+	for i in DOWNTOWN.size():
+		if downtown_mask & (1 << i):
+			n += 1
+	return n
+
+func _nearest_downtown() -> int:
+	var closest := -1
+	var best := INF
+	var body: CharacterBody3D = car if driving else player
+	for i in DOWNTOWN.size():
+		if downtown_mask & (1 << i):
+			continue
+		var pos: Vector3 = DOWNTOWN[i]["pos"]
+		var d := Vector2(body.position.x-pos.x,body.position.z-pos.z).length()
+		if d < best:
+			best = d
+			closest = i
+	return closest
+
+func _check_downtown() -> void:
+	var body: CharacterBody3D = car if driving else player
+	for i in DOWNTOWN.size():
+		var found := (downtown_mask & (1 << i)) != 0
+		var pos: Vector3 = DOWNTOWN[i]["pos"]
+		downtown_nodes[i].visible = not found
+		downtown_nodes[i].rotation.y = clock
+		downtown_nodes[i].position.y = pos.y+1.7+sin(clock*2+i)*0.25
+		if found:
+			continue
+		if Vector2(body.position.x-pos.x,body.position.z-pos.z).length() < 4.5 and absf(body.position.y-pos.y) < 3.5:
+			_discover_downtown(i)
+
+func _discover_downtown(i: int) -> void:
+	if downtown_mask & (1 << i):
+		return
+	downtown_mask |= 1 << i
+	var count := _downtown_count()
+	var reward := int(DOWNTOWN[i]["pay"])
+	if count == DOWNTOWN.size():
+		reward += DOWNTOWN_BONUS
+	cash += reward
+	downtown_nodes[i].hide()
+	_save_progress()
+	_show_toast("%s discovered!  %d/%d  +$%d%s" % [DOWNTOWN[i]["name"],count,DOWNTOWN.size(),reward,"  SKYLINE COMPLETE!" if count == DOWNTOWN.size() else ""])
+
+# Batched drawing: one draw call per colour or model, which keeps a big district cheap on the phone.
+func _box_batch(color: Color, items: Array) -> MultiMeshInstance3D:
+	if items.is_empty():
+		return null
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.mesh = BoxMesh.new()
+	multi.instance_count = items.size()
+	for i in items.size():
+		var it: Array = items[i]
+		multi.set_instance_transform(i,Transform3D(Basis.from_scale(it[1]),it[0]))
+	var inst := MultiMeshInstance3D.new()
+	inst.multimesh = multi
+	inst.material_override = _material(color)
+	add_child(inst)
+	return inst
+
+func _model_batch(path: String, items: Array, recolor := {}) -> MultiMeshInstance3D:
+	# items: [Vector3 position, float yaw, float scale]. recolor: material-name prefix -> Color.
+	if items.is_empty():
+		return null
+	var model := _try_model(path)
+	if model == null:
+		return null
+	var source := _first_mesh(model)
+	if source == null:
+		model.free()
+		return null
+	var mesh: Mesh = source.mesh
+	if not recolor.is_empty():
+		mesh = source.mesh.duplicate()
+		for s in mesh.get_surface_count():
+			var m := mesh.surface_get_material(s)
+			var key := m.resource_name if m != null else ""
+			for prefix in recolor:
+				if key.begins_with(prefix):
+					mesh.surface_set_material(s,_material(recolor[prefix]))
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.mesh = mesh
+	multi.instance_count = items.size()
+	for i in items.size():
+		var it: Array = items[i]
+		var s := float(it[2]) if it.size() > 2 else 1.0
+		multi.set_instance_transform(i,Transform3D(Basis(Vector3.UP,float(it[1])).scaled(Vector3(s,s,s)),it[0]))
+	var inst := MultiMeshInstance3D.new()
+	inst.multimesh = multi
+	add_child(inst)
+	model.free()
+	return inst
+
+func _cut_ranges(ranges: Array, lo: float, hi: float) -> Array:
+	var out := []
+	for r in ranges:
+		if hi <= float(r[0]) or lo >= float(r[1]):
+			out.append(r)
+		else:
+			if lo > float(r[0]):
+				out.append([r[0],lo])
+			if hi < float(r[1]):
+				out.append([hi,r[1]])
+	return out
+
+func _dt_ranges(is_ave: bool, c: float) -> Array:
+	var ranges := [[DT_SOUTH+0.5,DT_NORTH-0.5]] if is_ave else [[DT_WEST,DT_EAST]]
+	for g in (DT_AVE_GAPS if is_ave else DT_STREET_GAPS):
+		if is_equal_approx(float(g[0]),c):
+			ranges = _cut_ranges(ranges,float(g[1]),float(g[2]))
+	return ranges
+
+func _dt_has(is_ave: bool, c: float, t: float) -> bool:
+	for r in _dt_ranges(is_ave,c):
+		if t >= float(r[0])-0.01 and t <= float(r[1])+0.01:
+			return true
+	return false
+
+func _dt_near_cross(is_ave: bool, t: float, margin: float) -> bool:
+	for c in (DT_STREETS if is_ave else DT_AVES):
+		if absf(t-float(c)) < margin:
+			return true
+	return false
+
+func _place(items: Dictionary, name: String, pos: Vector3, yaw: float, scale := 1.0, solid := true) -> void:
+	if not items.has(name):
+		items[name] = []
+	items[name].append([pos,yaw,scale])
+	if solid and DT_SIZES.has(name):
+		var size: Vector3 = DT_SIZES[name]*scale
+		if absf(sin(yaw)) > 0.7:
+			size = Vector3(size.z,size.y,size.x)
+		_collider(self,pos+Vector3(0,size.y/2.0,0),size)
+
+func _signal_pole(poles: Array, ns_caps: Array, ew_caps: Array, corner: Vector3, yaw: float, ns: bool, reach := 3.9) -> void:
+	poles.append([corner,yaw,1.0])
+	var head := corner+Basis(Vector3.UP,yaw)*Vector3(reach,0,0)
+	(ns_caps if ns else ew_caps).append([head+Vector3(0,5.27,0),Vector3(0.64,0.14,0.54)])
+
+func _build_downtown() -> void:
+	var asphalt := Color("394552")
+	var walk := Color("8f8d86")
+	var rock := Color("7d776c")
+	var line := Color("e7d9a4")
+	var cx := (DT_WEST+DT_EAST)/2.0
+	var cz := (DT_NORTH+DT_SOUTH)/2.0
+	_slab(Vector3(cx,-0.35,cz),Vector3(DT_EAST-DT_WEST,0.6,DT_NORTH-DT_SOUTH),0,walk)
+	_box(self,Vector3(DT_WEST-0.5,1.25,cz),Vector3(1,2.5,DT_NORTH-DT_SOUTH+1),rock,true)
+	_box(self,Vector3(cx,1.25,DT_SOUTH-0.5),Vector3(DT_EAST-DT_WEST+1,2.5,1),rock,true)
+	_box(self,Vector3((DT_WEST-136.0)/2.0,1.25,DT_NORTH+0.5),Vector3(DT_WEST*-1.0-136.0,2.5,1),rock,true)
+	_box(self,Vector3(-117.25,1.25,DT_NORTH+0.5),Vector3(13.5,2.5,1),rock,true)
+	# Link road from Bay Road up to the district.
+	_slab(Vector3(-130,-0.35,-38.5),Vector3(16,0.6,46),0,walk)
+	_box(self,Vector3(-130,0.01,-38.5),Vector3(12,0.08,46),asphalt)
+	for sx in [-138.5,-121.5]:
+		_box(self,Vector3(sx,1.0,-38.5),Vector3(1,2,46),rock,true)
+	# Roads, lane dashes, crosswalks, signals.
+	var roads := []
+	var dashes := []
+	var zebra := []
+	for x in DT_AVES:
+		for r in _dt_ranges(true,x):
+			roads.append([Vector3(x,0.01,(float(r[0])+float(r[1]))/2.0),Vector3(12,0.08,float(r[1])-float(r[0]))])
+			var z := float(r[0])+4.0
+			while z < float(r[1])-2.0:
+				if not _dt_near_cross(true,z,8.0):
+					dashes.append([Vector3(x,0.06,z),Vector3(0.18,0.02,3)])
+				z += 8.0
+	for z in DT_STREETS:
+		for r in _dt_ranges(false,z):
+			roads.append([Vector3((float(r[0])+float(r[1]))/2.0,0.012,z),Vector3(float(r[1])-float(r[0]),0.08,12)])
+			var x := float(r[0])+4.0
+			while x < float(r[1])-2.0:
+				if not _dt_near_cross(false,x,8.0):
+					dashes.append([Vector3(x,0.062,z),Vector3(3,0.02,0.18)])
+				x += 8.0
+	roads.append([Vector3(-130,0.013,-50),Vector3(12,0.08,24)])
+	var poles := []
+	var ns_caps := []
+	var ew_caps := []
+	for x in DT_AVES:
+		for z in DT_STREETS:
+			if not (_dt_has(true,x,z) and _dt_has(false,z,x)):
+				continue
+			light_spots.append(Vector3(x,0,z))
+			for s in [-1.0,1.0]:
+				if _dt_has(true,x,z+s*9.0):
+					for k in 7:
+						zebra.append([Vector3(x-4.8+1.6*k,0.065,z+s*8.4),Vector3(0.7,0.02,3.0)])
+				if _dt_has(false,z,x+s*9.0):
+					for k in 7:
+						zebra.append([Vector3(x+s*8.4,0.067,z-4.8+1.6*k),Vector3(3.0,0.02,0.7)])
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+7.2,0,z+7.2),PI,true)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-7.2,0,z-7.2),0.0,true)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-7.2,0,z+7.2),PI/2.0,false)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+7.2,0,z-7.2),-PI/2.0,false)
+	_box_batch(asphalt,roads)
+	_box_batch(line,dashes)
+	_box_batch(Color("eef0ec"),zebra)
+	# Blocks.
+	var items := {}
+	var plates := []
+	var plan := [["tower_0",0,0],["tower_2",1,0],["tower_3",2,0],["tower_1",5,0],
+		["police",0,1],["tower_2",1,1],["tower_0",2,1],["tower_3",3,1],["shops",5,1],
+		["tower_1",0,2],["tower_4",1,2],["tower_0",4,2],["tower_2",5,2],
+		["tower_3",0,3],["tower_1",1,3],["garage",4,3],["tower_3",5,3],
+		["shops",0,4],["tower_0",1,4],["tower_2",2,4],["tower_1",3,4],
+		["tower_3",2,5],["shops",3,5]]
+	var billboards := []
+	for entry in plan:
+		var c := Vector3(-155.0-50.0*int(entry[1]),0,-125.0-50.0*int(entry[2]))
+		plates.append([c+Vector3(0,0.03,0),Vector3(36,0.06,36)])
+		if entry[0] == "shops":
+			_place(items,"shops_0",c+Vector3(0,0,9),0.0)
+			_place(items,"shops_1",c+Vector3(0,0,-9),PI)
+			billboards.append([c+Vector3(0,8.6,9),0.0])
+		else:
+			_place(items,entry[0],c,0.0)
+	# Edge rows of shops and garages.
+	for col in 6:
+		var x := -155.0-50.0*col
+		_place(items,"shops_%d" % (col % 2),Vector3(x,0,-80),PI)
+		if col % 2 == 0:
+			billboards.append([Vector3(x,8.6,-80),PI])
+		if col == 2 or col == 4:
+			_place(items,"garage",Vector3(x,0,-422),0.0)
+		else:
+			_place(items,"shops_%d" % ((col+1) % 2),Vector3(x,0,-420),0.0)
+	# Landmarks.
+	_place(items,"mall",Vector3(-355,0,-150),PI/2.0,0.9)
+	_place(items,"stadium",Vector3(-380,0,-350),0.0)
+	_place(items,"station",Vector3(-180,0,-375),0.0)
+	_collider(self,Vector3(-180,2.2,-391.8),Vector3(54,4.4,3.2))
+	for key in items:
+		_model_batch("res://models/%s.glb" % key,items[key])
+	_box_batch(Color("a19c90"),plates)
+	_sign("SKYLINE DISTRICT",Vector3(-117,8.5,-150),Color("ffe9b8"),56)
+	_sign("SKYLINE DISTRICT",Vector3(-117,8.5,-250),Color("ffe9b8"),56)
+	_sign("SKYLINE DISTRICT",Vector3(-130,7.0,-24),Color("ffe9b8"),52)
+	_sign("CITY HALL",Vector3(-155,62,-225),Color("ffe2a8"),72)
+	_sign("HARBOR TOWER",Vector3(-205,94,-225),Color("bff4f0"),80)
+	_sign("POLICE HQ",Vector3(-155,11,-170),Color("cfe2ff"),56)
+	_sign("GRAND MALL",Vector3(-355,17,-150),Color("ffd6e0"),64)
+	_sign("HARBOR STADIUM",Vector3(-380,18,-350),Color("fff3c9"),72)
+	_sign("UNION STATION",Vector3(-180,13,-375),Color("e8f0ff"),60)
+	_sign("CENTRAL PARK",Vector3(-280,7,-206),Color("d8f5c8"),56)
+	_sign("TIMES PLAZA",Vector3(-305,9,-110),Color("ffe9b8"),56)
+	_build_park()
+	_build_plaza(Vector3(-305,0,-125),billboards)
+	# Street furniture.
+	var lamps := []
+	var trees := []
+	var benches := []
+	var bins := []
+	var hydrants := []
+	for x in DT_AVES:
+		for r in _dt_ranges(true,x):
+			var z := float(r[0])+12.0
+			while z < float(r[1])-6.0:
+				if not _dt_near_cross(true,z,10.0):
+					lamps.append([Vector3(x+6.6,0,z),PI])
+					lamps.append([Vector3(x-6.6,0,z+12.5),0.0])
+					if not _dt_near_cross(true,z+6.0,10.0):
+						trees.append([Vector3(x+9.4,0,z+6.0),0.0,0.62])
+						trees.append([Vector3(x-9.4,0,z-6.0),1.0,0.6])
+				z += 25.0
+	for z in DT_STREETS:
+		for r in _dt_ranges(false,z):
+			var x := float(r[0])+12.0
+			while x < float(r[1])-6.0:
+				if not _dt_near_cross(false,x,10.0):
+					lamps.append([Vector3(x,0,z+6.6),PI/2.0])
+					lamps.append([Vector3(x+12.5,0,z-6.6),-PI/2.0])
+					if not _dt_near_cross(false,x+6.0,10.0):
+						trees.append([Vector3(x+6.0,0,z+9.4),2.0,0.6])
+						trees.append([Vector3(x-6.0,0,z-9.4),3.0,0.62])
+						benches.append([Vector3(x+2.0,0,z+9.6),PI])
+				x += 25.0
+	for spot in light_spots:
+		hydrants.append([spot+Vector3(6.9,0,10.5),0.0])
+		bins.append([spot+Vector3(-6.9,0,-10.5),0.0])
+	_model_batch("res://models/lamp.glb",lamps)
+	_model_batch("res://models/tree_round.glb",trees)
+	_model_batch("res://models/bench.glb",benches)
+	_model_batch("res://models/bin.glb",bins)
+	_model_batch("res://models/hydrant.glb",hydrants)
+	_model_batch("res://models/traffic_light.glb",poles)
+	light_ns_mat = _material(Color("4fd36a"))
+	light_ew_mat = _material(Color("e04a3a"))
+	for m in [light_ns_mat,light_ew_mat]:
+		m.emission_enabled = true
+		m.emission_energy_multiplier = 1.4
+	var ns_inst := _box_batch(Color.WHITE,ns_caps)
+	var ew_inst := _box_batch(Color.WHITE,ew_caps)
+	if ns_inst != null:
+		ns_inst.material_override = light_ns_mat
+	if ew_inst != null:
+		ew_inst.material_override = light_ew_mat
+	# Billboards with original ads.
+	var boards := []
+	for i in billboards.size():
+		var b: Array = billboards[i]
+		boards.append([b[0],b[1],1.0])
+		var ad := Label3D.new()
+		ad.text = ADS[i % ADS.size()]
+		ad.font_size = 64
+		ad.pixel_size = 0.02
+		ad.modulate = Color("23262b")
+		ad.outline_size = 0
+		ad.position = (b[0] as Vector3)+Basis(Vector3.UP,float(b[1]))*Vector3(0,7.3,0.32)
+		ad.rotation.y = float(b[1])
+		add_child(ad)
+	_model_batch("res://models/billboard.glb",boards)
+	# Parked cars along the east service strip.
+	var parked := {}
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1600
+	var z := -70.0
+	while z > -432.0:
+		if not _dt_near_cross(true,z,9.0) and rng.randf() < 0.75:
+			var key := "%d:%d" % [rng.randi() % 5,rng.randi() % TRAFFIC_COLORS.size()]
+			if not parked.has(key):
+				parked[key] = []
+			parked[key].append([Vector3(-117.5,0.8,z),PI/2.0 if rng.randf() < 0.5 else -PI/2.0])
+			_collider(self,Vector3(-117.5,0.8,z),Vector3(4.2,1.3,1.9))
+		z -= 3.4
+	for key in parked:
+		var parts: PackedStringArray = String(key).split(":")
+		var col: Color = TRAFFIC_COLORS[int(parts[1])]
+		_model_batch("res://models/car_%s.glb" % parts[0],parked[key],{"Body":col,"Cabin":col.darkened(0.5)})
+	# Discovery sites.
+	for site in DOWNTOWN:
+		downtown_nodes.append(_downtown_token(site["pos"],site["name"]))
+
+func _downtown_token(pos: Vector3, label: String) -> Node3D:
+	var token := Node3D.new()
+	token.position = pos+Vector3(0,1.7,0)
+	add_child(token)
+	var gem := MeshInstance3D.new()
+	var crystal := PrismMesh.new()
+	crystal.size = Vector3(0.9,1.3,0.9)
+	gem.mesh = crystal
+	var mat := _material(Color("ff6fb0"))
+	mat.emission_enabled = true
+	mat.emission = Color("a8285e")
+	gem.material_override = mat
+	token.add_child(gem)
+	_sign(label.to_upper(),pos+Vector3(0,4.4,0),Color("ffd0e6"),36)
+	_box(self,pos+Vector3(0,0.1,0),Vector3(2.4,0.18,2.4),Color("5a2640"))
+	return token
+
+func _build_park() -> void:
+	var c := Vector3(-280,0,-250)
+	_box_batch(Color("74b062"),[[c+Vector3(0,0.035,0),Vector3(86,0.06,86)]])
+	_box_batch(Color("e3cfa3"),[[c+Vector3(0,0.07,0),Vector3(84,0.04,4)],[c+Vector3(0,0.072,0),Vector3(4,0.04,84)]])
+	_box_batch(Color("2f86a8"),[[c+Vector3(22,0.08,22),Vector3(22,0.05,14)]])
+	_prop("res://models/fountain.glb",c,Vector3(14,1.2,14),0.0,Color("b9bcbd"))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2800
+	var trees := []
+	var pines := []
+	var benches := []
+	for gx in range(-39,40,8):
+		for gz in range(-39,40,8):
+			var p := Vector3(float(gx)+rng.randf_range(-2.0,2.0),0,float(gz)+rng.randf_range(-2.0,2.0))
+			if absf(p.x) < 4.5 or absf(p.z) < 4.5 or p.length() < 12.0:
+				continue
+			if p.x > 9.0 and p.x < 35.0 and p.z > 13.0 and p.z < 31.0:
+				continue
+			if rng.randf() < 0.65:
+				(pines if rng.randf() < 0.3 else trees).append([c+p,rng.randf()*TAU,rng.randf_range(0.8,1.15)])
+	for d in [-30.0,-18.0,18.0,30.0]:
+		benches.append([c+Vector3(d,0,3.2),PI])
+		benches.append([c+Vector3(3.2,0,d),-PI/2.0])
+	_model_batch("res://models/tree_round.glb",trees)
+	_model_batch("res://models/tree_pine.glb",pines)
+	_model_batch("res://models/bench.glb",benches)
+	_model_batch("res://models/kiosk.glb",[[c+Vector3(-8,0,6),0.4],[c+Vector3(7,0,-8),2.0]])
+
+func _build_plaza(c: Vector3, billboards: Array) -> void:
+	_box_batch(Color("c9b48c"),[[c+Vector3(0,0.035,0),Vector3(36,0.06,36)]])
+	var planters := []
+	for a in 8:
+		var ang := TAU*float(a)/8.0
+		planters.append([c+Vector3(cos(ang)*9.0,0,sin(ang)*9.0),0.0])
+	_model_batch("res://models/planter.glb",planters)
+	_model_batch("res://models/kiosk.glb",[[c+Vector3(-12,0,-12),0.8],[c+Vector3(12,0,12),3.9]])
+	_model_batch("res://models/bench.glb",[[c+Vector3(-6,0,12),0.0],[c+Vector3(6,0,-12),PI]])
+	billboards.append([c+Vector3(-14,0,-15),0.6])
+	billboards.append([c+Vector3(14,0,-15),-0.6])
+	billboards.append([c+Vector3(-15,0,14),2.4])
+	billboards.append([c+Vector3(15,0,14),-2.4])
+
+# ---------- old city and Bay details ----------
+func _build_city_detail() -> void:
+	var walk := Color("9c9a92")
+	var strips := []
+	for lane in [-32.0,0.0,32.0]:
+		for s in [-1.0,1.0]:
+			strips.append([Vector3(lane+s*5.75,0.02,0),Vector3(2.5,0.04,104)])
+			strips.append([Vector3(0,0.021,lane+s*5.75),Vector3(104,0.04,2.5)])
+	_box_batch(walk,strips)
+	var zebra := []
+	var poles := []
+	var ns_caps := []
+	var ew_caps := []
+	for x in [-32.0,0.0,32.0]:
+		for z in [-32.0,0.0,32.0]:
+			light_spots.append(Vector3(x,0,z))
+			for s in [-1.0,1.0]:
+				for k in 5:
+					zebra.append([Vector3(x-3.2+1.6*k,0.066,z+s*6.3),Vector3(0.7,0.02,2.4)])
+					zebra.append([Vector3(x+s*6.3,0.068,z-3.2+1.6*k),Vector3(2.4,0.02,0.7)])
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+5.9,0,z+5.9),PI,true,3.7)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-5.9,0,z-5.9),0.0,true,3.7)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-5.9,0,z+5.9),PI/2.0,false,3.7)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+5.9,0,z-5.9),-PI/2.0,false,3.7)
+	_box_batch(Color("eef0ec"),zebra)
+	_model_batch("res://models/traffic_light.glb",poles)
+	var ns_inst := _box_batch(Color.WHITE,ns_caps)
+	var ew_inst := _box_batch(Color.WHITE,ew_caps)
+	if ns_inst != null:
+		ns_inst.material_override = light_ns_mat
+	if ew_inst != null:
+		ew_inst.material_override = light_ew_mat
+	# Shop rows in the two big lawns north of the main street, plus furniture and planters.
+	var items := {}
+	for sx in [-1.0,1.0]:
+		_place(items,"shops_%d" % (0 if sx < 0 else 1),Vector3(sx*16.0,0,-8.6),0.0,0.55)
+	for key in items:
+		_model_batch("res://models/%s.glb" % key,items[key],{})
+	var benches := []
+	var bins := []
+	var hydrants := []
+	var planters := []
+	for bx in [-17.0,17.0,-46.0,46.0]:
+		for bz in [-46.0,-17.0,17.0]:
+			if bz == -17.0 and absf(bx) < 20.0:
+				continue
+			planters.append([Vector3(bx-4.0,0,bz+7.2),0.0])
+			planters.append([Vector3(bx+4.0,0,bz+7.2),0.0])
+	for x in [-32.0,0.0,32.0]:
+		for z in [-32.0,0.0,32.0]:
+			hydrants.append([Vector3(x+5.3,0,z+8.5),0.0])
+			bins.append([Vector3(x-5.3,0,z-8.5),0.0])
+	for x in [-44.0,-22.0,22.0,44.0]:
+		benches.append([Vector3(x,0,9.6),PI])
+	_model_batch("res://models/bench.glb",benches)
+	_model_batch("res://models/bin.glb",bins)
+	_model_batch("res://models/hydrant.glb",hydrants)
+	_model_batch("res://models/planter.glb",planters)
+	# Rooftop billboards on the old city buildings.
+	var boards := []
+	var heights := [4.0,6.2,8.4,10.6]
+	var count := 0
+	var ad_i := 3
+	for x in [-46.0,-17.0,17.0,46.0]:
+		for z in [-46.0,-17.0,17.0]:
+			if count % 3 == 1:
+				var y := float(heights[count % 4])+0.35
+				boards.append([Vector3(x,y,z),0.0,0.75])
+				var ad := Label3D.new()
+				ad.text = ADS[ad_i % ADS.size()]
+				ad_i += 1
+				ad.font_size = 64
+				ad.pixel_size = 0.015
+				ad.modulate = Color("23262b")
+				ad.outline_size = 0
+				ad.position = Vector3(x,y+7.3*0.75,z+0.25)
+				add_child(ad)
+			count += 1
+	_model_batch("res://models/billboard.glb",boards)
+	# Palms along the beach and Bay Road (the old cross-shaped palms are replaced).
+	var palms := []
+	for x in [-38.0,-26.0,-14.0,12.0,24.0,36.0]:
+		palms.append([Vector3(x,0,51.5),x*0.37,0.9])
+	for x in [-80.0,-98.0,-116.0,-134.0,-150.0,-166.0]:
+		palms.append([Vector3(x,0,13.4),x*0.21,0.85])
+	for x in [-84.0,-96.0,-118.0,-152.0,-162.0]:
+		palms.append([Vector3(x,0,-13.4),x*0.17,0.85])
+	_model_batch("res://models/palm.glb",palms)
+
+# ---------- traffic ----------
+func _build_traffic() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1616
+	for li in TRAFFIC_LOOPS.size():
+		var loop: Dictionary = TRAFFIC_LOOPS[li]
+		var pts: Array = loop["pts"]
+		var lane := float(loop["lane"])
+		var n := pts.size()
+		var way: Array = []
+		for i in n:
+			var p: Vector2 = pts[i]
+			var din: Vector2 = (p-(pts[(i-1+n) % n] as Vector2)).normalized()
+			var dout: Vector2 = ((pts[(i+1) % n] as Vector2)-p).normalized()
+			way.append(p+Vector2(-din.y,din.x)*lane+Vector2(-dout.y,dout.x)*lane)
+		var cum: Array = [0.0]
+		for i in n:
+			cum.append(float(cum[i])+(way[(i+1) % n] as Vector2).distance_to(way[i]))
+		var stops: Array = []
+		for i in n:
+			var a: Vector2 = way[i]
+			var b: Vector2 = way[(i+1) % n]
+			var d := (b-a).normalized()
+			for spot in light_spots:
+				var l := Vector2((spot as Vector3).x,(spot as Vector3).z)
+				var along := (l-a).dot(d)
+				var lat := absf((l-a).cross(d))
+				if along > lane+0.5 and along <= a.distance_to(b)+0.5 and lat < lane+1.5:
+					stops.append([float(cum[i])+along,0 if absf(d.y) > absf(d.x) else 1])
+		traffic_paths.append({"way":way,"cum":cum,"total":cum[n],"stops":stops,"stopline":lane*2.0+1.6,"speed":float(loop["speed"])})
+		for k in int(loop["cars"]):
+			var node := AnimatableBody3D.new()
+			node.sync_to_physics = false
+			add_child(node)
+			var shape := CollisionShape3D.new()
+			var box := BoxShape3D.new()
+			box.size = Vector3(1.8,1.3,3.6)
+			shape.shape = box
+			shape.position.y = 0.8
+			node.add_child(shape)
+			var model := _try_model("res://models/car_%d.glb" % (rng.randi() % 5))
+			if model != null:
+				model.position.y = 0.8
+				node.add_child(model)
+				_online_tint(model,TRAFFIC_COLORS[rng.randi() % TRAFFIC_COLORS.size()])
+				_cull_person(model,150.0,true)
+			else:
+				_box(node,Vector3(0,0.8,0),Vector3(1.8,0.9,3.6),TRAFFIC_COLORS[rng.randi() % TRAFFIC_COLORS.size()])
+			var path: Dictionary = traffic_paths[li]
+			var s := float(path["total"])*float(k)/float(loop["cars"])+rng.randf_range(0.0,4.0)
+			traffic.append({"node":node,"path":li,"s":s,"v":0.0,"pos":Vector2.ZERO,"dir":Vector2(0,-1)})
+	for t in traffic:
+		_traffic_place(t,1.0)
+
+func _path_sample(path: Dictionary, s: float) -> Array:
+	var way: Array = path["way"]
+	var cum: Array = path["cum"]
+	var n := way.size()
+	s = fposmod(s,float(path["total"]))
+	for i in n:
+		if s <= float(cum[i+1]):
+			var a: Vector2 = way[i]
+			var b: Vector2 = way[(i+1) % n]
+			var seg := float(cum[i+1])-float(cum[i])
+			var t := (s-float(cum[i]))/maxf(seg,0.001)
+			return [a.lerp(b,t),(b-a).normalized()]
+	return [way[0],((way[1] as Vector2)-(way[0] as Vector2)).normalized()]
+
+func _light_green(axis: int) -> bool:
+	var t := fposmod(clock,LIGHT_CYCLE)
+	return t < 9.0 if axis == 0 else (t >= 10.0 and t < 19.0)
+
+func _traffic_place(t: Dictionary, weight: float) -> void:
+	var sample := _path_sample(traffic_paths[int(t["path"])],float(t["s"]))
+	t["pos"] = sample[0]
+	t["dir"] = sample[1]
+	var node: Node3D = t["node"]
+	node.position = Vector3((sample[0] as Vector2).x,0,(sample[0] as Vector2).y)
+	var dir: Vector2 = sample[1]
+	node.rotation.y = lerp_angle(node.rotation.y,atan2(-dir.x,-dir.y),clampf(weight,0.0,1.0))
+
+func _traffic_blocked_by(pos: Vector2, dir: Vector2, other: Vector2) -> float:
+	# Distance to an obstacle in our lane ahead, or INF.
+	var rel := other-pos
+	var fwd := rel.dot(dir)
+	if fwd <= 0.6 or fwd > 11.0:
+		return INF
+	if absf(rel.cross(dir)) > 2.3:
+		return INF
+	return fwd
+
+func _traffic_tick(delta: float) -> void:
+	var state := (1 if _light_green(0) else 0)+(2 if _light_green(1) else 0)
+	if state != light_state and light_ns_mat != null:
+		light_state = state
+		light_ns_mat.albedo_color = Color("4fd36a") if _light_green(0) else Color("e04a3a")
+		light_ns_mat.emission = light_ns_mat.albedo_color
+		light_ew_mat.albedo_color = Color("4fd36a") if _light_green(1) else Color("e04a3a")
+		light_ew_mat.emission = light_ew_mat.albedo_color
+	if not traffic_on:
+		return
+	var others: Array = [Vector2(car.position.x,car.position.z)]
+	if not driving:
+		others.append(Vector2(player.position.x,player.position.z))
+	if bus != null:
+		others.append(Vector2(bus.position.x,bus.position.z))
+	for u in chase_units:
+		var b: Node3D = u["node"]
+		others.append(Vector2(b.position.x,b.position.z))
+	for i in traffic.size():
+		var t: Dictionary = traffic[i]
+		var path: Dictionary = traffic_paths[int(t["path"])]
+		var pos: Vector2 = t["pos"]
+		var dir: Vector2 = t["dir"]
+		var target := float(path["speed"])
+		for o in others:
+			var d := _traffic_blocked_by(pos,dir,o)
+			if d < INF:
+				target = minf(target,maxf(0.0,(d-5.0)*1.6))
+		for p in peds:
+			var pn: Node3D = p["node"]
+			var pp := Vector2(pn.position.x,pn.position.z)
+			if pp.distance_squared_to(pos) < 150.0:
+				var d := _traffic_blocked_by(pos,dir,pp)
+				if d < INF:
+					target = minf(target,maxf(0.0,(d-3.5)*1.6))
+		for j in traffic.size():
+			if j == i:
+				continue
+			var o: Dictionary = traffic[j]
+			var d := _traffic_blocked_by(pos,dir,o["pos"])
+			if d == INF:
+				continue
+			# Mutual blocking (crossing paths): the lower index goes first.
+			if _traffic_blocked_by(o["pos"],o["dir"],pos) < INF and i < j:
+				continue
+			target = minf(target,maxf(0.0,(d-5.5)*1.6))
+		var total := float(path["total"])
+		for stop in path["stops"]:
+			if _light_green(int(stop[1])):
+				continue
+			var dist := fposmod(float(stop[0])-float(t["s"]),total)
+			var to_line := dist-float(path["stopline"])
+			if to_line > -0.4 and to_line < 16.0:
+				target = minf(target,maxf(0.0,to_line*1.3))
+		var v := float(t["v"])
+		v = move_toward(v,target,delta*(5.0 if target > v else 14.0))
+		t["v"] = v
+		t["s"] = fposmod(float(t["s"])+v*delta,total)
+		_traffic_place(t,delta*7.0)
+
+func _smoke_downtown() -> void:
+	assert(downtown_nodes.size() == DOWNTOWN.size(),"Skyline sites built")
+	for site in DOWNTOWN:
+		assert(not _blocked_at((site["pos"] as Vector3)+Vector3(0,1.0,0),0.6),"Skyline site blocked: "+str(site["name"]))
+	for pt in [Vector3(-110.5,1.0,-150),Vector3(-110.5,1.0,-250),Vector3(-130,1.0,-15.5),Vector3(-130,1.0,-61.5),Vector3(-130,1.0,-38)]:
+		assert(not _blocked_at(pt,0.8),"Skyline entrance blocked at %s" % str(pt))
+	for pt in [Vector3(-110.5,1.0,-200),Vector3(-160,1.0,-15.5),Vector3(-300,1.0,-61.5),Vector3(-446.5,1.0,-250),Vector3(-205,1.0,-225)]:
+		assert(_blocked_at(pt,0.3),"Wall or building missing at %s" % str(pt))
+	# Every road lane in the district is drivable (no building or prop collider on it). Traffic is moved aside.
+	blocked_skip_traffic = true
+	for x in DT_AVES:
+		for r in _dt_ranges(true,x):
+			var z := float(r[0])+3.0
+			while z < float(r[1])-3.0:
+				for lane in [-3.0,3.0]:
+					assert(not _blocked_at(Vector3(x+lane,1.0,z),0.7),"Avenue blocked at %s by %s" % [str(Vector3(x+lane,0,z)),_blocker(Vector3(x+lane,1.0,z),0.7)])
+				z += 6.0
+	for z in DT_STREETS:
+		for r in _dt_ranges(false,z):
+			var x := float(r[0])+3.0
+			while x < float(r[1])-3.0:
+				for lane in [-3.0,3.0]:
+					assert(not _blocked_at(Vector3(x,1.0,z+lane),0.7),"Street blocked at %s" % str(Vector3(x,0,z+lane)))
+				x += 6.0
+	blocked_skip_traffic = false
+	# Discovery pays once.
+	var saved_mask := downtown_mask
+	var saved_cash := cash
+	var was_driving := driving
+	var was_pos := player.position
+	downtown_mask = 0
+	driving = false
+	player.position = (DOWNTOWN[0]["pos"] as Vector3)+Vector3(0,0.7,0)
+	_check_downtown()
+	assert((downtown_mask & 1) != 0 and cash == saved_cash+int(DOWNTOWN[0]["pay"]),"Skyline site pays once")
+	_check_downtown()
+	assert(cash == saved_cash+int(DOWNTOWN[0]["pay"]),"Skyline site paid twice")
+	assert(_area_open(5) == _bay_open(),"Skyline trial area follows the Bay")
+	downtown_mask = saved_mask
+	cash = saved_cash
+	player.position = was_pos
+	driving = was_driving
+	# Traffic: built, moves, stops at a red light and behind an obstacle.
+	assert(traffic.size() == 22 and light_spots.size() >= 50,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
+	var was_car := car.position
+	var was_clock := clock
+	car.position = Vector3(400,0.8,400)
+	traffic_on = true
+	var starts: Array = []
+	for t in traffic:
+		starts.append(float(t["s"]))
+	for i in 240:
+		clock += 1.0/30.0
+		_traffic_tick(1.0/30.0)
+	var moved := 0
+	for k in traffic.size():
+		var total := float(traffic_paths[int(traffic[k]["path"])]["total"])
+		if fposmod(float(traffic[k]["s"])-float(starts[k]),total) > 8.0:
+			moved += 1
+	assert(moved >= 16,"Traffic is not moving (%d moved)" % moved)
+	var t0: Dictionary = traffic[0]
+	var path0: Dictionary = traffic_paths[int(t0["path"])]
+	var stop: Array = path0["stops"][0]
+	clock = 12.0 if int(stop[1]) == 0 else 3.0
+	assert(not _light_green(int(stop[1])),"Test light should be red")
+	t0["s"] = fposmod(float(stop[0])-float(path0["stopline"])-14.0,float(path0["total"]))
+	t0["v"] = 9.0
+	for k in range(1,traffic.size()):
+		if int(traffic[k]["path"]) == int(t0["path"]):
+			traffic[k]["s"] = fposmod(float(stop[0])+60.0+float(k)*12.0,float(path0["total"]))
+	for i in 150:
+		_traffic_tick(1.0/30.0)
+	var left := fposmod(float(stop[0])-float(t0["s"]),float(path0["total"]))-float(path0["stopline"])
+	assert(left > -0.6 and left < 3.0 and float(t0["v"]) < 0.5,"Car did not stop at the red light (%.2f m, %.2f m/s)" % [left,float(t0["v"])])
+	clock = 3.0 if int(stop[1]) == 0 else 12.0
+	for i in 60:
+		_traffic_tick(1.0/30.0)
+	assert(float(t0["v"]) > 2.0,"Car did not go on green")
+	var pos: Vector2 = t0["pos"]
+	var dir: Vector2 = t0["dir"]
+	car.position = Vector3(pos.x+dir.x*7.0,0.8,pos.y+dir.y*7.0)
+	for i in 90:
+		_traffic_tick(1.0/30.0)
+	var gap := Vector2(car.position.x,car.position.z).distance_to(t0["pos"])
+	assert(gap > 3.5 and float(t0["v"]) < 0.5,"Traffic hit the player car (gap %.2f)" % gap)
+	traffic_on = false
+	car.position = was_car
+	clock = was_clock
+
+func _skyline_shot(name: String, at: Vector3, from: Vector3) -> void:
+	paused = true
+	camera.position = from
+	camera.look_at(at)
+	await _save_shot(name)
+	print("SHOT %s draw_calls=%d objects=%d primitives=%d" % [name,Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)])
+	paused = false
+
+func _skyline_shots() -> void:
+	# Developer-only: renders the Skyline District and the busier old city. Never saves.
+	driving = true
+	player.hide()
+	car.position = Vector3(-133,0.8,-140)
+	car.rotation = Vector3.ZERO
+	for i in 200:
+		await get_tree().physics_frame
+	await _skyline_shot("skyline-aerial",Vector3(-260,0,-250),Vector3(-90,140,-40))
+	await _skyline_shot("skyline-street",Vector3(-180,6,-200),Vector3(-122,9,-150))
+	await _skyline_shot("skyline-park",Vector3(-280,0,-250),Vector3(-235,45,-195))
+	await _skyline_shot("skyline-stadium",Vector3(-380,5,-350),Vector3(-320,50,-280))
+	await _skyline_shot("city-detail",Vector3(0,0,0),Vector3(30,40,45))
+	await _skyline_shot("city-street",Vector3(10,1,-10),Vector3(28,10,10))
+	await _skyline_shot("bay-palms",Vector3(-120,1,0),Vector3(-95,14,22))
+	car.position = Vector3(-230,0.8,-160)
+	for i in 30:
+		await get_tree().physics_frame
+	_follow_camera(1.0)
+	paused = true
+	await _save_shot("skyline-game-camera")
+	print("SHOT game-camera draw_calls=%d objects=%d primitives=%d" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)])
+	car.position = Vector3(1.7,0.8,4)
+	for i in 30:
+		await get_tree().physics_frame
+	_follow_camera(1.0)
+	await _save_shot("city-game-camera")
+	print("SHOT city-game-camera draw_calls=%d objects=%d primitives=%d" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)])
+	paused = false
+	_toggle_menu()
+	_open_trials()
+	await _save_shot("menu-trials")
+	_open_journal()
+	await _save_shot("menu-journal")
+	_journal_flip()
+	await _save_shot("menu-missions")
+	get_tree().quit()

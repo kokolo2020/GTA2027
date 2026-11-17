@@ -245,7 +245,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.9: online mode (Menu row: Online) shows other drivers.")
+	_show_toast("Harbor City 0.12: levels! Finish quests to level up. Chase and Online are in the Menu.")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -1011,7 +1011,7 @@ func _online_pos_frame() -> Dictionary:
 	var payload := {
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
-		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role}
+		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level()}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -1097,6 +1097,7 @@ func _online_peer_update(p: Dictionary) -> void:
 	peer["seen"] = Time.get_ticks_msec()/1000.0
 	peer["driving"] = int(p.get("d",1)) == 1
 	peer["role"] = clampi(int(p.get("t",0)),0,2)
+	peer["lvl"] = clampi(int(p.get("l",1)),1,9)
 	var nm := _online_clean_name(String(p.get("n","Driver")))
 	if nm != peer["name"]:
 		peer["name"] = nm
@@ -1134,7 +1135,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	label.pixel_size = 0.012
 	label.no_depth_test = true
 	node.add_child(label)
-	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true,"role":0,"shown":0,"red":red_light,"blue":blue_light}
+	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true,"role":0,"lvl":1,"shown":0,"red":red_light,"blue":blue_light}
 
 func _online_tint(node: Node, color: Color) -> void:
 	if node is MeshInstance3D:
@@ -1174,11 +1175,12 @@ func _online_update_peers(delta: float) -> void:
 		var flash := int(clock*6.0) % 2 == 0
 		(peer["red"] as Node3D).visible = cop and flash
 		(peer["blue"] as Node3D).visible = cop and not flash
-		if role != int(peer["shown"]):
-			peer["shown"] = role
+		var key := role*100+int(peer["lvl"])
+		if key != int(peer["shown"]):
+			peer["shown"] = key
 			var tag := String(peer["name"])
 			var lab: Label3D = peer["label"]
-			lab.text = tag if role == 0 else tag+(" · THIEF" if role == 1 else " · POLICE")
+			lab.text = "%s Lv%d" % [tag,int(peer["lvl"])]+("" if role == 0 else (" · THIEF" if role == 1 else " · POLICE"))
 			lab.modulate = Color("ffb020") if role == 1 else (Color("9cc4ff") if role == 2 else Color.WHITE)
 	for id in gone:
 		(online_peers[id]["node"] as Node3D).queue_free()
@@ -1200,6 +1202,46 @@ func _online_refresh_button() -> void:
 		online_button.text = "Online: ..."
 	else:
 		online_button.text = "Online: %d" % (online_peers.size()+1)
+
+# ---------- v0.12.0: player level (derived from progress, so old saves convert automatically) ----------
+const LEVEL_XP := [0,150,450,900,1500]
+var last_level := 0
+
+func _xp() -> int:
+	var missions := 0
+	for i in MISSIONS.size():
+		if claimed_mask & (1 << i):
+			missions += 1
+	return _find_count()*20+(_ridge_count()+_bay_count()+_north_count())*25+_trial_count()*40+missions*60+mini(deliveries,ROUTES.size())*10
+
+func _level_for(xp: int) -> int:
+	var level := 1
+	for i in LEVEL_XP.size():
+		if xp >= int(LEVEL_XP[i]):
+			level = i+1
+	return level
+
+func _level() -> int:
+	return _level_for(_xp())
+
+func _level_text() -> String:
+	var xp := _xp()
+	var lv := _level_for(xp)
+	if lv >= LEVEL_XP.size():
+		return "Level %d (MAX)  ·  %d XP" % [lv,xp]
+	var lo := int(LEVEL_XP[lv-1])
+	var hi := int(LEVEL_XP[lv])
+	return "Level %d  %s  %d/%d XP" % [lv,_bar(float(xp-lo),float(hi-lo)),xp-lo,hi-lo]
+
+func _check_level() -> void:
+	var lv := _level()
+	if last_level == 0 or lv < last_level:
+		last_level = lv
+		return
+	if lv > last_level:
+		last_level = lv
+		var extra := " Max level! Showroom, avatars and a new map are coming soon." if lv >= LEVEL_XP.size() else ""
+		_show_toast("LEVEL UP! You are now Level %d.%s" % [lv,extra])
 
 # ---------- v0.11.0: online police vs thief ----------
 func _orole_ready() -> bool:
@@ -1813,6 +1855,8 @@ func _garage_action() -> void:
 
 func _refresh_journal() -> void:
 	var lines: PackedStringArray = []
+	lines.append(_level_text()+"   (finds 20 XP, sites 25, trials 40, missions 60, jobs 10)")
+	lines.append("")
 	lines.append("RIDGE DISCOVERIES  %d/%d%s" % [_ridge_count(),RIDGE.size(),"" if _ridge_open() else "   (gate locked)"])
 	var names: PackedStringArray = []
 	for i in RIDGE.size():
@@ -2330,6 +2374,7 @@ func _physics_process(delta: float) -> void:
 	_orole_tick(delta)
 	_online_tick(delta)
 	_check_missions()
+	_check_level()
 	marker.visible = trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0))
 	for index in find_nodes.size():
 		find_nodes[index].visible = not bool(found_mask & (1 << index))
@@ -2441,6 +2486,7 @@ func _refresh_hud() -> void:
 		var running: Dictionary = TRIALS[trial_active]
 		mission_label.text = "HARBOR CITY  /  TIME TRIAL"
 		objective.text = "%s  ring %d/%d  ·  %.1fs / par %ds" % [running["name"],trial_cp+1,running["cps"].size(),clock-trial_start,int(running["par"])]
+	mission_label.text += "  ·  LV %d" % _level()
 	balance_label.text = "$%d  ·  %d/8 finds  ·  %d/20 sites  ·  %d jobs" % [cash,count,_ridge_count()+_bay_count()+_north_count(),deliveries]
 	var offset: Vector3 = destination-body.position
 	var screen_right := camera.global_basis.x
@@ -2470,7 +2516,7 @@ func _refresh_hud() -> void:
 	for find_index in FINDS.size():
 		if found_mask & (1 << find_index):
 			discovered.append(FINDS[find_index]["name"])
-	collection_label.text = "Found %d/8: %s" % [count,", ".join(discovered) if count > 0 else "Follow the golden ring to your first blue token."]
+	collection_label.text = "Found %d/8: %s\n%s" % [count,", ".join(discovered) if count > 0 else "Follow the golden ring to your first blue token.",_level_text()]
 
 func _open_panel(panel: Control) -> void:
 	menu.hide()
@@ -2946,6 +2992,7 @@ func _smoke_test() -> void:
 	await _smoke_radio_peds()
 	await _smoke_chase()
 	await _smoke_orole()
+	_smoke_levels()
 	_smoke_models()
 	cash = original_cash
 	deliveries = original_deliveries
@@ -2972,7 +3019,7 @@ func _smoke_test() -> void:
 		restored.close()
 	elif FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
-	print("HARBOR_SMOKE_OK: two-finger input, driving, chase mode, online roles, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: two-finger input, driving, chase mode, online roles, player levels, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -3038,6 +3085,37 @@ func _smoke_orole() -> void:
 	orole_test = false
 	cash = before
 	_rescue()
+
+func _smoke_levels() -> void:
+	var saved := [found_mask,ridge_mask,bay_mask,north_mask,trial_done,claimed_mask,deliveries]
+	found_mask = 0
+	ridge_mask = 0
+	bay_mask = 0
+	north_mask = 0
+	trial_done = 0
+	claimed_mask = 0
+	deliveries = 0
+	assert(_xp() == 0 and _level() == 1,"Fresh player is level 1")
+	assert(_level_for(149) == 1 and _level_for(150) == 2 and _level_for(449) == 2 and _level_for(450) == 3 and _level_for(1499) == 4 and _level_for(1500) == 5 and _level_for(99999) == 5,"Level thresholds")
+	found_mask = 255
+	assert(_xp() == 160 and _level() == 2,"Finds give XP")
+	ridge_mask = (1 << RIDGE.size())-1
+	bay_mask = (1 << BAY.size())-1
+	north_mask = (1 << NORTH.size())-1
+	trial_done = (1 << TRIALS.size())-1
+	claimed_mask = (1 << MISSIONS.size())-1
+	deliveries = 50
+	var total := 160+(RIDGE.size()+BAY.size()+NORTH.size())*25+TRIALS.size()*40+MISSIONS.size()*60+ROUTES.size()*10
+	assert(_xp() == total and _level() == 5,"Completing everything reaches level 5")
+	assert(_level_text().contains("MAX"),"Max level text")
+	assert(_online_pos_frame()["payload"]["payload"]["l"] == 5,"Position frame carries the level")
+	found_mask = saved[0]
+	ridge_mask = saved[1]
+	bay_mask = saved[2]
+	north_mask = saved[3]
+	trial_done = saved[4]
+	claimed_mask = saved[5]
+	deliveries = saved[6]
 
 func _blocked_at(pos: Vector3, radius := 0.5) -> bool:
 	var query := PhysicsShapeQueryParameters3D.new()

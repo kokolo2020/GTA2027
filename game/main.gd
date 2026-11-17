@@ -197,6 +197,18 @@ var online_send_t := 0.0
 var online_retry := 0.0
 var online_peers := {}
 var online_button: Button
+const CHASE_TIME := 90.0
+const CHASE_PAY := 600
+const CHASE_COPS := 3
+var chase_mode := 0
+var chase_t := 0.0
+var chase_bust := 0.0
+var chase_units: Array = []
+var chase_wins := 0
+var chase_panel: PanelContainer
+var chase_info: Label
+var chase_end_button: Button
+var chase_label: Label
 var radio_caption: Label
 var peds: Array = []
 var touch_buttons: Array[Button] = []
@@ -1167,6 +1179,194 @@ func _online_refresh_button() -> void:
 	else:
 		online_button.text = "Online: %d" % (online_peers.size()+1)
 
+# ---------- v0.10.0: chase mode (offline) ----------
+func _chase_open() -> void:
+	chase_info.text = "THIEF: drive away from 3 police cars for %d seconds. If a cop stays close for 2.5s you are busted (no money lost).\nPOLICE: catch the fleeing thief car by staying within 5m for 2.5s.\nWin pays $%d. Chases won so far: %d." % [int(CHASE_TIME),CHASE_PAY,chase_wins]
+	chase_end_button.disabled = chase_mode == 0
+	_open_panel(chase_panel)
+
+func _chase_clear() -> void:
+	for u in chase_units:
+		var body: Node = u["node"]
+		if is_instance_valid(body):
+			body.queue_free()
+	chase_units.clear()
+
+func _chase_make_unit(cop: bool) -> Dictionary:
+	var body := CharacterBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(1.7,1.3,3.3)
+	shape.shape = box
+	body.add_child(shape)
+	_box(body,Vector3(0,0,0),Vector3(1.8,0.65,3.4),Color("f4f6f8") if cop else Color("b83a2c"))
+	_box(body,Vector3(0,0.55,0.15),Vector3(1.45,0.65,1.6),Color("1f2a33"))
+	var red: MeshInstance3D = null
+	var blue: MeshInstance3D = null
+	if cop:
+		red = _box(body,Vector3(-0.35,0.98,0.1),Vector3(0.6,0.18,0.3),Color("ff2a2a"))
+		blue = _box(body,Vector3(0.35,0.98,0.1),Vector3(0.6,0.18,0.3),Color("2a4aff"))
+	else:
+		_box(body,Vector3(0,0.98,0.1),Vector3(0.5,0.15,0.3),Color("ffb020"))
+	var label := Label3D.new()
+	label.text = "POLICE" if cop else "THIEF"
+	label.font_size = 40
+	label.modulate = Color("9cc4ff") if cop else Color("ffb020")
+	label.position = Vector3(0,2.6,0)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.outline_size = 10
+	label.pixel_size = 0.012
+	label.no_depth_test = true
+	body.add_child(label)
+	add_child(body)
+	return {"node":body,"red":red,"blue":blue,"cop":cop,"stuck":0.0,"last":Vector3.ZERO,"turn":0.0,"dir":1.0}
+
+func _chase_spawn_point(center: Vector3, dist: float) -> Vector3:
+	for i in 20:
+		var a := randf()*TAU
+		var p := center+Vector3(sin(a),0,cos(a))*(dist+randf()*10.0)
+		p.y = center.y+0.3
+		if absf(p.x) < 560.0 and absf(p.z) < 560.0 and not _blocked_at(p+Vector3(0,1.0,0),1.2):
+			return p
+	return center+Vector3(dist,0.3,0)
+
+func _chase_start(mode: int) -> void:
+	if trial_active >= 0:
+		_show_toast("Finish or cancel your trial first.")
+		return
+	_chase_clear()
+	if not driving:
+		car.position = player.position+Vector3(0,0.8,0)
+		car.velocity = Vector3.ZERO
+		car_speed = 0.0
+		driving = true
+		player.hide()
+		player.get_child(0).set_deferred("disabled",true)
+	player.position = car.position
+	chase_mode = mode
+	chase_t = 0.0
+	chase_bust = 0.0
+	if mode == 1:
+		for i in CHASE_COPS:
+			var u := _chase_make_unit(true)
+			(u["node"] as Node3D).position = _chase_spawn_point(car.position,45.0+i*10.0)
+			chase_units.append(u)
+	else:
+		var t := _chase_make_unit(false)
+		(t["node"] as Node3D).position = _chase_spawn_point(car.position,40.0)
+		chase_units.append(t)
+	if paused:
+		_toggle_menu()
+	chase_label.show()
+	_show_toast("Run! Lose the police for %ds." % int(CHASE_TIME) if mode == 1 else "Catch the thief! Stay within 5m.")
+
+func _chase_end(message: String, reward: int) -> void:
+	chase_mode = 0
+	_chase_clear()
+	chase_label.hide()
+	if reward > 0:
+		cash += reward
+		chase_wins += 1
+		_save_progress()
+	_show_toast(message)
+
+func _chase_steer(u: Dictionary, goal: Vector3, speed: float, delta: float) -> void:
+	var body: CharacterBody3D = u["node"]
+	var to := goal-body.position
+	to.y = 0
+	var want := atan2(-to.x,-to.z)
+	var best := want
+	var free := false
+	for off in [0.0,0.5,-0.5,1.0,-1.0,1.6,-1.6]:
+		var h: float = want+off
+		var dir := Vector3(-sin(h),0,-cos(h))
+		if not _blocked_at(body.position+dir*4.5+Vector3(0,0.6,0),1.1):
+			best = h
+			free = true
+			break
+	if not free:
+		best = want+PI
+	u["stuck"] = float(u["stuck"])+delta
+	if float(u["stuck"]) >= 1.0:
+		var last: Vector3 = u["last"]
+		if Vector2(body.position.x-last.x,body.position.z-last.z).length() < 1.0:
+			u["turn"] = 1.0
+			u["dir"] = 1.0 if randf() < 0.5 else -1.0
+		u["last"] = body.position
+		u["stuck"] = 0.0
+	if float(u["turn"]) > 0.0:
+		u["turn"] = float(u["turn"])-delta
+		best = want+float(u["dir"])*2.0
+	body.rotation.y = lerp_angle(body.rotation.y,best,minf(delta*3.5,1.0))
+	var forward := -body.global_basis.z
+	body.velocity.x = forward.x*speed
+	body.velocity.z = forward.z*speed
+	body.velocity.y -= 24*delta
+	body.move_and_slide()
+	if body.is_on_floor():
+		body.velocity.y = 0
+
+func _chase_tick(delta: float) -> void:
+	if chase_mode == 0:
+		return
+	if not driving:
+		_chase_end("You left the car. Chase over.",0)
+		return
+	chase_t += delta
+	var left := CHASE_TIME-chase_t
+	var ramp := clampf(chase_t/CHASE_TIME,0.0,1.0)
+	var phase := int(clock*6.0) % 2 == 0
+	var nearest := 9999.0
+	var nearest_pos := car.position
+	for u in chase_units:
+		var body: CharacterBody3D = u["node"]
+		var d := body.position.distance_to(car.position)
+		if bool(u["cop"]):
+			_chase_steer(u,car.position,car_max*(0.78+0.14*ramp),delta)
+			(u["red"] as MeshInstance3D).visible = phase
+			(u["blue"] as MeshInstance3D).visible = not phase
+			if d > 130.0 or body.position.y < -5.0:
+				body.position = _chase_spawn_point(car.position,70.0)
+				body.velocity = Vector3.ZERO
+		else:
+			var away := body.position+(body.position-car.position)
+			if absf(body.position.x) > 540.0 or absf(body.position.z) > 540.0 or body.position.y < -5.0:
+				away = Vector3.ZERO
+			_chase_steer(u,away,car_max*(0.72+0.1*ramp),delta)
+			if body.position.y < -5.0:
+				body.position = _chase_spawn_point(car.position,40.0)
+				body.velocity = Vector3.ZERO
+		if d < nearest:
+			nearest = d
+			nearest_pos = body.position
+	if nearest < 5.0:
+		chase_bust += delta
+	else:
+		chase_bust = maxf(0.0,chase_bust-delta*0.6)
+	if chase_bust >= 2.5:
+		if chase_mode == 1:
+			_chase_end("BUSTED! The police caught you. No money lost.",0)
+		else:
+			_chase_end("Thief arrested!  +$%d" % CHASE_PAY,CHASE_PAY)
+		return
+	if left <= 0.0:
+		if chase_mode == 1:
+			_chase_end("You escaped the police!  +$%d" % CHASE_PAY,CHASE_PAY)
+		else:
+			_chase_end("The thief got away. Try again from Menu > Chase.",0)
+		return
+	var offset := nearest_pos-car.position
+	var screen_right := camera.global_basis.x
+	var screen_forward := -camera.global_basis.z
+	screen_forward.y = 0
+	var angle := atan2(offset.dot(screen_right),offset.dot(screen_forward.normalized()))
+	var arrows := ["↑","↗","→","↘","↓","↙","←","↖"]
+	var arrow: String = arrows[posmod(int(round(angle/(PI/4.0))),8)]
+	if chase_mode == 1:
+		chase_label.text = "WANTED  ·  escape in %ds\nNearest cop %dm %s   Busted %s" % [int(ceil(left)),int(nearest),arrow,_bar(chase_bust,2.5)]
+	else:
+		chase_label.text = "POLICE  ·  thief escapes in %ds\nThief %dm %s   Arrest %s" % [int(ceil(left)),int(nearest),arrow,_bar(chase_bust,2.5)]
+
 func _start_trial(i: int) -> bool:
 	var trial: Dictionary = TRIALS[i]
 	if not _area_open(int(trial["area"])):
@@ -1594,6 +1794,24 @@ func _build_panels(root: Control) -> void:
 	r.add_child(trial_cancel)
 	r.add_child(_button("Back",_close_sub))
 	trial_panel.hide()
+	chase_panel = PanelContainer.new()
+	root.add_child(chase_panel)
+	chase_panel.custom_minimum_size = Vector2(620,0)
+	chase_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	var c := VBoxContainer.new()
+	c.add_theme_constant_override("separation",10)
+	chase_panel.add_child(c)
+	c.add_child(_label("CHASE MODE",26,Color("f0bd62")))
+	chase_info = _label("",17,Color("cbd8de"))
+	chase_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	chase_info.custom_minimum_size.x = 560
+	c.add_child(chase_info)
+	c.add_child(_button("Be the THIEF (run from police)",_chase_start.bind(1)))
+	c.add_child(_button("Be the POLICE (catch the thief)",_chase_start.bind(2)))
+	chase_end_button = _button("End chase",_chase_end.bind("Chase ended.",0))
+	c.add_child(chase_end_button)
+	c.add_child(_button("Back",_close_sub))
+	chase_panel.hide()
 
 func _build_player() -> void:
 	player = CharacterBody3D.new()
@@ -1780,6 +1998,20 @@ func _build_hud() -> void:
 	root.add_child(online_button)
 	online_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	online_button.position = Vector2(root.size.x-376,92)
+	chase_label = _label("",22,Color("ffe29a"))
+	chase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	chase_label.add_theme_constant_override("outline_size",5)
+	chase_label.add_theme_color_override("font_outline_color",Color("132b3a"))
+	chase_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var chase_style := _panel(Color(0.06,0.13,0.18,0.82),14)
+	chase_style.content_margin_left = 14
+	chase_style.content_margin_right = 14
+	chase_label.add_theme_stylebox_override("normal",chase_style)
+	root.add_child(chase_label)
+	chase_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	chase_label.position = Vector2(root.size.x/2-260,24)
+	chase_label.size = Vector2(520,10)
+	chase_label.hide()
 	joystick = Control.new()
 	joystick.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(joystick)
@@ -1837,6 +2069,9 @@ func _build_hud() -> void:
 	var trials_open := _button("Trials",_open_trials)
 	trials_open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	shop_row.add_child(trials_open)
+	var chase_open := _button("Chase",_chase_open)
+	chase_open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	shop_row.add_child(chase_open)
 	mode_button = _button("Switch activity",_toggle_activity)
 	items.add_child(mode_button)
 	items.add_child(_button("Continue",_toggle_menu))
@@ -1850,6 +2085,7 @@ func _build_hud() -> void:
 		radio_button.position = Vector2(view.x-194,92)
 		online_button.position = Vector2(view.x-376,92)
 		radio_caption.position = Vector2(view.x-394,150)
+		chase_label.position = Vector2(view.x/2-260,24)
 		joystick.position = Vector2(32,view.y-210)
 		action_button.position = Vector2(view.x-248,view.y-124)
 		status_label.position = Vector2(view.x/2-340,view.y-48)
@@ -1962,6 +2198,7 @@ func _physics_process(delta: float) -> void:
 	_check_bay()
 	_check_north()
 	_check_trial()
+	_chase_tick(delta)
 	_online_tick(delta)
 	_check_missions()
 	marker.visible = trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0))
@@ -2112,13 +2349,14 @@ func _open_panel(panel: Control) -> void:
 	journal.hide()
 	tune_panel.hide()
 	trial_panel.hide()
+	chase_panel.hide()
 	panel.show()
 	panel.reset_size()
 	_layout_panels()
 
 func _layout_panels() -> void:
 	var view := get_viewport().get_visible_rect().size
-	for panel: Control in [menu,garage,journal,tune_panel,trial_panel]:
+	for panel: Control in [menu,garage,journal,tune_panel,trial_panel,chase_panel]:
 		panel.position = Vector2((view.x-panel.size.x)/2.0,maxf(8.0,(view.y-panel.size.y)/2.0))
 
 func _toggle_menu() -> void:
@@ -2127,6 +2365,7 @@ func _toggle_menu() -> void:
 	journal.hide()
 	tune_panel.hide()
 	trial_panel.hide()
+	chase_panel.hide()
 	if paused:
 		_open_panel(menu)
 	else:
@@ -2147,6 +2386,10 @@ func _rescue() -> void:
 	player.show()
 	player.get_child(0).set_deferred("disabled",false)
 	trial_active = -1
+	if chase_mode != 0:
+		chase_mode = 0
+		_chase_clear()
+		chase_label.hide()
 	if paused:
 		_toggle_menu()
 	_show_toast("Back at the waterfront. Tap ENTER CAR to drive. Your money is safe.")
@@ -2176,6 +2419,7 @@ func _save_progress() -> void:
 	file.set_value("progress","best_times",best_times)
 	file.set_value("progress","radio",radio_station)
 	file.set_value("progress","online_name",online_name)
+	file.set_value("progress","chase_wins",chase_wins)
 	file.save(SAVE_PATH)
 
 func _load_progress() -> void:
@@ -2199,6 +2443,7 @@ func _load_progress() -> void:
 		trial_done = int(file.get_value("progress","trial_done",0)) & ((1 << TRIALS.size())-1)
 		radio_station = clampi(int(file.get_value("progress","radio",0)),0,RADIO.size()-1)
 		online_name = String(file.get_value("progress","online_name",""))
+		chase_wins = maxi(0,int(file.get_value("progress","chase_wins",0)))
 		var saved_times = file.get_value("progress","best_times",[])
 		best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 		if saved_times is Array:
@@ -2569,6 +2814,7 @@ func _smoke_test() -> void:
 	assert(not driving,"Vehicle exit failed in an open area")
 	await _smoke_garage_ridge()
 	await _smoke_radio_peds()
+	await _smoke_chase()
 	_smoke_models()
 	cash = original_cash
 	deliveries = original_deliveries
@@ -2595,10 +2841,43 @@ func _smoke_test() -> void:
 		restored.close()
 	elif FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
-	print("HARBOR_SMOKE_OK: two-finger input, driving, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: two-finger input, driving, chase mode, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
+
+func _smoke_chase() -> void:
+	var before := cash
+	_rescue()
+	car.position = Vector3(1.7,0.8,4)
+	_chase_start(1)
+	assert(chase_mode == 1 and chase_units.size() == CHASE_COPS and driving,"Thief chase should spawn police")
+	for i in 40:
+		await get_tree().physics_frame
+	assert(chase_t > 0.3,"Chase timer should run")
+	for u in chase_units:
+		assert((u["node"] as Node3D).position.y > -5.0,"Police fell out of the world")
+	for i in 220:
+		(chase_units[0]["node"] as Node3D).position = car.position+Vector3(0,0,3)
+		await get_tree().physics_frame
+		if chase_mode == 0:
+			break
+	assert(chase_mode == 0 and chase_units.is_empty(),"Police should bust the thief")
+	assert(cash == before,"Being busted must not cost money")
+	_chase_start(2)
+	assert(chase_mode == 2 and chase_units.size() == 1,"Police chase should spawn one thief")
+	for i in 220:
+		(chase_units[0]["node"] as Node3D).position = car.position+Vector3(0,0,3)
+		await get_tree().physics_frame
+		if chase_mode == 0:
+			break
+	assert(chase_mode == 0 and cash == before+CHASE_PAY,"Arresting the thief should pay")
+	_chase_start(1)
+	driving = false
+	await get_tree().physics_frame
+	assert(chase_mode == 0,"Leaving the car ends the chase")
+	cash = before
+	_rescue()
 
 func _blocked_at(pos: Vector3, radius := 0.5) -> bool:
 	var query := PhysicsShapeQueryParameters3D.new()
@@ -3143,6 +3422,13 @@ func _shots() -> void:
 	await _save_shot("north-pass")
 	await _shot_car(Vector3(-40,0.8,-33),0.0)
 	await _save_shot("city-buildings")
+	await _shot_car(Vector3(-32,0.8,32),0.0)
+	_chase_start(1)
+	for i in chase_units.size():
+		(chase_units[i]["node"] as Node3D).position = car.position+Vector3(-5.0+i*5.0,0.0,14.0+i*5.0)
+	for i in 25:
+		await get_tree().physics_frame
+	await _save_shot("chase-thief")
 	get_tree().quit()
 
 func _shot_car(pos: Vector3, yaw: float) -> void:

@@ -4,7 +4,7 @@ Original single-player Android city exploration and driving prototype for Koko's
 
 **[Download the game](https://kokolo2020.github.io/GTA2027/) · [APK releases](https://github.com/kokolo2020/GTA2027/releases/latest)**
 
-Current version: **0.8.0 — The North Update**. Android 7+, ARM64, GLES3. Offline. Install over the old app to keep progress.
+Current version: **0.9.0 — Online Preview**. Android 7+, ARM64, GLES3. Single-player with optional experimental online presence. Install over the old app to keep progress.
 
 ## Project
 
@@ -36,7 +36,7 @@ On Koko's existing Mac, the editor, JDK, SDK and templates remain under `~/harbo
 
 Commit the tested source and release notes, then:
 
-    python3 scripts/publish-release.py builds/Harbor-City-Android-debug.apk --notes docs/releases/v0.8.0.md
+    python3 scripts/publish-release.py builds/Harbor-City-Android-debug.apk --notes docs/releases/v0.9.0.md
 
 GitHub CLI authentication with repository write access is required. GitHub Actions publishes `site/` automatically when it changes on `main`. No OpenAI Sites connector is needed.
 

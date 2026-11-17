@@ -1,6 +1,6 @@
 # Harbor City — current handover
 
-Version 0.8.0, code 8. Original single-player Android game, Godot 4.7.2 standard / Compatibility, Samsung Galaxy Z Fold5.
+Version 0.9.0, code 9 (publication in progress). Original single-player Android game, Godot 4.7.2 standard / Compatibility, Samsung Galaxy Z Fold5.
 
 The canonical project has moved to **/Users/koko/GTA2027**, repository **https://github.com/kokolo2020/GTA2027**. Read PUBLISHING.md for the new self-contained GitHub release process. The old /Users/koko/harbor-city folder is retained for toolchain and historical recovery; develop here going forward.
 
@@ -12,9 +12,9 @@ The North Update adds Industrial Quarter, Maple Suburbs, Harbor Airfield and Sum
 
 Earlier Fold5 feedback: Koko finished all v0.3 objectives and most v0.5 objectives; do not reset their progress. v0.8.0 Fold5 appearance, performance and install-as-update still need verification.
 
-APK SHA256: cc9635af96dd87776ae1d36ee3987c9c8930375e950ad27aff99fff8a8b38bae
-Bytes: 29320811
-Package: com.koko.harborcity, version 0.8.0 / code 8, ARM64, min SDK 24, target 36.
+APK SHA256: 89e997cf73654aeb9e912046b4a130ae827068d763833f5e11899bff5425af7c
+Bytes: 29329078
+Package: com.koko.harborcity, version 0.9.0 / code 9, ARM64, min SDK 24, target 36.
 Certificate SHA256: 5168f1fa527ea9b9ea183d442285192de49dfe0d5b6cf0e0590421b84b5f547b
 
 Mac smoke test passed all existing checks including North content and models. Two ObjectDB instances leak at headless exit as in prior builds; no assertions failed. Signed APK, ZIP integrity, exact legacy-site chunks and hash verified.
@@ -38,7 +38,17 @@ Next: install v0.8.0 over the existing app, verify progress and North performanc
 - Old ChatGPT Site remains a private 0.8.0 fallback. Its successful deployment was appgdep_6afbceed111081918bf572f46bd22f2d from source 72b14b406cf26b3539abd8d1830ecb8781dfecbe.
 - Fold5 testing of v0.8.0 remains outstanding.
 
-## v0.9.0 Online Test — 17 November 2026
+## v0.9.0 Online Preview
+
+Optional Online button uses Supabase Realtime broadcast for peer positions, names, selected car and driving/on-foot markers. Starts off; no shared authoritative progression or collision. Local save retains the generated online name. Source config is game/multiplayer.local.json (ignored); placeholder example is tracked. Android Internet permission enabled.
+
+APK: builds/Harbor-City-Android-debug.apk, 29329078 bytes.
+SHA256: 89e997cf73654aeb9e912046b4a130ae827068d763833f5e11899bff5425af7c
+Package com.koko.harborcity version 0.9.0 code 9.
+The bundled client key was inspected without printing it: public anon role, not service_role. Local configuration must remain untracked. Do not claim live multiplayer validation from offline message tests. Physical two-device online testing remains outstanding.
+
+## Claude implementation notes (before publication)
+ — 17 November 2026
 
 - Optional online mode (default OFF): "Online: OFF" button in the HUD top-right row. Shows other drivers as tinted cars with name tags; no collisions, shared money or chat.
 - Transport: Supabase Realtime over WebSocket (Phoenix protocol v1), public channel realtime:harbor-city-lobby, 5 Hz position broadcast, max 12 peers. Code in game/main.gd (_online_* functions).

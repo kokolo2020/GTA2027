@@ -282,6 +282,8 @@ func _ready() -> void:
 		await _smoke_test()
 	elif "--shots" in OS.get_cmdline_user_args():
 		await _shots()
+	elif "--people-shots" in OS.get_cmdline_user_args():
+		await _people_shots()
 
 func _material(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -1163,8 +1165,9 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	blue_light.hide()
 	var foot_node := Node3D.new()
 	node.add_child(foot_node)
-	_box(foot_node,Vector3(0,0.75,0),Vector3(0.5,1.2,0.35),body_color)
-	_box(foot_node,Vector3(0,1.5,0),Vector3(0.4,0.4,0.4),Color("e8c9a0"))
+	if _make_person(foot_node,id.hash() & 1,{"Shirt":body_color,"Pants":Color("263d54"),"Skin":Color("e8c9a0"),"Hair":Color("2b1d14"),"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")}).is_empty():
+		_box(foot_node,Vector3(0,0.75,0),Vector3(0.5,1.2,0.35),body_color)
+		_box(foot_node,Vector3(0,1.5,0),Vector3(0.4,0.4,0.4),Color("e8c9a0"))
 	foot_node.hide()
 	var label := Label3D.new()
 	label.text = nm
@@ -1310,6 +1313,9 @@ var av_own: Array = [1,1,1]
 var shirt_mat: StandardMaterial3D
 var pants_mats: Array = []
 var hat_holder: Node3D
+var player_person := {}
+var player_walk := 0.0
+var player_phase := 0.0
 var shop_panel: PanelContainer
 var shop_title: Label
 var shop_info: Label
@@ -2700,12 +2706,22 @@ func _build_player() -> void:
 	capsule.height = 1.4
 	collision.shape = capsule
 	player.add_child(collision)
-	shirt_mat = _box(player, Vector3(0,0,0),Vector3(0.65,0.85,0.4),Color("f2b24a")).material_override as StandardMaterial3D
-	_box(player, Vector3(0,0.68,0),Vector3(0.46,0.46,0.46),Color("ac7552"))
-	pants_mats.append(_box(player, Vector3(-0.18,-0.58,0),Vector3(0.22,0.55,0.26),Color("263d54")).material_override)
-	pants_mats.append(_box(player, Vector3(0.18,-0.58,0),Vector3(0.22,0.55,0.26),Color("263d54")).material_override)
 	hat_holder = Node3D.new()
 	player.add_child(hat_holder)
+	player_person = _make_person(player,0,{"Shirt":Color("f2b24a"),"Pants":Color("263d54"),"Skin":Color("ac7552"),"Hair":Color("2b1d14"),"Shoes":Color("eef1f2"),"Eye":Color("1c1c22")})
+	if player_person.is_empty():
+		shirt_mat = _box(player, Vector3(0,0,0),Vector3(0.65,0.85,0.4),Color("f2b24a")).material_override as StandardMaterial3D
+		_box(player, Vector3(0,0.68,0),Vector3(0.46,0.46,0.46),Color("ac7552"))
+		pants_mats.append(_box(player, Vector3(-0.18,-0.58,0),Vector3(0.22,0.55,0.26),Color("263d54")).material_override)
+		pants_mats.append(_box(player, Vector3(0.18,-0.58,0),Vector3(0.22,0.55,0.26),Color("263d54")).material_override)
+	else:
+		player_person["base_y"] = -0.7
+		(player_person["root"] as Node3D).position.y = -0.7
+		shirt_mat = player_person["mats"]["Shirt"]
+		pants_mats.append(player_person["mats"]["Pants"])
+		# Hats were sized for the old box head; shrink them onto the new head.
+		hat_holder.scale = Vector3.ONE*0.65
+		hat_holder.position.y = 0.29
 	camera = Camera3D.new()
 	camera.fov = 55
 	camera.far = 340
@@ -2744,6 +2760,48 @@ func _try_model(path: String) -> Node3D:
 	if res is PackedScene:
 		return (res as PackedScene).instantiate() as Node3D
 	return null
+
+# ---------- v0.14.0: Blender-made people (player, pedestrians, online players on foot) ----------
+func _make_person(parent: Node3D, variant: int, colors: Dictionary) -> Dictionary:
+	var model := _try_model("res://models/person_%d.glb" % variant)
+	if model == null:
+		return {}
+	parent.add_child(model)
+	var mats := {}
+	var stack: Array[Node] = [model]
+	while stack.size() > 0:
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			for surface in mi.mesh.get_surface_count():
+				var src := mi.mesh.surface_get_material(surface)
+				var key := src.resource_name if src != null else ""
+				if not colors.has(key):
+					continue
+				if not mats.has(key):
+					var m := StandardMaterial3D.new()
+					m.albedo_color = colors[key]
+					m.roughness = 0.75
+					mats[key] = m
+				mi.set_surface_override_material(surface,mats[key])
+	var limbs := {}
+	for part in ["ArmL","ArmR","LegL","LegR","Head"]:
+		limbs[part] = model.find_child(part,true,false)
+	return {"root":model,"mats":mats,"limbs":limbs}
+
+func _pose_person(person: Dictionary, phase: float, amount: float) -> void:
+	if person.is_empty():
+		return
+	var limbs: Dictionary = person["limbs"]
+	var swing := sin(phase)*amount
+	for part in ["LegL","ArmR"]:
+		if limbs[part] != null:
+			(limbs[part] as Node3D).rotation.x = swing*(0.6 if part.begins_with("Leg") else 0.5)
+	for part in ["LegR","ArmL"]:
+		if limbs[part] != null:
+			(limbs[part] as Node3D).rotation.x = -swing*(0.6 if part.begins_with("Leg") else 0.5)
+	(person["root"] as Node3D).position.y = (person.get("base_y",0.0) as float)+absf(cos(phase))*0.035*amount
 
 func _recolor_car_model(node: Node) -> void:
 	if node is MeshInstance3D:
@@ -3064,6 +3122,10 @@ func _physics_process(delta: float) -> void:
 			player.rotation.y = lerp_angle(player.rotation.y,atan2(-direction.x,-direction.z),delta*10)
 		player.velocity.y -= 24*delta
 		player.move_and_slide()
+		var walking := Vector2(player.velocity.x,player.velocity.z).length() > 0.4
+		player_walk = move_toward(player_walk,1.0 if walking else 0.0,delta*6.0)
+		player_phase += delta*9.0*player_walk
+		_pose_person(player_person,player_phase,player_walk)
 		car.velocity.x = move_toward(car.velocity.x,0,delta*20)
 		car.velocity.z = move_toward(car.velocity.z,0,delta*20)
 	car.velocity.y -= 24*delta
@@ -3596,6 +3658,9 @@ func _build_peds() -> void:
 	var shirts := [Color("e07a5f"),Color("3d84a8"),Color("f2cc8f"),Color("81b29a"),Color("9a6fb0"),Color("d4a373")]
 	var skins := [Color("f0c9a4"),Color("c68a60"),Color("8d5a3b"),Color("e3b58b")]
 	var legs_col := Color("34495e")
+	var pants := [Color("34495e"),Color("263d54"),Color("b89a64"),Color("3b3f45"),Color("5c4b3a"),Color("e9edef")]
+	var hairs := [Color("2b1d14"),Color("1a1a1a"),Color("6b4423"),Color("c9a25f"),Color("8a8a8a"),Color("9c3d22")]
+	var shoes := [Color("2b2b2b"),Color("eef1f2"),Color("6b4423"),Color("3d84a8")]
 	var lines := [
 		[Vector3(6,0,-40),Vector3(6,0,40)],[Vector3(-6,0,-40),Vector3(-6,0,40)],
 		[Vector3(26.5,0,-40),Vector3(26.5,0,40)],[Vector3(-26.5,0,-40),Vector3(-26.5,0,40)],
@@ -3609,16 +3674,23 @@ func _build_peds() -> void:
 		var line: Array = lines[i % lines.size()]
 		var node := Node3D.new()
 		add_child(node)
-		_box(node,Vector3(0,1.05,0),Vector3(0.55,0.75,0.32),shirts[rng.randi() % shirts.size()])
-		_box(node,Vector3(0,1.62,0),Vector3(0.34,0.34,0.34),skins[rng.randi() % skins.size()])
+		var shirt_col: Color = shirts[rng.randi() % shirts.size()]
+		var skin_col: Color = skins[rng.randi() % skins.size()]
+		var person := _make_person(node,i % 2,{"Shirt":shirt_col,"Skin":skin_col,"Pants":pants[rng.randi() % pants.size()],"Hair":hairs[rng.randi() % hairs.size()],"Shoes":shoes[rng.randi() % shoes.size()],"Eye":Color("1c1c22")})
 		var leg_nodes: Array[Node3D] = []
-		for side in [-0.14,0.14]:
-			var hip := Node3D.new()
-			hip.position = Vector3(side,0.68,0)
-			node.add_child(hip)
-			_box(hip,Vector3(0,-0.34,0),Vector3(0.2,0.68,0.22),legs_col)
-			leg_nodes.append(hip)
-		peds.append({"node":node,"a":line[0],"b":line[1],"t":rng.randf(),"dir":1.0 if rng.randf() < 0.5 else -1.0,"speed":rng.randf_range(1.1,1.8),"off":Vector3.ZERO,"phase":rng.randf()*TAU,"legs":leg_nodes})
+		if person.is_empty():
+			_box(node,Vector3(0,1.05,0),Vector3(0.55,0.75,0.32),shirt_col)
+			_box(node,Vector3(0,1.62,0),Vector3(0.34,0.34,0.34),skin_col)
+			for side in [-0.14,0.14]:
+				var hip := Node3D.new()
+				hip.position = Vector3(side,0.68,0)
+				node.add_child(hip)
+				_box(hip,Vector3(0,-0.34,0),Vector3(0.2,0.68,0.22),legs_col)
+				leg_nodes.append(hip)
+		else:
+			# Models face -Z; pedestrians are steered with +Z forward.
+			(person["root"] as Node3D).rotation.y = PI
+		peds.append({"node":node,"a":line[0],"b":line[1],"t":rng.randf(),"dir":1.0 if rng.randf() < 0.5 else -1.0,"speed":rng.randf_range(1.1,1.8),"off":Vector3.ZERO,"phase":rng.randf()*TAU,"legs":leg_nodes,"person":person})
 	_update_peds(0.0)
 
 func _update_peds(delta: float) -> void:
@@ -3650,8 +3722,10 @@ func _update_peds(delta: float) -> void:
 		node.rotation.y = atan2(heading.x,heading.z)
 		p["phase"] = float(p["phase"])+delta*float(p["speed"])*4.5
 		var legs: Array = p["legs"]
-		legs[0].rotation.x = sin(float(p["phase"]))*0.6
-		legs[1].rotation.x = -sin(float(p["phase"]))*0.6
+		if legs.size() == 2:
+			legs[0].rotation.x = sin(float(p["phase"]))*0.6
+			legs[1].rotation.x = -sin(float(p["phase"]))*0.6
+		_pose_person(p["person"],float(p["phase"]),1.0)
 
 func _smoke_test() -> void:
 	# Exercise the actual mission and driving transitions; preserve the player's save.
@@ -4072,6 +4146,13 @@ func _wait_radio(station: int) -> void:
 
 func _smoke_radio_peds() -> void:
 	assert(peds.size() == 16,"Pedestrians missing")
+	assert(not player_person.is_empty() and player_person["mats"].has("Shirt"),"Player person model missing")
+	for p in peds:
+		assert(not (p["person"] as Dictionary).is_empty(),"Pedestrian person model missing")
+	var leg: Node3D = (peds[0]["person"] as Dictionary)["limbs"]["LegL"]
+	var leg_before := leg.rotation.x
+	_update_peds(0.3)
+	assert(absf(leg.rotation.x-leg_before) > 0.01,"Pedestrian legs do not swing")
 	for p in peds:
 		var a: Vector3 = p["a"]
 		var b: Vector3 = p["b"]
@@ -4523,6 +4604,27 @@ func _save_shot(name: String) -> void:
 		folder = ProjectSettings.globalize_path("user://screenshots")
 	DirAccess.make_dir_recursive_absolute(folder)
 	get_viewport().get_texture().get_image().save_png(folder.path_join(name+".png"))
+
+func _people_shots() -> void:
+	# Developer-only: close-up frames of the player and pedestrians. Never saves.
+	player.position = Vector3(6.5,0.7,-12)
+	player.rotation.y = 0.6
+	av_hat = 1
+	_apply_avatar()
+	for i in 4:
+		peds[i]["t"] = 0.36+0.02*i
+	for i in 30:
+		await get_tree().physics_frame
+	var ped: Node3D = peds[0]["node"]
+	player.position = ped.position+Vector3(1.2,0.7,0.6)
+	paused = true
+	camera.position = ped.position+Vector3(2.2,1.7,2.6)
+	camera.look_at(ped.position+Vector3(0.6,0.9,0))
+	await _save_shot("people-close")
+	paused = false
+	_follow_camera(1.0)
+	await _save_shot("people-game-camera")
+	get_tree().quit()
 
 func _shots() -> void:
 	# Developer-only: captures real rendered gameplay frames from a scripted profile, then quits.

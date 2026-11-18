@@ -320,7 +320,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.27.0: no more walls, roads join every district, the Harbor Loop sky train, Harbor International Airport, and real day and night.")
+	_show_toast("Harbor City 0.27.1: cars no longer get stuck behind people. 0.27: no more walls, roads join every district, the Harbor Loop sky train, Harbor International Airport, and real day and night.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -4542,6 +4542,10 @@ func _build_peds() -> void:
 	rng.seed = 5150
 	for i in plan.size():
 		var line: Array = plan[i]
+		# v0.27.1: people standing around never stand in a traffic lane (cars would wait for them forever).
+		if bool(line[2]) and _on_road(line[0]):
+			var spot := _ped_curb(line[0])
+			line = [spot,spot,true]+line.slice(3)
 		var node := Node3D.new()
 		add_child(node)
 		var shirt_col: Color = shirts[rng.randi() % shirts.size()]
@@ -6532,6 +6536,8 @@ func _traffic_blocked_by(pos: Vector2, dir: Vector2, other: Vector2) -> float:
 		return INF
 	return fwd
 
+const TRAFFIC_PED_PATIENCE := 4.0
+
 func _traffic_tick(delta: float) -> void:
 	var state := (1 if _light_green(0) else 0)+(2 if _light_green(1) else 0)
 	if state != light_state and light_ns_mat != null:
@@ -6560,13 +6566,26 @@ func _traffic_tick(delta: float) -> void:
 			var d := _traffic_blocked_by(pos,dir,o)
 			if d < INF:
 				target = minf(target,maxf(0.0,(d-5.0)*1.6))
-		for p in peds:
-			var pn: Node3D = p["node"]
-			var pp := Vector2(pn.position.x,pn.position.z)
-			if pp.distance_squared_to(pos) < 150.0:
-				var d := _traffic_blocked_by(pos,dir,pp)
-				if d < INF:
-					target = minf(target,maxf(0.0,(d-3.5)*1.6))
+		# Wait for people crossing; if someone stays in the lane, edge past after a few seconds.
+		if float(t.get("ped_skip",0.0)) > 0.0:
+			t["ped_skip"] = float(t["ped_skip"])-delta
+		else:
+			var ped_target := INF
+			for p in peds:
+				var pn: Node3D = p["node"]
+				var pp := Vector2(pn.position.x,pn.position.z)
+				if pp.distance_squared_to(pos) < 150.0:
+					var d := _traffic_blocked_by(pos,dir,pp)
+					if d < INF:
+						ped_target = minf(ped_target,maxf(0.0,(d-3.5)*1.6))
+			if ped_target < 0.5 and float(t["v"]) < 0.5:
+				t["ped_wait"] = float(t.get("ped_wait",0.0))+delta
+				if float(t["ped_wait"]) > TRAFFIC_PED_PATIENCE:
+					t["ped_wait"] = 0.0
+					t["ped_skip"] = 3.0
+			else:
+				t["ped_wait"] = 0.0
+			target = minf(target,ped_target)
 		for j in traffic.size():
 			if j == i:
 				continue
@@ -13566,6 +13585,16 @@ func _on_road(p: Vector3) -> bool:
 			return true
 	return false
 
+func _ped_curb(from: Vector3) -> Vector3:
+	# Nearest pavement spot (off every road, nothing solid there) for someone standing around.
+	for r in range(1,25):
+		for k in 24:
+			var a := TAU*float(k)/24.0
+			var c := from+Vector3(cos(a),0,sin(a))*(float(r)*0.75)
+			if not _on_road(c) and not _blocked_at(c+Vector3(0,1.0,0),0.35):
+				return c
+	return from
+
 func _curb_spot(from: Vector3) -> Vector3:
 	# Nearest open spot that isn't on a road, searching outwards in rings.
 	if not _on_road(from):
@@ -15126,6 +15155,38 @@ func _smoke_v27() -> void:
 	day_mode = 3
 	assert(_game_hour() > 21.0,"Always night mode")
 	_smoke_airport()
+	# Nobody stands in a road, and a car stuck behind someone in its lane moves on after a few seconds.
+	for p in peds:
+		if bool(p["idle"]):
+			assert(not _on_road(p["a"]),"Person standing in the road at %s" % str(p["a"]))
+	var was_on := traffic_on
+	traffic_on = true
+	var tc: Dictionary = traffic[0]
+	var tpos: Vector2 = tc["pos"]
+	var tdir: Vector2 = tc["dir"]
+	var blocker: Dictionary = peds[0]
+	var keep_ped := [blocker["a"],blocker["b"],blocker["idle"],(blocker["node"] as Node3D).position]
+	var spot := Vector3(tpos.x+tdir.x*3.6,0,tpos.y+tdir.y*3.6)
+	blocker["a"] = spot
+	blocker["b"] = spot
+	blocker["idle"] = true
+	(blocker["node"] as Node3D).position = spot
+	tc["v"] = 0.0
+	var s0 := float(tc["s"])
+	for f in 60:
+		_traffic_tick(1.0/60.0)
+	assert(absf(float(tc["s"])-s0) < 0.5,"Car waits for a person in its lane")
+	var gave_up := false
+	for f in 420:
+		_traffic_tick(1.0/60.0)
+		if float(tc.get("ped_skip",0.0)) > 0.0:
+			gave_up = true
+	assert(gave_up,"Car doesn't wait forever behind a person standing in the lane")
+	blocker["a"] = keep_ped[0]
+	blocker["b"] = keep_ped[1]
+	blocker["idle"] = keep_ped[2]
+	(blocker["node"] as Node3D).position = keep_ped[3]
+	traffic_on = was_on
 	tour_day = keep_tour[0]
 	tour_got = keep_tour[1]
 	day_mode = keep_tour[2]

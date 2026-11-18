@@ -292,7 +292,7 @@ func _ready() -> void:
 	_load_progress()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots"]:
+	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -304,7 +304,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.21: the new Harbor Raceway circuit. Park inside, race in identical cars!")
+	_show_toast("Harbor City 0.22: new street-level camera on foot, and CALL CAR brings your car to you!")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -330,6 +330,8 @@ func _ready() -> void:
 		await _civic_shots()
 	elif "--race-shots" in OS.get_cmdline_user_args():
 		await _race_shots()
+	elif "--follow-shots" in OS.get_cmdline_user_args():
+		await _follow_shots()
 	elif "--bake-map" in OS.get_cmdline_user_args():
 		await _bake_map()
 
@@ -1277,7 +1279,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	blue_light.hide()
 	var foot_node := Node3D.new()
 	node.add_child(foot_node)
-	var foot_person := _make_person(foot_node,id.hash() & 1,{"Shirt":body_color,"Pants":Color("263d54"),"Skin":Color("e8c9a0"),"Hair":Color("2b1d14"),"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
+	var foot_person := _make_person(foot_node,id.hash() & 3,{"Shirt":body_color,"Pants":Color("263d54"),"Skin":Color("e8c9a0"),"Hair":Color("2b1d14"),"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
 	if foot_person.is_empty():
 		_box(foot_node,Vector3(0,0.75,0),Vector3(0.5,1.2,0.35),body_color)
 		_box(foot_node,Vector3(0,1.5,0),Vector3(0.4,0.4,0.4),Color("e8c9a0"))
@@ -3066,7 +3068,7 @@ func _make_person(parent: Node3D, variant: int, colors: Dictionary) -> Dictionar
 					mats[key] = m
 				mi.set_surface_override_material(surface,mats[key])
 	var limbs := {}
-	for part in ["ArmL","ArmR","LegL","LegR","Head"]:
+	for part in ["ArmL","ArmR","LegL","LegR","Head","ShinL","ShinR","ForeArmL","ForeArmR"]:
 		limbs[part] = model.find_child(part,true,false)
 	return {"root":model,"mats":mats,"limbs":limbs}
 
@@ -3081,6 +3083,19 @@ func _pose_person(person: Dictionary, phase: float, amount: float) -> void:
 	for part in ["LegR","ArmL"]:
 		if limbs[part] != null:
 			(limbs[part] as Node3D).rotation.x = -swing*(0.6 if part.begins_with("Leg") else 0.5)
+	# Knees bend while the foot swings through; elbows stay a little bent and swing forward.
+	var k := 0
+	for part in ["ShinL","ShinR"]:
+		if limbs.get(part) != null:
+			var lift := maxf(0.0,-sin(phase+(0.0 if k == 0 else PI)-0.9))
+			(limbs[part] as Node3D).rotation.x = -(0.06+0.95*lift)*amount
+		k += 1
+	k = 0
+	for part in ["ForeArmL","ForeArmR"]:
+		if limbs.get(part) != null:
+			var fwd := maxf(0.0,sin(phase+(PI if k == 0 else 0.0)))
+			(limbs[part] as Node3D).rotation.x = 0.12+(0.18+0.45*fwd)*amount
+		k += 1
 	(person["root"] as Node3D).position.y = (person.get("base_y",0.0) as float)+absf(cos(phase))*0.035*amount
 
 func _cull_person(node: Node, distance: float, shadows := false) -> void:
@@ -3354,7 +3369,7 @@ func _input(event: InputEvent) -> void:
 			touch_id = event.index
 			touch_origin = event.position
 			stick = Vector2.ZERO
-		elif event.pressed and look_id == -1 and eye_view and not paused and not _stick_zone(event.position):
+		elif event.pressed and look_id == -1 and (eye_view or follow_view) and not paused and not _stick_zone(event.position):
 			look_id = event.index
 		elif not event.pressed and event.index == touch_id:
 			touch_id = -1
@@ -3363,13 +3378,13 @@ func _input(event: InputEvent) -> void:
 			look_id = -1
 	if event is InputEventScreenDrag and event.index == touch_id:
 		stick = ((event.position-touch_origin)/65.0).limit_length()
-	if event is InputEventScreenDrag and event.index == look_id and eye_view:
+	if event is InputEventScreenDrag and event.index == look_id and (eye_view or follow_view):
 		_look(event.relative)
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed and _stick_zone(event.position) and not paused:
 			mouse_stick = true
 			touch_origin = event.position
-		elif event.pressed and eye_view and not paused and event.device != InputEvent.DEVICE_ID_EMULATION:
+		elif event.pressed and (eye_view or follow_view) and not paused and event.device != InputEvent.DEVICE_ID_EMULATION:
 			mouse_look = true
 		elif not event.pressed and mouse_stick:
 			mouse_stick = false
@@ -3378,7 +3393,7 @@ func _input(event: InputEvent) -> void:
 			mouse_look = false
 	if event is InputEventMouseMotion and mouse_stick:
 		stick = ((event.position-touch_origin)/65.0).limit_length()
-	if event is InputEventMouseMotion and mouse_look and eye_view:
+	if event is InputEventMouseMotion and mouse_look and (eye_view or follow_view):
 		_look(event.relative)
 	if joystick:
 		joystick.queue_redraw()
@@ -3474,6 +3489,12 @@ func _physics_process(delta: float) -> void:
 		player_walk = move_toward(player_walk,1.0 if walking else 0.0,delta*6.0)
 		player_phase += delta*9.0*player_walk
 		_pose_person(player_person,player_phase,player_walk)
+		if follow_view:
+			# The camera slowly swings in behind you as you walk (not when you walk back towards it,
+			# and not right after you dragged to look around).
+			cam_hold = maxf(cam_hold-delta,0.0)
+			if walking and cam_hold <= 0.0 and absf(angle_difference(cam_yaw,player.rotation.y)) < 1.9:
+				cam_yaw = lerp_angle(cam_yaw,player.rotation.y,delta*1.4*clampf(control.length(),0.0,1.0))
 		car.velocity.x = move_toward(car.velocity.x,0,delta*20)
 		car.velocity.z = move_toward(car.velocity.z,0,delta*20)
 	car.velocity.y -= 24*delta
@@ -3506,7 +3527,7 @@ func _physics_process(delta: float) -> void:
 		find_nodes[index].position.y = 1.7+sin(clock*2+index)*0.25
 	marker.position = _destination()+Vector3(0,0.25+sin(clock*2)*0.12,0)
 	marker.rotation.y += delta*0.4
-	if (view_mode == 2 and driving) != in_car_view or (view_mode == 2 and not driving) != eye_view or (car_model != null and car_model.visible == in_car_view):
+	if (view_mode == 2 and driving) != in_car_view or (walk_view == 3 and not driving) != eye_view or (walk_view == 0 and not driving) != follow_view or (car_model != null and car_model.visible == in_car_view):
 		_apply_view()
 	_follow_camera(delta*(5.0+absf(car_speed)*0.15))
 	_minimap_tick()
@@ -3530,13 +3551,17 @@ func _follow_camera(weight: float) -> void:
 		# Driver's eye, left seat, looking slightly down over the bonnet.
 		camera.global_transform = car.global_transform*Transform3D(Basis.from_euler(Vector3(deg_to_rad(-6.0),0,0)),Vector3(-0.38,0.93,0.1))
 		return
-	if view_mode == 2:
+	if walk_view == 3 and not driving:
 		# Eye view: from the player's head, looking where they face (drag to look up/down and around).
 		var eye_y := 0.82 if seat_id < 0 else 0.82-(0.86-(float(hub_seats[seat_id]["h"])+0.06))
 		camera.global_transform = player.global_transform*Transform3D(Basis.from_euler(Vector3(look_pitch,0,0)),Vector3(0,eye_y,-0.12))
 		return
+	if walk_view == 0 and not driving and seat_id < 0:
+		_follow_walk_camera(weight)
+		return
 	var target: Vector3 = car.position if driving else player.position
-	var offset := Vector3(11,17,19) if view_mode == 0 else Vector3(5.2,7.0,8.6)
+	var far := view_mode == 0 if driving else walk_view != 2
+	var offset := Vector3(11,17,19) if far else Vector3(5.2,7.0,8.6)
 	# Inside Harbor Dome the camera eases in as you walk up to a table, the bar or the stage.
 	var spot := _hub_focus()
 	var want := 0.0
@@ -3551,6 +3576,29 @@ func _follow_camera(weight: float) -> void:
 	camera.position = camera.position.lerp(target+offset,minf(weight,1.0))
 	if camera.position.distance_to(look) > 0.05:
 		camera.look_at(look)
+
+func _follow_walk_camera(weight: float) -> void:
+	# Street-level camera just behind the player's shoulder. Walls between it and the player pull it closer.
+	var look := player.position+Vector3(0,0.75,0)
+	var dir := Vector3(sin(cam_yaw)*cos(cam_pitch),sin(cam_pitch),cos(cam_yaw)*cos(cam_pitch))
+	var want := look+dir*FOLLOW_DIST
+	var query := PhysicsRayQueryParameters3D.create(look,look+dir*(FOLLOW_DIST+0.4),1)
+	var skip: Array[RID] = [player.get_rid()]
+	if car != null:
+		skip.append(car.get_rid())
+	for t in traffic:
+		skip.append((t["node"] as CollisionObject3D).get_rid())
+	query.exclude = skip
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var blocked := not hit.is_empty()
+	if blocked:
+		want = look+dir*maxf(look.distance_to(hit["position"])-0.4,0.6)
+	if weight >= 1.0 or (blocked and want.distance_to(look) < camera.position.distance_to(look)):
+		camera.position = want
+	else:
+		camera.position = camera.position.lerp(want,minf(weight*1.6,1.0))
+	if camera.position.distance_to(look) > 0.05:
+		camera.look_at(look+Vector3(0,0.2,0))
 
 func _interact() -> void:
 	if paused:
@@ -3647,7 +3695,7 @@ func _interact() -> void:
 		player.get_child(0).set_deferred("disabled",true)
 		_show_toast("Steer with the stick. Release it to brake.")
 	else:
-		_show_toast("Your car is too far away. Open Menu > Return to the car.")
+		_call_car()
 	_refresh_hud()
 
 func _refresh_hud() -> void:
@@ -3703,6 +3751,8 @@ func _refresh_hud() -> void:
 		speed_label.text = "%d km/h  •  Up: gas  •  Down: brake/reverse" % int(Vector2(car.velocity.x,car.velocity.z).length()*3.6)
 	elif eye_view:
 		speed_label.text = "Eye view  •  Stick: walk/turn  •  Drag right side: look"
+	elif follow_view:
+		speed_label.text = "On foot  •  Stick: walk  •  Drag right side: look around"
 	action_button.disabled = false
 	if bus_riding:
 		objective.text = "Airport Line  ·  next: %s" % BUS_STOPS[bus_idx if bus_dwell > 0.0 else bus_next]["name"]
@@ -3729,8 +3779,8 @@ func _refresh_hud() -> void:
 	elif not exploring and distance < 5:
 		action_button.text = "DELIVER +$%d" % int(ROUTES[route_index]["pay"]) if carrying else "PICK UP PARCEL"
 	else:
-		action_button.text = "EXIT CAR" if driving else "ENTER CAR"
-		action_button.disabled = not driving and player.position.distance_to(car.position) >= 5.0
+		var far_car := not driving and player.position.distance_to(car.position) >= 5.0
+		action_button.text = "EXIT CAR" if driving else ("CALL CAR" if far_car else "ENTER CAR")
 	mode_button.text = "Switch to delivery jobs" if exploring else "Switch to exploring"
 	_rw_hud()
 	_refresh_nick_button()
@@ -4167,7 +4217,7 @@ func _build_peds() -> void:
 		add_child(node)
 		var shirt_col: Color = shirts[rng.randi() % shirts.size()]
 		var skin_col: Color = skins[rng.randi() % skins.size()]
-		var person := _make_person(node,i % 2,{"Shirt":shirt_col,"Skin":skin_col,"Pants":pants[rng.randi() % pants.size()],"Hair":hairs[rng.randi() % hairs.size()],"Shoes":shoes[rng.randi() % shoes.size()],"Eye":Color("1c1c22")})
+		var person := _make_person(node,i % 4,{"Shirt":shirt_col,"Skin":skin_col,"Pants":pants[rng.randi() % pants.size()],"Hair":hairs[rng.randi() % hairs.size()],"Shoes":shoes[rng.randi() % shoes.size()],"Eye":Color("1c1c22")})
 		var leg_nodes: Array[Node3D] = []
 		if person.is_empty():
 			_box(node,Vector3(0,1.05,0),Vector3(0.55,0.75,0.32),shirt_col)
@@ -4230,6 +4280,9 @@ func _smoke_test() -> void:
 	# Exercise the actual mission and driving transitions; preserve the player's save.
 	var saved_checkpoint := checkpoint_id
 	checkpoint_id = -1
+	# Older checks steer on foot with the fixed far camera; the follow camera has its own test.
+	walk_view = 1
+	_apply_view()
 	await get_tree().physics_frame
 	assert(action_button.position.x > 0 and action_button.position.y > 0,"Action button outside screen")
 	assert(joystick.position.y > 0,"Joystick outside screen")
@@ -4350,6 +4403,7 @@ func _smoke_test() -> void:
 	await _smoke_views()
 	_smoke_level_fx()
 	await _smoke_stadium_eye()
+	await _smoke_follow_call()
 	_smoke_bus()
 	_smoke_chase_extras()
 	_smoke_models()
@@ -4386,7 +4440,7 @@ func _smoke_test() -> void:
 	checkpoint_id = saved_checkpoint
 	_refresh_checkpoints()
 	_save_progress()
-	print("HARBOR_SMOKE_OK: Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -5236,6 +5290,26 @@ func _people_shots() -> void:
 	paused = false
 	_follow_camera(1.0)
 	await _save_shot("people-game-camera")
+	# v0.22 line-up: the four body styles, standing and mid-stride.
+	var base := Vector3(2.0,0,24)
+	var looks := [[Color("d6453d"),Color("2d3e57"),Color("f0c9a4"),Color("2b1d14")],[Color("3f8fd2"),Color("38302a"),Color("c68a60"),Color("1a1a1a")],[Color("5fbf7f"),Color("23324a"),Color("8d5a3b"),Color("1a1a1a")],[Color("f2b24a"),Color("4a4f57"),Color("e2b48e"),Color("7a4a26")]]
+	var lineup: Array = []
+	for v in 4:
+		var n := Node3D.new()
+		add_child(n)
+		n.position = base+Vector3(float(v)*0.95,0,0)
+		n.rotation.y = PI+(0.35 if v % 2 == 1 else -0.2)
+		var c: Array = looks[v]
+		var pp := _make_person(n,v,{"Shirt":c[0],"Pants":c[1],"Skin":c[2],"Hair":c[3],"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
+		_pose_person(pp,1.3 if v % 2 == 1 else 0.0,1.0 if v % 2 == 1 else 0.0)
+		lineup.append(n)
+	paused = true
+	camera.position = base+Vector3(1.43,1.15,3.4)
+	camera.look_at(base+Vector3(1.43,0.88,0))
+	await _save_shot("people-lineup")
+	camera.position = base+Vector3(0.05,1.55,0.62)
+	camera.look_at(base+Vector3(0,1.5,0))
+	await _save_shot("people-face")
 	get_tree().quit()
 
 func _shots() -> void:
@@ -6316,6 +6390,14 @@ var world_env_res: Environment
 var in_car_view := false
 var eye_view := false
 var look_pitch := 0.0
+# v0.22: on foot the camera has its own views; Follow (behind the shoulder) is the default.
+const WALK_VIEWS := ["Follow","Far","Close","Eye"]
+const FOLLOW_DIST := 4.6
+var walk_view := 0
+var follow_view := false
+var cam_yaw := 0.0
+var cam_pitch := 0.3
+var cam_hold := 0.0
 var look_id := -1
 var mouse_look := false
 
@@ -6575,19 +6657,31 @@ func _build_view_controls(root: Control) -> void:
 	cockpit.hide()
 
 func _cycle_view() -> void:
-	view_mode = (view_mode+1) % VIEW_NAMES.size()
+	# Driving and walking remember their own view: the button changes the one you are using now.
+	if driving:
+		view_mode = (view_mode+1) % VIEW_NAMES.size()
+	else:
+		walk_view = (walk_view+1) % WALK_VIEWS.size()
 	look_pitch = 0.0
 	_apply_view()
 	_follow_camera(1.0)
 
 func _apply_view() -> void:
 	in_car_view = view_mode == 2 and driving
-	eye_view = view_mode == 2 and not driving
+	eye_view = walk_view == 3 and not driving
+	var was_follow := follow_view
+	follow_view = walk_view == 0 and not driving
+	if follow_view and not was_follow:
+		# Start behind wherever the camera already is, so the stick keeps pointing the same way.
+		var back := camera.global_position-player.global_position
+		cam_yaw = atan2(back.x,back.z) if Vector2(back.x,back.z).length() > 0.5 else player.rotation.y
+		cam_pitch = 0.3
+		cam_hold = 0.0
 	var close_up := in_car_view or eye_view
 	if view_button != null:
-		view_button.text = "View: %s" % (("In-car" if driving else "Eye") if view_mode == 2 else VIEW_NAMES[view_mode])
-	camera.fov = 72.0 if close_up else 55.0
-	camera.far = 150.0 if close_up else 340.0
+		view_button.text = "View: %s" % (VIEW_NAMES[view_mode] if driving else WALK_VIEWS[walk_view])
+	camera.fov = 72.0 if close_up else (64.0 if follow_view else 55.0)
+	camera.far = 150.0 if close_up else (200.0 if follow_view else 340.0)
 	camera.near = 0.05
 	if not player_person.is_empty():
 		(player_person["root"] as Node3D).visible = not eye_view
@@ -7041,6 +7135,11 @@ func _build_stadium_walls() -> void:
 	add_child(board)
 
 func _look(rel: Vector2) -> void:
+	if follow_view:
+		cam_yaw -= rel.x*0.006
+		cam_pitch = clampf(cam_pitch+rel.y*0.004,0.05,1.1)
+		cam_hold = 1.5
+		return
 	player.rotation.y -= rel.x*0.006
 	look_pitch = clampf(look_pitch-rel.y*0.004,-1.1,0.95)
 
@@ -7052,11 +7151,11 @@ func _smoke_stadium_eye() -> void:
 	for pt in [STADIUM_POS+Vector3(38*STADIUM_SCALE,3,0),STADIUM_POS+Vector3(-38*STADIUM_SCALE,3,0),STADIUM_POS+Vector3(0,3,-28*STADIUM_SCALE)]:
 		assert(_blocked_at(pt,0.5),"Stadium stand missing at %s" % str(pt))
 	# Eye view on foot.
-	var was := [driving,player.position,player.rotation,view_mode]
+	var was := [driving,player.position,player.rotation,walk_view]
 	driving = false
 	player.position = STADIUM_POS+Vector3(0,0.75,8)
 	player.rotation = Vector3.ZERO
-	view_mode = 1
+	walk_view = 2
 	_cycle_view()
 	assert(eye_view and not in_car_view and view_button.text == "View: Eye","Eye view is on when walking")
 	assert(not (player_person["root"] as Node3D).visible,"Own body hidden in eye view")
@@ -7072,11 +7171,12 @@ func _smoke_stadium_eye() -> void:
 	_look(Vector2(100,-500))
 	assert(player.rotation.y < yaw and look_pitch > 0.9 and look_pitch <= 0.95,"Drag turns and looks up (clamped)")
 	_cycle_view()
-	assert(not eye_view and (player_person["root"] as Node3D).visible,"Back to the far view")
+	assert(not eye_view and follow_view and (player_person["root"] as Node3D).visible,"Back to the follow view")
 	look_pitch = 0.0
 	driving = was[0]
 	player.position = was[1]
 	player.rotation = was[2]
+	walk_view = was[3]
 	_apply_view()
 
 func _stadium_shots() -> void:
@@ -7086,7 +7186,7 @@ func _stadium_shots() -> void:
 	for i in 30:
 		await get_tree().physics_frame
 	await _save_shot("stadium-outside")
-	view_mode = 1
+	walk_view = 2
 	_cycle_view()
 	for i in 10:
 		await get_tree().physics_frame
@@ -7202,7 +7302,7 @@ func _guidance_tick(delta: float) -> void:
 	if guide_has_target:
 		guide_target_pos = target
 		dist = Vector2(guide_target_pos.x-body.position.x,guide_target_pos.z-body.position.z).length()
-	var first_person := view_mode == 2
+	var first_person := in_car_view or eye_view
 	guide_arrow.visible = guide_has_target and dist > 6.0 and not first_person
 	if guide_arrow.visible:
 		var lift := 3.0 if driving else 2.3
@@ -7359,11 +7459,11 @@ func _smoke_guidance_checkpoints() -> void:
 	var aim := Vector2(target.x-guide_arrow.position.x,target.z-guide_arrow.position.z).normalized()
 	var points := Vector2(-guide_arrow.global_basis.z.x,-guide_arrow.global_basis.z.z).normalized()
 	assert(aim.dot(points) > 0.97,"Arrow points at the goal")
-	view_mode = 2
+	walk_view = 3
 	_apply_view()
 	_guidance_tick(0.016)
 	assert(hud_arrow.visible and not guide_arrow.visible,"Screen arrow replaces it in eye view")
-	view_mode = 0
+	walk_view = 1
 	_apply_view()
 	trial_active = 0
 	trial_cp = 1
@@ -7398,13 +7498,15 @@ func _guide_shots() -> void:
 	player.position = (CHECKPOINTS[0]["pos"] as Vector3)+Vector3(-6,0.75,4)
 	for i in 40:
 		await get_tree().physics_frame
+	walk_view = 1
+	_apply_view()
 	await _save_shot("guide-far")
-	view_mode = 2
+	walk_view = 3
 	_apply_view()
 	for i in 10:
 		await get_tree().physics_frame
 	await _save_shot("guide-eye")
-	view_mode = 0
+	walk_view = 1
 	_apply_view()
 	checkpoint_id = 0
 	_refresh_checkpoints()
@@ -7691,6 +7793,13 @@ func _sit_pose(person: Dictionary, h: float, base_y: float) -> void:
 	for part in ["ArmL","ArmR"]:
 		if limbs[part] != null:
 			(limbs[part] as Node3D).rotation = Vector3(0.55,0,0)
+	# Lower legs hang down from the seat, forearms rest forward.
+	for part in ["ShinL","ShinR"]:
+		if limbs.get(part) != null:
+			(limbs[part] as Node3D).rotation = Vector3(-1.45,0,0)
+	for part in ["ForeArmL","ForeArmR"]:
+		if limbs.get(part) != null:
+			(limbs[part] as Node3D).rotation = Vector3(0.7,0,0)
 	(person["root"] as Node3D).position.y = base_y-(0.86-(h+0.06))
 
 func _build_hub_bots() -> void:
@@ -7708,7 +7817,7 @@ func _build_hub_bots() -> void:
 		add_child(node)
 		node.position = seat["pos"]
 		node.rotation.y = float(seat["face"])
-		var person := _make_person(node,k % 2,{"Shirt":shirts[k % shirts.size()],"Pants":Color("263d54"),"Skin":[Color("f0c9a4"),Color("c68a60"),Color("8d5a3b")][k % 3],"Hair":[Color("2b1d14"),Color("c9a25f"),Color("1a1a1a")][k % 3],"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
+		var person := _make_person(node,k % 4,{"Shirt":shirts[k % shirts.size()],"Pants":Color("263d54"),"Skin":[Color("f0c9a4"),Color("c68a60"),Color("8d5a3b")][k % 3],"Hair":[Color("2b1d14"),Color("c9a25f"),Color("1a1a1a")][k % 3],"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
 		_cull_person(node,95.0)
 		_sit_pose(person,float(seat["h"]),0.0)
 		var tag := Label3D.new()
@@ -8428,9 +8537,9 @@ func _smoke_hub() -> void:
 	assert(car.position.distance_to(HUB_PARK) < 0.1,"A car inside the dome is parked outside")
 	car.position = was_car[0]
 	driving = was_car[1]
-	var was := [player.position,player.rotation,driving,cash,view_mode]
+	var was := [player.position,player.rotation,driving,cash,view_mode,walk_view]
 	driving = false
-	view_mode = 0
+	walk_view = 1
 	_apply_view()
 	# Walking up to a table zooms the camera in.
 	player.position = HUB_C+Vector3(0,0.75,0)
@@ -8568,6 +8677,7 @@ func _smoke_hub() -> void:
 	player.rotation = was[1]
 	driving = was[2]
 	cash = was[3]
+	walk_view = was[5]
 	view_mode = was[4]
 	_apply_view()
 
@@ -8580,17 +8690,17 @@ func _hub_shots() -> void:
 	await _skyline_shot("hub-aerial",HUB_C,HUB_C+Vector3(-95,70,60))
 	await _save_shot("hub-causeway")
 	player.position = Vector3(185,0.75,32)
-	view_mode = 2
+	walk_view = 3
 	_apply_view()
 	look_pitch = 0.12
 	for i in 15:
 		await get_tree().physics_frame
 	await _save_shot("hub-inside-eye")
 	_shot_stats("hub-inside-eye")
-	view_mode = 1
+	walk_view = 2
 	_apply_view()
 	look_pitch = 0.0
-	view_mode = 0
+	walk_view = 1
 	_apply_view()
 	player.position = (RPS_TABLES[1] as Vector3)+Vector3(0,0.75,9)
 	for i in 30:
@@ -8600,7 +8710,7 @@ func _hub_shots() -> void:
 	for i in 60:
 		await get_tree().physics_frame
 	await _save_shot("hub-zoom-near")
-	view_mode = 1
+	walk_view = 2
 	_apply_view()
 	var s0 := _seat_of("ttt",0,0)
 	player.position = (hub_seats[s0]["pos"] as Vector3)+Vector3(0.3,0.75,0)
@@ -8623,13 +8733,13 @@ func _hub_shots() -> void:
 	player.position = (hub_seats[show]["pos"] as Vector3)+Vector3(0.2,0.75,0)
 	_interact()
 	_joke_start()
-	view_mode = 2
+	walk_view = 3
 	_apply_view()
 	for i in 30:
 		await get_tree().physics_frame
 	await _save_shot("hub-comedy")
 	_stand_up()
-	view_mode = 1
+	walk_view = 2
 	_apply_view()
 	player.position = HUB_C+Vector3(-3,0.75,6)
 	for i in 10:
@@ -10658,3 +10768,203 @@ func _race_shots() -> void:
 	_rw_open()
 	await _save_shot("race-menu")
 	get_tree().quit()
+
+# ---------- v0.22.0: Call Car ----------
+const CALL_COOL := 8.0
+const CALL_COOL_CHASE := 45.0
+var call_ready_at := -100.0
+var horn_snd: AudioStreamWAV
+
+func _call_block_reason() -> String:
+	if race_car or bus_riding or seat_id >= 0:
+		return "You can't call your car right now."
+	if Vector2(player.position.x-HUB_C.x,player.position.z-HUB_C.z).length() < HUB_R+2.0:
+		return "Cars can't come into Harbor Dome. Walk outside first."
+	if _in_raceway(player.position) and not _in_rw_lot(player.position):
+		return "Walk to the raceway car park to call your car."
+	if clock < call_ready_at:
+		return "Your car is on its way. Try again in %d s." % ceili(call_ready_at-clock)
+	return ""
+
+func _call_spot() -> Vector3:
+	# An open space next to or just behind the player, on solid ground, where the whole car fits.
+	var right := player.global_basis.x
+	right.y = 0
+	right = right.normalized()
+	var back := player.global_basis.z
+	back.y = 0
+	back = back.normalized()
+	var space := get_world_3d().direct_space_state
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(2.0,1.2,3.7)
+	for off: Vector3 in [right*3.2,-right*3.2,back*4.5,right*3.2+back*3.0,-right*3.2+back*3.0,right*5.5,-right*5.5,back*7.5]:
+		var at := player.position+off
+		var down := PhysicsRayQueryParameters3D.create(Vector3(at.x,player.position.y+4.0,at.z),Vector3(at.x,player.position.y-6.0,at.z),1)
+		down.exclude = [player.get_rid(),car.get_rid()]
+		var ground := space.intersect_ray(down)
+		if ground.is_empty() or absf(float(ground["position"].y)-(player.position.y-0.75)) > 1.5:
+			continue
+		var spot := Vector3(at.x,float(ground["position"].y)+0.8,at.z)
+		if _in_raceway(spot) and not _in_rw_lot(spot):
+			continue
+		var query := PhysicsShapeQueryParameters3D.new()
+		query.shape = shape
+		query.collision_mask = 1 | HUB_CAR_LAYER
+		query.transform = Transform3D(Basis.from_euler(Vector3(0,player.rotation.y,0)),spot+Vector3(0,0.15,0))
+		var skip: Array[RID] = [player.get_rid(),car.get_rid()]
+		query.exclude = skip
+		if space.intersect_shape(query,1).is_empty():
+			return spot
+	return Vector3.INF
+
+func _call_car() -> bool:
+	var reason := _call_block_reason()
+	if reason != "":
+		_show_toast(reason)
+		return false
+	var spot := _call_spot()
+	if spot == Vector3.INF:
+		_show_toast("No space for your car here. Step out into the open street.")
+		return false
+	car.position = spot
+	car.rotation = Vector3(0,player.rotation.y,0)
+	car.velocity = Vector3.ZERO
+	car_speed = 0.0
+	call_ready_at = clock+(CALL_COOL_CHASE if chase_mode == 1 or online_role == 1 else CALL_COOL)
+	if car_model != null:
+		car_model.scale = Vector3.ONE*0.6
+		create_tween().tween_property(car_model,"scale",Vector3.ONE,0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_play_horn()
+	_show_toast("Your car pulled up. Tap ENTER CAR.")
+	_refresh_hud()
+	return true
+
+func _play_horn() -> void:
+	if fx_player == null or "--smoke-test" in OS.get_cmdline_user_args():
+		return
+	if horn_snd == null:
+		var sr := 22050
+		var total := int(sr*0.55)
+		var bytes := PackedByteArray()
+		bytes.resize(total*2)
+		for i in total:
+			var t := float(i)/sr
+			var v := 0.0
+			for beep in [[0.0,0.16],[0.24,0.3]]:
+				var u: float = t-float(beep[0])
+				if u >= 0.0 and u < float(beep[1]):
+					var env := minf(u/0.01,1.0)*minf((float(beep[1])-u)/0.02,1.0)
+					v += (signf(sin(TAU*415.0*u))*0.5+signf(sin(TAU*523.0*u))*0.5)*0.32*env
+			bytes.encode_s16(i*2,int(clampf(v,-1.0,1.0)*22000.0))
+		horn_snd = AudioStreamWAV.new()
+		horn_snd.format = AudioStreamWAV.FORMAT_16_BITS
+		horn_snd.mix_rate = sr
+		horn_snd.data = bytes
+	fx_player.stream = horn_snd
+	fx_player.play()
+
+func _smoke_follow_call() -> void:
+	var was := [driving,player.position,player.rotation,walk_view,view_mode,car.position,car.rotation,call_ready_at]
+	driving = false
+	player.show()
+	player.get_child(0).disabled = false
+	# Walking has its own views; Follow comes after Eye and is the default.
+	walk_view = 3
+	_cycle_view()
+	assert(follow_view and walk_view == 0 and view_button.text == "View: Follow","Follow view on foot")
+	player.position = Vector3(4.6,0.9,5.2)
+	player.rotation = Vector3.ZERO
+	cam_yaw = 0.0
+	cam_pitch = 0.3
+	cam_hold = 0.0
+	for i in 5:
+		await get_tree().physics_frame
+	_follow_camera(1.0)
+	var d := camera.global_position.distance_to(player.position+Vector3(0,0.75,0))
+	assert(d > 1.0 and d < FOLLOW_DIST+0.1,"Follow camera is just behind the player (%.2f m)" % d)
+	assert(camera.global_position.y < player.position.y+3.0,"Follow camera is at street level")
+	var start := player.position
+	stick = Vector2(0,-1)
+	for i in 30:
+		await get_tree().physics_frame
+	stick = Vector2.ZERO
+	assert(player.position.z < start.z-2.0,"Stick up walks away from the camera (moved %s)" % str(player.position-start))
+	var yaw := cam_yaw
+	_look(Vector2(120,0))
+	assert(cam_yaw < yaw and cam_hold > 0.0,"Dragging turns the follow camera")
+	# Driving keeps its own view.
+	view_mode = 0
+	driving = true
+	_apply_view()
+	assert(not follow_view and view_button.text == "View: Far","Driving keeps the far view")
+	driving = false
+	_apply_view()
+	assert(follow_view and view_button.text == "View: Follow","Walking goes back to Follow")
+	# Call Car: the car pulls up next to you, then you can get in.
+	call_ready_at = -100.0
+	var away := Vector3(20,0.8,2.3)
+	car.position = away
+	car.rotation = Vector3.ZERO
+	_refresh_hud()
+	assert(action_button.text == "CALL CAR" and not action_button.disabled,"CALL CAR shows when the car is far")
+	_interact()
+	assert(not driving and player.position.distance_to(car.position) < 5.0,"Called car is right next to the player (%.1f m)" % player.position.distance_to(car.position))
+	assert(not _blocked_at(car.position+Vector3(0,0.3,0),0.6),"Called car is in open space")
+	_refresh_hud()
+	assert(action_button.text == "ENTER CAR","ENTER CAR after calling")
+	_interact()
+	assert(driving,"Can get into the called car")
+	_interact()
+	assert(not driving,"Can get out again")
+	car.position = away
+	assert(not _call_car() and car.position.distance_to(away) < 0.1,"Cooldown blocks an instant second call")
+	call_ready_at = -100.0
+	player.position = HUB_C+Vector3(0,0.75,0)
+	assert(not _call_car() and car.position.distance_to(away) < 0.1,"No calling a car into Harbor Dome")
+	player.position = Vector3(430,0.75,-300)
+	assert(not _call_car() and car.position.distance_to(away) < 0.1,"No calling a car onto the race track")
+	driving = was[0]
+	player.position = was[1]
+	player.rotation = was[2]
+	walk_view = was[3]
+	view_mode = was[4]
+	car.position = was[5]
+	car.rotation = was[6]
+	call_ready_at = was[7]
+	if driving:
+		player.hide()
+		player.get_child(0).disabled = true
+	_apply_view()
+
+func _follow_shots() -> void:
+	# Developer-only: the street-level follow camera and Call Car. Never saves.
+	driving = false
+	player.show()
+	player.get_child(0).disabled = false
+	walk_view = 0
+	_apply_view()
+	var spots := [["follow-waterfront",Vector3(4.6,0.75,5.2),PI],["follow-city",Vector3(4,0.75,-12),0.0],["follow-north",Vector3(12,0.75,-72),0.0],["follow-marina",Vector3(0,0.75,160),PI],["follow-skyline",Vector3(-250,0.75,-250),PI/2.0]]
+	for it: Array in spots:
+		player.position = it[1]
+		player.rotation.y = float(it[2])
+		cam_yaw = float(it[2])
+		cam_pitch = 0.3
+		for i in 20:
+			await get_tree().physics_frame
+		_follow_camera(1.0)
+		await _save_shot(String(it[0]))
+		_shot_stats(String(it[0]))
+	player.position = Vector3(4.6,0.75,5.2)
+	player.rotation.y = PI
+	cam_yaw = PI
+	car.position = Vector3(40,0.8,2.3)
+	for i in 10:
+		await get_tree().physics_frame
+	_refresh_hud()
+	await _save_shot("follow-call-before")
+	_call_car()
+	for i in 25:
+		await get_tree().physics_frame
+	await _save_shot("follow-call-after")
+	get_tree().quit()
+

@@ -290,6 +290,7 @@ func _ready() -> void:
 	_build_checkpoints()
 	_build_hub()
 	_build_raceway()
+	_build_expansion()
 	_build_peds()
 	_build_traffic()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
@@ -302,7 +303,7 @@ func _ready() -> void:
 	_web_perf_setup()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots"]:
+	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -314,7 +315,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.25.1: FIND ME counts anywhere on the glow, and the browser version runs smoother.")
+	_show_toast("Harbor City 0.26: two new districts! Sunset Beach and Westside, and twice as many people in the streets.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -346,6 +347,8 @@ func _ready() -> void:
 		await _follow_shots()
 	elif "--v23-shots" in OS.get_cmdline_user_args():
 		await _v23_shots()
+	elif "--expand-shots" in OS.get_cmdline_user_args():
+		await _expand_shots()
 	elif "--daily-shots" in OS.get_cmdline_user_args():
 		await _daily_shots()
 	elif "--crate-shots" in OS.get_cmdline_user_args():
@@ -4479,7 +4482,7 @@ func _build_peds() -> void:
 	lines.append([Vector3(-38.5,0,-40),Vector3(-38.5,0,40)])
 	lines.append([Vector3(-44,0,26.5),Vector3(44,0,26.5)])
 	var plan: Array = []
-	for i in 24:
+	for i in 36:
 		plan.append([lines[i % lines.size()][0],lines[i % lines.size()][1],false])
 	# Skyline District sidewalks (7.8 m from the road centre) and people standing around.
 	var dt_lines: Array = []
@@ -4490,12 +4493,32 @@ func _build_peds() -> void:
 		for sz in [-7.8,7.8]:
 			var east := -225.0 if (z == -400.0 and sz > 0.0) else -125.0
 			dt_lines.append([Vector3(east,0,z+sz),Vector3(-435,0,z+sz)])
-	for i in 28:
+	for i in 36:
 		plan.append([dt_lines[i % dt_lines.size()][0],dt_lines[i % dt_lines.size()][1],false])
 	# Civic Center sidewalks (6.2 m from the road centre) and people at the school, park and mall.
 	var civ_lines := [[Vector3(-60,0,25.8),Vector3(-238,0,25.8)],[Vector3(-62,0,38.2),Vector3(-238,0,38.2)],[Vector3(-62,0,65.8),Vector3(-238,0,65.8)],[Vector3(-62,0,78.2),Vector3(-238,0,78.2)]]
-	for i in 12:
+	for i in 16:
 		plan.append([civ_lines[i % civ_lines.size()][0],civ_lines[i % civ_lines.size()][1],false])
+	# v0.26: Sunset Beach (street sidewalks, the beach road and the boardwalk) and Westside.
+	var sb_lines: Array = []
+	for z in SB_STREETS:
+		for s in [-7.8,7.8]:
+			sb_lines.append([Vector3(SB_X0+6.0,0,float(z)+s),Vector3(SB_X1-6.0,0,float(z)+s)])
+	sb_lines.append([Vector3(SB_X0+12.0,0,SB_BEACH_ROAD-7.8),Vector3(SB_X1-12.0,0,SB_BEACH_ROAD-7.8)])
+	sb_lines.append([Vector3(SB_X0+12.0,0,SB_BEACH_ROAD+11.0),Vector3(SB_X1-12.0,0,SB_BEACH_ROAD+11.0)])
+	sb_lines.append([Vector3(SB_X0+30.0,0,SB_BEACH_ROAD+11.0),Vector3(SB_X1-30.0,0,SB_BEACH_ROAD+11.0)])
+	for i in 22:
+		plan.append([sb_lines[i % sb_lines.size()][0],sb_lines[i % sb_lines.size()][1],false])
+	for spot in [Vector3(372,0,352),Vector3(374,0,354),Vector3(500,0,360),Vector3(520,0,348),Vector3(SB_PIER_X+2.0,0,SB_Z1+30.0),Vector3(SB_PIER_X-2.0,0,SB_Z1+33.0)]:
+		plan.append([spot,spot,true])
+	var ws_lines: Array = []
+	for z in WS_STREETS:
+		for s in [-7.8,7.8]:
+			ws_lines.append([Vector3(WS_X0+8.0,0,float(z)+s),Vector3(WS_X1-4.0,0,float(z)+s)])
+	for i in 18:
+		plan.append([ws_lines[i % ws_lines.size()][0],ws_lines[i % ws_lines.size()][1],false])
+	for spot in [WS_MARKET+Vector3(-15,0,-14),WS_MARKET+Vector3(0,0,-14),WS_MARKET+Vector3(15,0,14),WS_MARKET+Vector3(-14,0,6),WS_MARKET+Vector3(14,0,-5)]:
+		plan.append([spot,spot,true])
 	for spot in [Vector3(-204,0,58),Vector3(-211,0,58),Vector3(-203,0,84),Vector3(-145,0,76.5)]:
 		plan.append([spot,spot,true])
 	for spot in [Vector3(-300,0,-121),Vector3(-310,0,-129),Vector3(-298,0,-131),Vector3(-312,0,-119),Vector3(-262,0,-246),Vector3(-298,0,-254),Vector3(-175,0,-362),Vector3(-186,0,-362),Vector3(-15,0,35),Vector3(15,0,35)]:
@@ -4528,7 +4551,21 @@ func _build_peds() -> void:
 	_update_peds(0.0)
 
 func _update_peds(delta: float) -> void:
+	# v0.26: people far from you move in coarse steps and don't animate (they're out of sight).
+	var me: Vector3 = car.position if driving else player.position
 	for p in peds:
+		var far := delta > 0.0 and absf((p["node"] as Node3D).position.x-me.x)+absf((p["node"] as Node3D).position.z-me.z) > 150.0
+		var step := delta
+		if far:
+			p["acc"] = float(p.get("acc",0.0))+delta
+			if float(p["acc"]) < 0.5:
+				continue
+			step = float(p["acc"])
+		p["acc"] = 0.0
+		_update_ped(p,step,far)
+
+func _update_ped(p: Dictionary, delta: float, far: bool) -> void:
+	if true:
 		var a: Vector3 = p["a"]
 		var b: Vector3 = p["b"]
 		var seg := b-a
@@ -4556,10 +4593,14 @@ func _update_peds(delta: float) -> void:
 		node.position = base+(p["off"] as Vector3)
 		if idle:
 			node.rotation.y = float(p["yaw"])
-			_pose_person(p["person"],0.0,0.0)
-			continue
+			if not far and not bool(p.get("posed",false)):
+				_pose_person(p["person"],0.0,0.0)
+				p["posed"] = true
+			return
 		var heading := seg.normalized()*float(p["dir"])
 		node.rotation.y = atan2(heading.x,heading.z)
+		if far:
+			return
 		p["phase"] = float(p["phase"])+delta*float(p["speed"])*4.5
 		var legs: Array = p["legs"]
 		if legs.size() == 2:
@@ -5113,7 +5154,7 @@ func _wait_radio(station: int) -> void:
 	assert(radio_streams.has(station),"Radio station %d did not generate" % station)
 
 func _smoke_radio_peds() -> void:
-	assert(peds.size() == 78,"Pedestrians missing: %d" % peds.size())
+	assert(peds.size() == 153,"Pedestrians missing: %d" % peds.size())
 	assert(not player_person.is_empty() and player_person["mats"].has("Shirt"),"Player person model missing")
 	for p in peds:
 		assert(not (p["person"] as Dictionary).is_empty(),"Pedestrian person model missing")
@@ -5868,6 +5909,8 @@ const TRAFFIC_LOOPS := [
 	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(32,-32),Vector2(32,32),Vector2(-32,32)]},
 	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(-32,32),Vector2(32,32),Vector2(32,-32)]},
 	{"lane":2.5,"speed":9.0,"cars":4,"pts":[Vector2(-95,32),Vector2(-230,32),Vector2(-230,72),Vector2(-95,72)]},
+	{"lane":2.5,"speed":9.0,"cars":3,"pts":[Vector2(330,150),Vector2(530,150),Vector2(530,250),Vector2(330,250)]},
+	{"lane":2.5,"speed":9.0,"cars":3,"pts":[Vector2(-300,0),Vector2(-420,0),Vector2(-420,150),Vector2(-300,150)]},
 ]
 const TRAFFIC_COLORS := [Color("d33a3a"),Color("eef1f2"),Color("23262b"),Color("2f5fd0"),Color("f2d046"),Color("7ac74f"),Color("9aa3aa"),Color("f07f2e"),Color("22b5c9")]
 var downtown_mask := 0
@@ -6567,7 +6610,7 @@ func _smoke_downtown() -> void:
 	player.position = was_pos
 	driving = was_driving
 	# Traffic: built, moves, stops at a red light and behind an obstacle.
-	assert(traffic.size() == 26 and light_spots.size() >= 58,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
+	assert(traffic.size() == 32 and light_spots.size() >= 58,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
 	var was_car := car.position
 	var was_clock := clock
 	car.position = Vector3(400,0.8,400)
@@ -6666,7 +6709,7 @@ const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(0,-370)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-278,-250)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(0,-370)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-278,-250)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -7605,6 +7648,8 @@ const CHECKPOINTS := [
 	{"name":"Harbor Dome","pos":Vector3(148,0,36)},
 	{"name":"Civic Center","pos":Vector3(-150,0,23)},
 	{"name":"Harbor Raceway","pos":Vector3(170,0,-150)},
+	{"name":"Sunset Beach","pos":Vector3(300,0,158)},
+	{"name":"Westside","pos":Vector3(-270,0,80)},
 ]
 var checkpoint_id := -1
 var checkpoint_nodes: Array = []
@@ -7967,11 +8012,14 @@ func _build_hub() -> void:
 	for x in range(60,162,8):
 		dashes.append([Vector3(float(x),0.06,32),Vector3(3,0.02,0.18)])
 	_box_batch(Color("e7d9a4"),dashes)
-	for sz in [-7.2,7.2]:
-		_box(self,Vector3(110.25,0.55,32+sz),Vector3(108.5,1.1,0.4),Color("dfe3e6"),true)
+	_box(self,Vector3(110.25,0.55,32-7.2),Vector3(108.5,1.1,0.4),Color("dfe3e6"),true)
+	# v0.26: gap in the south railing for the Sunset Beach road (x 123..137).
+	_box(self,Vector3((56.0+122.8)/2.0,0.55,32+7.2),Vector3(122.8-56.0,1.1,0.4),Color("dfe3e6"),true)
+	_box(self,Vector3((137.2+164.5)/2.0,0.55,32+7.2),Vector3(164.5-137.2,1.1,0.4),Color("dfe3e6"),true)
 	var lamps := []
 	for x in range(64,162,16):
-		lamps.append([Vector3(float(x),0,32+6.4),PI/2.0])
+		if absf(float(x)-130.0) > 9.0:
+			lamps.append([Vector3(float(x),0,32+6.4),PI/2.0])
 		lamps.append([Vector3(float(x)+8.0,0,32-6.4),-PI/2.0])
 	_model_batch("res://models/lamp.glb",lamps)
 	_sign("HARBOR DOME  →",Vector3(62,6.5,32),Color("e6d9ff"),56)
@@ -9657,7 +9705,9 @@ func _build_civic() -> void:
 	var cx := (CIV_X0+CIV_X1)/2.0
 	var cz := (CIV_Z0+CIV_Z1)/2.0
 	_slab(Vector3(cx,-0.35,cz),Vector3(CIV_X1-CIV_X0,0.6,CIV_Z1-CIV_Z0),0,walk)
-	_box(self,Vector3(CIV_X0-0.5,1.0,cz),Vector3(1,2,CIV_Z1-CIV_Z0+1),rock,true)
+	# v0.26: opening at the z = 72 street into Westside.
+	_box(self,Vector3(CIV_X0-0.5,1.0,(CIV_Z0-0.5+65.0)/2.0),Vector3(1,2,65.0-CIV_Z0+0.5),rock,true)
+	_box(self,Vector3(CIV_X0-0.5,1.0,(79.0+CIV_Z1+0.5)/2.0),Vector3(1,2,CIV_Z1+0.5-79.0),rock,true)
 	# South row (bank, fire station, library) beyond the mall and park.
 	_slab(Vector3((CIV_X0+CIV_SOUTH_EAST)/2.0,-0.35,(CIV_Z1+CIV_SOUTH)/2.0),Vector3(CIV_SOUTH_EAST-CIV_X0,0.6,CIV_SOUTH-CIV_Z1),0,walk)
 	_box(self,Vector3((CIV_X0+CIV_SOUTH_EAST)/2.0,1.0,CIV_SOUTH+0.5),Vector3(CIV_SOUTH_EAST-CIV_X0+1,2,1),rock,true)
@@ -11361,7 +11411,7 @@ const RUN_SPEED := 9.0
 const WALK_SPEED := 5.0
 # Which area must be open before you can travel to each checkpoint (see _area_open):
 # 0 city, 1 ridge (east), 2 bay (west), 3 north, 4 marina, 5 skyline downtown.
-const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1]
+const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1,0,0]
 const TRAVEL_COOL := 20.0
 var run_on := false
 var run_button: Button
@@ -12169,6 +12219,12 @@ const QUICK := [
 	{"task":"Rescue a kite in Central Park","pos":Vector3(-275.5,0,-270),"item":"kite"},
 	{"task":"Return library books at Civic Center","pos":Vector3(-145.5,0,23),"item":"books"},
 	{"task":"Collect seashells at Bay Promenade","pos":Vector3(-95.5,0,9),"item":"seashells"},
+	{"task":"Grab an ice cream at Sunset Pier","pos":Vector3(441,0,336),"item":"ice cream"},
+	{"task":"Rent a surfboard at Sunset Beach","pos":Vector3(362,0,342),"item":"surfboard"},
+	{"task":"Grab a postcard at the Sunset Lighthouse","pos":Vector3(578,0,372),"item":"postcard"},
+	{"task":"Collect fresh bread at Westside Market","pos":Vector3(-320,0,86),"item":"bread"},
+	{"task":"Pick up sunflowers at Westside Windmill","pos":Vector3(-430,0,218),"item":"flowers"},
+	{"task":"Find a lost cat on Westside Hill","pos":Vector3(-372,0,163),"item":"cat"},
 ]
 const QUICK_XP := 50
 const QUICK_ALL_BONUS := 500
@@ -12297,7 +12353,7 @@ func _build_quick_props() -> void:
 		n.rotation.y = atan2(side.x,side.z)
 		n.scale = Vector3.ONE*1.3
 		var item := String(QUICK[i]["item"])
-		var table := item in ["coffee","watch","pizza","sunglasses","tokens","cake","books","seeds"]
+		var table := item in ["coffee","watch","pizza","sunglasses","tokens","cake","books","seeds","ice cream","bread"]
 		if table:
 			# Small round street-stall table with a striped awning.
 			_tp_part(n,_tp_cyl(0.65,0.65,0.07),Vector3(0,0.82,0),Color("e9e2d0"))
@@ -12412,6 +12468,18 @@ func _build_quick_props() -> void:
 				var bc := [Color("2f6fd0"),Color("d0342c"),Color("3e9e4a"),Color("e8a628")]
 				for s in 4:
 					_tp_part(n,BoxMesh.new(),Vector3(0,top+0.04+0.075*float(s),0),bc[s],Vector3(0,0.2*float(s),0),Vector3(0.36,0.07,0.26))
+			"ice cream":
+				for s in 3:
+					_tp_part(n,_tp_cyl(0.07,0.015,0.24),Vector3(-0.2+0.2*float(s),top+0.12,0),Color("d9a066"))
+					_tp_part(n,_tp_sphere(0.085),Vector3(-0.2+0.2*float(s),top+0.27,0),[Color("ffb3c8"),Color("fff3c4"),Color("8a5a3a")][s])
+			"bread":
+				_tp_part(n,BoxMesh.new(),Vector3(0,top+0.08,0),Color("b98a52"),Vector3.ZERO,Vector3(0.6,0.16,0.4))
+				for s in 3:
+					_tp_part(n,_tp_sphere(0.12),Vector3(-0.17+0.17*float(s),top+0.2,0),Color("d9a35a"),Vector3(0,0.4,0),Vector3(1.8,0.8,0.9))
+			"surfboard":
+				for s in 2:
+					_tp_part(n,_tp_sphere(0.5),Vector3(-0.35+0.7*float(s),0.95,0),[Color("2fb0d0"),Color("ff8a3a")][s],Vector3(0,0,0.12),Vector3(0.45,1.9,0.08))
+					_tp_part(n,BoxMesh.new(),Vector3(-0.35+0.7*float(s),0.95,0.045),Color("ffffff"),Vector3(0,0,0.12),Vector3(0.05,1.6,0.01))
 			"seashells":
 				_tp_part(n,_tp_cyl(0.22,0.17,0.32),Vector3(0,0.16,0),Color("2fb0d0"))
 				_tp_part(n,TorusMesh.new(),Vector3(0,0.36,0),Color("dddddd"),Vector3(0,0,0.3),Vector3(0.28,0.28,0.28))
@@ -12761,7 +12829,7 @@ func _my_name() -> String:
 	return online_name if online_name != "" else "You"
 
 func _my_tag_tick() -> void:
-	if player == null:
+	if player == null or "--bake-map" in OS.get_cmdline_user_args():
 		return
 	if my_tag == null:
 		my_tag = Label3D.new()
@@ -13493,3 +13561,303 @@ func _curb_spot(from: Vector3) -> Vector3:
 			if space.intersect_shape(q,1).is_empty():
 				return c
 	return from
+
+# ---------- v0.26: Sunset Beach (east island) and Westside (west of the Civic Center) ----------
+const SB_X0 := 270.0
+const SB_X1 := 610.0
+const SB_Z0 := 40.0
+const SB_Z1 := 400.0
+const SB_AVES := [330.0,430.0,530.0]
+const SB_STREETS := [90.0,150.0,250.0]
+const SB_BEACH_ROAD := 318.0
+const SB_PIER_X := 450.0
+const WS_X0 := -462.0
+const WS_X1 := -246.0
+const WS_Z0 := -50.0
+const WS_Z1 := 340.0
+const WS_AVES := [-300.0,-360.0,-420.0]
+const WS_STREETS := [0.0,72.0,150.0,230.0,300.0]
+const WS_MARKET := Vector3(-330,0,111)
+
+func _ex_house(items: Dictionary, pos: Vector3, yaw: float, rng: RandomNumberGenerator) -> void:
+	var key := "house_0" if rng.randf() < 0.5 else "house_1"
+	_place(items,key,pos,yaw,1.3,false)
+	var size := Vector3(8.8,5.6,7.8)*1.3
+	if absf(sin(yaw)) > 0.7:
+		size = Vector3(size.z,size.y,size.x)
+	_collider(self,pos+Vector3(0,size.y/2.0,0),size)
+
+func _ex_grid(x0: float, x1: float, z0: float, z1: float, aves: Array, streets: Array, z_end := {}) -> Array:
+	# Roads (10 m wide) with centre dashes. z_end can shorten an avenue: {x: [z_from, z_to]}.
+	var roads := []
+	var dashes := []
+	for x in aves:
+		var za: float = z0
+		var zb: float = z1
+		if z_end.has(x):
+			za = float(z_end[x][0])
+			zb = float(z_end[x][1])
+		roads.append([Vector3(x,0.01,(za+zb)/2.0),Vector3(10,0.08,zb-za)])
+		var z := za+4.0
+		while z < zb-2.0:
+			var cross := false
+			for s in streets:
+				if absf(z-float(s)) < 7.0:
+					cross = true
+			if not cross:
+				dashes.append([Vector3(x,0.06,z),Vector3(0.18,0.02,3)])
+			z += 8.0
+	for z in streets:
+		roads.append([Vector3((x0+x1)/2.0,0.012,z),Vector3(x1-x0,0.08,10)])
+		var x := x0+4.0
+		while x < x1-2.0:
+			var cross := false
+			for a in aves:
+				if absf(x-float(a)) < 7.0:
+					cross = true
+			if not cross:
+				dashes.append([Vector3(x,0.062,z),Vector3(3,0.02,0.18)])
+			x += 8.0
+	_box_batch(Color("394552"),roads)
+	_box_batch(Color("e7d9a4"),dashes)
+	return roads
+
+func _ex_lamps(lamps: Array, x0: float, x1: float, z0: float, z1: float, aves: Array, streets: Array) -> void:
+	for z in streets:
+		var x := x0+10.0
+		while x < x1-6.0:
+			var near := false
+			for a in aves:
+				if absf(x-float(a)) < 9.0:
+					near = true
+			if not near:
+				lamps.append([Vector3(x,0,float(z)+6.4),PI/2.0])
+				lamps.append([Vector3(x+12.0,0,float(z)-6.4),-PI/2.0])
+			x += 24.0
+	for a in aves:
+		var z := z0+10.0
+		while z < z1-6.0:
+			var near := false
+			for s in streets:
+				if absf(z-float(s)) < 9.0:
+					near = true
+			if not near:
+				lamps.append([Vector3(float(a)+6.4,0,z),0.0])
+			z += 24.0
+
+func _ex_umbrella(pos: Vector3, color: Color) -> void:
+	var n := Node3D.new()
+	add_child(n)
+	n.position = pos
+	_tp_part(n,_tp_cyl(0.05,0.05,2.4),Vector3(0,1.2,0),Color("eeeeee"))
+	_tp_part(n,_tp_cyl(0.05,1.5,0.6),Vector3(0,2.45,0),color)
+
+func _ex_yards(xl: Array, zl: Array, edge_x: Array, edge_z: Array, skip: Array) -> void:
+	# Grass yards inside each block, leaving the road and a 4 m sidewalk (9 m from a road centre).
+	var yards := []
+	for i in xl.size()-1:
+		for j in zl.size()-1:
+			if [i,j] in skip:
+				continue
+			var x0: float = float(xl[i])+(1.0 if i == 0 and edge_x[0] else 9.0)
+			var x1: float = float(xl[i+1])-(1.0 if i == xl.size()-2 and edge_x[1] else 9.0)
+			var z0: float = float(zl[j])+(1.0 if j == 0 and edge_z[0] else 9.0)
+			var z1: float = float(zl[j+1])-(1.0 if j == zl.size()-2 and edge_z[1] else 9.0)
+			if x1-x0 > 2.0 and z1-z0 > 2.0:
+				yards.append([Vector3((x0+x1)/2.0,0.02,(z0+z1)/2.0),Vector3(x1-x0,0.04,z1-z0)])
+	_box_batch(Color("78a06b"),yards)
+
+func _build_expansion() -> void:
+	var water := Color("248caa")
+	var walk := Color("8f8d86")
+	var rock := Color("8a8377")
+	var sand := Color("cdb88a")
+	var wood := Color("7a5f45")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2626
+	var lamps := []
+	var trees := []
+	var palms := []
+	var benches := []
+	var items := {}
+	# ===== Sunset Beach =====
+	_box(self,Vector3(454,-0.66,245),Vector3(392,0.3,470),water)
+	_slab(Vector3((SB_X0+SB_X1)/2.0,-0.35,(SB_Z0+SB_Z1)/2.0),Vector3(SB_X1-SB_X0,0.6,SB_Z1-SB_Z0),0,walk)
+	# Bridge: from the Harbor Dome causeway (before the dome's car barrier) south, then east to the island.
+	_slab(Vector3(130,-0.35,91.0),Vector3(14,0.6,118),0,walk)
+	_slab(Vector3(200,-0.35,150),Vector3(154,0.6,14),0,walk)
+	_box_batch(Color("394552"),[[Vector3(130,0.012,93.5),Vector3(10,0.08,113)],[Vector3(202.5,0.014,150),Vector3(145,0.08,10)]])
+	var bdash := []
+	for z in range(42,140,8):
+		bdash.append([Vector3(130,0.06,float(z)),Vector3(0.18,0.02,3)])
+	for x in range(142,268,8):
+		bdash.append([Vector3(float(x),0.064,150),Vector3(3,0.02,0.18)])
+	_box_batch(Color("e7d9a4"),bdash)
+	var rail := Color("dfe3e6")
+	_box(self,Vector3(122.8,0.55,98.1),Vector3(0.4,1.1,117.8),rail,true)
+	_box(self,Vector3(137.2,0.55,91.0),Vector3(0.4,1.1,103.6),rail,true)
+	_box(self,Vector3(203.6,0.55,142.8),Vector3(132.8,1.1,0.4),rail,true)
+	_box(self,Vector3(196.4,0.55,157.2),Vector3(147.2,1.1,0.4),rail,true)
+	for z in range(50,140,16):
+		lamps.append([Vector3(136.4,0,float(z)),0.0])
+	for x in range(150,268,16):
+		lamps.append([Vector3(float(x),0,156.4),PI/2.0])
+	_sign("SUNSET BEACH  ↓",Vector3(130,6.5,46),Color("ffd8a8"),56)
+	_sign("SUNSET BEACH",Vector3(SB_X0+8.0,9,150),Color("ffd8a8"),80)
+	# Edge walls (gap for the bridge on the west side; the beach side is open sand to the sea).
+	_box(self,Vector3(SB_X0-0.5,0.6,(SB_Z0+143.0)/2.0),Vector3(1,1.2,143.0-SB_Z0),rock,true)
+	_box(self,Vector3(SB_X0-0.5,0.6,(157.0+SB_Z1)/2.0),Vector3(1,1.2,SB_Z1-157.0),rock,true)
+	_box(self,Vector3(SB_X1+0.5,0.6,(SB_Z0+SB_Z1)/2.0),Vector3(1,1.2,SB_Z1-SB_Z0),rock,true)
+	_box(self,Vector3((SB_X0+SB_X1)/2.0,0.6,SB_Z0-0.5),Vector3(SB_X1-SB_X0+2.0,1.2,1),rock,true)
+	_box(self,Vector3((SB_X0+SB_PIER_X-4.0)/2.0,0.4,SB_Z1+0.5),Vector3(SB_PIER_X-4.0-SB_X0,0.8,1),sand,true)
+	_box(self,Vector3((SB_PIER_X+4.0+SB_X1)/2.0,0.4,SB_Z1+0.5),Vector3(SB_X1-SB_PIER_X-4.0,0.8,1),sand,true)
+	_ex_grid(SB_X0,SB_X1,SB_Z0+5.0,SB_BEACH_ROAD,SB_AVES,SB_STREETS)
+	_box_batch(Color("394552"),[[Vector3((SB_X0+10.0+SB_X1-10.0)/2.0,0.016,SB_BEACH_ROAD),Vector3(SB_X1-SB_X0-20.0,0.08,10)]])
+	_ex_lamps(lamps,SB_X0,SB_X1,SB_Z0,SB_BEACH_ROAD,SB_AVES,SB_STREETS)
+	# Beach, boardwalk and pier.
+	_box_batch(sand,[[Vector3((SB_X0+SB_X1)/2.0,0.03,(SB_BEACH_ROAD+9.0+SB_Z1)/2.0),Vector3(SB_X1-SB_X0,0.06,SB_Z1-SB_BEACH_ROAD-9.0)]])
+	_box_batch(wood,[[Vector3((SB_X0+SB_X1)/2.0,0.05,SB_BEACH_ROAD+11.0),Vector3(SB_X1-SB_X0-4.0,0.06,4.0)]])
+	_slab(Vector3(SB_PIER_X,-0.35,SB_Z1+22.0),Vector3(8,0.6,44),0,wood)
+	_box(self,Vector3(SB_PIER_X-4.2,0.55,SB_Z1+22.0),Vector3(0.3,1.1,44),wood,true)
+	_box(self,Vector3(SB_PIER_X+4.2,0.55,SB_Z1+22.0),Vector3(0.3,1.1,44),wood,true)
+	_box(self,Vector3(SB_PIER_X,0.55,SB_Z1+44.0),Vector3(8.6,1.1,0.3),wood,true)
+	for z in range(int(SB_Z1)+6,int(SB_Z1)+44,8):
+		for sx in [-3.6,3.6]:
+			_box(self,Vector3(SB_PIER_X+sx,-0.5,float(z)),Vector3(0.4,1.4,0.4),Color("6b5038"))
+	items["kiosk"] = [[Vector3(SB_PIER_X,0,SB_Z1+38.0),PI,1.0]]
+	_collider(self,Vector3(SB_PIER_X,1.7,SB_Z1+38.0),Vector3(3,3.4,3.2))
+	_prop("res://models/lighthouse.glb",Vector3(SB_X1-14.0,0,SB_Z1-12.0),Vector3(5,20,5),0.0,Color("f2f0e8"))
+	var ucols := [Color("e0433a"),Color("2f7fd0"),Color("ffd23f"),Color("3e9e4a"),Color("ff8a3a")]
+	for k in 16:
+		var ux := SB_X0+20.0+float(k)*20.0+rng.randf_range(-4.0,4.0)
+		if absf(ux-SB_PIER_X) < 8.0:
+			continue
+		var uz := rng.randf_range(SB_BEACH_ROAD+22.0,SB_Z1-12.0)
+		_ex_umbrella(Vector3(ux,0,uz),ucols[k % ucols.size()])
+		_box_batch(ucols[(k+2) % ucols.size()],[[Vector3(ux+1.2,0.07,uz+0.6),Vector3(1.0,0.03,2.0)]])
+	for x in range(int(SB_X0)+14,int(SB_X1)-10,22):
+		if absf(float(x)-SB_PIER_X) > 10.0:
+			palms.append([Vector3(float(x),0,SB_BEACH_ROAD+17.0),rng.randf()*TAU,rng.randf_range(0.85,1.15)])
+	for x in range(int(SB_X0)+22,int(SB_X1)-10,30):
+		benches.append([Vector3(float(x),0,SB_BEACH_ROAD+13.6),PI])
+	_ex_yards([SB_X0,330.0,430.0,530.0,SB_X1],[SB_Z0,90.0,150.0,250.0,SB_BEACH_ROAD],[true,true],[true,false],[[1,1],[2,1],[3,1]])
+	# Sunset Boulevard (z = 150) shops, the Sunset Hotel facing the beach, and beach houses.
+	for x in [352.0,404.0,456.0,504.0,556.0]:
+		_place(items,"shops_0" if int(x) % 2 == 0 else "shops_1",Vector3(x,0,134),0.0)
+		_place(items,"shops_1" if int(x) % 2 == 0 else "shops_0",Vector3(x,0,166),PI)
+	_place(items,"hotel",Vector3(480,0,290),0.0,0.9)
+	_sign("SUNSET HOTEL",Vector3(480,19,290),Color("ffe9b8"),56)
+	# Houses: rows facing each street inside every block (setback keeps sidewalks clear).
+	var xs := [SB_X0,330.0,430.0,530.0,SB_X1]
+	for bi in 4:
+		var bx0: float = xs[bi]
+		var bx1: float = xs[bi+1]
+		var x := bx0+15.0
+		while x <= bx1-13.0:
+			_ex_house(items,Vector3(x,0,74.0),0.0,rng)
+			_ex_house(items,Vector3(x,0,106.0),PI,rng)
+			_ex_house(items,Vector3(x,0,234.0),0.0,rng)
+			if not (bi == 2):
+				_ex_house(items,Vector3(x,0,266.0),PI,rng)
+				_ex_house(items,Vector3(x,0,302.0),0.0,rng)
+			x += 16.0
+		trees.append([Vector3((bx0+bx1)/2.0,0,200),rng.randf()*TAU,1.0])
+		trees.append([Vector3((bx0+bx1)/2.0-12.0,0,206),rng.randf()*TAU,0.9])
+		trees.append([Vector3((bx0+bx1)/2.0+12.0,0,194),rng.randf()*TAU,0.9])
+	# ===== Westside =====
+	_box(self,Vector3((WS_X0+WS_X1)/2.0-10.0,-0.66,(WS_Z0+WS_Z1)/2.0),Vector3(WS_X1-WS_X0+40.0,0.3,WS_Z1-WS_Z0+40.0),water)
+	_slab(Vector3((WS_X0+WS_X1)/2.0,-0.35,(WS_Z0+WS_Z1)/2.0),Vector3(WS_X1-WS_X0,0.6,WS_Z1-WS_Z0),0,walk)
+	_box(self,Vector3(WS_X0-0.5,0.6,(WS_Z0+WS_Z1)/2.0),Vector3(1,1.2,WS_Z1-WS_Z0),rock,true)
+	_box(self,Vector3((WS_X0+WS_X1)/2.0,0.6,WS_Z0-0.5),Vector3(WS_X1-WS_X0,1.2,1),rock,true)
+	_box(self,Vector3((WS_X0+WS_X1)/2.0,0.6,WS_Z1+0.5),Vector3(WS_X1-WS_X0,1.2,1),rock,true)
+	# East edge: open to the Civic Center along its west side (z 17..152); walls elsewhere.
+	_box(self,Vector3(WS_X1+0.5,0.6,(WS_Z0+17.0)/2.0),Vector3(1,1.2,17.0-WS_Z0),rock,true)
+	_box(self,Vector3(WS_X1+0.5,0.6,(152.0+WS_Z1)/2.0),Vector3(1,1.2,WS_Z1-152.0),rock,true)
+	_ex_grid(WS_X0+6.0,WS_X1,WS_Z0+5.0,WS_Z1-5.0,WS_AVES,WS_STREETS)
+	_ex_lamps(lamps,WS_X0,WS_X1,WS_Z0,WS_Z1,WS_AVES,WS_STREETS)
+	_sign("WESTSIDE",Vector3(WS_X1-6.0,8,72),Color("cfe8ff"),72)
+	_sign("WESTSIDE  ←",Vector3(-232,6.5,64),Color("cfe8ff"),48)
+	_ex_yards([WS_X0,-420.0,-360.0,-300.0,WS_X1],[WS_Z0,0.0,72.0,150.0,230.0,300.0,WS_Z1],[true,true],[true,true],[[2,2],[0,4],[0,5]])
+	# Market square with stalls and a fountain.
+	var m := WS_MARKET
+	_box_batch(Color("a9a69e"),[[m+Vector3(0,0.035,0),Vector3(44,0.06,58)]])
+	items["fountain"] = [[m,0.0,0.6]]
+	_collider(self,m+Vector3(0,0.5,0),Vector3(8.4,1.0,8.4))
+	var stall_cols := [Color("e0433a"),Color("2f7fd0"),Color("3e9e4a"),Color("ffb020"),Color("c45adf"),Color("ff8a3a")]
+	for k in 6:
+		var sp := m+Vector3(-15.0+float(k % 3)*15.0,0,-17.0 if k < 3 else 17.0)
+		_box(self,sp+Vector3(0,0.45,0),Vector3(3.6,0.9,1.6),Color("8a5a2b"),true)
+		_box(self,sp+Vector3(0,2.5,0),Vector3(4.2,0.12,2.6),stall_cols[k])
+		for cx in [-1.7,1.7]:
+			_box(self,sp+Vector3(cx,1.25,-1.1),Vector3(0.1,2.5,0.1),Color("dddddd"))
+		_box_batch(stall_cols[(k+3) % 6],[[sp+Vector3(0,0.98,0),Vector3(3.2,0.12,1.2)]])
+	for b in [[m+Vector3(-9,0,0),PI/2.0],[m+Vector3(9,0,0),-PI/2.0],[m+Vector3(0,0,-9),0.0],[m+Vector3(0,0,9),PI]]:
+		benches.append(b)
+	_sign("WESTSIDE MARKET",m+Vector3(0,7,0),Color("ffe9b8"),56)
+	# Windmill park on the north-west corner, a water tower, and houses everywhere else.
+	var park := Vector3(-441,0,265)
+	_box_batch(Color("74b062"),[[park+Vector3(0,0.035,0),Vector3(30,0.06,60)]])
+	_landmark("res://models/windmill.glb",park+Vector3(0,0,-8),[])
+	_collider(self,park+Vector3(0,3.4,-8),Vector3(3.8,6.9,3.1))
+	for p in [park+Vector3(-9,0,10),park+Vector3(8,0,14),park+Vector3(-6,0,-22),park+Vector3(9,0,-20)]:
+		trees.append([p,rng.randf()*TAU,1.0])
+	var wt := Vector3(-390,0,265)
+	for lx in [-2.2,2.2]:
+		for lz in [-2.2,2.2]:
+			_box(self,wt+Vector3(lx,4.5,lz),Vector3(0.4,9,0.4),Color("6b6f75"),true)
+	_tp_part(self,_tp_cyl(3.6,3.6,4.5),wt+Vector3(0,11.2,0),Color("dfe3e6"))
+	_tp_part(self,_tp_cyl(0.3,3.8,1.2),wt+Vector3(0,14.0,0),Color("b0463c"))
+	_sign("WESTSIDE",wt+Vector3(0,11.2,3.7),Color("1c2a35"),40).billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	var wxs := [WS_X0+6.0,-420.0,-360.0,-300.0,WS_X1]
+	var wzs := [WS_Z0+5.0,0.0,72.0,150.0,230.0,300.0,WS_Z1-5.0]
+	for bi in 4:
+		for bj in 6:
+			var bx0: float = wxs[bi]
+			var bx1: float = wxs[bi+1]
+			var bz0: float = wzs[bj]
+			var bz1: float = wzs[bj+1]
+			if bi == 2 and bj == 2:
+				continue # market
+			if bi == 0 and (bj == 4 or bj == 5):
+				continue # windmill park
+			if bi == 1 and bj == 4:
+				continue # water tower
+			var x := bx0+(14.0 if bi > 0 else 12.0)
+			while x <= bx1-12.0:
+				if bz1-bz0 > 40.0:
+					_ex_house(items,Vector3(x,0,bz0+(16.0 if bj > 0 else 12.0)),PI,rng)
+					_ex_house(items,Vector3(x,0,bz1-16.0),0.0,rng)
+				elif bj > 0 and bz1-bz0 > 30.0:
+					_ex_house(items,Vector3(x,0,(bz0+bz1)/2.0),PI,rng)
+				x += 16.0
+			if bz1-bz0 > 60.0:
+				trees.append([Vector3((bx0+bx1)/2.0,0,(bz0+bz1)/2.0),rng.randf()*TAU,1.0])
+	for key in items:
+		_model_batch("res://models/%s.glb" % key,items[key])
+	_model_batch("res://models/lamp.glb",lamps)
+	_model_batch("res://models/tree_round.glb",trees)
+	_model_batch("res://models/palm.glb",palms)
+	_model_batch("res://models/bench.glb",benches)
+
+func _expand_shots() -> void:
+	await get_tree().process_frame
+	crate_open = false
+	if crate_root != null:
+		crate_root.hide()
+	paused = false
+	driving = false
+	player.show()
+	walk_view = 0
+	_apply_view()
+	# [name, stand here, look towards]
+	for s in [["bridge",Vector3(130,0,60),Vector3(130,0,150)],["sb-blvd",Vector3(342,0,157),Vector3(450,0,150)],["sb-beach",Vector3(380,0,330),Vector3(450,0,380)],["sb-pier",Vector3(430,0,350),Vector3(SB_PIER_X,0,SB_Z1+40.0)],["sb-hotel",Vector3(470,0,326),Vector3(480,0,290)],["ws-gate",Vector3(-230,0,76),Vector3(-300,0,72)],["ws-market",Vector3(-345,0,80),Vector3(-330,0,111)],["ws-street",Vector3(-300,0,160),Vector3(-300,0,240)],["ws-windmill",Vector3(-420,0,240),Vector3(-441,0,258)]]:
+		player.position = (s[1] as Vector3)+Vector3(0,0.75,0)
+		var d: Vector3 = (s[2] as Vector3)-(s[1] as Vector3)
+		player.rotation.y = atan2(-d.x,-d.z)
+		cam_yaw = player.rotation.y
+		for f in 30:
+			await get_tree().physics_frame
+		_follow_camera(1.0)
+		_refresh_hud()
+		await _save_shot(String(s[0]))
+	get_tree().quit()

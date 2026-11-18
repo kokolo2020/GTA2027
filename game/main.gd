@@ -291,6 +291,9 @@ func _ready() -> void:
 	_build_hub()
 	_build_raceway()
 	_build_expansion()
+	_build_connect()
+	_build_airport()
+	_build_skytrain()
 	_build_peds()
 	_build_traffic()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
@@ -301,9 +304,11 @@ func _ready() -> void:
 	_load_progress()
 	_quick_daily_check()
 	_web_perf_setup()
+	_night_setup()
+	_refresh_time_button()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots"]:
+	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -315,7 +320,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.26.2: Sunset Beach and Westside now have proper houses, like Maple Suburbs.")
+	_show_toast("Harbor City 0.27.0: no more walls, roads join every district, the Harbor Loop sky train, Harbor International Airport, and real day and night.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -349,6 +354,16 @@ func _ready() -> void:
 		await _v23_shots()
 	elif "--expand-shots" in OS.get_cmdline_user_args():
 		await _expand_shots()
+	elif "--sky-check" in OS.get_cmdline_user_args():
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		for i in sky_st_info.size():
+			var e: Vector3 = sky_st_info[i]["entrance"]
+			print("SKYST ",i," ",e," road=",_on_road(e)," blk=",_blocker(e+Vector3(0,1.0,0),0.6)," side=",sky_st_info[i]["side"])
+		print("SKYLEN ",sky_len," period ",sky_period," pillars ",sky_pillars.size())
+		get_tree().quit()
+	elif "--city-shots" in OS.get_cmdline_user_args():
+		await _city_shots()
 	elif "--daily-shots" in OS.get_cmdline_user_args():
 		await _daily_shots()
 	elif "--crate-shots" in OS.get_cmdline_user_args():
@@ -825,15 +840,7 @@ func _build_bay() -> void:
 	_box(self,Vector3(-66,0.01,0),Vector3(20,0.08,7),Color("4a5560"))
 	_slab(Vector3(-126,-0.35,0),Vector3(100,0.6,30),0,Color("d9c79a"))
 	_box(self,Vector3(-126,0.01,0),Vector3(100,0.08,7),Color("4a5560"))
-	for z in [-6.5,6.5]:
-		_box(self,Vector3(-66,1.5,z),Vector3(20,3,1),rock,true)
-	for z in [-10.75,10.75]:
-		_box(self,Vector3(-76.5,1.2,z),Vector3(1,2.4,9.5),rock,true)
-	_box(self,Vector3(-126,1.0,15.5),Vector3(100,2,1),rock,true)
-	# Gap at x -136..-124 for the Skyline District link road.
-	_box(self,Vector3(-156,1.0,-15.5),Vector3(40,2,1),rock,true)
-	_box(self,Vector3(-100,1.0,-15.5),Vector3(48,2,1),rock,true)
-	_box(self,Vector3(-176.5,1.0,0),Vector3(1,2,31),rock,true)
+	# v0.27: no walls; the bay road joins open land on every side.
 	bay_gate_body = _slab(BAY_GATE+Vector3(0,2,0),Vector3(1,4,12),0,Color("3d7cc4"))
 	_box(bay_gate_body,Vector3(0.52,1.0,0),Vector3(0.1,0.8,11),Color("fff3d0"))
 	_box(bay_gate_body,Vector3(0.52,-0.8,0),Vector3(0.1,0.8,11),Color("fff3d0"))
@@ -1051,19 +1058,8 @@ func _build_north() -> void:
 	var asphalt := Color("354653")
 	var rock := Color("7d776c")
 	var line := Color("e7d9a4")
-	# One big joined ground slab with solid rock borders, so many cars can share it later.
+	# One big joined ground slab. v0.27: no border walls; it joins the land around it.
 	_slab(Vector3(0,-0.35,-248),Vector3(220,0.6,384),0,grass)
-	# West wall with openings at z=-150 and z=-250 into the Skyline District.
-	_box(self,Vector3(-110.5,1.25,-100),Vector3(1,2.5,88),rock,true)
-	_box(self,Vector3(-110.5,1.25,-200),Vector3(1,2.5,88),rock,true)
-	_box(self,Vector3(-110.5,1.25,-348),Vector3(1,2.5,184),rock,true)
-	_box(self,Vector3(110.5,1.25,-358),Vector3(1,2.5,164),rock,true)
-	# East wall with an opening at z=-150 for the road to Harbor Raceway.
-	_box(self,Vector3(110.5,1.25,-210.5),Vector3(1,2.5,107),rock,true)
-	_box(self,Vector3(110.5,1.25,-99.5),Vector3(1,2.5,87),rock,true)
-	_box(self,Vector3(0,1.25,-440.5),Vector3(222,2.5,1),rock,true)
-	for sx in [-58.0,58.0]:
-		_box(self,Vector3(sx,1.5,-56.5),Vector3(104,3,1),rock,true)
 	north_gate_body = _slab(NORTH_GATE+Vector3(0,2,0),Vector3(12,4,1),0,Color("e0902f"))
 	_box(north_gate_body,Vector3(0,1.0,0.52),Vector3(11,0.8,0.1),Color("fff3d0"))
 	_box(north_gate_body,Vector3(0,-0.8,0.52),Vector3(11,0.8,0.1),Color("fff3d0"))
@@ -1138,8 +1134,6 @@ func _build_north() -> void:
 	# Summit Pass: a branch road from the highway up to a lookout.
 	_slab(Vector3(127,-0.35,-270),Vector3(34,0.6,24),0,grass)
 	_box(self,Vector3(127,0.01,-270),Vector3(34,0.08,8),asphalt)
-	for z in [-282.5,-257.5]:
-		_box(self,Vector3(127,1.0,z),Vector3(34,2,1),rock,true)
 	_slab(Vector3(151.7,2.51,-270),Vector3(24,0.6,20),14.0,Color("93866f"))
 	for z in [-259.8,-280.2]:
 		_slab(Vector3(151.5,3.38,z),Vector3(24,1.2,0.5),14.0,rock)
@@ -1859,13 +1853,8 @@ func _build_marina() -> void:
 	_box(marina_gate_body,Vector3(0,-0.8,0.52),Vector3(11,0.8,0.1),Color("fff3d0"))
 	marina_gate_sign = _sign("",Vector3(0,5.8,58),Color("cfe6ff"),38)
 	_sign("MARINA HEIGHTS",Vector3(0,7.2,112),Color("cfe6ff"),52)
-	# Island deck with a perimeter wall.
+	# Island deck (v0.27: open seafront, no perimeter wall).
 	_slab(Vector3(0,-0.35,175),Vector3(210,0.6,134),0,Color("cfcab8"))
-	_box(self,Vector3(-56,0.7,108),Vector3(98,1.4,1),wall,true)
-	_box(self,Vector3(56,0.7,108),Vector3(98,1.4,1),wall,true)
-	_box(self,Vector3(0,0.7,242),Vector3(210,1.4,1),wall,true)
-	for sx in [-105.5,105.5]:
-		_box(self,Vector3(sx,0.7,175),Vector3(1,1.4,134),wall,true)
 	# Boulevard and cross streets.
 	_box(self,Vector3(0,0.01,175),Vector3(10,0.08,134),asphalt)
 	for z in range(112,240,8):
@@ -2775,14 +2764,6 @@ func _build_ridge() -> void:
 	_box(self,Vector3(66,0.01,0),Vector3(20,0.08,7),asphalt)
 	_slab(Vector3(93,-0.35,0),Vector3(34,0.6,46),0,grass)
 	_box(self,Vector3(93,0.01,0),Vector3(34,0.08,7),asphalt)
-	for z in [-6.5,6.5]:
-		_box(self,Vector3(66,1.5,z),Vector3(20,3,1),rock,true)
-	for z in [-23.5,23.5]:
-		_box(self,Vector3(93,1.2,z),Vector3(34,2.4,1),rock,true)
-	for z in [-14.5,14.5]:
-		_box(self,Vector3(76,1.2,z),Vector3(1,2.4,17),rock,true)
-	for z in [-16.5,16.5]:
-		_box(self,Vector3(110.5,1.2,z),Vector3(1,2.4,13),rock,true)
 	# Ramp up to the summit plateau.
 	_slab(Vector3(117.7,2.51,0),Vector3(24,0.6,20),14.0,Color("93866f"))
 	for z in [-10.25,10.25]:
@@ -3557,6 +3538,8 @@ func _build_hud() -> void:
 	items.add_child(mode_button)
 	nick_button = _button("Nickname: (not set)",_open_nick)
 	items.add_child(nick_button)
+	time_button = _button("Time: Live day & night",_cycle_day_mode)
+	items.add_child(time_button)
 	items.add_child(_button("Continue",_toggle_menu))
 	items.add_child(_button("Return to the car",_rescue))
 	items.add_child(_label("Built with Godot Engine • MIT license\nLicense and attribution: credits.txt in the project",14,Color("8ddacb")))
@@ -3660,7 +3643,7 @@ func _physics_process(delta: float) -> void:
 		float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT))-float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)),
 		float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))-float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
 	var control := keyboard.limit_length() if keyboard.length() > 0 else stick
-	if bus_riding or (race_car and rec_count > 0.0):
+	if bus_riding or sky_riding or (race_car and rec_count > 0.0):
 		control = Vector2.ZERO
 	# Align movement to the camera's horizontal axes.
 	var forward := -camera.global_basis.z
@@ -3738,6 +3721,9 @@ func _physics_process(delta: float) -> void:
 	if car.is_on_floor():
 		car.velocity.y = 0
 	_bus_tick(delta)
+	_sky_tick(delta)
+	_ap_tick(delta)
+	_sea_tick(delta)
 	if player.position.y < -5 or car.position.y < -5:
 		_rescue()
 	if driving:
@@ -3782,7 +3768,14 @@ func _physics_process(delta: float) -> void:
 		if toast_time <= 0:
 			status_label.text = ""
 
+var cam_lock := false
+
 func _follow_camera(weight: float) -> void:
+	if cam_lock:
+		return
+	if sky_riding and not sky_trains.is_empty():
+		_sky_camera(weight)
+		return
 	if view_mode == 2 and driving:
 		# Driver's eye, left seat, looking slightly down over the bonnet.
 		camera.global_transform = car.global_transform*Transform3D(Basis.from_euler(Vector3(deg_to_rad(-6.0),0,0)),Vector3(-0.38,0.93,0.1))
@@ -3868,6 +3861,15 @@ func _interact() -> void:
 	var shop := _nearest_shop()
 	if shop >= 0:
 		_shop_open(shop)
+		return
+	if sky_riding or sky_wait >= 0:
+		_sky_action()
+		_refresh_hud()
+		return
+	var sky_i := _sky_near()
+	if sky_i >= 0:
+		_sky_enter(sky_i)
+		_refresh_hud()
 		return
 	if bus_riding:
 		_bus_alight()
@@ -4016,6 +4018,8 @@ func _refresh_hud() -> void:
 		action_button.text = "STAND UP"
 	elif not driving and _nearest_seat() >= 0:
 		action_button.text = _seat_label(_nearest_seat())
+	elif _sky_hud():
+		pass
 	elif bus_riding:
 		action_button.text = "GET OFF" if bus_dwell > 0.0 else "RIDING…"
 		action_button.disabled = bus_dwell <= 0.0
@@ -4111,6 +4115,9 @@ func _rescue() -> void:
 	if race_car:
 		_race_car_end(true)
 	bus_riding = false
+	sky_riding = false
+	sky_wait = -1
+	safe_hist.clear()
 	car.position = Vector3(1.7,0.8,4)
 	car.rotation = Vector3.ZERO
 	car.velocity = Vector3.ZERO
@@ -4179,6 +4186,9 @@ func _save_progress() -> void:
 	file.set_value("progress","quick_done",quick_done)
 	file.set_value("progress","quick_day",quick_day)
 	file.set_value("progress","quick_got",quick_got)
+	file.set_value("progress","day_mode",day_mode)
+	file.set_value("progress","tour_day",tour_day)
+	file.set_value("progress","tour_got",tour_got)
 	file.set_value("progress","treasure_got",treasure_got)
 	file.set_value("progress","treasure_count",treasure_count)
 	file.set_value("progress","fm_refund",fm_refund)
@@ -4194,6 +4204,9 @@ func _load_progress() -> void:
 		quick_done = maxi(0,int(file.get_value("progress","quick_done",0)))
 		quick_day = String(file.get_value("progress","quick_day",""))
 		quick_got = int(file.get_value("progress","quick_got",0)) & ((1 << QUICK.size())-1)
+		day_mode = clampi(int(file.get_value("progress","day_mode",0)),0,DAY_MODES.size()-1)
+		tour_day = String(file.get_value("progress","tour_day",""))
+		tour_got = int(file.get_value("progress","tour_got",0)) & ((1 << SKY_STATIONS.size())-1)
 		treasure_got = int(file.get_value("progress","treasure_got",-1))
 		treasure_count = maxi(0,int(file.get_value("progress","treasure_count",0)))
 		var refund := maxi(0,int(file.get_value("progress","fm_refund",0)))
@@ -4455,6 +4468,7 @@ func _radio_refresh() -> void:
 	radio_caption.visible = radio_station > 0 and not loading
 
 func _process(delta: float) -> void:
+	_daynight_tick(delta)
 	_level_fx_tick(delta)
 	_hud_v23_tick()
 	_my_tag_tick()
@@ -4523,6 +4537,7 @@ func _build_peds() -> void:
 		plan.append([spot,spot,true])
 	for spot in [Vector3(-300,0,-121),Vector3(-310,0,-129),Vector3(-298,0,-131),Vector3(-312,0,-119),Vector3(-262,0,-246),Vector3(-298,0,-254),Vector3(-175,0,-362),Vector3(-186,0,-362),Vector3(-15,0,35),Vector3(15,0,35)]:
 		plan.append([spot,spot,true])
+	plan.append_array(_airport_ped_plan())
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5150
 	for i in plan.size():
@@ -4530,6 +4545,8 @@ func _build_peds() -> void:
 		var node := Node3D.new()
 		add_child(node)
 		var shirt_col: Color = shirts[rng.randi() % shirts.size()]
+		if line.size() > 3:
+			shirt_col = line[3]
 		var skin_col: Color = skins[rng.randi() % skins.size()]
 		var person := _make_person(node,i % 4,{"Shirt":shirt_col,"Skin":skin_col,"Pants":pants[rng.randi() % pants.size()],"Hair":hairs[rng.randi() % hairs.size()],"Shoes":shoes[rng.randi() % shoes.size()],"Eye":Color("1c1c22")})
 		var leg_nodes: Array[Node3D] = []
@@ -4757,6 +4774,7 @@ func _smoke_test() -> void:
 	_smoke_quests()
 	_smoke_treasure()
 	_smoke_findme()
+	await _smoke_v27()
 	_my_tag_tick()
 	assert(my_tag != null and my_tag.text.contains("Lv ") and my_tag.text.begins_with(_my_name()),"Your name tag shows name and level")
 	cash = original_cash
@@ -4792,7 +4810,7 @@ func _smoke_test() -> void:
 	checkpoint_id = saved_checkpoint
 	_refresh_checkpoints()
 	_save_progress()
-	print("HARBOR_SMOKE_OK: find me, treasure hunt, player rings, name tag, quests list, quick quests, 20 levels, all towns open, starter crate, QR join code, graphics, RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: Harbor International Airport, no walls and joined roads, sea tow, Harbor Loop sky train, City Tour, day and night, find me, treasure hunt, player rings, name tag, quests list, quick quests, 20 levels, all towns open, starter crate, QR join code, graphics, RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -5154,7 +5172,7 @@ func _wait_radio(station: int) -> void:
 	assert(radio_streams.has(station),"Radio station %d did not generate" % station)
 
 func _smoke_radio_peds() -> void:
-	assert(peds.size() == 153,"Pedestrians missing: %d" % peds.size())
+	assert(peds.size() == 188,"Pedestrians missing: %d" % peds.size())
 	assert(not player_person.is_empty() and player_person["mats"].has("Shirt"),"Player person model missing")
 	for p in peds:
 		assert(not (p["person"] as Dictionary).is_empty(),"Pedestrian person model missing")
@@ -6022,6 +6040,9 @@ func _model_batch(path: String, items: Array, recolor := {}, use_local := false)
 			if n == model:
 				break
 			n = n.get_parent()
+	if path.ends_with("/lamp.glb"):
+		for it in items:
+			lamp_spots.append([it[0],float(it[1])])
 	var multi := MultiMesh.new()
 	multi.transform_format = MultiMesh.TRANSFORM_3D
 	multi.mesh = mesh
@@ -6090,15 +6111,9 @@ func _build_downtown() -> void:
 	var cx := (DT_WEST+DT_EAST)/2.0
 	var cz := (DT_NORTH+DT_SOUTH)/2.0
 	_slab(Vector3(cx,-0.35,cz),Vector3(DT_EAST-DT_WEST,0.6,DT_NORTH-DT_SOUTH),0,walk)
-	_box(self,Vector3(DT_WEST-0.5,1.25,cz),Vector3(1,2.5,DT_NORTH-DT_SOUTH+1),rock,true)
-	_box(self,Vector3(cx,1.25,DT_SOUTH-0.5),Vector3(DT_EAST-DT_WEST+1,2.5,1),rock,true)
-	_box(self,Vector3((DT_WEST-136.0)/2.0,1.25,DT_NORTH+0.5),Vector3(DT_WEST*-1.0-136.0,2.5,1),rock,true)
-	_box(self,Vector3(-117.25,1.25,DT_NORTH+0.5),Vector3(13.5,2.5,1),rock,true)
-	# Link road from Bay Road up to the district.
+	# Link road from Bay Road up to the district (v0.27: no walls).
 	_slab(Vector3(-130,-0.35,-38.5),Vector3(16,0.6,46),0,walk)
 	_box(self,Vector3(-130,0.01,-38.5),Vector3(12,0.08,46),asphalt)
-	for sx in [-138.5,-121.5]:
-		_box(self,Vector3(sx,1.0,-38.5),Vector3(1,2,46),rock,true)
 	# Roads, lane dashes, crosswalks, signals.
 	var roads := []
 	var dashes := []
@@ -6583,8 +6598,9 @@ func _smoke_downtown() -> void:
 		assert(not _blocked_at((site["pos"] as Vector3)+Vector3(0,1.0,0),0.6),"Skyline site blocked: "+str(site["name"]))
 	for pt in [Vector3(-110.5,1.0,-150),Vector3(-110.5,1.0,-250),Vector3(-130,1.0,-15.5),Vector3(-130,1.0,-61.5),Vector3(-130,1.0,-38)]:
 		assert(not _blocked_at(pt,0.8),"Skyline entrance blocked at %s" % str(pt))
-	for pt in [Vector3(-110.5,1.0,-200),Vector3(-160,1.0,-15.5),Vector3(-300,1.0,-61.5),Vector3(-446.5,1.0,-250),Vector3(-205,1.0,-225)]:
-		assert(_blocked_at(pt,0.3),"Wall or building missing at %s" % str(pt))
+	# v0.27: the district walls are gone; buildings are still solid.
+	for pt in [Vector3(-205,1.0,-225)]:
+		assert(_blocked_at(pt,0.3),"Building missing at %s" % str(pt))
 	# Every road lane in the district is drivable (no building or prop collider on it). Traffic is moved aside.
 	blocked_skip_traffic = true
 	for x in DT_AVES:
@@ -6713,8 +6729,8 @@ func _skyline_shots() -> void:
 	get_tree().quit()
 
 # ---------- v0.17.0: minimap, full map and camera views (Far / Close / In-car) ----------
-const MAP_CENTER := Vector2(82.0,-99.5)
-const MAP_SIZE := 1090.0
+const MAP_CENTER := Vector2(85.0,-180.0)
+const MAP_SIZE := 1210.0
 const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
@@ -7122,7 +7138,7 @@ func _apply_view() -> void:
 		# Haze always on, ending at the far clip so the city fades into the sky instead of popping.
 		world_env_res.fog_enabled = true
 		world_env_res.fog_mode = Environment.FOG_MODE_DEPTH
-		world_env_res.fog_light_color = HAZE
+		world_env_res.fog_light_color = haze_now
 		world_env_res.fog_depth_begin = 60.0 if close_up else (75.0 if follow_view else 120.0)
 		world_env_res.fog_depth_end = camera.far-4.0
 		world_env_res.fog_density = 1.0
@@ -7143,6 +7159,15 @@ func _bake_map() -> void:
 	# Developer-only: renders the whole world from straight above into res://map/world_map.png.
 	# Run with a square window:  Godot --path game --resolution 1024x1024 -- --bake-map
 	paused = true
+	day_hour_override = 13.0
+	_daynight_apply(true)
+	if ap_plane != null:
+		ap_plane.hide()
+	for v in ap_vehicles:
+		(v["node"] as Node3D).hide()
+	for cars in sky_trains:
+		for c: Node3D in cars:
+			c.hide()
 	hud.hide()
 	_hide_labels(self)
 	for n in [player,car,marker,bus]:
@@ -7660,6 +7685,7 @@ const CHECKPOINTS := [
 	{"name":"Harbor Raceway","pos":Vector3(170,0,-150)},
 	{"name":"Sunset Beach","pos":Vector3(300,0,158)},
 	{"name":"Westside","pos":Vector3(-270,0,80)},
+	{"name":"Harbor Airport","pos":Vector3(52,0,-470)},
 ]
 var checkpoint_id := -1
 var checkpoint_nodes: Array = []
@@ -7717,7 +7743,7 @@ func _build_guidance(root: Control) -> void:
 	hud_arrow.hide()
 
 func _guide_target() -> Variant:
-	if bus_riding or online_role != 0 or chase_mode == 1:
+	if bus_riding or sky_riding or online_role != 0 or chase_mode == 1:
 		return null
 	if chase_mode == 2:
 		for u in chase_units:
@@ -9332,7 +9358,7 @@ func _lfp_msg(event: String, p: Dictionary) -> void:
 func _accept_invite(from: String) -> void:
 	if paused:
 		return
-	if trial_active >= 0 or chase_mode != 0 or online_role != 0 or bus_riding:
+	if trial_active >= 0 or chase_mode != 0 or online_role != 0 or bus_riding or sky_riding or sky_wait >= 0:
 		_show_toast("Finish your trial, chase or bus ride first, then accept.")
 		return
 	var invite := {}
@@ -9715,18 +9741,8 @@ func _build_civic() -> void:
 	var cx := (CIV_X0+CIV_X1)/2.0
 	var cz := (CIV_Z0+CIV_Z1)/2.0
 	_slab(Vector3(cx,-0.35,cz),Vector3(CIV_X1-CIV_X0,0.6,CIV_Z1-CIV_Z0),0,walk)
-	# v0.26: opening at the z = 72 street into Westside.
-	_box(self,Vector3(CIV_X0-0.5,1.0,(CIV_Z0-0.5+65.0)/2.0),Vector3(1,2,65.0-CIV_Z0+0.5),rock,true)
-	_box(self,Vector3(CIV_X0-0.5,1.0,(79.0+CIV_Z1+0.5)/2.0),Vector3(1,2,CIV_Z1+0.5-79.0),rock,true)
-	# South row (bank, fire station, library) beyond the mall and park.
+	# South row (bank, fire station, library) beyond the mall and park. v0.27: no walls around the Civic Center.
 	_slab(Vector3((CIV_X0+CIV_SOUTH_EAST)/2.0,-0.35,(CIV_Z1+CIV_SOUTH)/2.0),Vector3(CIV_SOUTH_EAST-CIV_X0,0.6,CIV_SOUTH-CIV_Z1),0,walk)
-	_box(self,Vector3((CIV_X0+CIV_SOUTH_EAST)/2.0,1.0,CIV_SOUTH+0.5),Vector3(CIV_SOUTH_EAST-CIV_X0+1,2,1),rock,true)
-	_box(self,Vector3(CIV_SOUTH_EAST+0.5,1.0,(CIV_Z1+CIV_SOUTH)/2.0),Vector3(1,2,CIV_SOUTH-CIV_Z1+1),rock,true)
-	_box(self,Vector3((CIV_SOUTH_EAST+CIV_X1)/2.0+0.5,1.0,CIV_Z1+0.5),Vector3(CIV_X1-CIV_SOUTH_EAST,2,1),rock,true)
-	_box(self,Vector3(CIV_X0-0.5,1.0,(CIV_Z1+CIV_SOUTH)/2.0),Vector3(1,2,CIV_SOUTH-CIV_Z1+1),rock,true)
-	_box(self,Vector3((CIV_X0-76.0)/2.0,1.0,CIV_Z0-0.4),Vector3(-76.0-CIV_X0,2,0.8),rock,true)
-	_box(self,Vector3(-66.0,1.0,CIV_Z0-0.4),Vector3(20,2,0.8),rock,true)
-	_box(self,Vector3(CIV_X1-0.3,1.0,81.0),Vector3(0.6,2,50),rock,true)
 	var roads := []
 	var dashes := []
 	var zebra := []
@@ -10126,8 +10142,6 @@ func _build_raceway() -> void:
 	# Approach road east from the North Highway's Industrial Quarter cross street (z = -150).
 	_slab(Vector3((110.5+RW_X0)/2.0,-0.35,-150),Vector3(RW_X0-110.5,0.6,14),0,paved)
 	_box(self,Vector3((110.5+RW_X0)/2.0,0.012,-150),Vector3(RW_X0-110.5,0.08,10),Color("394552"))
-	for sz in [-7.2,7.2]:
-		_box(self,Vector3((110.5+RW_X0)/2.0,0.55,-150+sz),Vector3(RW_X0-110.5,1.1,0.4),Color("dfe3e6"),true)
 	var road_dash := []
 	for x in range(116,200,8):
 		road_dash.append([Vector3(float(x),0.06,-150),Vector3(3,0.02,0.18)])
@@ -10143,11 +10157,6 @@ func _build_raceway() -> void:
 		stripes.append([Vector3((291.0+RW_X1)/2.0,0.0,sz2+3.0),Vector3(RW_X1-291.0,0.04,6.0)])
 		sz2 += 12.0
 	_box_batch(Color("5f984f"),stripes)
-	_box(self,Vector3(RW_X1+0.5,1.25,cz),Vector3(1,2.5,RW_Z1-RW_Z0+1),rock,true)
-	_box(self,Vector3(cx,1.25,RW_Z0-0.5),Vector3(RW_X1-RW_X0+1,2.5,1),rock,true)
-	_box(self,Vector3(cx,1.25,RW_Z1+0.5),Vector3(RW_X1-RW_X0+1,2.5,1),rock,true)
-	_box(self,Vector3(RW_X0-0.5,1.25,(RW_Z0-157.0)/2.0),Vector3(1,2.5,-157.0-RW_Z0),rock,true)
-	_box(self,Vector3(RW_X0-0.5,1.25,(RW_Z1-143.0)/2.0),Vector3(1,2.5,RW_Z1+143.0),rock,true)
 	var arch := _sign("HARBOR RACEWAY",Vector3(RW_X0+1,9,-150),Color("ffd8a8"),80)
 	arch.outline_size = 14
 	for z in [-157.5,-142.5]:
@@ -10830,7 +10839,7 @@ func _join_race(from: String, invite: Dictionary) -> void:
 	if left < 1.5:
 		_show_toast("That race has already started. Catch the next one!")
 		return
-	if trial_active >= 0 or chase_mode != 0 or online_role != 0 or bus_riding:
+	if trial_active >= 0 or chase_mode != 0 or online_role != 0 or bus_riding or sky_riding or sky_wait >= 0:
 		_show_toast("Finish your trial, chase or bus ride first, then join.")
 		return
 	if cash < GP_PRICE:
@@ -11223,7 +11232,7 @@ var call_ready_at := -100.0
 var horn_snd: AudioStreamWAV
 
 func _call_block_reason() -> String:
-	if race_car or bus_riding or seat_id >= 0:
+	if race_car or bus_riding or sky_riding or seat_id >= 0:
 		return "You can't call your car right now."
 	if Vector2(player.position.x-HUB_C.x,player.position.z-HUB_C.z).length() < HUB_R+2.0:
 		return "Cars can't come into Harbor Dome. Walk outside first."
@@ -11421,7 +11430,7 @@ const RUN_SPEED := 9.0
 const WALK_SPEED := 5.0
 # Which area must be open before you can travel to each checkpoint (see _area_open):
 # 0 city, 1 ridge (east), 2 bay (west), 3 north, 4 marina, 5 skyline downtown.
-const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1,0,0]
+const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1,0,0,0]
 const TRAVEL_COOL := 20.0
 var run_on := false
 var run_button: Button
@@ -11492,7 +11501,7 @@ func _hud_v23_tick() -> void:
 	_web_fps_tick()
 	if quick_day != _quick_today():
 		_quick_daily_check()
-	var on_foot := not driving and not race_car and seat_id < 0 and not bus_riding and not paused
+	var on_foot := not driving and not race_car and seat_id < 0 and not bus_riding and not sky_riding and not paused
 	run_button.visible = on_foot
 	travel_button.visible = not paused and not race_car
 	if feed_box != null:
@@ -11524,6 +11533,8 @@ func _travel_block_reason() -> String:
 		return "Cancel the time trial first."
 	if bus_riding:
 		return "Get off the bus first."
+	if sky_riding or sky_wait >= 0:
+		return "Get off the sky train first."
 	if seat_id >= 0:
 		return "Stand up first."
 	if fm_hosting:
@@ -11935,6 +11946,8 @@ func _crate_pick(i: int) -> void:
 	_crate_sound(false)
 
 func _crate_reveal() -> void:
+	if not crate_reward.has("tier"):
+		return
 	for b: Button in crate_buttons:
 		b.hide()
 	var tier: Dictionary = CRATE_RARITY[int(crate_reward["tier"])]
@@ -12854,7 +12867,7 @@ func _my_tag_tick() -> void:
 		my_tag.render_priority = 10
 		add_child(my_tag)
 	var body: Node3D = car if driving else player
-	my_tag.visible = booted and not eye_view and not in_car_view and not crate_open and not (bus_riding and not driving)
+	my_tag.visible = booted and not eye_view and not in_car_view and not crate_open and not (bus_riding and not driving) and not sky_riding
 	if not my_tag.visible:
 		return
 	var lift := 1.7 if driving else (1.18 if seat_id < 0 else 0.9)
@@ -13279,7 +13292,7 @@ func _fm_block_reason() -> String:
 		return "Turn Online on first (top right). Find Me is for playing with others."
 	if fm_hosting:
 		return "Your Find Me is already running."
-	if driving or race_car or seat_id >= 0 or bus_riding or chase_mode != 0 or online_role != 0:
+	if driving or race_car or seat_id >= 0 or bus_riding or sky_riding or chase_mode != 0 or online_role != 0:
 		return "Get out on foot first."
 	var pool := int(FM_PRIZES[0]+FM_PRIZES[1]+FM_PRIZES[2])
 	if cash < pool:
@@ -13719,13 +13732,7 @@ func _build_expansion() -> void:
 		lamps.append([Vector3(float(x),0,156.4),PI/2.0])
 	_sign("SUNSET BEACH  ↓",Vector3(130,6.5,46),Color("ffd8a8"),56)
 	_sign("SUNSET BEACH",Vector3(SB_X0+8.0,9,150),Color("ffd8a8"),80)
-	# Edge walls (gap for the bridge on the west side; the beach side is open sand to the sea).
-	_box(self,Vector3(SB_X0-0.5,0.6,(SB_Z0+143.0)/2.0),Vector3(1,1.2,143.0-SB_Z0),rock,true)
-	_box(self,Vector3(SB_X0-0.5,0.6,(157.0+SB_Z1)/2.0),Vector3(1,1.2,SB_Z1-157.0),rock,true)
-	_box(self,Vector3(SB_X1+0.5,0.6,(SB_Z0+SB_Z1)/2.0),Vector3(1,1.2,SB_Z1-SB_Z0),rock,true)
-	_box(self,Vector3((SB_X0+SB_X1)/2.0,0.6,SB_Z0-0.5),Vector3(SB_X1-SB_X0+2.0,1.2,1),rock,true)
-	_box(self,Vector3((SB_X0+SB_PIER_X-4.0)/2.0,0.4,SB_Z1+0.5),Vector3(SB_PIER_X-4.0-SB_X0,0.8,1),sand,true)
-	_box(self,Vector3((SB_PIER_X+4.0+SB_X1)/2.0,0.4,SB_Z1+0.5),Vector3(SB_X1-SB_PIER_X-4.0,0.8,1),sand,true)
+	# v0.27: no edge walls; the north side joins the new coast road land, the rest is open seafront.
 	_ex_grid(SB_X0,SB_X1,SB_Z0+5.0,SB_BEACH_ROAD,SB_AVES,SB_STREETS)
 	_box_batch(Color("394552"),[[Vector3((SB_X0+10.0+SB_X1-10.0)/2.0,0.016,SB_BEACH_ROAD),Vector3(SB_X1-SB_X0-20.0,0.08,10)]])
 	_ex_lamps(lamps,SB_X0,SB_X1,SB_Z0,SB_BEACH_ROAD,SB_AVES,SB_STREETS)
@@ -13784,12 +13791,7 @@ func _build_expansion() -> void:
 	# ===== Westside =====
 	_box(self,Vector3((WS_X0+WS_X1)/2.0-10.0,-0.66,(WS_Z0+WS_Z1)/2.0),Vector3(WS_X1-WS_X0+40.0,0.3,WS_Z1-WS_Z0+40.0),water)
 	_slab(Vector3((WS_X0+WS_X1)/2.0,-0.35,(WS_Z0+WS_Z1)/2.0),Vector3(WS_X1-WS_X0,0.6,WS_Z1-WS_Z0),0,walk)
-	_box(self,Vector3(WS_X0-0.5,0.6,(WS_Z0+WS_Z1)/2.0),Vector3(1,1.2,WS_Z1-WS_Z0),rock,true)
-	_box(self,Vector3((WS_X0+WS_X1)/2.0,0.6,WS_Z0-0.5),Vector3(WS_X1-WS_X0,1.2,1),rock,true)
-	_box(self,Vector3((WS_X0+WS_X1)/2.0,0.6,WS_Z1+0.5),Vector3(WS_X1-WS_X0,1.2,1),rock,true)
-	# East edge: open to the Civic Center along its west side (z 17..152); walls elsewhere.
-	_box(self,Vector3(WS_X1+0.5,0.6,(WS_Z0+17.0)/2.0),Vector3(1,1.2,17.0-WS_Z0),rock,true)
-	_box(self,Vector3(WS_X1+0.5,0.6,(152.0+WS_Z1)/2.0),Vector3(1,1.2,WS_Z1-152.0),rock,true)
+	# v0.27: no edge walls (land to the north and east, open seafront west and south).
 	_ex_grid(WS_X0+6.0,WS_X1,WS_Z0+5.0,WS_Z1-5.0,WS_AVES,WS_STREETS)
 	_ex_lamps(lamps,WS_X0,WS_X1,WS_Z0,WS_Z1,WS_AVES,WS_STREETS)
 	_sign("WESTSIDE",Vector3(WS_X1-6.0,8,72),Color("cfe8ff"),72)
@@ -13878,3 +13880,1720 @@ func _expand_shots() -> void:
 		_refresh_hud()
 		await _save_shot(String(s[0]))
 	get_tree().quit()
+
+# ===================== v0.27: one connected city, Harbor Loop sky train, day and night =====================
+
+# Open land that fills the gaps between districts: [x0, x1, z0, z1]. Drawn a little lower than the
+# district ground so the two never fight, but solid at the same height so cars roll straight across.
+const LAND_FILLS := [
+	[-480.0,650.0,-470.0,-40.0],
+	[-480.0,56.0,-40.0,17.0],
+	[56.0,110.0,-40.0,-6.0],
+	[110.0,186.0,-40.0,-12.0],
+	[56.0,110.0,6.0,25.0],
+	[186.0,650.0,-40.0,-14.0],
+	[262.0,650.0,-14.0,40.0],
+	[-480.0,650.0,-790.0,-470.0],
+]
+# New roads joining the districts: [from, to, width].
+const LINK_ROADS := [
+	[Vector2(197,-453),Vector2(197,-23),10.0],
+	[Vector2(-440,-458),Vector2(460,-458),10.0],
+	[Vector2(0,-440.5),Vector2(0,-453),10.0],
+	[Vector2(-130,-441),Vector2(-130,-453),10.0],
+	[Vector2(-230,-441),Vector2(-230,-453),10.0],
+	[Vector2(-330,-441),Vector2(-330,-453),10.0],
+	[Vector2(-430,-441),Vector2(-430,-453),10.0],
+	[Vector2(192,-28),Vector2(535,-28),10.0],
+	[Vector2(330,-23),Vector2(330,46),10.0],
+	[Vector2(430,-23),Vector2(430,46),10.0],
+	[Vector2(530,-23),Vector2(530,46),10.0],
+	[Vector2(108,-110),Vector2(192,-110),8.0],
+	[Vector2(108,-205),Vector2(192,-205),8.0],
+	[Vector2(108,-300),Vector2(192,-300),8.0],
+	[Vector2(-111.5,-300),Vector2(-107.5,-300),8.0],
+	[Vector2(-446,-56),Vector2(-136,-56),10.0],
+	[Vector2(-300,-51.5),Vector2(-300,-44),10.0],
+	[Vector2(-360,-51.5),Vector2(-360,-44),10.0],
+	[Vector2(-420,-51.5),Vector2(-420,-44),10.0],
+	[Vector2(-247,0),Vector2(-175,0),8.0],
+	[Vector2(-140,-4),Vector2(-140,18),10.0],
+	[Vector2(-185,-4),Vector2(-185,18),10.0],
+	[Vector2(-230,-4),Vector2(-230,18),10.0],
+]
+const SEA_FLOOR_Y := -2.2
+
+var safe_hist: Array = []
+var safe_t := 0.0
+var sea_t := 0.0
+var lamp_spots: Array = []
+
+func _build_connect() -> void:
+	var grass := _material(Color("78a06b"))
+	for f in LAND_FILLS:
+		var x0: float = f[0]
+		var x1: float = f[1]
+		var z0: float = f[2]
+		var z1: float = f[3]
+		var mesh := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(x1-x0,0.6,z1-z0)
+		mesh.mesh = bm
+		mesh.material_override = grass
+		mesh.position = Vector3((x0+x1)/2.0,-0.38,(z0+z1)/2.0)
+		add_child(mesh)
+		_collider(self,Vector3((x0+x1)/2.0,-0.35,(z0+z1)/2.0),Vector3(x1-x0,0.6,z1-z0))
+	# The sea all around, with a shallow floor so a car that drives in can be towed back out.
+	_box(self,Vector3(85,-0.75,-30),Vector3(3200,0.3,3200),Color("248caa"))
+	var floor_body := StaticBody3D.new()
+	var floor_shape := CollisionShape3D.new()
+	var fb := BoxShape3D.new()
+	fb.size = Vector3(3200,0.6,3200)
+	floor_shape.shape = fb
+	floor_body.position = Vector3(85,SEA_FLOOR_Y-0.3,-30)
+	floor_body.add_child(floor_shape)
+	add_child(floor_body)
+	# Roads: asphalt first (so crossings are known), then lane dashes and lamps away from crossings.
+	var asphalt := []
+	for r in LINK_ROADS:
+		var a: Vector2 = r[0]
+		var b: Vector2 = r[1]
+		var w: float = r[2]
+		var mid := (a+b)/2.0
+		var along_x := absf(b.x-a.x) > absf(b.y-a.y)
+		var size := Vector3(absf(b.x-a.x),0.08,w) if along_x else Vector3(w,0.08,absf(b.y-a.y))
+		asphalt.append([Vector3(mid.x,0.013,mid.y),size])
+	_box_batch(Color("394552"),asphalt)
+	var dashes := []
+	var lamps := []
+	var trees := []
+	for r in LINK_ROADS:
+		var a: Vector2 = r[0]
+		var b: Vector2 = r[1]
+		var w: float = r[2]
+		var len := a.distance_to(b)
+		if len < 20.0:
+			continue
+		var dir := (b-a)/len
+		var n := Vector2(-dir.y,dir.x)
+		var t := 4.0
+		while t < len-2.0:
+			var p := a+dir*t
+			if not _v27_near_cross(p,n,w):
+				dashes.append([Vector3(p.x,0.066,p.y),Vector3(0.18,0.02,3) if absf(dir.y) > 0.5 else Vector3(3,0.02,0.18)])
+			t += 8.0
+		t = 10.0
+		var side := 1.0
+		while t < len-6.0:
+			var p := a+dir*t
+			var q := p+n*side*(w/2.0+1.6)
+			if not _v27_near_cross(p,n,w) and not _on_road(Vector3(q.x,0,q.y)):
+				# Lamp arms point at the road.
+				var yaw := atan2(-n.y*side,n.x*side)+PI
+				lamps.append([Vector3(q.x,0,q.y),yaw])
+			side = -side
+			t += 26.0
+		t = 18.0
+		while t < len-10.0:
+			var p := a+dir*t
+			for s in [-1.0,1.0]:
+				var q: Vector2 = p+n*s*(w/2.0+9.0)
+				var q3 := Vector3(q.x,0,q.y)
+				if not _on_road(q3) and not _v27_in_district(q3):
+					trees.append([q3,float(int(t*7.0) % 628)/100.0,0.9+float(int(t) % 5)*0.06])
+			t += 31.0
+	_box_batch(Color("e7d9a4"),dashes)
+	_model_batch("res://models/lamp.glb",lamps)
+	# A few trees on the new open land.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2727
+	for k in 70:
+		var q := Vector3(rng.randf_range(116,186),0,rng.randf_range(-430,-60))
+		if not _on_road(q) and not _v27_near_any_road(q,8.0) and q.distance_to(Vector3(176,0,-270)) > 22.0:
+			trees.append([q,rng.randf()*TAU,rng.randf_range(0.8,1.2)])
+	for k in 30:
+		var q := Vector3(rng.randf_range(210,640),0,rng.randf_range(-12,36))
+		if not _on_road(q) and not _v27_near_any_road(q,8.0) and not _v27_in_district(q):
+			trees.append([q,rng.randf()*TAU,rng.randf_range(0.8,1.2)])
+	_model_batch("res://models/tree_round.glb",trees)
+	_sign("COAST ROAD",Vector3(214,6.0,-28),Color("ffe0b8"),48)
+	_sign("RACEWAY ROAD  ↑",Vector3(197,6.0,-40),Color("ffd8a8"),44)
+	_sign("WESTSIDE BOULEVARD",Vector3(-290,6.0,-56),Color("cfe8ff"),48)
+
+func _v27_near_cross(p: Vector2, n: Vector2, w: float) -> bool:
+	for s in [-1.0,1.0]:
+		var q: Vector2 = p+n*s*(w/2.0+3.0)
+		if _on_road(Vector3(q.x,0,q.y)):
+			return true
+	return false
+
+func _v27_near_any_road(q: Vector3, d: float) -> bool:
+	for o in [Vector3(d,0,0),Vector3(-d,0,0),Vector3(0,0,d),Vector3(0,0,-d)]:
+		if _on_road(q+o):
+			return true
+	return false
+
+func _v27_in_district(q: Vector3) -> bool:
+	# Inside one of the built-up districts (where the land fill is hidden under district ground).
+	if q.z < -462.0:
+		return true
+	if q.x > RW_X0-2.0 and q.x < RW_X1+2.0 and q.z > RW_Z0-2.0 and q.z < RW_Z1+2.0:
+		return true
+	if q.x > SB_X0-2.0 and q.x < SB_X1+2.0 and q.z > SB_Z0-2.0 and q.z < SB_Z1+2.0:
+		return true
+	if q.x > -112.0 and q.x < 112.0 and q.z > -442.0 and q.z < -54.0:
+		return true
+	if q.x > DT_WEST-2.0 and q.x < DT_EAST+2.0 and q.z > DT_SOUTH-2.0 and q.z < DT_NORTH+2.0:
+		return true
+	return false
+
+func _sea_tick(delta: float) -> void:
+	if sky_riding or seat_id >= 0 or not booted:
+		return
+	var body: CharacterBody3D = car if driving else player
+	safe_t += delta
+	if body.position.y > -0.3 and body.is_on_floor() and safe_t > 0.4:
+		safe_t = 0.0
+		safe_hist.append([body.position,body.rotation.y])
+		if safe_hist.size() > 8:
+			safe_hist.pop_front()
+	if body.position.y < -0.6:
+		sea_t += delta
+		if driving:
+			car_speed = move_toward(car_speed,0.0,delta*30.0)
+		if sea_t > 1.0:
+			_sea_tow()
+	else:
+		sea_t = 0.0
+
+func _sea_tow() -> void:
+	sea_t = 0.0
+	if safe_hist.is_empty():
+		_rescue()
+		return
+	var h: Array = safe_hist[0]
+	var body: CharacterBody3D = car if driving else player
+	body.position = (h[0] as Vector3)+Vector3(0,0.4,0)
+	body.rotation = Vector3(0,float(h[1]),0)
+	body.velocity = Vector3.ZERO
+	if driving:
+		car_speed = 0.0
+		player.position = car.position
+	safe_hist = [h]
+	_show_toast("Splash! Your car went into the sea. It's been towed back to the road." if driving else "Splash! You swam back to the shore.")
+
+# ---------- Harbor Loop sky train ----------
+const SKY_Y := 15.0
+const SKY_SPEED := 20.0
+const SKY_ACCEL := 1.5
+const SKY_DWELL := 14.0
+const SKY_CARS := 3
+const SKY_CAR_LEN := 13.0
+const SKY_GAP := 0.7
+const SKY_TRAINS := 2
+const SKY_CORNERS := [Vector2(-95,32),Vector2(130,32),Vector2(130,150),Vector2(530,150),Vector2(530,-28),Vector2(197,-28),Vector2(197,-300),Vector2(-330,-300),Vector2(-330,-56),Vector2(-360,-56),Vector2(-360,72),Vector2(-95,72)]
+const SKY_STATIONS := [
+	{"name":"Harbor Waterfront","at":Vector2(22,32)},
+	{"name":"Sunset Beach","at":Vector2(380,150)},
+	{"name":"Harbor Raceway","at":Vector2(197,-178)},
+	{"name":"Union Station","at":Vector2(-205,-300)},
+	{"name":"Westside Market","at":Vector2(-330,72)},
+]
+const TOUR_BONUS := 750
+const TOUR_XP := 150
+
+var sky_pts: PackedVector3Array = PackedVector3Array()
+var sky_s: PackedFloat32Array = PackedFloat32Array()
+var sky_len := 0.0
+var sky_st_s: Array = []
+var sky_st_info: Array = []   # per station: {"pos","side","entrance","platform"}
+var sky_trip: Array = []
+var sky_period := 0.0
+var sky_trains: Array = []    # per train: Array of car Node3D
+var sky_labels: Array = []
+var sky_window_mat: StandardMaterial3D
+var sky_light_mat: StandardMaterial3D
+var sky_riding := false
+var sky_train := 0
+var sky_wait := -1
+var sky_getoff := -1
+var sky_last_at := -1
+var sky_was_dwell := false
+var sky_time_override := -1.0
+var sky_pillars: Array = []
+var tour_day := ""
+var tour_got := 0
+var tour_test_day := ""
+
+func _sky_build_path() -> void:
+	var pts: Array = []
+	var n := SKY_CORNERS.size()
+	var tin: Array = []
+	var tout: Array = []
+	for i in n:
+		var c: Vector2 = SKY_CORNERS[i]
+		var prev: Vector2 = SKY_CORNERS[(i+n-1) % n]
+		var nxt: Vector2 = SKY_CORNERS[(i+1) % n]
+		var r := minf(22.0,minf(c.distance_to(prev),c.distance_to(nxt))*0.45)
+		tin.append(c+(prev-c).normalized()*r)
+		tout.append(c+(nxt-c).normalized()*r)
+	for i in n:
+		var c: Vector2 = SKY_CORNERS[i]
+		var a: Vector2 = tin[i]
+		var b: Vector2 = tout[i]
+		for k in 12:
+			var t := float(k)/12.0
+			var p := a.lerp(c,t).lerp(c.lerp(b,t),t)
+			pts.append(p)
+		var nb: Vector2 = tin[(i+1) % n]
+		var seg := b.distance_to(nb)
+		var steps := maxi(1,int(seg/4.0))
+		for k in steps:
+			pts.append(b.lerp(nb,float(k)/float(steps)))
+	sky_pts = PackedVector3Array()
+	sky_s = PackedFloat32Array()
+	var total := 0.0
+	for i in pts.size():
+		var p: Vector2 = pts[i]
+		if i > 0:
+			total += p.distance_to(pts[i-1])
+		sky_pts.append(Vector3(p.x,SKY_Y,p.y))
+		sky_s.append(total)
+	var first: Vector2 = pts[0]
+	var last: Vector2 = pts[pts.size()-1]
+	total += first.distance_to(last)
+	sky_pts.append(Vector3(first.x,SKY_Y,first.y))
+	sky_s.append(total)
+	sky_len = total
+
+func _sky_pos(s: float) -> Vector3:
+	s = fposmod(s,sky_len)
+	var lo := 0
+	var hi := sky_s.size()-1
+	while hi-lo > 1:
+		var mid := (lo+hi)/2
+		if sky_s[mid] <= s:
+			lo = mid
+		else:
+			hi = mid
+	var span := sky_s[hi]-sky_s[lo]
+	var t := 0.0 if span <= 0.0 else (s-sky_s[lo])/span
+	return sky_pts[lo].lerp(sky_pts[hi],t)
+
+func _sky_dir(s: float) -> Vector3:
+	var d := _sky_pos(s+2.0)-_sky_pos(s-2.0)
+	d.y = 0
+	return d.normalized() if d.length() > 0.001 else Vector3(0,0,-1)
+
+func _sky_project(at: Vector2) -> float:
+	var best := INF
+	var best_s := 0.0
+	for i in sky_pts.size():
+		var d := Vector2(sky_pts[i].x,sky_pts[i].z).distance_to(at)
+		if d < best:
+			best = d
+			best_s = sky_s[i]
+	# Refine on the neighbouring metre.
+	var s0 := best_s
+	for k in range(-40,41):
+		var s := s0+float(k)*0.1
+		var p := _sky_pos(s)
+		var d := Vector2(p.x,p.z).distance_to(at)
+		if d < best:
+			best = d
+			best_s = s
+	return fposmod(best_s,sky_len)
+
+func _sky_trip_time(d: float) -> float:
+	var ramp := SKY_SPEED*SKY_SPEED/SKY_ACCEL
+	if d >= ramp:
+		return d/SKY_SPEED+SKY_SPEED/SKY_ACCEL
+	return 2.0*sqrt(d/SKY_ACCEL)
+
+func _sky_trip_dist(d: float, t: float) -> float:
+	var total := _sky_trip_time(d)
+	var ta := minf(SKY_SPEED/SKY_ACCEL,total/2.0)
+	var vmax := SKY_ACCEL*ta
+	if t <= ta:
+		return 0.5*SKY_ACCEL*t*t
+	if t >= total-ta:
+		var rem := total-t
+		return d-0.5*SKY_ACCEL*rem*rem
+	return 0.5*SKY_ACCEL*ta*ta+vmax*(t-ta)
+
+func _sky_now() -> float:
+	return sky_time_override if sky_time_override >= 0.0 else Time.get_unix_time_from_system()
+
+func _sky_state(train: int) -> Dictionary:
+	# Where a train is right now. Same clock for every player, so all phones see the same trains.
+	var tau := fposmod(_sky_now()+float(train)*sky_period/float(SKY_TRAINS),sky_period)
+	var n := sky_st_s.size()
+	for i in n:
+		var d: float = float(sky_trip[i][0])
+		var tt: float = float(sky_trip[i][1])
+		if tau < SKY_DWELL:
+			return {"s":float(sky_st_s[i]),"dwell":true,"at":i,"next":(i+1) % n,"wait":SKY_DWELL-tau}
+		tau -= SKY_DWELL
+		if tau < tt:
+			return {"s":fposmod(float(sky_st_s[i])+_sky_trip_dist(d,tau),sky_len),"dwell":false,"at":-1,"next":(i+1) % n,"wait":tt-tau}
+		tau -= tt
+	return {"s":float(sky_st_s[0]),"dwell":true,"at":0,"next":1 % n,"wait":0.0}
+
+func _sky_time_at_station(train: int, station: int, into_dwell := 2.0) -> float:
+	# A clock value when this train has just stopped at this station (for tests and screenshots).
+	var t := into_dwell
+	for i in station:
+		t += SKY_DWELL+float(sky_trip[i][1])
+	return t-float(train)*sky_period/float(SKY_TRAINS)+sky_period*10.0
+
+func _sky_next_arrival(station: int) -> float:
+	# Seconds until any train next stops at this station (0 if one is there now).
+	var best := INF
+	for k in SKY_TRAINS:
+		var tau := fposmod(_sky_now()+float(k)*sky_period/float(SKY_TRAINS),sky_period)
+		var start := 0.0
+		for i in station:
+			start += SKY_DWELL+float(sky_trip[i][1])
+		if tau >= start and tau < start+SKY_DWELL:
+			return 0.0
+		best = minf(best,fposmod(start-tau,sky_period))
+	return best
+
+func _build_skytrain() -> void:
+	_sky_build_path()
+	sky_st_s.clear()
+	for st in SKY_STATIONS:
+		sky_st_s.append(_sky_project(st["at"]))
+	sky_trip.clear()
+	sky_period = 0.0
+	for i in sky_st_s.size():
+		var d := fposmod(float(sky_st_s[(i+1) % sky_st_s.size()])-float(sky_st_s[i]),sky_len)
+		var tt := _sky_trip_time(d)
+		sky_trip.append([d,tt])
+		sky_period += SKY_DWELL+tt
+	# Guideway: a concrete beam with two rails and low side walls.
+	var beam := []
+	var rails := []
+	var walls := []
+	for i in sky_pts.size()-1:
+		var a := sky_pts[i]
+		var b := sky_pts[i+1]
+		var d := b-a
+		var l := d.length()
+		if l < 0.01:
+			continue
+		var yaw := atan2(d.x,d.z)
+		var mid := (a+b)/2.0
+		var right := Vector3(d.z,0,-d.x)/l
+		beam.append([mid+Vector3(0,-0.55,0),Vector3(3.4,1.1,l+0.08),yaw])
+		for s in [-0.75,0.75]:
+			rails.append([mid+right*s+Vector3(0,0.1,0),Vector3(0.2,0.2,l+0.05),yaw])
+		for s in [-1.6,1.6]:
+			walls.append([mid+right*s+Vector3(0,0.25,0),Vector3(0.2,0.5,l+0.05),yaw])
+	_box_batch_rot(Color("cfd2cc"),beam)
+	_box_batch_rot(Color("5d666c"),rails)
+	_box_batch_rot(Color("e9ece6"),walls)
+	sky_window_mat = StandardMaterial3D.new()
+	sky_window_mat.albedo_color = Color("1d2e3a")
+	sky_window_mat.roughness = 0.2
+	sky_window_mat.emission_enabled = true
+	sky_window_mat.emission = Color("ffe7b8")
+	sky_window_mat.emission_energy_multiplier = 0.0
+	sky_light_mat = StandardMaterial3D.new()
+	sky_light_mat.albedo_color = Color("fff6d8")
+	sky_light_mat.emission_enabled = true
+	sky_light_mat.emission = Color("fff2c8")
+	sky_light_mat.emission_energy_multiplier = 0.6
+	# Stations first (they decide which side the platform is on), then pillars that avoid crossings.
+	sky_st_info.clear()
+	for i in SKY_STATIONS.size():
+		sky_st_info.append(_sky_build_station(i))
+	var pil := []
+	var caps := []
+	var last := -100.0
+	var s := 0.0
+	while s < sky_len:
+		var p := _sky_pos(s)
+		var g := Vector3(p.x,0,p.z)
+		var dir := _sky_dir(s)
+		var nrm := Vector3(-dir.z,0,dir.x)
+		var ok := s-last >= 30.0
+		if ok:
+			for k in [-1.0,1.0]:
+				if _on_road(g+nrm*k*8.5) or _on_road(g+dir*k*9.0) != _on_road(g):
+					ok = false
+			if ok and _blocked_at(g+Vector3(0,1.2,0),1.0):
+				ok = false
+		if ok:
+			last = s
+			var yaw := atan2(dir.x,dir.z)
+			pil.append([g+Vector3(0,(SKY_Y-1.1-2.0)/2.0,0),Vector3(1.3,SKY_Y-1.1+2.0,1.3),yaw])
+			caps.append([g+Vector3(0,SKY_Y-1.4,0),Vector3(3.0,0.6,1.6),yaw])
+			_collider(self,g+Vector3(0,2.5,0),Vector3(1.3,5.0,1.3))
+			sky_pillars.append(g)
+		s += 2.0
+	_box_batch_rot(Color("bfc2bc"),pil)
+	_box_batch_rot(Color("b3b6b0"),caps)
+	# Trains.
+	sky_trains.clear()
+	sky_labels.clear()
+	for k in SKY_TRAINS:
+		var cars: Array = []
+		for j in SKY_CARS:
+			cars.append(_sky_make_car(j == 0,j == SKY_CARS-1))
+		sky_trains.append(cars)
+		var lab := Label3D.new()
+		lab.font_size = 44
+		lab.modulate = Color("bff3ff")
+		lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lab.outline_size = 8
+		lab.pixel_size = 0.016
+		lab.text = "HARBOR LOOP"
+		lab.position = Vector3(0,4.6,0)
+		(cars[0] as Node3D).add_child(lab)
+		sky_labels.append(lab)
+	_sky_place_trains()
+
+func _sky_make_car(lead: bool, tail: bool) -> Node3D:
+	var car_node := Node3D.new()
+	add_child(car_node)
+	var half := SKY_CAR_LEN/2.0
+	_box(car_node,Vector3(0,1.75,0),Vector3(2.9,2.7,SKY_CAR_LEN),Color("f3f5f2"))
+	_box(car_node,Vector3(0,0.75,0),Vector3(2.94,0.36,SKY_CAR_LEN-0.2),Color("17a2b8"))
+	var win := _box(car_node,Vector3(0,2.15,0),Vector3(2.96,0.95,SKY_CAR_LEN-1.6),Color("1d2e3a"))
+	win.material_override = sky_window_mat
+	_box(car_node,Vector3(0,3.2,0),Vector3(2.5,0.25,SKY_CAR_LEN-0.6),Color("d9dde0"))
+	for z in [-half+2.4,half-2.4]:
+		_box(car_node,Vector3(0,0.28,z),Vector3(2.2,0.5,2.4),Color("2a3036"))
+	for s in [-1.0,1.0]:
+		var door := _box(car_node,Vector3(s*1.49,1.55,0),Vector3(0.04,2.1,1.5),Color("2f3c46"))
+		door.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if lead:
+		_box(car_node,Vector3(0,1.55,-half-0.55),Vector3(2.7,2.2,1.1),Color("f3f5f2"))
+		var ws := _box(car_node,Vector3(0,2.2,-half-1.12),Vector3(2.3,0.9,0.06),Color("1d2e3a"))
+		ws.material_override = sky_window_mat
+		_box(car_node,Vector3(0,0.75,-half-0.55),Vector3(2.74,0.36,1.12),Color("17a2b8"))
+		for s in [-0.8,0.8]:
+			var hl := _box(car_node,Vector3(s,1.15,-half-1.12),Vector3(0.45,0.22,0.06),Color("fff6d8"))
+			hl.material_override = sky_light_mat
+	if tail:
+		for s in [-0.8,0.8]:
+			_box(car_node,Vector3(s,1.15,half+0.04),Vector3(0.45,0.22,0.06),Color("e0303a"))
+	return car_node
+
+func _sky_place_trains() -> void:
+	for k in sky_trains.size():
+		var st := _sky_state(k)
+		var cars: Array = sky_trains[k]
+		var span := SKY_CAR_LEN+SKY_GAP
+		var front := float(st["s"])+span*float(SKY_CARS)/2.0
+		for j in cars.size():
+			var c := front-span*(float(j)+0.5)
+			var pf := _sky_pos(c+SKY_CAR_LEN*0.38)
+			var pb := _sky_pos(c-SKY_CAR_LEN*0.38)
+			var fwd := pf-pb
+			fwd.y = 0
+			if fwd.length() < 0.001:
+				continue
+			var node: Node3D = cars[j]
+			node.global_transform = Transform3D(Basis.looking_at(fwd.normalized(),Vector3.UP),(pf+pb)/2.0+Vector3(0,0.2,0))
+		var lab: Label3D = sky_labels[k]
+		lab.text = "HARBOR LOOP\nAt %s" % SKY_STATIONS[int(st["at"])]["name"] if bool(st["dwell"]) else "HARBOR LOOP\nNext: %s" % SKY_STATIONS[int(st["next"])]["name"]
+
+func _sky_build_station(i: int) -> Dictionary:
+	var s: float = sky_st_s[i]
+	var p := _sky_pos(s)
+	var dir := _sky_dir(s)
+	var nrm := Vector3(-dir.z,0,dir.x)
+	var g := Vector3(p.x,0,p.z)
+	var side := 1.0
+	var ent := Vector3.INF
+	for sd in [1.0,-1.0]:
+		for e in [9.5,8.0,11.0,12.5]:
+			var q: Vector3 = g+nrm*sd*e
+			if not _on_road(q) and not _on_road(q+dir*3.6) and not _blocked_at(q+Vector3(0,1.0,0),1.0):
+				side = sd
+				ent = q
+				break
+		if ent != Vector3.INF:
+			break
+	if ent == Vector3.INF:
+		ent = g+nrm*9.5
+	var off := g.distance_to(ent)
+	var lift := ent+dir*3.6
+	var along_x := absf(dir.x) > absf(dir.z)
+	var plat := g+nrm*side*3.75
+	var plat_size := Vector3(44,0.5,4.0) if along_x else Vector3(4.0,0.5,44)
+	_slab(plat+Vector3(0,SKY_Y+0.0,0),plat_size,0,Color("d8d4c8"))
+	var edge := g+nrm*side*1.9
+	_box(self,edge+Vector3(0,SKY_Y+0.26,0),Vector3(44,0.03,0.3) if along_x else Vector3(0.3,0.03,44),Color("f2c230"))
+	# Roof over the platform and the track, on posts at the back edge.
+	var roof_c := g+nrm*side*2.6
+	_box(self,roof_c+Vector3(0,SKY_Y+4.9,0),Vector3(46,0.3,6.6) if along_x else Vector3(6.6,0.3,46),Color("2f6f8f"))
+	var strip := _box(self,roof_c+Vector3(0,SKY_Y+4.72,0),Vector3(42,0.08,0.5) if along_x else Vector3(0.5,0.08,42),Color("fff6d8"))
+	strip.material_override = sky_light_mat if sky_light_mat != null else strip.material_override
+	for k in range(-2,3):
+		var post := g+nrm*side*5.6+dir*float(k)*10.5
+		_box(self,post+Vector3(0,SKY_Y+2.6,0),Vector3(0.3,4.6,0.3),Color("5d666c"))
+	# Glass lift tower from the street up to the platform, and a walkway across.
+	_box(self,lift+Vector3(0,(SKY_Y+3.2)/2.0,0),Vector3(3.0,SKY_Y+3.2,3.0),Color("8fc8dc"))
+	for cx in [-1.0,1.0]:
+		for cz in [-1.0,1.0]:
+			_box(self,lift+Vector3(cx*1.5,(SKY_Y+3.4)/2.0,cz*1.5),Vector3(0.25,SKY_Y+3.4,0.25),Color("2f6f8f"))
+	var walk_c := g+dir*3.6+nrm*side*(5.75+off)/2.0
+	var walk_len := maxf(off-5.75,0.5)
+	_box(self,walk_c+Vector3(0,SKY_Y-0.05,0),Vector3(2.4,0.4,walk_len) if along_x else Vector3(walk_len,0.4,2.4),Color("d8d4c8"))
+	_sign("HARBOR LOOP\n%s" % SKY_STATIONS[i]["name"],plat+Vector3(0,SKY_Y+6.6,0),Color("bff3ff"),46)
+	_sign("SKY TRAIN ↑",lift+Vector3(0,4.2,0)-nrm*side*1.8,Color("bff3ff"),40)
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 2.0
+	torus.outer_radius = 2.4
+	ring.mesh = torus
+	var rmat := StandardMaterial3D.new()
+	rmat.albedo_color = Color("5fe0ff")
+	rmat.emission_enabled = true
+	rmat.emission = Color("2fb8e0")
+	rmat.emission_energy_multiplier = 0.8
+	ring.material_override = rmat
+	ring.position = ent+Vector3(0,0.12,0)
+	add_child(ring)
+	return {"pos":g,"side":side,"entrance":ring.position*Vector3(1,0,1),"platform":plat+Vector3(0,SKY_Y+0.3,0),"dir":dir}
+
+func _sky_near() -> int:
+	if driving or sky_riding or sky_wait >= 0 or race_car or seat_id >= 0 or bus_riding:
+		return -1
+	for i in sky_st_info.size():
+		var e: Vector3 = sky_st_info[i]["entrance"]
+		if Vector2(player.position.x-e.x,player.position.z-e.z).length() < 3.2 and absf(player.position.y-e.y) < 3.0:
+			return i
+	return -1
+
+func _sky_fmt(sec: float) -> String:
+	var t := int(ceil(sec))
+	return "%d:%02d" % [t/60,t % 60]
+
+func _sky_enter(i: int) -> void:
+	if chase_mode != 0 or online_role != 0:
+		_show_toast("No sky train rides during a chase.")
+		return
+	if fm_hosting:
+		_show_toast("You're hiding for FIND ME! Stay put until it ends.")
+		return
+	sky_wait = i
+	var plat: Vector3 = sky_st_info[i]["platform"]
+	player.position = plat+Vector3(0,0.6,0)
+	player.velocity = Vector3.ZERO
+	var dir: Vector3 = sky_st_info[i]["dir"]
+	player.rotation.y = atan2(-dir.x,-dir.z)
+	cam_yaw = player.rotation.y+PI
+	var wait := _sky_next_arrival(i)
+	_show_toast("Up on the platform at %s. %s  Ride to all 5 stations today for a $%d City Tour bonus." % [SKY_STATIONS[i]["name"],"A train is here, hop on!" if wait <= 0.0 else "Next train in %s." % _sky_fmt(wait),TOUR_BONUS])
+	_follow_camera(1.0)
+
+func _sky_leave_platform() -> void:
+	if sky_wait < 0:
+		return
+	var e: Vector3 = sky_st_info[sky_wait]["entrance"]
+	sky_wait = -1
+	player.position = e+Vector3(0,0.9,0)
+	player.velocity = Vector3.ZERO
+	_show_toast("Back down on the street.")
+	_follow_camera(1.0)
+
+func _sky_board(k: int, at: int) -> void:
+	sky_wait = -1
+	sky_riding = true
+	sky_train = k
+	sky_last_at = at
+	sky_was_dwell = true
+	sky_getoff = -1
+	player.hide()
+	player.get_child(0).set_deferred("disabled",true)
+	_tour_stamp(at)
+	_show_toast("All aboard the Harbor Loop! Next stop: %s. Tap GET OFF NEXT to hop off at the next station." % SKY_STATIONS[(at+1) % SKY_STATIONS.size()]["name"])
+
+func _sky_alight(i: int) -> void:
+	sky_riding = false
+	sky_getoff = -1
+	var e: Vector3 = sky_st_info[i]["entrance"]
+	var nrm := Vector3(-(sky_st_info[i]["dir"] as Vector3).z,0,(sky_st_info[i]["dir"] as Vector3).x)*float(sky_st_info[i]["side"])
+	player.position = e+nrm*1.2+Vector3(0,0.9,0)
+	player.velocity = Vector3.ZERO
+	player.show()
+	player.get_child(0).set_deferred("disabled",false)
+	safe_hist.clear()
+	_show_toast("Welcome to %s!" % SKY_STATIONS[i]["name"])
+	_follow_camera(1.0)
+
+func _sky_action() -> void:
+	if sky_wait >= 0:
+		_sky_leave_platform()
+		return
+	if not sky_riding:
+		return
+	var st := _sky_state(sky_train)
+	if bool(st["dwell"]):
+		_sky_alight(int(st["at"]))
+		return
+	if sky_getoff >= 0:
+		sky_getoff = -1
+		_show_toast("OK, staying on the train.")
+	else:
+		sky_getoff = int(st["next"])
+		_show_toast("Getting off at %s." % SKY_STATIONS[sky_getoff]["name"])
+
+func _sky_tick(_delta: float) -> void:
+	if sky_trains.is_empty():
+		return
+	_sky_place_trains()
+	if sky_wait >= 0:
+		var plat: Vector3 = sky_st_info[sky_wait]["platform"]
+		if Vector2(player.position.x-plat.x,player.position.z-plat.z).length() > 26.0 or player.position.y < SKY_Y-3.0:
+			sky_wait = -1
+			_show_toast("You left the platform.")
+			return
+		for k in SKY_TRAINS:
+			var st := _sky_state(k)
+			if bool(st["dwell"]) and int(st["at"]) == sky_wait and float(st["wait"]) > 1.0:
+				_sky_board(k,sky_wait)
+				break
+		return
+	if not sky_riding:
+		return
+	var st := _sky_state(sky_train)
+	var cars: Array = sky_trains[sky_train]
+	var mid: Node3D = cars[SKY_CARS/2]
+	player.position = mid.global_position+Vector3(0,1.2,0)
+	player.velocity = Vector3.ZERO
+	var dwell := bool(st["dwell"])
+	if dwell and int(st["at"]) != sky_last_at:
+		sky_last_at = int(st["at"])
+		var name := String(SKY_STATIONS[sky_last_at]["name"])
+		if sky_getoff == sky_last_at:
+			_tour_stamp(sky_last_at)
+			_sky_alight(sky_last_at)
+			return
+		var stamped := _tour_stamp(sky_last_at)
+		if not stamped:
+			_show_toast("%s  ·  tap GET OFF to hop off" % name)
+	elif not dwell and sky_was_dwell:
+		_show_toast("Next stop: %s" % SKY_STATIONS[int(st["next"])]["name"])
+	sky_was_dwell = dwell
+
+func _sky_camera(weight: float) -> void:
+	var cars: Array = sky_trains[sky_train]
+	var mid: Node3D = cars[SKY_CARS/2]
+	var tr := mid.global_transform
+	var fwd := -tr.basis.z
+	if walk_view == 3:
+		# Window seat: inside the lead car, looking ahead down the line.
+		var lead: Node3D = cars[0]
+		camera.global_transform = Transform3D(Basis.looking_at(fwd+Vector3(0,-0.08,0),Vector3.UP),lead.global_transform*Vector3(0.6,2.3,-5.5))
+		return
+	var want := tr*Vector3(7.5,7.0,26.0)
+	camera.position = camera.position.lerp(want,minf(weight*0.6,1.0)) if weight < 1.0 else want
+	var look := mid.global_position+fwd*14.0+Vector3(0,1.5,0)
+	if camera.position.distance_to(look) > 0.05:
+		camera.look_at(look)
+
+func _tour_today() -> String:
+	return tour_test_day if tour_test_day != "" else Time.get_date_string_from_system()
+
+func _tour_stamp(i: int) -> bool:
+	if tour_day != _tour_today():
+		tour_day = _tour_today()
+		tour_got = 0
+	if tour_got & (1 << i):
+		return false
+	tour_got |= 1 << i
+	var got := 0
+	for k in SKY_STATIONS.size():
+		if tour_got & (1 << k):
+			got += 1
+	if got >= SKY_STATIONS.size():
+		cash += TOUR_BONUS
+		bonus_xp += TOUR_XP
+		_show_toast("CITY TOUR COMPLETE!  +$%d  +%d XP. A new tour starts tomorrow." % [TOUR_BONUS,TOUR_XP])
+		if not ("--smoke-test" in OS.get_cmdline_user_args()):
+			_play_coin()
+	else:
+		_show_toast("City Tour stamp: %s  (%d/%d today)" % [SKY_STATIONS[i]["name"],got,SKY_STATIONS.size()])
+	_save_progress()
+	return true
+
+func _sky_hud() -> bool:
+	# Returns true when the sky train owns the action button this frame.
+	if sky_riding:
+		var st := _sky_state(sky_train)
+		var nxt := int(st["at"]) if bool(st["dwell"]) else int(st["next"])
+		objective.text = "Harbor Loop  ·  %s: %s  (%s)" % ["at" if bool(st["dwell"]) else "next",SKY_STATIONS[nxt]["name"],_sky_fmt(float(st["wait"]))]
+		speed_label.text = "On the sky train  •  View: Eye for the window seat"
+		if bool(st["dwell"]):
+			action_button.text = "GET OFF"
+		else:
+			action_button.text = "GETTING OFF…" if sky_getoff >= 0 else "GET OFF NEXT"
+		return true
+	if sky_wait >= 0:
+		var w := _sky_next_arrival(sky_wait)
+		objective.text = "Harbor Loop  ·  %s  ·  next train %s" % [SKY_STATIONS[sky_wait]["name"],"now" if w <= 0.0 else "in "+_sky_fmt(w)]
+		action_button.text = "LEAVE PLATFORM"
+		return true
+	if _sky_near() >= 0 and _nearest_shop() < 0:
+		action_button.text = "SKY TRAIN"
+		return true
+	return false
+
+# ---------- Day and night ----------
+const DAY_CYCLE := 1440.0
+const DAY_MODES := ["Live day & night","Always day","Always sunset","Always night"]
+# hour, sky top, horizon, ground, ambient, ambient energy, light colour, light energy, haze, stars, street lights
+const DAY_KEYS := [
+	[0.0,"060b1d","1b2645","0c1220","56679a",0.5,"a9bcff",0.24,"141c33",1.0,1.0],
+	[4.9,"060b1d","1b2645","0c1220","56679a",0.5,"a9bcff",0.24,"141c33",1.0,1.0],
+	[5.7,"1d2c5a","e08b6a","2a2a3a","8a7f9a",0.48,"ffb07a",0.3,"9c7f86",0.3,1.0],
+	[6.6,"3b6db8","f5c39a","5d7f7a","c0c8d8",0.52,"ffd2a0",0.8,"d9c7b5",0.0,0.3],
+	[8.0,"3d7cc9","c6e1ea","6d8f86","c9dcef",0.55,"fff1d6",1.05,"c6e1ea",0.0,0.0],
+	[16.8,"3d7cc9","c6e1ea","6d8f86","c9dcef",0.55,"fff1d6",1.05,"c6e1ea",0.0,0.0],
+	[18.0,"3a62a8","f2b27a","6d7f80","d8c0b0",0.52,"ffb066",0.85,"e8b590",0.0,0.25],
+	[18.8,"283c78","ff8a55","3a3a48","a88a98",0.48,"ff7a40",0.45,"c88070",0.15,0.9],
+	[19.6,"141d42","6a4a78","1a1d2c","6a6a9a",0.48,"9fb0ff",0.22,"3a3558",0.6,1.0],
+	[21.0,"060b1d","1b2645","0c1220","56679a",0.5,"a9bcff",0.24,"141c33",1.0,1.0],
+	[24.0,"060b1d","1b2645","0c1220","56679a",0.5,"a9bcff",0.24,"141c33",1.0,1.0],
+]
+const SUNRISE_H := 5.8
+const SUNSET_H := 18.9
+const SKY_SHADER := """
+shader_type sky;
+uniform vec3 top_col : source_color = vec3(0.24, 0.49, 0.79);
+uniform vec3 hor_col : source_color = vec3(0.78, 0.88, 0.92);
+uniform vec3 gnd_col : source_color = vec3(0.43, 0.56, 0.53);
+uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
+uniform vec3 sun_col : source_color = vec3(1.0, 0.95, 0.84);
+uniform float sun_vis = 1.0;
+uniform vec3 moon_dir = vec3(0.0, 1.0, 0.0);
+uniform float moon_vis = 0.0;
+uniform float stars = 0.0;
+uniform float glow = 0.0;
+
+float hash(vec3 p) {
+	p = fract(p * 0.3183099 + 0.1);
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+void sky() {
+	vec3 d = EYEDIR;
+	float y = d.y;
+	vec3 c;
+	if (y >= 0.0) {
+		c = mix(hor_col, top_col, pow(y, 0.55));
+	} else {
+		c = mix(hor_col, gnd_col, clamp(-y * 6.0, 0.0, 1.0));
+	}
+	vec3 sd3 = normalize(sun_dir);
+	float sd = max(dot(d, sd3), 0.0);
+	c += sun_col * glow * pow(sd, 5.0) * (1.0 - clamp(abs(y) * 2.2, 0.0, 1.0)) * 0.7;
+	c += sun_col * sun_vis * (pow(sd, 1400.0) * 5.0 + pow(sd, 70.0) * 0.22);
+	float md = max(dot(d, normalize(moon_dir)), 0.0);
+	c += vec3(0.86, 0.9, 1.0) * moon_vis * (smoothstep(0.99935, 0.9996, md) * 1.1 + pow(md, 90.0) * 0.1);
+	if (stars > 0.001 && y > 0.0) {
+		vec3 cell = floor(d * 260.0);
+		float h = hash(cell);
+		float s = step(0.9966, h) * smoothstep(0.02, 0.3, y);
+		c += vec3(s * stars * (0.55 + 0.45 * hash(cell + 7.0)));
+	}
+	COLOR = c;
+}
+"""
+
+var day_mode := 0
+var day_hour_override := -1.0
+var night_amt := 0.0
+var haze_now := HAZE
+var sky_shader_mat: ShaderMaterial
+var night_windows: Array = []
+var night_lobby: Array = []
+var night_lamps: Array = []
+var night_heads: Array = []
+var night_tails: Array = []
+var lamp_pool_mm: MultiMeshInstance3D
+var lamp_pool_mat: StandardMaterial3D
+var head_spot: SpotLight3D
+var clock_label: Label
+var time_button: Button
+var day_tick_t := 0.0
+var day_last_hour := -100.0
+
+func _game_hour() -> float:
+	if day_hour_override >= 0.0:
+		return day_hour_override
+	match day_mode:
+		1:
+			return 13.0
+		2:
+			return 18.55
+		3:
+			return 22.5
+	return fposmod(Time.get_unix_time_from_system()/DAY_CYCLE*24.0+9.0,24.0)
+
+func _day_key(h: float) -> Array:
+	for i in DAY_KEYS.size()-1:
+		var a: Array = DAY_KEYS[i]
+		var b: Array = DAY_KEYS[i+1]
+		if h >= float(a[0]) and h <= float(b[0]):
+			var t := 0.0 if float(b[0]) <= float(a[0]) else (h-float(a[0]))/(float(b[0])-float(a[0]))
+			var out := [h]
+			for k in range(1,a.size()):
+				if a[k] is String:
+					out.append(Color(String(a[k])).lerp(Color(String(b[k])),t))
+				else:
+					out.append(lerpf(float(a[k]),float(b[k]),t))
+			return out
+	return _day_key(0.0)
+
+func _night_setup() -> void:
+	# Sky shader with sun, moon and stars (replaces the fixed daytime sky).
+	if world_env_res != null and world_env_res.sky != null:
+		var sh := Shader.new()
+		sh.code = SKY_SHADER
+		sky_shader_mat = ShaderMaterial.new()
+		sky_shader_mat.shader = sh
+		world_env_res.sky.sky_material = sky_shader_mat
+	# Find the lamp heads, windows and car lights in the city's models, and let them glow at night.
+	var seen := {}
+	var stack: Array[Node] = [self]
+	while stack.size() > 0:
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			_night_scan_mesh((n as MeshInstance3D).mesh,seen)
+		elif n is MultiMeshInstance3D and (n as MultiMeshInstance3D).multimesh != null and (n as MultiMeshInstance3D).multimesh.mesh != null:
+			_night_scan_mesh((n as MultiMeshInstance3D).multimesh.mesh,seen)
+	for i in 5:
+		var m := _try_model("res://models/car_%d.glb" % i)
+		if m != null:
+			var st2: Array[Node] = [m]
+			while st2.size() > 0:
+				var n2: Node = st2.pop_back()
+				st2.append_array(n2.get_children())
+				if n2 is MeshInstance3D and (n2 as MeshInstance3D).mesh != null:
+					_night_scan_mesh((n2 as MeshInstance3D).mesh,seen)
+			m.free()
+	# Warm pools of light on the ground under every street lamp.
+	var tex := GradientTexture2D.new()
+	var grad := Gradient.new()
+	grad.set_color(0,Color(1,1,1,1))
+	grad.set_color(1,Color(1,1,1,0))
+	grad.add_point(0.45,Color(1,1,1,0.45))
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5,0.5)
+	tex.fill_to = Vector2(1.0,0.5)
+	tex.width = 128
+	tex.height = 128
+	lamp_pool_mat = StandardMaterial3D.new()
+	lamp_pool_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	lamp_pool_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	lamp_pool_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	lamp_pool_mat.albedo_texture = tex
+	lamp_pool_mat.albedo_color = Color(1.0,0.78,0.45,0.0)
+	lamp_pool_mat.disable_receive_shadows = true
+	if not lamp_spots.is_empty():
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(11,11)
+		mm.mesh = pm
+		mm.instance_count = lamp_spots.size()
+		for i in lamp_spots.size():
+			var sp: Array = lamp_spots[i]
+			var off := Basis(Vector3.UP,float(sp[1]))*Vector3(1.6,0,0)
+			mm.set_instance_transform(i,Transform3D(Basis.IDENTITY,(sp[0] as Vector3)*Vector3(1,0,1)+off+Vector3(0,0.13,0)))
+		lamp_pool_mm = MultiMeshInstance3D.new()
+		lamp_pool_mm.multimesh = mm
+		lamp_pool_mm.material_override = lamp_pool_mat
+		lamp_pool_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		lamp_pool_mm.visible = false
+		add_child(lamp_pool_mm)
+	# Headlights on your own car.
+	head_spot = SpotLight3D.new()
+	head_spot.light_color = Color("fff1d0")
+	head_spot.spot_range = 34.0
+	head_spot.spot_angle = 32.0
+	head_spot.spot_attenuation = 0.8
+	head_spot.light_energy = 0.0
+	head_spot.shadow_enabled = false
+	head_spot.position = Vector3(0,0.8,-1.9)
+	head_spot.rotation_degrees = Vector3(-9,0,0)
+	head_spot.visible = false
+	car.add_child(head_spot)
+	# Clock under the minimap.
+	if minimap != null:
+		clock_label = Label.new()
+		clock_label.add_theme_font_size_override("font_size",18)
+		clock_label.add_theme_color_override("font_color",Color("fff3d0"))
+		clock_label.add_theme_color_override("font_outline_color",Color(0,0,0,0.85))
+		clock_label.add_theme_constant_override("outline_size",6)
+		clock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		clock_label.size = Vector2(150,24)
+		clock_label.position = Vector2(-150,MINI_SIZE-30)
+		clock_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		minimap.add_child(clock_label)
+	_daynight_apply(true)
+
+func _night_scan_mesh(mesh: Mesh, seen: Dictionary) -> void:
+	for s in mesh.get_surface_count():
+		var m := mesh.surface_get_material(s)
+		if not (m is BaseMaterial3D) or seen.has(m.get_rid()):
+			continue
+		seen[m.get_rid()] = true
+		var base := m.resource_name.get_slice(".",0)
+		var bm := m as BaseMaterial3D
+		var list: Array = []
+		if base.begins_with("WinGlass") or base == "GlassBlue" or base == "GlassTeal" or base == "GlassDark":
+			list = night_windows
+		elif base == "GlassLobby":
+			list = night_lobby
+		elif base == "LampGlow":
+			list = night_lamps
+		elif base == "Light":
+			list = night_heads
+		elif base == "Tail":
+			list = night_tails
+		else:
+			continue
+		bm.emission_enabled = true
+		bm.emission_energy_multiplier = 0.0
+		list.append(bm)
+
+func _daynight_tick(delta: float) -> void:
+	day_tick_t += delta
+	if day_tick_t < 0.25:
+		return
+	day_tick_t = 0.0
+	_daynight_apply(false)
+
+func _daynight_apply(force: bool) -> void:
+	var h := _game_hour()
+	if not force and absf(h-day_last_hour) < 0.004:
+		_daynight_lights()
+		return
+	day_last_hour = h
+	var k := _day_key(h)
+	var top: Color = k[1]
+	var hor: Color = k[2]
+	var gnd: Color = k[3]
+	var amb: Color = k[4]
+	var amb_e: float = k[5]
+	var lc: Color = k[6]
+	var le: float = k[7]
+	var fog: Color = k[8]
+	var stars: float = k[9]
+	night_amt = k[10]
+	# Sun goes east to west between sunrise and sunset; the moon takes over at night.
+	var day := h >= SUNRISE_H and h <= SUNSET_H
+	var f := clampf((h-SUNRISE_H)/(SUNSET_H-SUNRISE_H),0.0,1.0)
+	var el := deg_to_rad(sin(f*PI)*62.0)
+	var to_sun := Vector3(cos(f*PI)*cos(el),sin(el),0.35).normalized()
+	var mf := fposmod(h-SUNSET_H,24.0)/(24.0-(SUNSET_H-SUNRISE_H))
+	var mel := deg_to_rad(18.0+sin(clampf(mf,0.0,1.0)*PI)*44.0)
+	var to_moon := Vector3(cos(mf*PI)*cos(mel),sin(mel),-0.45).normalized()
+	var edge := minf(absf(h-SUNRISE_H),absf(h-SUNSET_H))
+	var fade := clampf(edge/0.35,0.0,1.0)
+	var to_light := Vector3(to_sun.x,maxf(to_sun.y,0.1),to_sun.z).normalized() if day else to_moon
+	if sun_light != null:
+		sun_light.global_transform = Transform3D(Basis.looking_at(-to_light,Vector3.UP),sun_light.global_position)
+		sun_light.light_color = lc
+		sun_light.light_energy = le*fade
+	if world_env_res != null:
+		world_env_res.ambient_light_color = amb
+		world_env_res.ambient_light_energy = amb_e
+		world_env_res.fog_light_color = fog
+		world_env_res.background_color = hor
+	haze_now = fog
+	if sky_shader_mat != null:
+		sky_shader_mat.set_shader_parameter("top_col",top)
+		sky_shader_mat.set_shader_parameter("hor_col",hor)
+		sky_shader_mat.set_shader_parameter("gnd_col",gnd)
+		sky_shader_mat.set_shader_parameter("sun_dir",Vector3(cos(f*PI),sin(f*PI)*0.95-0.02,0.35).normalized())
+		sky_shader_mat.set_shader_parameter("sun_col",lc)
+		sky_shader_mat.set_shader_parameter("sun_vis",1.0 if day else 0.0)
+		sky_shader_mat.set_shader_parameter("moon_dir",to_moon)
+		sky_shader_mat.set_shader_parameter("moon_vis",clampf(stars*1.4,0.0,1.0))
+		sky_shader_mat.set_shader_parameter("stars",stars)
+		var tw := clampf(1.0-edge/1.4,0.0,1.0)
+		sky_shader_mat.set_shader_parameter("glow",tw)
+	for m: BaseMaterial3D in night_windows:
+		m.emission = Color("ffd9a0")
+		m.emission_energy_multiplier = 0.42*night_amt
+	for m: BaseMaterial3D in night_lobby:
+		m.emission = Color("ffe2b0")
+		m.emission_energy_multiplier = 0.9*night_amt
+	for m: BaseMaterial3D in night_lamps:
+		m.emission = Color("ffe2a0")
+		m.emission_energy_multiplier = 0.3+3.2*night_amt
+	for m: BaseMaterial3D in night_heads:
+		m.emission = Color("fff4dc")
+		m.emission_energy_multiplier = 3.0*night_amt
+	for m: BaseMaterial3D in night_tails:
+		m.emission = Color("ff2a2a")
+		m.emission_energy_multiplier = 2.4*night_amt
+	if sky_window_mat != null:
+		sky_window_mat.emission_energy_multiplier = 1.4*night_amt
+	if sky_light_mat != null:
+		sky_light_mat.emission_energy_multiplier = 0.6+2.6*night_amt
+	for m: BaseMaterial3D in ap_light_mats:
+		m.emission_energy_multiplier = 0.4+3.6*night_amt
+	for m: BaseMaterial3D in ap_taxi_mats:
+		m.emission_energy_multiplier = 0.3+3.0*night_amt
+	if lamp_pool_mm != null:
+		lamp_pool_mm.visible = night_amt > 0.02
+		lamp_pool_mat.albedo_color = Color(1.0,0.78,0.45,0.6*night_amt)
+	if clock_label != null:
+		var hh := int(h)
+		var mm := int((h-float(hh))*60.0)
+		var word := "NIGHT"
+		if h >= 5.0 and h < 7.0:
+			word = "SUNRISE"
+		elif h >= 7.0 and h < 17.5:
+			word = "DAY"
+		elif h >= 17.5 and h < 19.8:
+			word = "SUNSET"
+		clock_label.text = "%s  %d:%02d" % [word,hh,mm]
+	_daynight_lights()
+
+func _daynight_lights() -> void:
+	if head_spot != null:
+		head_spot.visible = night_amt > 0.15 and driving
+		head_spot.light_energy = 3.0*night_amt
+
+func _cycle_day_mode() -> void:
+	day_mode = (day_mode+1) % DAY_MODES.size()
+	_refresh_time_button()
+	_daynight_apply(true)
+	_save_progress()
+	_show_toast("Time of day: %s" % DAY_MODES[day_mode])
+
+func _refresh_time_button() -> void:
+	if time_button != null:
+		time_button.text = "Time: %s" % DAY_MODES[day_mode]
+
+# ---------- v0.27 smoke test and screenshots ----------
+func _smoke_v27() -> void:
+	var keep_tour := [tour_day,tour_got,day_mode]
+	# No more walls between districts; solid ground in the old gaps; the new roads are there.
+	for p in [Vector3(-110.5,1.2,-125),Vector3(110.5,1.2,-180),Vector3(204.5,1.2,-100),Vector3(-246.5,1.0,40),Vector3(-300,0.8,-50.5),Vector3(30,1.5,-56.5),Vector3(-126,1.0,15.5),Vector3(400,1.2,-39.5),Vector3(-446.5,1.2,-200),Vector3(-130,1.0,-61.0)]:
+		assert(not _blocked_at(p,0.3),"Wall still at %s: %s" % [str(p),_blocker(p,0.3)])
+	var space := get_world_3d().direct_space_state
+	for p in [Vector3(150,6,-100),Vector3(-200,6,-30),Vector3(400,6,-20),Vector3(300,6,0),Vector3(-300,6,-56),Vector3(160,6,-430),Vector3(90,6,-30)]:
+		var q := PhysicsRayQueryParameters3D.create(p,p-Vector3(0,12,0))
+		q.exclude = [player.get_rid(),car.get_rid()]
+		var hit := space.intersect_ray(q)
+		assert(not hit.is_empty() and absf(float((hit["position"] as Vector3).y)+0.05) < 0.06,"No ground at %s" % str(p))
+	for p in [Vector3(150,0,-300),Vector3(197,0,-100),Vector3(400,0,-28),Vector3(530,0,0),Vector3(330,0,10),Vector3(-300,0,-56),Vector3(-200,0,0),Vector3(-109.5,0,-300),Vector3(150,0,-205),Vector3(-140,0,8)]:
+		assert(_on_road(p),"New road missing at %s" % str(p))
+	# Every new road is clear to drive along (no posts, trees or lamps in the way).
+	blocked_skip_traffic = true
+	for r in LINK_ROADS:
+		var a: Vector2 = r[0]
+		var b: Vector2 = r[1]
+		var l := a.distance_to(b)
+		var t := 0.0
+		while t <= l:
+			var p := a.lerp(b,t/l)
+			for off in [-2.5,2.5]:
+				var dir := (b-a)/l
+				var q: Vector2 = p+Vector2(-dir.y,dir.x)*off
+				var pos := Vector3(q.x,1.1,q.y)
+				var near_pillar := false
+				for pl: Vector3 in sky_pillars:
+					if Vector2(pl.x-q.x,pl.z-q.y).length() < 2.0:
+						near_pillar = true
+				if not near_pillar:
+					assert(not _blocked_at(pos,0.8),"Road blocked at %s by %s" % [str(pos),_blocker(pos,0.8)])
+			t += 3.0
+	blocked_skip_traffic = false
+	# Driving into the sea tows you back to the last safe spot.
+	stick = Vector2.ZERO
+	driving = true
+	player.hide()
+	car.position = Vector3(0,0.6,47)
+	car.rotation = Vector3.ZERO
+	car.velocity = Vector3.ZERO
+	car_speed = 0.0
+	safe_hist.clear()
+	for f in 20:
+		await get_tree().physics_frame
+	assert(not safe_hist.is_empty(),"Safe spots are recorded while driving")
+	var safe0: Vector3 = safe_hist[0][0]
+	print("SEA_TOW_FROM ",safe0)
+	car.position = Vector3(0,0.0,300)
+	var went_in := false
+	for f in 160:
+		await get_tree().physics_frame
+		if car.position.y < -0.6:
+			went_in = true
+		if went_in and car.position.z < 150.0:
+			break
+	assert(went_in,"Car sank into the sea")
+	assert(car.position.y > -0.3 and car.position.distance_to(safe0) < 3.0 and absf(car.position.z-300.0) > 50.0,"Car in the sea is towed back (at %s)" % str(car.position))
+	driving = false
+	player.show()
+	# Sky train: a closed loop with 5 stations, clear of buildings, pillars off the crossings.
+	assert(sky_len > 2400.0 and sky_len < 3600.0,"Sky train loop length %d m" % int(sky_len))
+	assert(sky_st_s.size() == 5 and sky_period > 150.0,"Sky train timetable")
+	assert(sky_pillars.size() > 40,"Sky train pillars: %d" % sky_pillars.size())
+	var s := 0.0
+	while s < sky_len:
+		var p := _sky_pos(s)+Vector3(0,2.0,0)
+		assert(not _blocked_at(p,1.4),"Sky train runs into something at %s: %s" % [str(p),_blocker(p,1.4)])
+		s += 3.0
+	for i in 5:
+		var e: Vector3 = sky_st_info[i]["entrance"]
+		assert(not _on_road(e) and not _blocked_at(e+Vector3(0,1.0,0),0.6),"Station %d entrance blocked" % i)
+		sky_time_override = _sky_time_at_station(0,i)
+		var st := _sky_state(0)
+		assert(bool(st["dwell"]) and int(st["at"]) == i,"Train 0 stops at station %d" % i)
+		var other := _sky_state(1)
+		assert(absf(fposmod(float(other["s"])-float(st["s"]),sky_len)-sky_len/2.0) < sky_len*0.3,"Two trains are spread around the loop")
+	# Ride: board at Waterfront, get off at the next station, City Tour pays once after all 5.
+	cash = 100
+	tour_test_day = "2027-02-01"
+	tour_day = ""
+	tour_got = 0
+	sky_time_override = _sky_time_at_station(0,0,-20.0)
+	player.position = (sky_st_info[0]["entrance"] as Vector3)+Vector3(0,0.9,0)
+	_refresh_hud()
+	assert(_sky_near() == 0 and action_button.text == "SKY TRAIN","SKY TRAIN button at the station entrance")
+	_interact()
+	assert(sky_wait == 0,"Waiting on the platform")
+	await get_tree().physics_frame
+	assert(not sky_riding,"No boarding before the train arrives")
+	sky_time_override = _sky_time_at_station(0,0,2.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	assert(sky_riding and sky_train == 0 and not player.visible,"Boarded the sky train")
+	assert(tour_got == 1,"Boarding stamps the first station")
+	sky_time_override += 30.0
+	await get_tree().physics_frame
+	assert(player.position.y > SKY_Y and player.position.distance_to((sky_trains[0][1] as Node3D).global_position) < 2.0,"You ride inside the train")
+	_refresh_hud()
+	assert(action_button.text == "GET OFF NEXT","GET OFF NEXT while moving")
+	_interact()
+	assert(sky_getoff == 1,"Queued to get off at Sunset Beach")
+	for i in range(1,5):
+		sky_time_override = _sky_time_at_station(0,i,1.0)
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		if i == 1:
+			assert(not sky_riding and player.visible and player.position.distance_to(sky_st_info[1]["entrance"]) < 4.0,"Got off at Sunset Beach")
+			# Ride on from here.
+			_sky_enter(1)
+			sky_time_override = _sky_time_at_station(0,1,3.0)
+			await get_tree().physics_frame
+			assert(sky_riding,"Boarded again at Sunset Beach")
+	assert(tour_got == 31 and cash == 100+TOUR_BONUS,"City Tour bonus paid once (cash %d, got %d)" % [cash,tour_got])
+	sky_time_override = _sky_time_at_station(0,0,1.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	assert(cash == 100+TOUR_BONUS,"City Tour pays only once a day")
+	_sky_action()
+	assert(not sky_riding,"GET OFF at a station")
+	tour_test_day = "2027-02-02"
+	assert(_tour_stamp(2) and tour_got == 4,"New tour on a new day")
+	tour_test_day = ""
+	sky_time_override = -1.0
+	# Day and night.
+	day_hour_override = 13.0
+	_daynight_apply(true)
+	assert(night_amt < 0.01 and sun_light.light_energy > 0.9 and not lamp_pool_mm.visible,"Daytime")
+	day_hour_override = 22.5
+	_daynight_apply(true)
+	assert(night_amt > 0.99 and sun_light.light_energy < 0.4 and lamp_pool_mm.visible,"Night")
+	assert(not night_lamps.is_empty() and (night_lamps[0] as BaseMaterial3D).emission_energy_multiplier > 2.0,"Street lamps glow at night")
+	assert(not night_windows.is_empty() and (night_windows[0] as BaseMaterial3D).emission_energy_multiplier > 0.3,"Windows light up at night")
+	assert(sky_window_mat.emission_energy_multiplier > 1.0,"Sky train windows light up")
+	day_hour_override = 18.75
+	_daynight_apply(true)
+	var hor: Color = sky_shader_mat.get_shader_parameter("hor_col")
+	assert(hor.r > hor.b+0.2,"Sunset sky is orange")
+	assert(clock_label == null or clock_label.text.begins_with("SUNSET"),"Clock shows sunset")
+	day_hour_override = 6.2
+	_daynight_apply(true)
+	assert(clock_label == null or clock_label.text.begins_with("SUNRISE"),"Clock shows sunrise")
+	day_hour_override = -1.0
+	day_mode = 3
+	assert(_game_hour() > 21.0,"Always night mode")
+	_smoke_airport()
+	tour_day = keep_tour[0]
+	tour_got = keep_tour[1]
+	day_mode = keep_tour[2]
+	_daynight_apply(true)
+
+func _city_shots() -> void:
+	await get_tree().process_frame
+	crate_open = false
+	if crate_root != null:
+		crate_root.hide()
+	paused = false
+	driving = false
+	player.show()
+	walk_view = 1
+	_apply_view()
+	# [name, hour, train time station or -1, camera position, look at]
+	var shots := [
+		["loop-waterfront",13.0,0,Vector3(-30,26,70),Vector3(0,14,32)],
+		["loop-sunset-beach",18.6,1,Vector3(330,30,200),Vector3(380,15,150)],
+		["loop-raceway",9.5,2,Vector3(150,34,-130),Vector3(197,14,-178)],
+		["loop-downtown-night",22.5,3,Vector3(-160,40,-250),Vector3(-205,15,-300)],
+		["loop-westside-sunrise",6.2,4,Vector3(-300,26,30),Vector3(-330,15,72)],
+		["city-night-street",22.0,-1,Vector3(-180,8,-112),Vector3(-260,2,-100)],
+		["coast-road",16.0,-1,Vector3(240,22,-60),Vector3(330,0,-10)],
+		["boulevard",11.0,-1,Vector3(-250,14,-30),Vector3(-330,2,-60)],
+		["airport-terminal",11.0,-1,Vector3(40,30,-420),Vector3(40,4,-500)],
+		["airport-apron",15.0,-1,Vector3(-130,26,-600),Vector3(60,2,-548)],
+		["airport-runway",17.5,-1,Vector3(-330,20,-700),Vector3(0,2,-640)],
+		["airport-night",21.5,-1,Vector3(250,35,-620),Vector3(60,0,-548)],
+		["airport-aerial",12.0,-1,Vector3(60,110,-450),Vector3(60,0,-575)],
+		["airport-plane",14.0,-1,Vector3(40,9,-520),Vector3(10,3,-550)],
+	]
+	for sh in shots:
+		day_hour_override = float(sh[1])
+		_daynight_apply(true)
+		if int(sh[2]) >= 0:
+			sky_time_override = _sky_time_at_station(0,int(sh[2]),3.0)
+		_sky_place_trains()
+		player.position = (sh[4] as Vector3)*Vector3(1,0,1)+Vector3(0,0.75,0)
+		for f in 8:
+			await get_tree().physics_frame
+		cam_lock = true
+		camera.global_position = sh[3]
+		camera.look_at(sh[4])
+		await _save_shot(String(sh[0]))
+		cam_lock = false
+	# Riding view.
+	day_hour_override = 17.6
+	_daynight_apply(true)
+	sky_time_override = _sky_time_at_station(0,1,-25.0)
+	sky_riding = true
+	sky_train = 0
+	player.hide()
+	for f in 10:
+		await get_tree().physics_frame
+	_sky_place_trains()
+	_sky_camera(1.0)
+	_refresh_hud()
+	await _save_shot("loop-ride")
+	get_tree().quit()
+
+# ---------- v0.27: Harbor International Airport (north of the city) ----------
+const AP_ROAD_Z := -458.0
+const AP_RUNWAY_Z := -660.0
+const AP_TAXI_Z := -612.0
+const AP_GATES := [-40.0,10.0,60.0,110.0,165.0]
+const AP_PLANE_Z := -548.0
+const AP_PLANE_SCALE := 3.0
+const AP_PLANE_FIX := PI   # the airplane model faces +Z; turn it so its nose points along -Z
+# Moving airliner: [seconds, from, to, easing]  (0 linear, 1 slow down, 2 speed up)
+const AP_FLIGHT := [
+	[28.0,Vector3(-1300,140,-660),Vector3(-262,0,-660),0],
+	[26.0,Vector3(-262,0,-660),Vector3(380,0,-660),1],
+	[5.0,Vector3(380,0,-660),Vector3(410,0,-640),0],
+	[4.0,Vector3(410,0,-640),Vector3(410,0,-612),0],
+	[60.0,Vector3(410,0,-612),Vector3(-255,0,-612),0],
+	[4.0,Vector3(-255,0,-612),Vector3(-255,0,-638),0],
+	[4.0,Vector3(-255,0,-638),Vector3(-270,0,-660),0],
+	[10.0,Vector3(-270,0,-660),Vector3(-270,0,-660),0],
+	[24.0,Vector3(-270,0,-660),Vector3(150,0,-660),2],
+	[22.0,Vector3(150,0,-660),Vector3(1300,180,-660),0],
+]
+const AP_APRON_LOOP := [Vector2(-100,-516),Vector2(215,-516),Vector2(215,-584),Vector2(-100,-584)]
+const AP_HANGAR_LOOP := [Vector2(240,-505),Vector2(440,-505),Vector2(440,-596),Vector2(240,-596)]
+
+var ap_plane: Node3D
+var ap_flight_len := 0.0
+var ap_vehicles: Array = []   # {"node","loop","off","speed"}
+var ap_light_mats: Array = []
+var ap_taxi_mats: Array = []
+
+func _build_airport() -> void:
+	var pave := Color("b9b6ad")
+	var tarmac := Color("33383e")
+	var white := Color("eef0ec")
+	var yellow := Color("f2c230")
+	# Ground: forecourt, car park, apron, taxiway, runway.
+	_box_batch(Color("9c9a92"),[[Vector3(40,0.02,-471.5),Vector3(240,0.06,17)],[Vector3(-172.5,0.02,-482),Vector3(155,0.06,36)]])
+	_box_batch(Color("8f8c85"),[[Vector3(160,0.025,-548),Vector3(560,0.06,88)]])
+	_box_batch(tarmac,[
+		[Vector3(80,0.03,AP_TAXI_Z),Vector3(700,0.07,20)],
+		[Vector3(80,0.035,AP_RUNWAY_Z),Vector3(740,0.07,45)],
+		[Vector3(-60,0.03,-602),Vector3(18,0.07,20)],[Vector3(150,0.03,-602),Vector3(18,0.07,20)],
+		[Vector3(-255,0.03,-636),Vector3(20,0.07,30)],[Vector3(80,0.03,-636),Vector3(20,0.07,30)],[Vector3(410,0.03,-636),Vector3(20,0.07,30)],
+	])
+	var marks := []
+	var x := -250.0
+	while x < 410.0:
+		marks.append([Vector3(x,0.08,AP_RUNWAY_Z),Vector3(12,0.02,0.6)])
+		x += 24.0
+	for ex in [-283.0,443.0]:
+		for k in 8:
+			marks.append([Vector3(ex,0.08,AP_RUNWAY_Z-17.5+float(k)*5.0),Vector3(10,0.02,2.2)])
+	for s in [-21.0,21.0]:
+		marks.append([Vector3(80,0.08,AP_RUNWAY_Z+s),Vector3(736,0.02,0.4)])
+	_box_batch(white,marks)
+	var ylines := [[Vector3(80,0.075,AP_TAXI_Z),Vector3(696,0.02,0.35)],[Vector3(60,0.075,-516),Vector3(320,0.02,0.3)],[Vector3(60,0.075,-584),Vector3(320,0.02,0.3)]]
+	for gx in AP_GATES:
+		ylines.append([Vector3(gx,0.075,-560),Vector3(0.35,0.02,48)])
+		ylines.append([Vector3(gx,0.075,-530),Vector3(6,0.02,0.35)])
+	_box_batch(yellow,ylines)
+	# Runway and taxiway edge lights (glow at night).
+	var rl_mat := StandardMaterial3D.new()
+	rl_mat.albedo_color = Color("fff6d8")
+	rl_mat.emission_enabled = true
+	rl_mat.emission = Color("fff2c8")
+	rl_mat.emission_energy_multiplier = 0.4
+	ap_light_mats.append(rl_mat)
+	var tl_mat := StandardMaterial3D.new()
+	tl_mat.albedo_color = Color("6fa8ff")
+	tl_mat.emission_enabled = true
+	tl_mat.emission = Color("3f7dff")
+	tl_mat.emission_energy_multiplier = 0.3
+	ap_taxi_mats.append(tl_mat)
+	var rlights := []
+	var tlights := []
+	x = -280.0
+	while x <= 440.0:
+		for s in [-23.6,23.6]:
+			rlights.append([Vector3(x,0.25,AP_RUNWAY_Z+s),Vector3(0.4,0.4,0.4)])
+		x += 30.0
+	for k in 10:
+		for s in [-6.0,0.0,6.0]:
+			rlights.append([Vector3(-300.0-float(k)*14.0,1.2,AP_RUNWAY_Z+s),Vector3(0.5,0.5,0.5)])
+	x = -265.0
+	while x <= 425.0:
+		for s in [-10.6,10.6]:
+			tlights.append([Vector3(x,0.2,AP_TAXI_Z+s),Vector3(0.3,0.3,0.3)])
+		x += 25.0
+	var rli := _box_batch(white,rlights)
+	rli.material_override = rl_mat
+	var tli := _box_batch(white,tlights)
+	tli.material_override = tl_mat
+	var poles := []
+	for k in 10:
+		poles.append([Vector3(-300.0-float(k)*14.0,0.55,AP_RUNWAY_Z),Vector3(0.2,1.1,13)])
+	_box_batch(Color("5d666c"),poles)
+	# Terminal: long glass front, roof canopy, gates on the airside.
+	var glass := StandardMaterial3D.new()
+	glass.resource_name = "GlassLobby"
+	glass.albedo_color = Color("5f8fa8")
+	glass.roughness = 0.15
+	glass.metallic = 0.3
+	_box(self,Vector3(40,6.5,-494),Vector3(220,13,20),Color("e7e9e4"),true)
+	var front := _box(self,Vector3(40,5.2,-483.9),Vector3(214,8.0,0.3),Color("5f8fa8"))
+	front.material_override = glass
+	var back := _box(self,Vector3(40,5.2,-504.1),Vector3(214,6.0,0.3),Color("5f8fa8"))
+	back.material_override = glass
+	_box(self,Vector3(40,13.4,-492),Vector3(228,0.8,28),Color("2f6f8f"))
+	_box(self,Vector3(40,9.6,-479.5),Vector3(200,0.4,9),Color("f3f5f2"))
+	for k in 9:
+		_box(self,Vector3(-56.0+float(k)*24.0,4.8,-475.6),Vector3(0.4,9.6,0.4),Color("9aa3aa"))
+	var big := _sign("HARBOR INTERNATIONAL AIRPORT",Vector3(40,17.5,-484),Color("fff3c9"),110)
+	big.outline_size = 16
+	_sign("DEPARTURES  ·  ARRIVALS",Vector3(40,11.2,-475),Color("bff3ff"),56)
+	# Jet bridges to the first four gates, and gate signs.
+	for i in AP_GATES.size():
+		var gx: float = AP_GATES[i]
+		if i < 4:
+			_box(self,Vector3(gx+4.0,4.6,-515.5),Vector3(3.2,2.8,23),Color("d9dde0"))
+			_box(self,Vector3(gx+4.0,4.6,-527.5),Vector3(4.2,3.4,2.0),Color("7d878e"))
+			_box(self,Vector3(gx+4.0,1.6,-524.5),Vector3(0.6,3.2,0.6),Color("5d666c"))
+		_sign("GATE %d" % (i+1),Vector3(gx,8.2,-506),Color("ffe9a8"),48)
+	# Parked airliners at the gates, nose to the terminal.
+	for i in AP_GATES.size():
+		_ap_plane(Vector3(AP_GATES[i],0,AP_PLANE_Z),PI if i % 2 == 0 else PI,Color("f3f5f2") if i != 2 else Color("e7eef5"),true)
+	# Control tower, hangars, cargo, fuel farm.
+	var tw := _prop("res://models/tower.glb",Vector3(205,0,-488),Vector3(8.4,26,8.4),0.0,Color("d8dcd8"),false)
+	tw.scale = Vector3(1.7,1.7,1.7)
+	_collider(self,Vector3(205,22,-488),Vector3(14,44,14))
+	_sign("HARBOR TOWER",Vector3(205,48,-488),Color("cfe6ff"),60)
+	for hx in [290.0,345.0,400.0]:
+		var hg := _prop("res://models/hangar.glb",Vector3(hx,13.5,-545),Vector3(24,18,22),180.0,Color("c9d0d4"),false)
+		hg.scale = Vector3(1.5,1.5,1.5)
+		_collider(self,Vector3(hx,13.5,-545),Vector3(36,27,33))
+	_ap_plane(Vector3(345,0,-575),0.0,Color("f2d046"),false,1.4)
+	for r in 4:
+		for c in 6:
+			var cpos := Vector3(282.0+float(c)*7.0,0,-484.0-float(r)*3.0)
+			_prop("res://models/container_%d.glb" % ((r+c) % 3),cpos,Vector3(6,2.6,2.4),0.0,[Color("c4533f"),Color("3f78a8"),Color("3e9e4a"),Color("e3a428")][(r*6+c) % 4])
+	for fz in [-525.0,-555.0]:
+		var tank := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 9.0
+		cyl.bottom_radius = 9.0
+		cyl.height = 10.0
+		tank.mesh = cyl
+		tank.material_override = _material(Color("eef0ec"))
+		tank.position = Vector3(-190,5,fz)
+		add_child(tank)
+		_collider(self,Vector3(-190,5,fz),Vector3(12.6,10,12.6))
+	_sign("FUEL FARM",Vector3(-190,13,-540),Color("ffe0b8"),44)
+	# Car park with rows of parked cars.
+	var cars := {}
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7272
+	for row in [-470.0,-482.0,-494.0]:
+		var cx := -242.0
+		while cx < -100.0:
+			if rng.randf() < 0.78:
+				var key := "res://models/car_%d.glb" % (rng.randi() % 5)
+				if not cars.has(key):
+					cars[key] = []
+				(cars[key] as Array).append([Vector3(cx,0.35,row),0.0 if int(row) % 2 == 0 else PI])
+			cx += 6.0
+	for key in cars:
+		_model_batch(key,cars[key],{"Body":TRAFFIC_COLORS[rng.randi() % TRAFFIC_COLORS.size()]})
+	var pk := []
+	var lx := -245.0
+	while lx < -97.0:
+		for row in [-470.0,-482.0,-494.0]:
+			pk.append([Vector3(lx,0.07,row),Vector3(0.15,0.02,5)])
+		lx += 6.0
+	_box_batch(white,pk)
+	_sign("P  AIRPORT PARKING",Vector3(-172,6,-466),Color("cfe6ff"),48)
+	# Floodlights around the apron and car park (they light up at night).
+	var lamps := []
+	for lxp in [-90.0,-20.0,35.0,85.0,140.0,200.0]:
+		lamps.append([Vector3(lxp,0,-509),PI/2.0])
+		lamps.append([Vector3(lxp,0,-589),-PI/2.0])
+	for lxp in [-230.0,-180.0,-130.0]:
+		lamps.append([Vector3(lxp,0,-476),PI/2.0])
+		lamps.append([Vector3(lxp,0,-488),-PI/2.0])
+	_model_batch("res://models/lamp.glb",lamps)
+	# Service vehicles parked by each plane, cones and pushback tugs.
+	for i in AP_GATES.size():
+		var gx: float = AP_GATES[i]
+		_ap_truck(Vector3(gx+12.0,0,-544),PI/2.0,Color("f4f7fa"),Color("e0303a"),"catering")
+		_ap_truck(Vector3(gx-11.0,0,-556),0.3,Color("e3a428"),Color("2a3036"),"belt")
+		var cones := []
+		for c in [Vector3(gx+3.0,0.35,-572),Vector3(gx-3.0,0.35,-572),Vector3(gx+22.0,0.35,-547),Vector3(gx-22.0,0.35,-547)]:
+			cones.append([c,Vector3(0.4,0.7,0.4)])
+		_box_batch(Color("ff7a1a"),cones)
+	# Moving: two baggage trains, a fuel truck and a bus around the apron, a follow-me car by the hangars.
+	ap_vehicles.clear()
+	ap_vehicles.append({"node":_ap_baggage_train(),"loop":AP_APRON_LOOP,"off":0.0,"speed":6.5})
+	ap_vehicles.append({"node":_ap_truck(Vector3.ZERO,0.0,Color("f2f2ee"),Color("e0303a"),"fuel"),"loop":AP_APRON_LOOP,"off":0.27,"speed":6.0})
+	ap_vehicles.append({"node":_ap_truck(Vector3.ZERO,0.0,Color("2f7fb8"),Color("f4f7fa"),"bus"),"loop":AP_APRON_LOOP,"off":0.52,"speed":7.0})
+	ap_vehicles.append({"node":_ap_baggage_train(),"loop":AP_APRON_LOOP,"off":0.76,"speed":6.5})
+	ap_vehicles.append({"node":_ap_truck(Vector3.ZERO,0.0,Color("f2d046"),Color("2a3036"),"car"),"loop":AP_HANGAR_LOOP,"off":0.0,"speed":9.0})
+	# The airliner that lands, taxis and takes off again.
+	ap_plane = _ap_plane(Vector3(-262,0,AP_RUNWAY_Z),0.0,Color("f3f5f2"),false)
+	ap_flight_len = 0.0
+	for seg in AP_FLIGHT:
+		ap_flight_len += float(seg[0])
+	_ap_tick(0.0)
+
+func _ap_plane(pos: Vector3, yaw: float, tint: Color, solid: bool, scale := AP_PLANE_SCALE) -> Node3D:
+	var holder := Node3D.new()
+	holder.position = pos
+	holder.rotation.y = yaw
+	add_child(holder)
+	var body := Node3D.new()
+	body.rotation.y = AP_PLANE_FIX
+	body.scale = Vector3(scale,scale,scale)
+	holder.add_child(body)
+	var model := _try_model("res://models/airplane.glb")
+	if model != null:
+		body.add_child(model)
+	else:
+		_box(body,Vector3(0,1.6,0),Vector3(1.8,1.8,13),tint)
+		_box(body,Vector3(0,1.4,0),Vector3(14,0.3,2.2),tint)
+	if solid:
+		# Fuselage only, so you can walk under the wings.
+		_collider(holder,Vector3(0,1.5*scale,0),Vector3(1.7*scale,2.6*scale,12.4*scale))
+	return holder
+
+func _ap_truck(pos: Vector3, yaw: float, body_col: Color, trim: Color, kind: String) -> Node3D:
+	var n := Node3D.new()
+	n.position = pos
+	n.rotation.y = yaw
+	add_child(n)
+	match kind:
+		"bus":
+			_box(n,Vector3(0,1.7,0),Vector3(2.6,2.6,11),body_col)
+			_box(n,Vector3(0,2.1,0),Vector3(2.64,1.0,10.2),Color("1d2e3a"))
+			_box(n,Vector3(0,0.75,0),Vector3(2.64,0.3,11.04),trim)
+		"fuel":
+			_box(n,Vector3(0,1.4,-3.2),Vector3(2.4,2.2,2.4),body_col)
+			_box(n,Vector3(0,1.9,-4.0),Vector3(2.2,0.8,0.1),Color("1d2e3a"))
+			var tank := MeshInstance3D.new()
+			var cyl := CylinderMesh.new()
+			cyl.top_radius = 1.2
+			cyl.bottom_radius = 1.2
+			cyl.height = 6.0
+			tank.mesh = cyl
+			tank.material_override = _material(Color("dfe3e6"))
+			tank.rotation.x = PI/2.0
+			tank.position = Vector3(0,1.75,1.2)
+			n.add_child(tank)
+			_box(n,Vector3(0,1.75,1.2),Vector3(2.5,0.3,6.0),trim)
+		"catering":
+			_box(n,Vector3(0,1.3,-2.6),Vector3(2.3,2.0,1.8),Color("eef0ec"))
+			_box(n,Vector3(0,2.6,1.0),Vector3(2.4,2.6,5.0),body_col)
+			_box(n,Vector3(0,3.0,1.0),Vector3(2.44,0.4,5.04),trim)
+		"belt":
+			_box(n,Vector3(0,0.9,-1.5),Vector3(1.9,1.2,2.4),body_col)
+			var belt := _box(n,Vector3(0,1.9,1.6),Vector3(1.0,0.25,6.5),Color("2a3036"))
+			belt.rotation.x = -0.32
+		_:
+			_box(n,Vector3(0,0.85,0),Vector3(1.8,0.9,4.0),body_col)
+			_box(n,Vector3(0,1.5,0.3),Vector3(1.6,0.6,2.0),Color("1d2e3a"))
+			_box(n,Vector3(0,1.9,0.3),Vector3(1.2,0.15,0.4),Color("ff8a1a"))
+	for wz in ([-3.6,3.6] if kind == "bus" else [-1.4,1.4]):
+		for wx in [-1.1,1.1]:
+			_box(n,Vector3(wx,0.4,wz),Vector3(0.4,0.8,0.8),Color("20262b"))
+	return n
+
+func _ap_baggage_train() -> Node3D:
+	var n := Node3D.new()
+	add_child(n)
+	_box(n,Vector3(0,0.75,-3.0),Vector3(1.5,0.9,2.2),Color("e3a428"))
+	_box(n,Vector3(0,1.4,-2.6),Vector3(1.2,0.4,0.9),Color("1d2e3a"))
+	for k in 3:
+		var z := float(k)*3.2
+		_box(n,Vector3(0,0.55,z),Vector3(1.5,0.2,2.6),Color("5d666c"))
+		_box(n,Vector3(0,1.05,z),Vector3(1.4,0.8,2.2),[Color("3f78a8"),Color("c4533f"),Color("3e9e4a")][k])
+		for wx in [-0.7,0.7]:
+			_box(n,Vector3(wx,0.25,z),Vector3(0.2,0.5,0.5),Color("20262b"))
+	return n
+
+func _ap_loop_pos(loop: Array, t: float) -> Array:
+	# Position and heading t (0..1) of the way round a closed loop.
+	var total := 0.0
+	for i in loop.size():
+		total += (loop[i] as Vector2).distance_to(loop[(i+1) % loop.size()])
+	var d := fposmod(t,1.0)*total
+	for i in loop.size():
+		var a: Vector2 = loop[i]
+		var b: Vector2 = loop[(i+1) % loop.size()]
+		var l := a.distance_to(b)
+		if d <= l:
+			var p := a.lerp(b,d/l)
+			return [Vector3(p.x,0,p.y),b-a]
+		d -= l
+	return [Vector3(loop[0].x,0,loop[0].y),Vector2(1,0)]
+
+func _ap_loop_len(loop: Array) -> float:
+	var total := 0.0
+	for i in loop.size():
+		total += (loop[i] as Vector2).distance_to(loop[(i+1) % loop.size()])
+	return total
+
+func _ap_flight_at(t: float) -> Array:
+	# Airliner position and travel direction at time t of the flight loop.
+	t = fposmod(t,ap_flight_len)
+	for i in AP_FLIGHT.size():
+		var seg: Array = AP_FLIGHT[i]
+		var dur: float = seg[0]
+		if t <= dur:
+			var u := t/dur
+			match int(seg[3]):
+				1:
+					u = 1.0-(1.0-u)*(1.0-u)
+				2:
+					u = u*u
+			var a: Vector3 = seg[1]
+			var b: Vector3 = seg[2]
+			var dir := b-a
+			var k := i
+			while dir.length() < 0.01 and k < AP_FLIGHT.size()-1:
+				k += 1
+				dir = (AP_FLIGHT[k][2] as Vector3)-(AP_FLIGHT[k][1] as Vector3)
+			return [a.lerp(b,u),dir]
+		t -= dur
+	return [AP_FLIGHT[0][1],Vector3(1,0,0)]
+
+func _ap_tick(_delta: float) -> void:
+	if ap_plane == null:
+		return
+	var now := Time.get_unix_time_from_system() if sky_time_override < 0.0 else sky_time_override
+	var f := _ap_flight_at(now)
+	var pos: Vector3 = f[0]
+	var dir: Vector3 = f[1]
+	ap_plane.position = pos
+	var flat := Vector3(dir.x,0,dir.z)
+	if flat.length() > 0.01:
+		var yaw := atan2(-flat.x,-flat.z)
+		var pitch := atan2(dir.y,flat.length())*0.8 if pos.y > 0.5 else 0.0
+		ap_plane.rotation = Vector3(pitch,yaw,0)
+	ap_plane.visible = absf(pos.x-80.0) < 900.0
+	for v in ap_vehicles:
+		var loop: Array = v["loop"]
+		var t := float(v["off"])+now*float(v["speed"])/_ap_loop_len(loop)
+		var lp := _ap_loop_pos(loop,t)
+		var node: Node3D = v["node"]
+		node.position = lp[0]
+		var d2: Vector2 = lp[1]
+		node.rotation.y = atan2(-d2.x,-d2.y)
+
+func _airport_ped_plan() -> Array:
+	# Ground staff in hi-vis around the planes, and travellers in front of the terminal.
+	var plan: Array = []
+	var hivis := [Color("ff8c1a"),Color("e8e23a")]
+	var k := 0
+	for z in [-521.0,-590.0]:
+		for i in 4:
+			plan.append([Vector3(-95,0,z),Vector3(210,0,z),false,hivis[k % 2]])
+			k += 1
+	for gx in AP_GATES:
+		for o in [Vector3(9,0,-536),Vector3(-8,0,-562),Vector3(16,0,-552)]:
+			var p: Vector3 = Vector3(float(gx),0,0)+o
+			plan.append([p,p,true,hivis[k % 2]])
+			k += 1
+	for i in 8:
+		plan.append([Vector3(-70,0,-478),Vector3(150,0,-478),false])
+	for p in [Vector3(30,0,-480),Vector3(33,0,-479),Vector3(-20,0,-478),Vector3(95,0,-479)]:
+		plan.append([p,p,true])
+	return plan
+
+func _smoke_airport() -> void:
+	assert(ap_plane != null and ap_vehicles.size() == 5,"Airport planes and vehicles built")
+	for p in [Vector3(-200,0,AP_ROAD_Z),Vector3(300,0,AP_ROAD_Z),Vector3(0,0,-447),Vector3(197,0,-440)]:
+		assert(_on_road(p),"Airport road missing at %s" % str(p))
+	var space := get_world_3d().direct_space_state
+	for p in [Vector3(80,6,AP_RUNWAY_Z),Vector3(0,6,AP_TAXI_Z),Vector3(-300,6,-720),Vector3(400,6,-740)]:
+		var q := PhysicsRayQueryParameters3D.create(p,p-Vector3(0,12,0))
+		var hit := space.intersect_ray(q)
+		assert(not hit.is_empty() and absf(float((hit["position"] as Vector3).y)+0.05) < 0.06,"No airport ground at %s" % str(p))
+	# The runway and taxiway are clear for the airliner (nothing solid on them).
+	var x := -280.0
+	while x <= 440.0:
+		for z in [AP_RUNWAY_Z,AP_TAXI_Z]:
+			assert(not _blocked_at(Vector3(x,2.0,z),1.5),"Airfield blocked at %s by %s" % [str(Vector3(x,2,z)),_blocker(Vector3(x,2.0,z),1.5)])
+		x += 10.0
+	# The airliner lands, rolls, taxis and climbs away again.
+	var t := 0.0
+	var seen_air := false
+	var seen_ground := false
+	while t < ap_flight_len:
+		var f := _ap_flight_at(t)
+		var p: Vector3 = f[0]
+		if p.y > 50.0:
+			seen_air = true
+		if p.y < 0.1 and absf(p.z-AP_TAXI_Z) < 1.0:
+			seen_ground = true
+		t += 2.0
+	assert(seen_air and seen_ground,"Airliner flies and taxis")
+	# Ground staff are where they should be and aren't standing in anything solid.
+	var staff := 0
+	for p in peds:
+		var a: Vector3 = p["a"]
+		if a.z < -505.0 and a.z > -600.0:
+			staff += 1
+			assert(not _blocked_at(a+Vector3(0,1.0,0),0.3),"Airport staff stuck at %s by %s" % [str(a),_blocker(a+Vector3(0,1.0,0),0.3)])
+	assert(staff >= 20,"Airport ground staff: %d" % staff)
+	var ci := -1
+	for i in CHECKPOINTS.size():
+		if String(CHECKPOINTS[i]["name"]) == "Harbor Airport":
+			ci = i
+	assert(ci >= 0 and TRAVEL_AREA.size() == CHECKPOINTS.size(),"Harbor Airport fast travel")

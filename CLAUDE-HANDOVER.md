@@ -307,3 +307,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Web: _web_perf_setup (web or --web-lite): 3D scaling to ~1.1 MP (bilinear), one shadow split at 55 m, 2048 atlas; ?fps=1 shows a counter. --bench prints average fps (desktop 2560x1440: 67 -> 88 fps with lite).
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.25.1 (source commit 6c711ee). APK SHA256 39f84ca1cb93bda9e86ef977eca8d73470145a1c54b17244efc383d77d6aa80e, 31263418 bytes, code 30. Pages run succeeded; live release.json, page and /play show 0.25.1.
 - Not measured in a real browser; FIND ME not retested with two phones.
+
+## v0.26.0 (2026-11-18): Sunset Beach, Westside, more pedestrians
+
+- _build_expansion (end of main.gd), called after _build_raceway. Sunset Beach: SB_X0..X1 270..610, SB_Z0..Z1 40..400, bridge from the Dome causeway at x = 130 (gap in its south railing x 123..137) south to z = 150 then east; avenues 330/430/530, streets 90/150/250, beach road 318, boardwalk, pier at x 450, hotel, lighthouse. Westside: WS -462..-246 x -50..340, entered through a gap in the Civic Center west wall at the z = 72 street; market at (-330,111), windmill park, water tower. Helpers _ex_grid, _ex_lamps, _ex_house, _ex_yards, _ex_umbrella.
+- CHECKPOINTS +2 (TRAVEL_AREA +0,0), MAP_LABELS +2, TRAFFIC_LOOPS +2 (32 cars), QUICK +6 (26; new items ice cream, bread, surfboard). Map re-baked (--bake-map at 1024x1024; my_tag skipped during bake).
+- Pedestrians 78 -> 153. _update_peds throttles people > 150 m away (move every 0.5 s, no animation); per-ped logic in _update_ped.
+- Shots: --expand-shots (docs/shots-0.26.0).
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.26.0 (source commit 0925805). APK SHA256 3a418a78f0edd87d21fb8a8f743abc52a3526873dc14643d28d49e39c83faf2a, 31943354 bytes, code 31. Pages run succeeded; live release.json, page and /play show 0.26.0.
+- Not driven across the bridges by hand; not tried on the Fold5 or a real browser.

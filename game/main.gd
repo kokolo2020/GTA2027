@@ -315,7 +315,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.26.1: bigger houses in Sunset Beach and Westside.")
+	_show_toast("Harbor City 0.26.2: Sunset Beach and Westside now have proper houses, like Maple Suburbs.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -5992,7 +5992,7 @@ func _box_batch(color: Color, items: Array) -> MultiMeshInstance3D:
 	add_child(inst)
 	return inst
 
-func _model_batch(path: String, items: Array, recolor := {}) -> MultiMeshInstance3D:
+func _model_batch(path: String, items: Array, recolor := {}, use_local := false) -> MultiMeshInstance3D:
 	# items: [Vector3 position, float yaw, float scale]. recolor: material-name prefix -> Color.
 	if items.is_empty():
 		return null
@@ -6012,6 +6012,16 @@ func _model_batch(path: String, items: Array, recolor := {}) -> MultiMeshInstanc
 			for prefix in recolor:
 				if key.begins_with(prefix):
 					mesh.surface_set_material(s,_material(recolor[prefix]))
+	# v0.26.2: some models (the houses) place their mesh with its own transform inside the file.
+	var local := Transform3D.IDENTITY
+	if use_local:
+		var n: Node = source
+		while n != null:
+			if n is Node3D:
+				local = (n as Node3D).transform*local
+			if n == model:
+				break
+			n = n.get_parent()
 	var multi := MultiMesh.new()
 	multi.transform_format = MultiMesh.TRANSFORM_3D
 	multi.mesh = mesh
@@ -6019,7 +6029,7 @@ func _model_batch(path: String, items: Array, recolor := {}) -> MultiMeshInstanc
 	for i in items.size():
 		var it: Array = items[i]
 		var s := float(it[2]) if it.size() > 2 else 1.0
-		multi.set_instance_transform(i,Transform3D(Basis(Vector3.UP,float(it[1])).scaled(Vector3(s,s,s)*_prop_stretch(path)),it[0]))
+		multi.set_instance_transform(i,Transform3D(Basis(Vector3.UP,float(it[1])).scaled(Vector3(s,s,s)*_prop_stretch(path)),it[0])*local)
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = multi
 	add_child(inst)
@@ -13578,9 +13588,11 @@ const WS_Z1 := 340.0
 const WS_AVES := [-300.0,-360.0,-420.0]
 const WS_STREETS := [0.0,72.0,150.0,230.0,300.0]
 const WS_MARKET := Vector3(-330,0,111)
-# The house model is small (doors below a person's waist at 1.3x); 2x gives person-height doors.
-const HOUSE_SCALE := 2.0
-const HOUSE_STEP := 20.0
+# Same houses and size as Maple Suburbs (the model is right at 1x once its own transform is kept).
+const HOUSE_SCALE := 1.0
+const HOUSE_STEP := 16.0
+const HOUSE_ROW := 14.0
+const HOUSE_EDGE := 14.4
 
 func _ex_house(items: Dictionary, pos: Vector3, yaw: float, rng: RandomNumberGenerator) -> void:
 	var key := "house_0" if rng.randf() < 0.5 else "house_1"
@@ -13755,14 +13767,16 @@ func _build_expansion() -> void:
 	for bi in 4:
 		var bx0: float = xs[bi]
 		var bx1: float = xs[bi+1]
-		var x := bx0+(11.0 if bi == 0 else 17.8)
-		while x <= bx1-(11.0 if bi == 3 else 17.8):
-			_ex_house(items,Vector3(x,0,73.0),0.0,rng)
-			_ex_house(items,Vector3(x,0,107.0),PI,rng)
-			_ex_house(items,Vector3(x,0,233.0),0.0,rng)
+		var x := bx0+(7.0 if bi == 0 else HOUSE_EDGE)
+		while x <= bx1-(7.0 if bi == 3 else HOUSE_EDGE):
+			_ex_house(items,Vector3(x,0,90.0-HOUSE_ROW),0.0,rng)
+			_ex_house(items,Vector3(x,0,90.0+HOUSE_ROW),PI,rng)
+			_ex_house(items,Vector3(x,0,250.0-HOUSE_ROW),0.0,rng)
+			if bi == 0:
+				_ex_house(items,Vector3(x,0,150.0+HOUSE_ROW),PI,rng)
 			if not (bi == 2):
-				_ex_house(items,Vector3(x,0,267.0),PI,rng)
-				_ex_house(items,Vector3(x,0,301.0),0.0,rng)
+				_ex_house(items,Vector3(x,0,250.0+HOUSE_ROW),PI,rng)
+				_ex_house(items,Vector3(x,0,SB_BEACH_ROAD-HOUSE_ROW),0.0,rng)
 			x += HOUSE_STEP
 		trees.append([Vector3((bx0+bx1)/2.0,0,200),rng.randf()*TAU,1.0])
 		trees.append([Vector3((bx0+bx1)/2.0-12.0,0,206),rng.randf()*TAU,0.9])
@@ -13825,18 +13839,18 @@ func _build_expansion() -> void:
 				continue # windmill park
 			if bi == 1 and bj == 4:
 				continue # water tower
-			var x := bx0+(5.0 if bi == 0 else 17.8)
-			while x <= bx1-(11.0 if bi == 3 else 17.8):
+			var x := bx0+(0.0 if bi == 0 else HOUSE_EDGE)
+			while x <= bx1-(7.0 if bi == 3 else HOUSE_EDGE):
 				if bz1-bz0 > 40.0:
-					_ex_house(items,Vector3(x,0,bz0+(4.0 if bj == 0 else 17.0)),PI,rng)
-					_ex_house(items,Vector3(x,0,bz1-17.0),0.0,rng)
+					_ex_house(items,Vector3(x,0,bz0+(11.0 if bj == 0 else HOUSE_ROW)),PI,rng)
+					_ex_house(items,Vector3(x,0,bz1-HOUSE_ROW),0.0,rng)
 				elif bj > 0 and bz1-bz0 > 30.0:
-					_ex_house(items,Vector3(x,0,(bz0+bz1)/2.0),PI,rng)
+					_ex_house(items,Vector3(x,0,bz0+HOUSE_ROW),PI,rng)
 				x += HOUSE_STEP
 			if bz1-bz0 > 60.0:
 				trees.append([Vector3((bx0+bx1)/2.0,0,(bz0+bz1)/2.0),rng.randf()*TAU,1.0])
 	for key in items:
-		_model_batch("res://models/%s.glb" % key,items[key])
+		_model_batch("res://models/%s.glb" % key,items[key],{},String(key).begins_with("house_"))
 	_model_batch("res://models/lamp.glb",lamps)
 	_model_batch("res://models/tree_round.glb",trees)
 	_model_batch("res://models/palm.glb",palms)

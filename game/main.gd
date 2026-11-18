@@ -298,9 +298,10 @@ func _ready() -> void:
 	add_child(radio_player)
 	_build_hud()
 	_load_progress()
+	_quick_daily_check()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots"]:
+	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -312,7 +313,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.24.2: each treasure hunt now tells you what object to look for!")
+	_show_toast("Harbor City 0.25: daily quests! Pick up the real item at each stop, once a day.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -344,6 +345,8 @@ func _ready() -> void:
 		await _follow_shots()
 	elif "--v23-shots" in OS.get_cmdline_user_args():
 		await _v23_shots()
+	elif "--daily-shots" in OS.get_cmdline_user_args():
+		await _daily_shots()
 	elif "--crate-shots" in OS.get_cmdline_user_args():
 		await _crate_shots()
 	elif "--bake-map" in OS.get_cmdline_user_args():
@@ -633,6 +636,16 @@ func _toggle_activity() -> void:
 	else:
 		exploring = false
 		quick_on = true
+		if not legacy_rules and _quick_left() == 0:
+			# Nothing left today: skip ahead to delivery jobs.
+			quick_on = false
+			_save_progress()
+			if paused:
+				_toggle_menu()
+			_refresh_hud()
+			_show_toast("All daily quests are done for today (new ones tomorrow). Delivery jobs instead!")
+			return
+		_quick_fix_target()
 	_save_progress()
 	if paused:
 		_toggle_menu()
@@ -3963,7 +3976,7 @@ func _refresh_hud() -> void:
 		objective.text = "%s  ring %d/%d  ·  %.1fs / par %ds" % [running["name"],trial_cp+1,running["cps"].size(),clock-trial_start,int(running["par"])]
 	if quick_on and trial_active < 0:
 		var q: Dictionary = QUICK[quick_idx]
-		mission_label.text = "HARBOR CITY  /  QUICK QUEST %d" % (quick_done+1)
+		mission_label.text = "HARBOR CITY  /  DAILY QUEST %d/%d" % [QUICK.size()-_quick_left()+1,QUICK.size()]
 		objective.text = "%s  ·  %dm" % [q["task"],distance]
 	mission_label.text += "  ·  LV %d" % _level()
 	balance_label.text = "$%d  ·  %d/8 finds  ·  %d/%d sites  ·  %d jobs" % [cash,count,_civic_count()+_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count(),CIVIC.size()+RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size()+DOWNTOWN.size(),deliveries]
@@ -4159,6 +4172,8 @@ func _save_progress() -> void:
 	file.set_value("progress","quick_on",quick_on)
 	file.set_value("progress","quick_idx",quick_idx)
 	file.set_value("progress","quick_done",quick_done)
+	file.set_value("progress","quick_day",quick_day)
+	file.set_value("progress","quick_got",quick_got)
 	file.set_value("progress","treasure_got",treasure_got)
 	file.set_value("progress","treasure_count",treasure_count)
 	file.set_value("progress","fm_refund",fm_refund)
@@ -4172,6 +4187,8 @@ func _load_progress() -> void:
 		quick_on = bool(file.get_value("progress","quick_on",true))
 		quick_idx = posmod(int(file.get_value("progress","quick_idx",0)),QUICK.size())
 		quick_done = maxi(0,int(file.get_value("progress","quick_done",0)))
+		quick_day = String(file.get_value("progress","quick_day",""))
+		quick_got = int(file.get_value("progress","quick_got",0)) & ((1 << QUICK.size())-1)
 		treasure_got = int(file.get_value("progress","treasure_got",-1))
 		treasure_count = maxi(0,int(file.get_value("progress","treasure_count",0)))
 		var refund := maxi(0,int(file.get_value("progress","fm_refund",0)))
@@ -6856,7 +6873,7 @@ func _draw_minimap() -> void:
 	if quick_on:
 		# v0.24.1: every quick quest nearby shows as a small orange dot.
 		for i in QUICK.size():
-			if i == quick_idx:
+			if i == quick_idx or _quick_is_done(i):
 				continue
 			var qp := _mini_point(QUICK[i]["pos"],me,cs,sn)
 			if qp.length() < limit:
@@ -11355,6 +11372,8 @@ func _refresh_run() -> void:
 func _hud_v23_tick() -> void:
 	if run_button == null:
 		return
+	if quick_day != _quick_today():
+		_quick_daily_check()
 	var on_foot := not driving and not race_car and seat_id < 0 and not bus_riding and not paused
 	run_button.visible = on_foot
 	travel_button.visible = not paused and not race_car
@@ -12072,54 +12091,325 @@ func _crate_shots() -> void:
 # ---------- v0.25: quick quests (short pick-ups, paid on the spot, next one starts at once) ----------
 # The first nine stay in the old city a short walk apart; then the chain tours every town.
 const QUICK := [
-	{"task":"Grab a coffee at Harbor Café","pos":Vector3(6.5,0,16)},
-	{"task":"Pick up a watch at the Clocktower","pos":Vector3(6.5,0,-22)},
-	{"task":"Fetch flowers at West Arcade","pos":Vector3(-25.5,0,8)},
-	{"task":"Collect a parcel at the North Gate post office","pos":Vector3(-25.5,0,-22)},
-	{"task":"Pick up a pizza at Sunset Market","pos":Vector3(25.5,0,-22)},
-	{"task":"Collect seed packets at East Gardens","pos":Vector3(25.5,0,23)},
-	{"task":"Grab a ferry ticket at Ferry Steps","pos":Vector3(6.5,0,44)},
-	{"task":"Pick up a toolbox at Port Dispatch","pos":Vector3(-25.5,0,26)},
-	{"task":"Find a lost cat by the Harbor Waterfront","pos":Vector3(14.5,0,27)},
-	{"task":"Pick up sunglasses in Marina Heights","pos":Vector3(-5.5,0,116)},
-	{"task":"Collect a trail map at Ridge Trailhead","pos":Vector3(78.5,0,4)},
-	{"task":"Grab game tokens at Harbor Dome","pos":Vector3(152.5,0,36)},
-	{"task":"Pick up a trophy at Harbor Raceway","pos":Vector3(174.5,0,-150)},
-	{"task":"Fetch spare parts from the Industrial Quarter","pos":Vector3(16.5,0,-72)},
-	{"task":"Collect a birthday cake in Maple Suburbs","pos":Vector3(18.5,0,-228)},
-	{"task":"Grab a postcard at Harbor Airfield","pos":Vector3(26.5,0,-312)},
-	{"task":"Pick up a train ticket at Union Station","pos":Vector3(-205.5,0,-360)},
-	{"task":"Rescue a kite in Central Park","pos":Vector3(-275.5,0,-270)},
-	{"task":"Return library books at Civic Center","pos":Vector3(-145.5,0,23)},
-	{"task":"Collect seashells at Bay Promenade","pos":Vector3(-95.5,0,9)},
+	{"task":"Grab a coffee at Harbor Café","pos":Vector3(6.5,0,16),"item":"coffee"},
+	{"task":"Pick up a watch at the Clocktower","pos":Vector3(6.5,0,-22),"item":"watch"},
+	{"task":"Fetch flowers at West Arcade","pos":Vector3(-25.5,0,8),"item":"flowers"},
+	{"task":"Collect a parcel at the North Gate post office","pos":Vector3(-25.5,0,-22),"item":"parcel"},
+	{"task":"Pick up a pizza at Sunset Market","pos":Vector3(25.5,0,-22),"item":"pizza"},
+	{"task":"Collect seed packets at East Gardens","pos":Vector3(25.5,0,23),"item":"seeds"},
+	{"task":"Grab a ferry ticket at Ferry Steps","pos":Vector3(6.5,0,44),"item":"ferry ticket"},
+	{"task":"Pick up a toolbox at Port Dispatch","pos":Vector3(-25.5,0,26),"item":"toolbox"},
+	{"task":"Find a lost cat by the Harbor Waterfront","pos":Vector3(14.5,0,27),"item":"cat"},
+	{"task":"Pick up sunglasses in Marina Heights","pos":Vector3(-5.5,0,116),"item":"sunglasses"},
+	{"task":"Collect a trail map at Ridge Trailhead","pos":Vector3(78.5,0,4),"item":"trail map"},
+	{"task":"Grab game tokens at Harbor Dome","pos":Vector3(155.0,0,40.5),"item":"tokens"},
+	{"task":"Pick up a trophy at Harbor Raceway","pos":Vector3(174.5,0,-157.5),"item":"trophy"},
+	{"task":"Fetch spare parts from the Industrial Quarter","pos":Vector3(16.5,0,-72),"item":"spare parts"},
+	{"task":"Collect a birthday cake in Maple Suburbs","pos":Vector3(18.5,0,-228),"item":"cake"},
+	{"task":"Grab a postcard at Harbor Airfield","pos":Vector3(26.5,0,-312),"item":"postcard"},
+	{"task":"Pick up a train ticket at Union Station","pos":Vector3(-205.5,0,-360),"item":"train ticket"},
+	{"task":"Rescue a kite in Central Park","pos":Vector3(-275.5,0,-270),"item":"kite"},
+	{"task":"Return library books at Civic Center","pos":Vector3(-145.5,0,23),"item":"books"},
+	{"task":"Collect seashells at Bay Promenade","pos":Vector3(-95.5,0,9),"item":"seashells"},
 ]
 const QUICK_XP := 50
+const QUICK_ALL_BONUS := 500
 var quick_on := true
 var quick_idx := 0
 var quick_done := 0
+# v0.25: daily quests. Each stop can be done once per day (your phone's date); all 20 come back at midnight.
+var quick_day := ""
+var quick_got := 0
+var quick_test_day := ""
+var quick_props: Array = []
 
 func _quick_pay(i: int) -> int:
-	# More for the longer trips out of town; a little more every lap of the chain.
-	var prev: Vector3 = QUICK[posmod(i-1,QUICK.size())]["pos"]
-	if i == quick_idx and quick_from.x < 1e8:
-		prev = quick_from
+	# A fixed reward per stop: the further out of the old city, the more it pays.
 	var here: Vector3 = QUICK[i]["pos"]
-	var lap := quick_done/QUICK.size()
-	return 60+int(clampf(prev.distance_to(here)*0.6,0.0,240.0))+lap*20
+	return 60+int(clampf(Vector2(here.x-4.6,here.z-5.2).length()*0.4,0.0,240.0))
+
+func _quick_today() -> String:
+	return quick_test_day if quick_test_day != "" else Time.get_date_string_from_system()
+
+func _quick_is_done(i: int) -> bool:
+	return (quick_got & (1 << i)) != 0
+
+func _quick_left() -> int:
+	var n := 0
+	for i in QUICK.size():
+		if not _quick_is_done(i):
+			n += 1
+	return n
+
+func _quick_next(from: Vector3) -> int:
+	# Nearest stop not done today, or -1 when all are done.
+	var best := -1
+	var bd := INF
+	for i in QUICK.size():
+		if _quick_is_done(i):
+			continue
+		var d := Vector2(QUICK[i]["pos"].x-from.x,QUICK[i]["pos"].z-from.z).length()
+		if d < bd:
+			bd = d
+			best = i
+	return best
+
+func _quick_fix_target() -> void:
+	# Keeps quick_idx on a stop that is still open today; with none left, switch to exploring.
+	if legacy_rules:
+		return
+	if quick_on and (quick_idx < 0 or quick_idx >= QUICK.size() or _quick_is_done(quick_idx)):
+		var body: Node3D = car if driving else player
+		var nxt := _quick_next(body.position if body != null else Vector3(4.6,0,5.2))
+		if nxt >= 0:
+			quick_idx = nxt
+		else:
+			quick_idx = 0
+			quick_on = false
+			exploring = true
+
+func _quick_daily_check() -> void:
+	if quick_props.is_empty():
+		_build_quick_props()
+	var today := _quick_today()
+	if today != quick_day:
+		var had_day := quick_day != ""
+		quick_day = today
+		quick_got = 0
+		_quick_props_refresh()
+		if had_day and not legacy_rules:
+			_show_toast("New day: all %d daily quests are back!" % QUICK.size())
+		_save_progress()
+	_quick_fix_target()
 
 func _quick_complete() -> void:
+	if quick_idx < 0 or _quick_is_done(quick_idx):
+		return
 	var pay := _quick_pay(quick_idx)
 	var at: Vector3 = QUICK[quick_idx]["pos"]
 	cash += pay
 	bonus_xp += QUICK_XP
 	quick_done += 1
-	quick_idx = (quick_idx+1) % QUICK.size()
+	quick_got |= 1 << quick_idx
+	_quick_props_refresh()
+	var nxt := _quick_next(at)
 	quick_from = Vector3(1e9,0,0)
+	if nxt >= 0:
+		quick_idx = nxt
+		_show_toast("DONE!  +$%d  +%d XP   (%d/%d today)  Next: %s" % [pay,QUICK_XP,QUICK.size()-_quick_left(),QUICK.size(),QUICK[quick_idx]["task"]])
+	else:
+		cash += QUICK_ALL_BONUS
+		quick_on = false
+		exploring = true
+		_show_toast("ALL %d DAILY QUESTS DONE!  +$%d  +$%d bonus. New ones tomorrow!" % [QUICK.size(),pay,QUICK_ALL_BONUS])
 	_save_progress()
-	_show_toast("DONE!  +$%d  +%d XP   Next: %s" % [pay,QUICK_XP,QUICK[quick_idx]["task"]])
 	_quick_fx(at)
 	if not ("--smoke-test" in OS.get_cmdline_user_args()):
 		_play_coin()
+
+func _quick_side(p: Vector3) -> Vector3:
+	# Direction pointing away from the nearest road, so the object sits on the pavement by the building.
+	var best := Vector3.ZERO
+	var score := -1
+	for k in 8:
+		var a := TAU*float(k)/8.0
+		var dir := Vector3(cos(a),0,sin(a))
+		var s := 0
+		for r in [1.5,3.0,4.5]:
+			if not _on_road(p+dir*r):
+				s += 1
+		if _on_road(p-dir*3.0):
+			s += 1
+		if s > score:
+			score = s
+			best = dir
+	return best
+
+func _build_quick_props() -> void:
+	quick_props.clear()
+	var wood := Color("8a5a2b")
+	var white := Color("f4f1e8")
+	for i in QUICK.size():
+		var n := Node3D.new()
+		n.name = "QuickItem%d" % i
+		add_child(n)
+		var p: Vector3 = QUICK[i]["pos"]
+		var side := _quick_side(p)
+		n.position = Vector3(p.x,0,p.z)+side*1.6
+		n.rotation.y = atan2(side.x,side.z)
+		n.scale = Vector3.ONE*1.3
+		var item := String(QUICK[i]["item"])
+		var table := item in ["coffee","watch","pizza","sunglasses","tokens","cake","books","seeds"]
+		if table:
+			# Small round street-stall table with a striped awning.
+			_tp_part(n,_tp_cyl(0.65,0.65,0.07),Vector3(0,0.82,0),Color("e9e2d0"))
+			_tp_part(n,_tp_cyl(0.06,0.06,0.8),Vector3(0,0.41,0),Color("3a3f45"))
+			_tp_part(n,_tp_cyl(0.3,0.3,0.04),Vector3(0,0.02,0),Color("3a3f45"))
+			_tp_part(n,_tp_cyl(0.04,0.04,2.3),Vector3(0,1.15,0),Color("dddddd"))
+			_tp_part(n,_tp_cyl(0.05,1.25,0.45),Vector3(0,2.35,0),Color("e0433a") if i % 2 == 0 else Color("2f7fd0"))
+		var top := 0.86 if table else 0.0
+		match item:
+			"coffee":
+				_tp_part(n,_tp_cyl(0.13,0.1,0.28),Vector3(0,top+0.14,0),white)
+				_tp_part(n,_tp_cyl(0.12,0.12,0.02),Vector3(0,top+0.285,0),Color("5a3218"))
+				_tp_part(n,TorusMesh.new(),Vector3(0.15,top+0.15,0),white,Vector3(PI/2,0,0),Vector3(0.09,0.09,0.09))
+				_tp_part(n,_tp_cyl(0.2,0.2,0.02),Vector3(0,top+0.01,0),white)
+			"watch":
+				_tp_part(n,BoxMesh.new(),Vector3(0,top+0.08,0),Color("3a2a4a"),Vector3.ZERO,Vector3(0.5,0.16,0.4))
+				_tp_part(n,TorusMesh.new(),Vector3(0,top+0.26,0),Color("f2c94c"),Vector3(PI/2,0,0),Vector3(0.18,0.18,0.18))
+				_tp_part(n,_tp_cyl(0.14,0.14,0.04),Vector3(0,top+0.36,0.0),Color("f2c94c"),Vector3(PI/2,0,0))
+				_tp_part(n,_tp_cyl(0.11,0.11,0.045),Vector3(0,top+0.36,-0.005),white,Vector3(PI/2,0,0))
+			"flowers":
+				_tp_part(n,_tp_cyl(0.32,0.24,0.55),Vector3(0,0.28,0),Color("b85d34"))
+				var cols := [Color("ff5a7a"),Color("ffd23f"),Color("ffffff"),Color("c45adf"),Color("ff8a3a")]
+				for f in 9:
+					var a := TAU*float(f)/9.0
+					var off := Vector3(cos(a),0,sin(a))*(0.15 if f % 2 == 0 else 0.08)
+					_tp_part(n,_tp_cyl(0.015,0.015,0.6),Vector3(0,0.8,0)+off,Color("3e9e4a"))
+					_tp_part(n,_tp_sphere(0.1),Vector3(0,1.12+0.06*float(f % 3),0)+off*1.4,cols[f % cols.size()])
+			"parcel", "seeds":
+				var c := Color("b98a52") if item == "parcel" else Color("6aa84f")
+				if item == "parcel":
+					_tp_part(n,BoxMesh.new(),Vector3(0,0.3,0),c,Vector3.ZERO,Vector3(0.7,0.6,0.55))
+					_tp_part(n,BoxMesh.new(),Vector3(0.05,0.8,0),c,Vector3(0,0.3,0),Vector3(0.5,0.4,0.4))
+					_tp_part(n,BoxMesh.new(),Vector3(0,0.605,0),Color("d9c08a"),Vector3.ZERO,Vector3(0.12,0.02,0.56))
+				else:
+					_tp_part(n,BoxMesh.new(),Vector3(0,top+0.1,0),wood,Vector3.ZERO,Vector3(0.7,0.2,0.45))
+					var pc := [Color("ff5a7a"),Color("ffd23f"),Color("6ad0ff"),Color("8fdc5a")]
+					for s in 4:
+						_tp_part(n,BoxMesh.new(),Vector3(-0.24+0.16*float(s),top+0.28,0),pc[s],Vector3(-0.3,0,0),Vector3(0.13,0.2,0.02))
+			"pizza":
+				for s in 3:
+					_tp_part(n,BoxMesh.new(),Vector3(0,top+0.04+0.08*float(s),0),Color("e8d6b0"),Vector3(0,0.15*float(s),0),Vector3(0.6,0.07,0.6))
+				_tp_part(n,_tp_cyl(0.12,0.12,0.005),Vector3(0,top+0.24,0),Color("d0342c"))
+			"ferry ticket", "train ticket":
+				# Ticket machine with a ticket sticking out.
+				var body_c := Color("2f6fd0") if item == "ferry ticket" else Color("2e8a57")
+				_tp_part(n,BoxMesh.new(),Vector3(0,0.75,0),body_c,Vector3.ZERO,Vector3(0.6,1.5,0.45))
+				_tp_part(n,BoxMesh.new(),Vector3(0,1.15,0.23),Color("1c2a35"),Vector3.ZERO,Vector3(0.4,0.3,0.02))
+				_tp_part(n,BoxMesh.new(),Vector3(0,0.85,0.3),Color("fff3c4"),Vector3(0.3,0,0),Vector3(0.22,0.02,0.18))
+				_tp_part(n,BoxMesh.new(),Vector3(0,1.62,0),Color("ffd23f"),Vector3.ZERO,Vector3(0.62,0.16,0.47))
+			"toolbox":
+				_tp_part(n,BoxMesh.new(),Vector3(0,0.2,0),Color("d0342c"),Vector3.ZERO,Vector3(0.7,0.4,0.35))
+				_tp_part(n,BoxMesh.new(),Vector3(0,0.48,0),Color("3a3f45"),Vector3.ZERO,Vector3(0.4,0.05,0.06))
+				for x in [-0.2,0.2]:
+					_tp_part(n,BoxMesh.new(),Vector3(x,0.44,0),Color("3a3f45"),Vector3.ZERO,Vector3(0.04,0.1,0.06))
+			"cat":
+				var fur := Color("e8913a")
+				_tp_part(n,_tp_sphere(0.26),Vector3(0,0.26,0),fur,Vector3.ZERO,Vector3(1.0,1.0,1.35))
+				_tp_part(n,_tp_sphere(0.19),Vector3(0,0.55,0.28),fur)
+				for x in [-0.1,0.1]:
+					_tp_part(n,PrismMesh.new(),Vector3(x,0.74,0.28),fur,Vector3.ZERO,Vector3(0.1,0.12,0.05))
+					_tp_part(n,_tp_sphere(0.03),Vector3(x*0.7,0.58,0.45),Color("1c1c22"))
+				_tp_part(n,_tp_cyl(0.04,0.04,0.5),Vector3(0.15,0.2,-0.38),fur,Vector3(1.1,0,0.4))
+			"sunglasses":
+				for x in [-0.12,0.12]:
+					_tp_part(n,_tp_cyl(0.1,0.1,0.02),Vector3(x,top+0.12,0),Color("1c1c22"),Vector3(PI/2,0,0))
+				_tp_part(n,BoxMesh.new(),Vector3(0,top+0.15,0),Color("1c1c22"),Vector3.ZERO,Vector3(0.08,0.02,0.02))
+				_tp_part(n,BoxMesh.new(),Vector3(0,top+0.03,-0.1),Color("7a5ad0"),Vector3.ZERO,Vector3(0.35,0.06,0.2))
+			"trail map":
+				_tp_part(n,_tp_cyl(0.06,0.06,1.6),Vector3(-0.45,0.8,0),wood)
+				_tp_part(n,_tp_cyl(0.06,0.06,1.6),Vector3(0.45,0.8,0),wood)
+				_tp_part(n,BoxMesh.new(),Vector3(0,1.25,0),Color("f0e2b8"),Vector3.ZERO,Vector3(1.0,0.7,0.05))
+				_tp_part(n,BoxMesh.new(),Vector3(-0.1,1.3,0.03),Color("3e9e4a"),Vector3(0,0,0.4),Vector3(0.5,0.08,0.01))
+				_tp_part(n,BoxMesh.new(),Vector3(0.15,1.15,0.03),Color("2f6fd0"),Vector3(0,0,-0.3),Vector3(0.4,0.06,0.01))
+				_tp_part(n,BoxMesh.new(),Vector3(0,1.62,0),wood,Vector3.ZERO,Vector3(1.1,0.06,0.15))
+			"tokens":
+				for s in 7:
+					var a := float(s)*1.7
+					_tp_part(n,_tp_cyl(0.09,0.09,0.03),Vector3(cos(a)*0.15*float(s % 3),top+0.02+0.03*float(s/3),sin(a)*0.15*float(s % 3)),Color("f2c94c"))
+				_tp_part(n,BoxMesh.new(),Vector3(0,top+0.05,-0.25),Color("c45adf"),Vector3.ZERO,Vector3(0.35,0.1,0.15))
+			"trophy":
+				_tp_part(n,BoxMesh.new(),Vector3(0,0.45,0),Color("3a3f45"),Vector3.ZERO,Vector3(0.6,0.9,0.6))
+				_tp_part(n,BoxMesh.new(),Vector3(0,0.95,0),Color("2a2a30"),Vector3.ZERO,Vector3(0.3,0.1,0.3))
+				_tp_part(n,_tp_cyl(0.04,0.06,0.2),Vector3(0,1.1,0),Color("f2c94c"))
+				_tp_part(n,_tp_cyl(0.22,0.1,0.32),Vector3(0,1.36,0),Color("f2c94c"))
+				for x in [-0.25,0.25]:
+					_tp_part(n,TorusMesh.new(),Vector3(x,1.38,0),Color("f2c94c"),Vector3(PI/2,0,0),Vector3(0.1,0.1,0.1))
+			"spare parts":
+				for s in 3:
+					_tp_part(n,_tp_cyl(0.38,0.38,0.24),Vector3(0,0.12+0.25*float(s),0),Color("1c1c22"))
+					_tp_part(n,_tp_cyl(0.18,0.18,0.25),Vector3(0,0.12+0.25*float(s),0),Color("9aa3ab"))
+				_tp_part(n,BoxMesh.new(),Vector3(0.6,0.15,0),Color("d0342c"),Vector3(0,0.4,0),Vector3(0.35,0.3,0.25))
+			"cake":
+				_tp_part(n,_tp_cyl(0.26,0.26,0.18),Vector3(0,top+0.09,0),Color("ff9ec0"))
+				_tp_part(n,_tp_cyl(0.18,0.18,0.14),Vector3(0,top+0.25,0),Color("fff3e8"))
+				for c2 in 3:
+					var a := TAU*float(c2)/3.0
+					_tp_part(n,_tp_cyl(0.015,0.015,0.12),Vector3(cos(a)*0.09,top+0.38,sin(a)*0.09),Color("6ad0ff"))
+					_tp_part(n,_tp_sphere(0.025),Vector3(cos(a)*0.09,top+0.46,sin(a)*0.09),Color("ffb020"))
+			"postcard":
+				_tp_part(n,_tp_cyl(0.04,0.04,1.5),Vector3(0,0.75,0),Color("9aa3ab"))
+				var pc2 := [Color("6ad0ff"),Color("ffd23f"),Color("ff5a7a"),Color("8fdc5a"),Color("c45adf"),Color("ff8a3a")]
+				for s in 6:
+					var a := float(s % 3)*TAU/3.0
+					_tp_part(n,BoxMesh.new(),Vector3(cos(a)*0.12,0.9+0.35*float(s/3),sin(a)*0.12),pc2[s],Vector3(0,-a+PI/2,0),Vector3(0.22,0.15,0.01))
+			"kite":
+				_tp_part(n,_tp_cyl(0.03,0.03,1.4),Vector3(0,0.7,0),wood,Vector3(0,0,0.2))
+				_tp_part(n,BoxMesh.new(),Vector3(0.15,1.35,0),Color("ff5a3a"),Vector3(0,0,PI/4),Vector3(0.5,0.5,0.02))
+				_tp_part(n,BoxMesh.new(),Vector3(0.15,1.35,0.012),Color("ffd23f"),Vector3(0,0,PI/4),Vector3(0.25,0.25,0.02))
+				for s in 4:
+					_tp_part(n,BoxMesh.new(),Vector3(0.15+0.05*float(s % 2),0.95-0.15*float(s),0),Color("2f6fd0") if s % 2 == 0 else Color("ff5a7a"),Vector3(0,0,0.5),Vector3(0.1,0.04,0.01))
+			"books":
+				var bc := [Color("2f6fd0"),Color("d0342c"),Color("3e9e4a"),Color("e8a628")]
+				for s in 4:
+					_tp_part(n,BoxMesh.new(),Vector3(0,top+0.04+0.075*float(s),0),bc[s],Vector3(0,0.2*float(s),0),Vector3(0.36,0.07,0.26))
+			"seashells":
+				_tp_part(n,_tp_cyl(0.22,0.17,0.32),Vector3(0,0.16,0),Color("2fb0d0"))
+				_tp_part(n,TorusMesh.new(),Vector3(0,0.36,0),Color("dddddd"),Vector3(0,0,0.3),Vector3(0.28,0.28,0.28))
+				for s in 5:
+					var a := float(s)*1.3
+					_tp_part(n,_tp_sphere(0.07),Vector3(0.4+cos(a)*0.15,0.04,sin(a)*0.15),[Color("ffd9c4"),Color("f4f1e8"),Color("ffb3a0")][s % 3],Vector3.ZERO,Vector3(1.0,0.5,1.3))
+		for c in n.get_children():
+			(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		quick_props.append(n)
+	_quick_props_refresh()
+
+func _daily_shots() -> void:
+	await get_tree().process_frame
+	crate_open = false
+	if crate_root != null:
+		crate_root.hide()
+	paused = false
+	driving = false
+	player.show()
+	walk_view = 0
+	_apply_view()
+	quick_got = 0
+	quick_on = true
+	_quick_props_refresh()
+	for i in [0,1,2,3,4,7,8,14,17,18]:
+		quick_idx = i
+		var it := (quick_props[i] as Node3D).position
+		var side := _quick_side(QUICK[i]["pos"])
+		var perp := Vector3(-side.z,0,side.x)
+		player.position = it-side*3.6+perp*1.7+Vector3(0,0.75,0)
+		var d: Vector3 = it-player.position
+		player.rotation.y = atan2(-d.x,-d.z)
+		cam_yaw = player.rotation.y
+		for f in 12:
+			await get_tree().physics_frame
+		_follow_camera(1.0)
+		_refresh_hud()
+		player.hide()
+		await _save_shot("item-%02d" % i)
+		player.show()
+	# Do two, then open the list: they are gone from it and the next one is picked.
+	quick_idx = 0
+	player.position = QUICK[0]["pos"]+Vector3(0,0.75,0)
+	_quick_complete()
+	quick_idx = 2
+	_quick_complete()
+	player.position = QUICK[2]["pos"]+Vector3(0,0.75,2.5)
+	for f in 6:
+		await get_tree().physics_frame
+	_open_quests()
+	await _save_shot("list")
+	get_tree().quit()
+
+func _quick_props_refresh() -> void:
+	for i in quick_props.size():
+		(quick_props[i] as Node3D).visible = not legacy_rules and not _quick_is_done(i)
 
 func _quick_fx(at: Vector3) -> void:
 	var fx := Node3D.new()
@@ -12155,7 +12445,10 @@ func _play_coin() -> void:
 	get_tree().create_timer(0.8).timeout.connect(sp.queue_free)
 
 func _smoke_quick() -> void:
-	var was := [cash,bonus_xp,quick_on,quick_idx,quick_done,exploring,driving,player.position,car.position]
+	var was := [cash,bonus_xp,quick_on,quick_idx,quick_done,exploring,driving,player.position,car.position,quick_day,quick_got]
+	quick_got = 0
+	quick_day = _quick_today()
+	_quick_props_refresh()
 	# All towns are open from the start.
 	for a in 6:
 		assert(_area_open(a),"Every town is open")
@@ -12178,9 +12471,55 @@ func _smoke_quick() -> void:
 	var x0 := _xp()
 	var pay := _quick_pay(0)
 	_interact()
-	assert(cash == c0+pay and _xp() == x0+QUICK_XP and quick_idx == 1 and quick_done == 1,"Quick quest pays and moves on")
+	assert(cash == c0+pay and _xp() == x0+QUICK_XP and quick_done == 1 and _quick_is_done(0),"Quick quest pays and moves on")
+	assert(quick_idx == 8,"Next is the nearest open one (Harbor Waterfront)")
+	assert(not (quick_props[0] as Node3D).visible and (quick_props[8] as Node3D).visible,"Picked-up item disappears, others stay")
+	var c1 := cash
 	_interact()
-	assert(quick_idx == 1,"Can't collect the next one from far away")
+	assert(quick_idx == 8 and cash == c1,"Can't collect the next one from far away")
+	# The money glitch: going back to a finished stop pays nothing, and it can't be picked from the list.
+	quick_idx = 0
+	_quick_complete()
+	assert(cash == c1,"A finished quest never pays twice")
+	quick_idx = 8
+	_open_quests()
+	assert(not quest_order.has(0),"Finished quest is gone from the list")
+	_close_quests()
+	# Pay is fixed per stop, wherever you start from.
+	quick_from = Vector3(500,0,500)
+	assert(_quick_pay(3) == _quick_pay(3) and _quick_pay(0) < _quick_pay(16),"Fixed pay, more for far stops")
+	quick_from = Vector3(1e9,0,0)
+	# Every item sits off the road, near its ring.
+	var bad := []
+	for i in QUICK.size():
+		var ip := (quick_props[i] as Node3D).position
+		if _on_road(ip) or _on_road(QUICK[i]["pos"]):
+			bad.append([i,QUICK[i]["pos"],ip,_curb_spot(QUICK[i]["pos"])])
+	if not bad.is_empty():
+		print("QUICK_ON_ROAD ",bad)
+	assert(bad.is_empty(),"Quest rings and items are off the road")
+	for i in QUICK.size():
+		var ip := (quick_props[i] as Node3D).position
+		assert(Vector2(ip.x-QUICK[i]["pos"].x,ip.z-QUICK[i]["pos"].z).length() < 2.0,"Quest item %d is by its ring" % i)
+	# Finish them all: bonus, then quick quests are closed for the day.
+	quick_got = ((1 << QUICK.size())-1) & ~(1 << 5)
+	quick_idx = 5
+	var c2 := cash
+	_quick_complete()
+	assert(cash == c2+_quick_pay(5)+QUICK_ALL_BONUS and not quick_on and exploring,"All daily quests done gives the bonus")
+	_toggle_activity()
+	assert(not quick_on and not exploring,"No quick quests left today, so delivery jobs")
+	_toggle_activity()
+	assert(exploring,"Then exploring")
+	# Midnight: everything comes back.
+	quick_test_day = "2099-01-01"
+	_quick_daily_check()
+	assert(quick_got == 0 and _quick_left() == QUICK.size() and (quick_props[0] as Node3D).visible,"New day brings all quests back")
+	quick_test_day = ""
+	quick_got = 0
+	quick_day = _quick_today()
+	quick_on = true
+	exploring = false
 	for i in QUICK.size():
 		var p: Vector3 = QUICK[i]["pos"]
 		if i < 9:
@@ -12192,6 +12531,9 @@ func _smoke_quick() -> void:
 	assert(exploring,"Then exploring")
 	_toggle_activity()
 	assert(quick_on and not exploring,"Back to quick quests")
+	quick_day = was[9]
+	quick_got = was[10]
+	_quick_props_refresh()
 	cash = was[0]
 	bonus_xp = was[1]
 	quick_on = was[2]
@@ -12268,13 +12610,14 @@ func _build_quest_list(root: Control) -> void:
 	quest_panel.hide()
 
 func _quest_nearby() -> Array:
-	# Quick quest indexes sorted by distance from you, nearest first.
+	# Quick quests still open today, sorted by distance from you, nearest first.
 	var body: Node3D = car if driving else player
-	var idx: Array = range(QUICK.size())
+	var idx: Array = range(QUICK.size()).filter(func(i): return not _quick_is_done(i))
 	idx.sort_custom(func(a,b): return (QUICK[a]["pos"] as Vector3).distance_to(body.position) < (QUICK[b]["pos"] as Vector3).distance_to(body.position))
 	return idx
 
 func _open_quests() -> void:
+	_quick_daily_check()
 	if not paused:
 		_toggle_menu()
 	_refresh_quests()
@@ -12287,15 +12630,21 @@ func _close_quests() -> void:
 func _refresh_quests() -> void:
 	var body: Node3D = car if driving else player
 	quest_order = _quest_nearby().slice(0,QUEST_LIST_SIZE)
-	if not quick_on:
-		quest_info.text = "You are on %s. Tap a quest to switch to quick quests and go there." % ("exploring" if exploring else "delivery jobs")
+	var left := _quick_left()
+	if left == 0:
+		quest_info.text = "All %d daily quests are done today. New ones tomorrow! Try the treasure hunt or FIND ME meanwhile." % QUICK.size()
+	elif not quick_on:
+		quest_info.text = "Daily quests: %d of %d left today. Tap one to go there (you are on %s now)." % [left,QUICK.size(),"exploring" if exploring else "delivery jobs"]
 	else:
-		quest_info.text = "Tap a quest to go there. Each one pays on the spot, plus %d XP. Orange dots on the minimap are quests too." % QUICK_XP
+		quest_info.text = "Daily quests: %d of %d left today. Each pays once, plus %d XP. Do all %d for a $%d bonus. Orange dots on the minimap are quests." % [left,QUICK.size(),QUICK_XP,QUICK.size(),QUICK_ALL_BONUS]
 	for k in QUEST_LIST_SIZE:
 		var b: Button = quest_buttons[k]
+		b.visible = k < quest_order.size()
+		if not b.visible:
+			continue
 		var i := int(quest_order[k])
 		var d := int(Vector2(QUICK[i]["pos"].x-body.position.x,QUICK[i]["pos"].z-body.position.z).length())
-		var pay := 60+int(clampf(float(d)*0.6,0.0,240.0))+(quick_done/QUICK.size())*20
+		var pay := _quick_pay(i)
 		var tracking := quick_on and i == quick_idx
 		b.text = "%s%s\n%dm  ·  +$%d" % ["▶ " if tracking else "",QUICK[i]["task"],d,pay]
 		var sb := _panel(Color("2f6b3a") if tracking else Color("213d4f"),14)
@@ -12305,7 +12654,7 @@ func _refresh_quests() -> void:
 	(quest_panel.find_child("Mode",true,false) as Button).text = "Switch activity (now: %s)" % ("quick quests" if quick_on else ("exploring" if exploring else "delivery jobs"))
 
 func _quest_pick(k: int) -> void:
-	if k >= quest_order.size():
+	if k >= quest_order.size() or _quick_is_done(int(quest_order[k])):
 		return
 	var body: Node3D = car if driving else player
 	quick_on = true
@@ -12321,7 +12670,8 @@ func _quest_mode() -> void:
 	_toggle_activity()
 
 func _smoke_quests() -> void:
-	var was := [quick_on,quick_idx,quick_done,player.position,driving,exploring]
+	var was := [quick_on,quick_idx,quick_done,player.position,driving,exploring,quick_got]
+	quick_got = 0
 	driving = false
 	player.position = Vector3(25,0.75,-20)
 	_open_quests()
@@ -12341,6 +12691,7 @@ func _smoke_quests() -> void:
 	player.position = was[3]
 	driving = was[4]
 	exploring = was[5]
+	quick_got = was[6]
 	quick_from = Vector3(1e9,0,0)
 	_save_progress()
 

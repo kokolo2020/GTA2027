@@ -115,7 +115,7 @@ const TRIALS := [
 	{"name":"North Highway","area":3,"start":Vector3(0,0,-70),"cps":[Vector3(0,0,-130),Vector3(0,0,-200),Vector3(0,0,-270),Vector3(0,0,-330)],"par":15.0,"pay":700},
 	{"name":"Runway Dash","area":3,"start":Vector3(0,0,-305),"cps":[Vector3(0,0,-340),Vector3(0,0,-385),Vector3(0,0,-425)],"par":8.0,"pay":600},
 	{"name":"Marina Boulevard","area":4,"start":Vector3(0,0,114),"cps":[Vector3(0,0,150),Vector3(0,0,205),Vector3(0,0,234)],"par":9.0,"pay":900},
-	{"name":"Skyline Dash","area":5,"start":Vector3(-133,0,-108),"cps":[Vector3(-133,0,-190),Vector3(-133,0,-290),Vector3(-133,0,-390),Vector3(-230,0,-397),Vector3(-330,0,-397)],"par":36.0,"pay":1200},
+	{"name":"Skyline Dash","area":5,"start":Vector3(-134,0,-100),"cps":[Vector3(-134,0,-190),Vector3(-134,0,-290),Vector3(-134,0,-390),Vector3(-220,0,-386),Vector3(-300,0,-386)],"par":36.0,"pay":1200},
 ]
 const UPGRADES := [
 	{"name":"Engine","desc":"top speed","per":0.06},
@@ -320,7 +320,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.27.1: cars no longer get stuck behind people. 0.27: no more walls, roads join every district, the Harbor Loop sky train, Harbor International Airport, and real day and night.")
+	_show_toast("Harbor City 0.28.0: the Skyline District is rebuilt big, with 4-lane avenues, wide pavements and much taller towers. More districts next.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -4500,13 +4500,12 @@ func _build_peds() -> void:
 		plan.append([lines[i % lines.size()][0],lines[i % lines.size()][1],false])
 	# Skyline District sidewalks (7.8 m from the road centre) and people standing around.
 	var dt_lines: Array = []
-	for x in [-130.0,-230.0,-330.0]:
-		for sx in [-7.8,7.8]:
-			dt_lines.append([Vector3(x+sx,0,-108),Vector3(x+sx,0,-392)])
-	for z in [-100.0,-200.0,-300.0,-400.0]:
-		for sz in [-7.8,7.8]:
-			var east := -225.0 if (z == -400.0 and sz > 0.0) else -125.0
-			dt_lines.append([Vector3(east,0,z+sz),Vector3(-435,0,z+sz)])
+	for x in [-140.0,-300.0,-620.0]:
+		for sx in [-12.6,12.6]:
+			dt_lines.append([Vector3(x+sx,0,-76),Vector3(x+sx,0,-444)])
+	for z in [-140.0,-300.0]:
+		for sz in [-12.6,12.6]:
+			dt_lines.append([Vector3(-126,0,z+sz),Vector3(-646,0,z+sz)])
 	for i in 36:
 		plan.append([dt_lines[i % dt_lines.size()][0],dt_lines[i % dt_lines.size()][1],false])
 	# Civic Center sidewalks (6.2 m from the road centre) and people at the school, park and mall.
@@ -4535,7 +4534,7 @@ func _build_peds() -> void:
 		plan.append([spot,spot,true])
 	for spot in [Vector3(-204,0,58),Vector3(-211,0,58),Vector3(-203,0,84),Vector3(-145,0,76.5)]:
 		plan.append([spot,spot,true])
-	for spot in [Vector3(-300,0,-121),Vector3(-310,0,-129),Vector3(-298,0,-131),Vector3(-312,0,-119),Vector3(-262,0,-246),Vector3(-298,0,-254),Vector3(-175,0,-362),Vector3(-186,0,-362),Vector3(-15,0,35),Vector3(15,0,35)]:
+	for spot in [Vector3(-335,0,-92),Vector3(-347,0,-104),Vector3(-331,0,-106),Vector3(-349,0,-90),Vector3(-442,0,-204),Vector3(-478,0,-238),Vector3(-206,0,-317),Vector3(-234,0,-317),Vector3(-15,0,35),Vector3(15,0,35)]:
 		plan.append([spot,spot,true])
 	plan.append_array(_airport_ped_plan())
 	var rng := RandomNumberGenerator.new()
@@ -5899,35 +5898,44 @@ func _capture_preview() -> void:
 	_show_toast("Gameplay screenshot saved.")
 
 # ---------- v0.16.0: Skyline District (big downtown), traffic with signals, busier streets ----------
-const DT_AVES := [-130.0,-180.0,-230.0,-280.0,-330.0,-380.0,-430.0]
-const DT_STREETS := [-100.0,-150.0,-200.0,-250.0,-300.0,-350.0,-400.0]
+# v0.28: big-city scale. 20 m four-lane roads on an 80 m grid; the airport road (z -458) is the northern street
+# and Westside Boulevard (z -56) the southern one.
+const DT_AVES := [-140.0,-220.0,-300.0,-380.0,-460.0,-540.0,-620.0]
+const DT_STREETS := [-140.0,-220.0,-300.0,-380.0]
 const DT_EAST := -110.5
-const DT_WEST := -446.0
+const DT_WEST := -660.0
 const DT_NORTH := -61.5
-const DT_SOUTH := -440.5
+const DT_SOUTH := -458.0
+const DT_ROAD := 20.0
+const DT_BLOCK := 80.0
+const DT_TOWER_SCALE := 1.7
+const DT_SHOP_SCALE := 1.4
+const DT_MALL := Vector3(-540,0,-98)
+const DT_STATION := Vector3(-220,0,-340)
+const DT_PARK := Vector3(-460,0,-220)
+const DT_PLAZA := Vector3(-340,0,-98)
 # Road pieces removed where blocks are merged (stadium, station, park, mall): [fixed coordinate, from, to].
-const DT_AVE_GAPS := [[-380.0,-394.0,-306.0],[-180.0,-394.0,-356.0],[-280.0,-294.0,-206.0]]
-const DT_STREET_GAPS := [[-350.0,-424.0,-336.0],[-150.0,-374.0,-336.0],[-250.0,-324.0,-236.0]]
+const DT_AVE_GAPS := [[-460.0,-290.0,-150.0],[-540.0,-457.5,-310.0],[-540.0,-130.0,-62.0],[-220.0,-370.0,-310.0]]
+const DT_STREET_GAPS := [[-220.0,-530.0,-390.0],[-380.0,-610.0,-470.0]]
 const DT_SIZES := {"tower_0":Vector3(16,50,16),"tower_1":Vector3(18,58,18),"tower_2":Vector3(24,34,12),"tower_3":Vector3(14,41,14),"tower_4":Vector3(20,90,20),"shops_0":Vector3(24,9,10),"shops_1":Vector3(24,9,10),"garage":Vector3(24,14,24),"police":Vector3(30,9,18),"mall":Vector3(72,14,30.6),"station":Vector3(56,10,18),"hospital":Vector3(30,13,22),"school":Vector3(30,10,14),"hotel":Vector3(30,15,16),"bank":Vector3(30,13,22),"fire_station":Vector3(24,9,14),"library":Vector3(30,12,18)}
 const DOWNTOWN := [
-	{"name":"Police HQ","pos":Vector3(-155,0,-160),"pay":600},
-	{"name":"City Hall","pos":Vector3(-155,0,-210),"pay":600},
-	{"name":"Harbor Tower","pos":Vector3(-205,0,-210),"pay":900},
-	{"name":"Times Plaza","pos":Vector3(-305,0,-125),"pay":700},
-	{"name":"Grand Mall","pos":Vector3(-334,0,-150),"pay":700},
-	{"name":"Central Park Fountain","pos":Vector3(-280,0,-238),"pay":800},
-	{"name":"Harbor Stadium","pos":Vector3(-380,0,-311),"pay":900},
-	{"name":"Union Station","pos":Vector3(-180,0,-361),"pay":800},
+	{"name":"Police HQ","pos":Vector3(-180,0,-152),"pay":600},
+	{"name":"City Hall","pos":Vector3(-180,0,-232),"pay":600},
+	{"name":"Harbor Tower","pos":Vector3(-260,0,-232),"pay":900},
+	{"name":"Times Plaza","pos":Vector3(-340,0,-106),"pay":700},
+	{"name":"Grand Mall","pos":Vector3(-540,0,-70),"pay":700},
+	{"name":"Central Park Fountain","pos":Vector3(-460,0,-234),"pay":800},
+	{"name":"Harbor Stadium","pos":Vector3(-540,0,-322),"pay":900},
+	{"name":"Union Station","pos":Vector3(-220,0,-316),"pay":800},
 ]
 const DOWNTOWN_BONUS := 4000
 const LIGHT_CYCLE := 20.0
 const ADS := ["HARBOR FM 101\nHits all day","NIGHT COMET\nFeel the speed","PIZZA RUSH\nHot in 38 seconds","VISIT MARINA\nHEIGHTS","MINT CRUISER\nSmooth city rides","GRAND MALL\nOpen late","STADIUM\nGame night!","AIRPORT LINE\nOnly $15"]
 const TRAFFIC_LOOPS := [
-	{"lane":3.0,"speed":10.0,"cars":5,"pts":[Vector2(-130,-100),Vector2(-430,-100),Vector2(-430,-400),Vector2(-130,-400)]},
-	{"lane":3.0,"speed":9.0,"cars":2,"pts":[Vector2(-130,-100),Vector2(-130,-200),Vector2(-230,-200),Vector2(-230,-100)]},
-	{"lane":3.0,"speed":9.0,"cars":3,"pts":[Vector2(-380,-100),Vector2(-380,-300),Vector2(-430,-300),Vector2(-430,-100)]},
-	{"lane":3.0,"speed":9.0,"cars":3,"pts":[Vector2(-230,-200),Vector2(-330,-200),Vector2(-330,-300),Vector2(-230,-300)]},
-	{"lane":3.0,"speed":9.0,"cars":3,"pts":[Vector2(-130,-300),Vector2(-130,-400),Vector2(-230,-400),Vector2(-230,-300)]},
+	{"lane":6.0,"speed":12.0,"cars":6,"pts":[Vector2(-140,-140),Vector2(-380,-140),Vector2(-380,-380),Vector2(-140,-380)]},
+	{"lane":6.0,"speed":11.0,"cars":4,"pts":[Vector2(-140,-220),Vector2(-300,-220),Vector2(-300,-300),Vector2(-140,-300)]},
+	{"lane":6.0,"speed":12.0,"cars":4,"pts":[Vector2(-380,-140),Vector2(-620,-140),Vector2(-620,-300),Vector2(-380,-300)]},
+	{"lane":6.0,"speed":11.0,"cars":3,"pts":[Vector2(-140,-56),Vector2(-300,-56),Vector2(-300,-140),Vector2(-140,-140)]},
 	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(32,-32),Vector2(32,32),Vector2(-32,32)]},
 	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(-32,32),Vector2(32,32),Vector2(32,-32)]},
 	{"lane":2.5,"speed":9.0,"cars":4,"pts":[Vector2(-95,32),Vector2(-230,32),Vector2(-230,72),Vector2(-95,72)]},
@@ -6108,37 +6116,55 @@ func _signal_pole(poles: Array, ns_caps: Array, ew_caps: Array, corner: Vector3,
 	(ns_caps if ns else ew_caps).append([head+Vector3(0,5.27,0),Vector3(0.64,0.14,0.54)])
 
 func _build_downtown() -> void:
+	# v0.28: big-city scale. 4-lane avenues and streets (20 m) on an 80 m grid, 5 m pavements,
+	# towers about 1.7x bigger.
 	var asphalt := Color("394552")
 	var walk := Color("8f8d86")
-	var rock := Color("7d776c")
 	var line := Color("e7d9a4")
 	var cx := (DT_WEST+DT_EAST)/2.0
 	var cz := (DT_NORTH+DT_SOUTH)/2.0
+	var half := DT_ROAD/2.0
 	_slab(Vector3(cx,-0.35,cz),Vector3(DT_EAST-DT_WEST,0.6,DT_NORTH-DT_SOUTH),0,walk)
-	# Link road from Bay Road up to the district (v0.27: no walls).
-	_slab(Vector3(-130,-0.35,-38.5),Vector3(16,0.6,46),0,walk)
-	_box(self,Vector3(-130,0.01,-38.5),Vector3(12,0.08,46),asphalt)
-	# Roads, lane dashes, crosswalks, signals.
+	# Link road from Bay Road up to the district (avenue -140 carries on south to the Civic Center).
+	_slab(Vector3(-140,-0.35,-38.5),Vector3(16,0.6,46),0,walk)
+	_box(self,Vector3(-140,0.01,-38.5),Vector3(12,0.08,46),asphalt)
+	# Roads, centre lines, lane lines, crosswalks, signals.
 	var roads := []
+	var yellow := []
 	var dashes := []
 	var zebra := []
+	var curbs := []
 	for x in DT_AVES:
 		for r in _dt_ranges(true,x):
-			roads.append([Vector3(x,0.01,(float(r[0])+float(r[1]))/2.0),Vector3(12,0.08,float(r[1])-float(r[0]))])
-			var z := float(r[0])+4.0
-			while z < float(r[1])-2.0:
-				if not _dt_near_cross(true,z,8.0):
-					dashes.append([Vector3(x,0.06,z),Vector3(0.18,0.02,3)])
+			var z0 := float(r[0])
+			var z1 := float(r[1])
+			roads.append([Vector3(x,0.01,(z0+z1)/2.0),Vector3(DT_ROAD,0.08,z1-z0)])
+			for s in [-1.0,1.0]:
+				curbs.append([Vector3(x+s*(half+0.2),0.06,(z0+z1)/2.0),Vector3(0.4,0.12,z1-z0)])
+			var z := z0+4.0
+			while z < z1-2.0:
+				if not _dt_near_cross(true,z,half+3.0):
+					yellow.append([Vector3(x-0.25,0.06,z),Vector3(0.16,0.02,4.2)])
+					yellow.append([Vector3(x+0.25,0.06,z),Vector3(0.16,0.02,4.2)])
+					for s in [-5.0,5.0]:
+						dashes.append([Vector3(x+s,0.06,z),Vector3(0.18,0.02,3)])
 				z += 8.0
 	for z in DT_STREETS:
 		for r in _dt_ranges(false,z):
-			roads.append([Vector3((float(r[0])+float(r[1]))/2.0,0.012,z),Vector3(float(r[1])-float(r[0]),0.08,12)])
-			var x := float(r[0])+4.0
-			while x < float(r[1])-2.0:
-				if not _dt_near_cross(false,x,8.0):
-					dashes.append([Vector3(x,0.062,z),Vector3(3,0.02,0.18)])
+			var x0 := float(r[0])
+			var x1 := float(r[1])
+			roads.append([Vector3((x0+x1)/2.0,0.012,z),Vector3(x1-x0,0.08,DT_ROAD)])
+			for s in [-1.0,1.0]:
+				curbs.append([Vector3((x0+x1)/2.0,0.062,z+s*(half+0.2)),Vector3(x1-x0,0.12,0.4)])
+			var x := x0+4.0
+			while x < x1-2.0:
+				if not _dt_near_cross(false,x,half+3.0):
+					yellow.append([Vector3(x,0.062,z-0.25),Vector3(4.2,0.02,0.16)])
+					yellow.append([Vector3(x,0.062,z+0.25),Vector3(4.2,0.02,0.16)])
+					for s in [-5.0,5.0]:
+						dashes.append([Vector3(x,0.062,z+s),Vector3(3,0.02,0.18)])
 				x += 8.0
-	roads.append([Vector3(-130,0.013,-50),Vector3(12,0.08,24)])
+	roads.append([Vector3(-140,0.013,-50),Vector3(12,0.08,24)])
 	var poles := []
 	var ns_caps := []
 	var ew_caps := []
@@ -6148,102 +6174,107 @@ func _build_downtown() -> void:
 				continue
 			light_spots.append(Vector3(x,0,z))
 			for s in [-1.0,1.0]:
-				if _dt_has(true,x,z+s*9.0):
-					for k in 7:
-						zebra.append([Vector3(x-4.8+1.6*k,0.065,z+s*8.4),Vector3(0.7,0.02,3.0)])
-				if _dt_has(false,z,x+s*9.0):
-					for k in 7:
-						zebra.append([Vector3(x+s*8.4,0.067,z-4.8+1.6*k),Vector3(3.0,0.02,0.7)])
-			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+7.2,0,z+7.2),PI,true)
-			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-7.2,0,z-7.2),0.0,true)
-			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-7.2,0,z+7.2),PI/2.0,false)
-			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+7.2,0,z-7.2),-PI/2.0,false)
+				if _dt_has(true,x,z+s*(half+2.0)):
+					for k in 12:
+						zebra.append([Vector3(x-8.8+1.6*k,0.065,z+s*(half+2.0)),Vector3(0.7,0.02,3.0)])
+				if _dt_has(false,z,x+s*(half+2.0)):
+					for k in 12:
+						zebra.append([Vector3(x+s*(half+2.0),0.067,z-8.8+1.6*k),Vector3(3.0,0.02,0.7)])
+			var c := half+2.6
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+c,0,z+c),PI,true)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-c,0,z-c),0.0,true)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-c,0,z+c),PI/2.0,false)
+			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+c,0,z-c),-PI/2.0,false)
 	_box_batch(asphalt,roads)
-	_box_batch(line,dashes)
+	_box_batch(Color("f2c230"),yellow)
+	_box_batch(Color("eef0ec"),dashes)
 	_box_batch(Color("eef0ec"),zebra)
-	# Blocks.
+	_box_batch(Color("b3b0a8"),curbs)
+	# Blocks: [model, column 0..5 (east to west), row 0..4 (south to north)].
 	var items := {}
 	var plates := []
-	var plan := [["tower_0",0,0],["tower_2",1,0],["tower_3",2,0],["tower_1",5,0],
-		["police",0,1],["tower_2",1,1],["tower_0",2,1],["tower_3",3,1],["shops",5,1],
-		["tower_1",0,2],["tower_4",1,2],["tower_0",4,2],["tower_2",5,2],
-		["tower_3",0,3],["tower_1",1,3],["garage",4,3],["tower_3",5,3],
-		["shops",0,4],["tower_0",1,4],["tower_2",2,4],["tower_1",3,4],
-		["tower_3",2,5],["shops",3,5]]
+	var plan := [["shops",0,0],["tower_2",1,0],["tower_0",3,0],
+		["police",0,1],["tower_3",1,1],["tower_0",2,1],["tower_1",5,1],
+		["tower_1",0,2],["tower_4",1,2],["tower_2",2,2],["tower_3",5,2],
+		["garage",2,3],["tower_0",3,3],
+		["tower_3",0,4],["shops",1,4],["tower_1",2,4],["tower_2",3,4]]
 	var billboards := []
 	for entry in plan:
-		var c := Vector3(-155.0-50.0*int(entry[1]),0,-125.0-50.0*int(entry[2]))
-		plates.append([c+Vector3(0,0.03,0),Vector3(36,0.06,36)])
+		var c := _dt_block(int(entry[1]),int(entry[2]))
+		plates.append([c+Vector3(0,0.03,0),Vector3(50,0.06,50)])
 		if entry[0] == "shops":
-			_place(items,"shops_0",c+Vector3(0,0,9),0.0)
-			_place(items,"shops_1",c+Vector3(0,0,-9),PI)
-			billboards.append([c+Vector3(0,8.6,9),0.0])
+			_place(items,"shops_0",c+Vector3(0,0,14),0.0,DT_SHOP_SCALE)
+			_place(items,"shops_1",c+Vector3(0,0,-14),PI,DT_SHOP_SCALE)
+			billboards.append([c+Vector3(0,13.0,14),0.0])
+		elif entry[0] == "police":
+			_place(items,"police",c,0.0,1.5)
+		elif entry[0] == "garage":
+			_place(items,"garage",c,0.0,1.6)
 		else:
-			_place(items,entry[0],c,0.0)
-	# Edge rows of shops and garages.
-	for col in 6:
-		var x := -155.0-50.0*col
-		_place(items,"shops_%d" % (col % 2),Vector3(x,0,-80),PI)
-		if col % 2 == 0:
-			billboards.append([Vector3(x,8.6,-80),PI])
-		if col == 2 or col == 4:
-			_place(items,"garage",Vector3(x,0,-422),0.0)
-		else:
-			_place(items,"shops_%d" % ((col+1) % 2),Vector3(x,0,-420),0.0)
+			_place(items,entry[0],c,0.0,DT_TOWER_SCALE)
+	# Shops along the west edge, facing the last avenue.
+	var west_x := (DT_AVES[DT_AVES.size()-1] as float)-half-12.5
+	for z in [-100.0,-180.0,-260.0,-340.0,-420.0]:
+		_place(items,"shops_%d" % (int(-z) % 2),Vector3(west_x,0,z),PI/2.0,DT_SHOP_SCALE)
 	# Landmarks.
-	_place(items,"mall",Vector3(-355,0,-150),PI/2.0,0.9)
+	_place(items,"mall",DT_MALL,0.0,1.35)
 	_place(items,"stadium",STADIUM_POS,0.0,STADIUM_SCALE,false)
 	_build_stadium_walls()
-	_place(items,"station",Vector3(-180,0,-375),0.0)
-	_collider(self,Vector3(-180,2.2,-391.8),Vector3(54,4.4,3.2))
+	_place(items,"station",DT_STATION,0.0,1.4)
+	_collider(self,DT_STATION+Vector3(0,3.1,-16.8*1.4),Vector3(54*1.4,6.2,4.5))
 	for key in items:
 		_model_batch("res://models/%s.glb" % key,items[key])
 	_box_batch(Color("a19c90"),plates)
-	_sign("SKYLINE DISTRICT",Vector3(-117,8.5,-150),Color("ffe9b8"),56)
-	_sign("SKYLINE DISTRICT",Vector3(-117,8.5,-250),Color("ffe9b8"),56)
-	_sign("SKYLINE DISTRICT",Vector3(-130,7.0,-24),Color("ffe9b8"),52)
-	_sign("CITY HALL",Vector3(-155,62,-225),Color("ffe2a8"),72)
-	_sign("HARBOR TOWER",Vector3(-205,94,-225),Color("bff4f0"),80)
-	_sign("POLICE HQ",Vector3(-155,11,-170),Color("cfe2ff"),56)
-	_sign("GRAND MALL",Vector3(-355,17,-150),Color("ffd6e0"),64)
-	_sign("HARBOR STADIUM",STADIUM_POS+Vector3(0,12,27),Color("fff3c9"),64)
-	_sign("UNION STATION",Vector3(-180,13,-375),Color("e8f0ff"),60)
-	_sign("CENTRAL PARK",Vector3(-280,7,-206),Color("d8f5c8"),56)
-	_sign("TIMES PLAZA",Vector3(-305,9,-110),Color("ffe9b8"),56)
-	_build_park()
-	_build_plaza(Vector3(-305,0,-125),billboards)
-	# Street furniture.
+	_sign("SKYLINE DISTRICT",Vector3(-120,8.5,-140),Color("ffe9b8"),56)
+	_sign("SKYLINE DISTRICT",Vector3(-120,8.5,-300),Color("ffe9b8"),56)
+	_sign("SKYLINE DISTRICT",Vector3(-140,7.0,-24),Color("ffe9b8"),52)
+	var b0 := _dt_block(0,2)
+	var b1 := _dt_block(1,2)
+	_sign("CITY HALL",b0+Vector3(0,58*DT_TOWER_SCALE+6.0,0),Color("ffe2a8"),90)
+	_sign("HARBOR TOWER",b1+Vector3(0,98*DT_TOWER_SCALE+8.0,0),Color("bff4f0"),110)
+	_sign("POLICE HQ",_dt_block(0,1)+Vector3(0,16,22),Color("cfe2ff"),60)
+	_sign("GRAND MALL",DT_MALL+Vector3(0,23,10),Color("ffd6e0"),80)
+	_sign("HARBOR STADIUM",STADIUM_POS+Vector3(0,18,44),Color("fff3c9"),80)
+	_sign("UNION STATION",DT_STATION+Vector3(0,20,14),Color("e8f0ff"),72)
+	_sign("CENTRAL PARK",DT_PARK+Vector3(0,7,72),Color("d8f5c8"),64)
+	_sign("TIMES PLAZA",DT_PLAZA+Vector3(0,10,26),Color("ffe9b8"),64)
+	_build_park(DT_PARK,136.0)
+	_build_plaza(DT_PLAZA,billboards,50.0)
+	# Street furniture on the pavements.
 	var lamps := []
 	var trees := []
 	var benches := []
 	var bins := []
 	var hydrants := []
+	var lamp_off := half+1.4
+	var tree_off := half+3.6
 	for x in DT_AVES:
 		for r in _dt_ranges(true,x):
-			var z := float(r[0])+12.0
-			while z < float(r[1])-6.0:
-				if not _dt_near_cross(true,z,10.0):
-					lamps.append([Vector3(x+6.6,0,z),PI])
-					lamps.append([Vector3(x-6.6,0,z+12.5),0.0])
-					if not _dt_near_cross(true,z+6.0,10.0):
-						trees.append([Vector3(x+9.4,0,z+6.0),0.0,0.62])
-						trees.append([Vector3(x-9.4,0,z-6.0),1.0,0.6])
-				z += 25.0
+			var z := float(r[0])+14.0
+			while z < float(r[1])-8.0:
+				if not _dt_near_cross(true,z,half+4.0):
+					lamps.append([Vector3(x+lamp_off,0,z),PI])
+					lamps.append([Vector3(x-lamp_off,0,z+13.0),0.0])
+					if not _dt_near_cross(true,z+6.5,half+4.0):
+						trees.append([Vector3(x+tree_off,0,z+6.5),0.0,0.7])
+						trees.append([Vector3(x-tree_off,0,z-6.5),1.0,0.68])
+				z += 26.0
 	for z in DT_STREETS:
 		for r in _dt_ranges(false,z):
-			var x := float(r[0])+12.0
-			while x < float(r[1])-6.0:
-				if not _dt_near_cross(false,x,10.0):
-					lamps.append([Vector3(x,0,z+6.6),PI/2.0])
-					lamps.append([Vector3(x+12.5,0,z-6.6),-PI/2.0])
-					if not _dt_near_cross(false,x+6.0,10.0):
-						trees.append([Vector3(x+6.0,0,z+9.4),2.0,0.6])
-						trees.append([Vector3(x-6.0,0,z-9.4),3.0,0.62])
-						benches.append([Vector3(x+2.0,0,z+9.6),PI])
-				x += 25.0
+			var x := float(r[0])+14.0
+			while x < float(r[1])-8.0:
+				if not _dt_near_cross(false,x,half+4.0):
+					lamps.append([Vector3(x,0,z+lamp_off),PI/2.0])
+					lamps.append([Vector3(x+13.0,0,z-lamp_off),-PI/2.0])
+					if not _dt_near_cross(false,x+6.5,half+4.0):
+						trees.append([Vector3(x+6.5,0,z+tree_off),2.0,0.68])
+						trees.append([Vector3(x-6.5,0,z-tree_off),3.0,0.7])
+						benches.append([Vector3(x+2.0,0,z+tree_off+0.3),PI])
+				x += 26.0
 	for spot in light_spots:
-		hydrants.append([spot+Vector3(6.9,0,10.5),0.0])
-		bins.append([spot+Vector3(-6.9,0,-10.5),0.0])
+		if (spot as Vector3).x < DT_EAST:
+			hydrants.append([spot+Vector3(half+1.6,0,half+5.0),0.0])
+			bins.append([spot+Vector3(-half-1.6,0,-half-5.0),0.0])
 	_model_batch("res://models/lamp.glb",lamps)
 	_model_batch("res://models/tree_round.glb",trees)
 	_model_batch("res://models/bench.glb",benches)
@@ -6276,26 +6307,15 @@ func _build_downtown() -> void:
 		ad.rotation.y = float(b[1])
 		add_child(ad)
 	_model_batch("res://models/billboard.glb",boards)
-	# Parked cars along the east service strip.
-	var parked := {}
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 1600
-	var z := -70.0
-	while z > -432.0:
-		if not _dt_near_cross(true,z,9.0) and rng.randf() < 0.75:
-			var key := "%d:%d" % [rng.randi() % 5,rng.randi() % TRAFFIC_COLORS.size()]
-			if not parked.has(key):
-				parked[key] = []
-			parked[key].append([Vector3(-117.5,0.8,z),PI/2.0 if rng.randf() < 0.5 else -PI/2.0])
-			_collider(self,Vector3(-117.5,0.8,z),Vector3(4.2,1.3,1.9))
-		z -= 3.4
-	for key in parked:
-		var parts: PackedStringArray = String(key).split(":")
-		var col: Color = TRAFFIC_COLORS[int(parts[1])]
-		_model_batch("res://models/car_%s.glb" % parts[0],parked[key],{"Body":col,"Cabin":col.darkened(0.5)})
 	# Discovery sites.
 	for site in DOWNTOWN:
 		downtown_nodes.append(_downtown_token(site["pos"],site["name"]))
+
+func _dt_block(col: int, row: int) -> Vector3:
+	# Centre of a city block: columns run west from the first avenue, rows run north from the boulevard.
+	var x := float(DT_AVES[col])-DT_BLOCK/2.0
+	var z := -98.0 if row == 0 else (-421.5 if row == 4 else float(DT_STREETS[row-1])-DT_BLOCK/2.0)
+	return Vector3(x,0,z)
 
 func _downtown_token(pos: Vector3, label: String) -> Node3D:
 	var token := Node3D.new()
@@ -6314,27 +6334,28 @@ func _downtown_token(pos: Vector3, label: String) -> Node3D:
 	_box(self,pos+Vector3(0,0.1,0),Vector3(2.4,0.18,2.4),Color("5a2640"))
 	return token
 
-func _build_park() -> void:
-	var c := Vector3(-280,0,-250)
-	_box_batch(Color("74b062"),[[c+Vector3(0,0.035,0),Vector3(86,0.06,86)]])
-	_box_batch(Color("e3cfa3"),[[c+Vector3(0,0.07,0),Vector3(84,0.04,4)],[c+Vector3(0,0.072,0),Vector3(4,0.04,84)]])
-	_box_batch(Color("2f86a8"),[[c+Vector3(22,0.08,22),Vector3(22,0.05,14)]])
+func _build_park(c: Vector3, size: float) -> void:
+	var k := size/86.0
+	var h := size/2.0
+	_box_batch(Color("74b062"),[[c+Vector3(0,0.035,0),Vector3(size,0.06,size)]])
+	_box_batch(Color("e3cfa3"),[[c+Vector3(0,0.07,0),Vector3(size-2.0,0.04,5)],[c+Vector3(0,0.072,0),Vector3(5,0.04,size-2.0)]])
+	_box_batch(Color("2f86a8"),[[c+Vector3(22,0.08,22)*k,Vector3(22,0.05,14)*k]])
 	_prop("res://models/fountain.glb",c,Vector3(14,1.2,14),0.0,Color("b9bcbd"))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2800
 	var trees := []
 	var pines := []
 	var benches := []
-	for gx in range(-39,40,8):
-		for gz in range(-39,40,8):
+	for gx in range(-int(h)+4,int(h)-3,8):
+		for gz in range(-int(h)+4,int(h)-3,8):
 			var p := Vector3(float(gx)+rng.randf_range(-2.0,2.0),0,float(gz)+rng.randf_range(-2.0,2.0))
-			if absf(p.x) < 4.5 or absf(p.z) < 4.5 or p.length() < 12.0:
+			if absf(p.x) < 5.0 or absf(p.z) < 5.0 or p.length() < 12.0:
 				continue
-			if p.x > 9.0 and p.x < 35.0 and p.z > 13.0 and p.z < 31.0:
+			if p.x > 9.0*k and p.x < 35.0*k and p.z > 13.0*k and p.z < 31.0*k:
 				continue
 			if rng.randf() < 0.65:
 				(pines if rng.randf() < 0.3 else trees).append([c+p,rng.randf()*TAU,rng.randf_range(0.8,1.15)])
-	for d in [-30.0,-18.0,18.0,30.0]:
+	for d in [-30.0*k,-18.0*k,18.0*k,30.0*k]:
 		benches.append([c+Vector3(d,0,3.2),PI])
 		benches.append([c+Vector3(3.2,0,d),-PI/2.0])
 	_model_batch("res://models/tree_round.glb",trees)
@@ -6342,19 +6363,20 @@ func _build_park() -> void:
 	_model_batch("res://models/bench.glb",benches)
 	_model_batch("res://models/kiosk.glb",[[c+Vector3(-8,0,6),0.4],[c+Vector3(7,0,-8),2.0]])
 
-func _build_plaza(c: Vector3, billboards: Array) -> void:
-	_box_batch(Color("c9b48c"),[[c+Vector3(0,0.035,0),Vector3(36,0.06,36)]])
+func _build_plaza(c: Vector3, billboards: Array, size := 36.0) -> void:
+	var k := size/36.0
+	_box_batch(Color("c9b48c"),[[c+Vector3(0,0.035,0),Vector3(size,0.06,size)]])
 	var planters := []
 	for a in 8:
 		var ang := TAU*float(a)/8.0
-		planters.append([c+Vector3(cos(ang)*9.0,0,sin(ang)*9.0),0.0])
+		planters.append([c+Vector3(cos(ang)*9.0,0,sin(ang)*9.0)*k,0.0])
 	_model_batch("res://models/planter.glb",planters)
-	_model_batch("res://models/kiosk.glb",[[c+Vector3(-12,0,-12),0.8],[c+Vector3(12,0,12),3.9]])
-	_model_batch("res://models/bench.glb",[[c+Vector3(-6,0,12),0.0],[c+Vector3(6,0,-12),PI]])
-	billboards.append([c+Vector3(-14,0,-15),0.6])
-	billboards.append([c+Vector3(14,0,-15),-0.6])
-	billboards.append([c+Vector3(-15,0,14),2.4])
-	billboards.append([c+Vector3(15,0,14),-2.4])
+	_model_batch("res://models/kiosk.glb",[[c+Vector3(-12,0,-12)*k,0.8],[c+Vector3(12,0,12)*k,3.9]])
+	_model_batch("res://models/bench.glb",[[c+Vector3(-6,0,12)*k,0.0],[c+Vector3(6,0,-12)*k,PI]])
+	billboards.append([c+Vector3(-14,0,-15)*k,0.6])
+	billboards.append([c+Vector3(14,0,-15)*k,-0.6])
+	billboards.append([c+Vector3(-15,0,14)*k,2.4])
+	billboards.append([c+Vector3(15,0,14)*k,-2.4])
 
 # ---------- old city and Bay details ----------
 func _build_city_detail() -> void:
@@ -6615,10 +6637,10 @@ func _smoke_downtown() -> void:
 	assert(downtown_nodes.size() == DOWNTOWN.size(),"Skyline sites built")
 	for site in DOWNTOWN:
 		assert(not _blocked_at((site["pos"] as Vector3)+Vector3(0,1.0,0),0.6),"Skyline site blocked: "+str(site["name"]))
-	for pt in [Vector3(-110.5,1.0,-150),Vector3(-110.5,1.0,-250),Vector3(-130,1.0,-15.5),Vector3(-130,1.0,-61.5),Vector3(-130,1.0,-38)]:
+	for pt in [Vector3(-110.5,1.0,-140),Vector3(-110.5,1.0,-300),Vector3(-140,1.0,-15.5),Vector3(-140,1.0,-61.5),Vector3(-140,1.0,-38)]:
 		assert(not _blocked_at(pt,0.8),"Skyline entrance blocked at %s" % str(pt))
 	# v0.27: the district walls are gone; buildings are still solid.
-	for pt in [Vector3(-205,1.0,-225)]:
+	for pt in [Vector3(-260,1.0,-260),Vector3(-180,1.0,-180),DT_STATION+Vector3(0,1,0)]:
 		assert(_blocked_at(pt,0.3),"Building missing at %s" % str(pt))
 	# Every road lane in the district is drivable (no building or prop collider on it). Traffic is moved aside.
 	blocked_skip_traffic = true
@@ -6626,14 +6648,14 @@ func _smoke_downtown() -> void:
 		for r in _dt_ranges(true,x):
 			var z := float(r[0])+3.0
 			while z < float(r[1])-3.0:
-				for lane in [-3.0,3.0]:
+				for lane in [-6.25,-2.75,2.75,6.25]:
 					assert(not _blocked_at(Vector3(x+lane,1.0,z),0.7),"Avenue blocked at %s by %s" % [str(Vector3(x+lane,0,z)),_blocker(Vector3(x+lane,1.0,z),0.7)])
 				z += 6.0
 	for z in DT_STREETS:
 		for r in _dt_ranges(false,z):
 			var x := float(r[0])+3.0
 			while x < float(r[1])-3.0:
-				for lane in [-3.0,3.0]:
+				for lane in [-6.25,-2.75,2.75,6.25]:
 					assert(not _blocked_at(Vector3(x,1.0,z+lane),0.7),"Street blocked at %s" % str(Vector3(x,0,z+lane)))
 				x += 6.0
 	blocked_skip_traffic = false
@@ -6655,7 +6677,7 @@ func _smoke_downtown() -> void:
 	player.position = was_pos
 	driving = was_driving
 	# Traffic: built, moves, stops at a red light and behind an obstacle.
-	assert(traffic.size() == 32 and light_spots.size() >= 58,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
+	assert(traffic.size() == 33 and light_spots.size() >= 40,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
 	var was_car := car.position
 	var was_clock := clock
 	car.position = Vector3(400,0.8,400)
@@ -6713,18 +6735,18 @@ func _skyline_shots() -> void:
 	# Developer-only: renders the Skyline District and the busier old city. Never saves.
 	driving = true
 	player.hide()
-	car.position = Vector3(-133,0.8,-140)
+	car.position = Vector3(-134,0.8,-160)
 	car.rotation = Vector3.ZERO
 	for i in 200:
 		await get_tree().physics_frame
-	await _skyline_shot("skyline-aerial",Vector3(-260,0,-250),Vector3(-90,140,-40))
-	await _skyline_shot("skyline-street",Vector3(-180,6,-200),Vector3(-122,9,-150))
-	await _skyline_shot("skyline-park",Vector3(-280,0,-250),Vector3(-235,45,-195))
-	await _skyline_shot("skyline-stadium",Vector3(-380,5,-350),Vector3(-320,50,-280))
+	await _skyline_shot("skyline-aerial",Vector3(-400,0,-260),Vector3(-110,170,-20))
+	await _skyline_shot("skyline-street",Vector3(-260,10,-300),Vector3(-140,6,-300))
+	await _skyline_shot("skyline-park",Vector3(-460,0,-220),Vector3(-390,60,-150))
+	await _skyline_shot("skyline-stadium",STADIUM_POS+Vector3(0,5,0),Vector3(-450,75,-290))
 	await _skyline_shot("city-detail",Vector3(0,0,0),Vector3(30,40,45))
 	await _skyline_shot("city-street",Vector3(10,1,-10),Vector3(28,10,10))
 	await _skyline_shot("bay-palms",Vector3(-120,1,0),Vector3(-95,14,22))
-	car.position = Vector3(-230,0.8,-160)
+	car.position = Vector3(-214,0.8,-170)
 	for i in 30:
 		await get_tree().physics_frame
 	_follow_camera(1.0)
@@ -6748,13 +6770,13 @@ func _skyline_shots() -> void:
 	get_tree().quit()
 
 # ---------- v0.17.0: minimap, full map and camera views (Far / Close / In-car) ----------
-const MAP_CENTER := Vector2(85.0,-180.0)
-const MAP_SIZE := 1210.0
+const MAP_CENTER := Vector2(-25.0,-185.0)
+const MAP_SIZE := 1360.0
 const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(0,-370)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-278,-250)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(0,-370)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -7246,13 +7268,13 @@ func _view_shots() -> void:
 		await get_tree().physics_frame
 	await _save_shot("view-incar-city")
 	_shot_stats("view-incar-city")
-	car.position = Vector3(-133,0.8,-112)
+	car.position = Vector3(-134,0.8,-112)
 	car.rotation = Vector3.ZERO
 	for i in 40:
 		await get_tree().physics_frame
 	await _save_shot("view-incar-skyline")
 	_shot_stats("view-incar-skyline")
-	car.position = Vector3(-227,0.8,-330)
+	car.position = Vector3(-214,0.8,-260)
 	car.rotation = Vector3(0,PI,0)
 	for i in 40:
 		await get_tree().physics_frame
@@ -7269,7 +7291,7 @@ func _view_shots() -> void:
 func _smoke_views() -> void:
 	assert(map_tex != null and minimap != null and map_panel != null and view_button != null,"Minimap, map and View button built")
 	assert(_world_to_uv(Vector3(MAP_CENTER.x,0,MAP_CENTER.y)).distance_to(Vector2(0.5,0.5)) < 0.001,"Map centre maps to the middle")
-	assert(_world_to_uv(Vector3(-446,0,-440)).x > 0.0 and _world_to_uv(Vector3(190,0,242)).y < 1.0,"Whole world fits the map")
+	assert(_world_to_uv(Vector3(DT_WEST,0,DT_SOUTH)).x > 0.0 and _world_to_uv(Vector3(190,0,242)).y < 1.0,"Whole world fits the map")
 	_open_map()
 	assert(paused and map_open and map_panel.visible,"Tapping the minimap opens the map")
 	_close_map()
@@ -7569,8 +7591,8 @@ func _levelup_shots() -> void:
 	get_tree().quit()
 
 # ---------- v0.18.0: walk-in stadium ----------
-const STADIUM_POS := Vector3(-380,0,-350)
-const STADIUM_SCALE := 0.92
+const STADIUM_POS := Vector3(-540,0,-381.5)
+const STADIUM_SCALE := 1.45
 const STADIUM_GAP := [20,21]
 
 func _collider_yaw(pos: Vector3, size: Vector3, yaw: float) -> void:
@@ -7696,8 +7718,8 @@ const CHECKPOINTS := [
 	{"name":"North Highway","pos":Vector3(12,0,-72)},
 	{"name":"Maple Suburbs","pos":Vector3(14,0,-228)},
 	{"name":"Harbor Airfield","pos":Vector3(22,0,-312)},
-	{"name":"Central Park","pos":Vector3(-280,0,-270)},
-	{"name":"Union Station","pos":Vector3(-210,0,-360)},
+	{"name":"Central Park","pos":Vector3(-430,0,-206)},
+	{"name":"Union Station","pos":Vector3(-196,0,-317)},
 	{"name":"Marina Heights","pos":Vector3(-10,0,116)},
 	{"name":"Harbor Dome","pos":Vector3(148,0,36)},
 	{"name":"Civic Center","pos":Vector3(-150,0,23)},
@@ -11418,7 +11440,7 @@ func _follow_shots() -> void:
 	player.get_child(0).disabled = false
 	walk_view = 0
 	_apply_view()
-	var spots := [["follow-waterfront",Vector3(4.6,0.75,5.2),PI],["follow-city",Vector3(4,0.75,-12),0.0],["follow-north",Vector3(12,0.75,-72),0.0],["follow-marina",Vector3(0,0.75,160),PI],["follow-skyline",Vector3(-250,0.75,-250),PI/2.0]]
+	var spots := [["follow-waterfront",Vector3(4.6,0.75,5.2),PI],["follow-city",Vector3(4,0.75,-12),0.0],["follow-north",Vector3(12,0.75,-72),0.0],["follow-marina",Vector3(0,0.75,160),PI],["follow-skyline",Vector3(-300,0.75,-250),PI/2.0]]
 	for it: Array in spots:
 		player.position = it[1]
 		player.rotation.y = float(it[2])
@@ -12257,8 +12279,8 @@ const QUICK := [
 	{"task":"Fetch spare parts from the Industrial Quarter","pos":Vector3(16.5,0,-72),"item":"spare parts"},
 	{"task":"Collect a birthday cake in Maple Suburbs","pos":Vector3(18.5,0,-228),"item":"cake"},
 	{"task":"Grab a postcard at Harbor Airfield","pos":Vector3(26.5,0,-312),"item":"postcard"},
-	{"task":"Pick up a train ticket at Union Station","pos":Vector3(-205.5,0,-360),"item":"train ticket"},
-	{"task":"Rescue a kite in Central Park","pos":Vector3(-275.5,0,-270),"item":"kite"},
+	{"task":"Pick up a train ticket at Union Station","pos":Vector3(-240,0,-316),"item":"train ticket"},
+	{"task":"Rescue a kite in Central Park","pos":Vector3(-436,0,-250),"item":"kite"},
 	{"task":"Return library books at Civic Center","pos":Vector3(-145.5,0,23),"item":"books"},
 	{"task":"Collect seashells at Bay Promenade","pos":Vector3(-95.5,0,9),"item":"seashells"},
 	{"task":"Grab an ice cream at Sunset Pier","pos":Vector3(441,0,336),"item":"ice cream"},
@@ -13923,16 +13945,17 @@ const LAND_FILLS := [
 	[186.0,650.0,-40.0,-14.0],
 	[262.0,650.0,-14.0,40.0],
 	[-480.0,650.0,-790.0,-470.0],
+	[-700.0,-480.0,-790.0,-40.0],
 ]
 # New roads joining the districts: [from, to, width].
 const LINK_ROADS := [
 	[Vector2(197,-453),Vector2(197,-23),10.0],
-	[Vector2(-440,-458),Vector2(460,-458),10.0],
+	[Vector2(-660,-458),Vector2(460,-458),10.0],
 	[Vector2(0,-440.5),Vector2(0,-453),10.0],
-	[Vector2(-130,-441),Vector2(-130,-453),10.0],
-	[Vector2(-230,-441),Vector2(-230,-453),10.0],
-	[Vector2(-330,-441),Vector2(-330,-453),10.0],
-	[Vector2(-430,-441),Vector2(-430,-453),10.0],
+	[Vector2(-130,-110),Vector2(-108,-110),8.0],
+	[Vector2(-130,-150),Vector2(-108,-150),8.0],
+	[Vector2(-130,-205),Vector2(-108,-205),8.0],
+	[Vector2(-130,-250),Vector2(-108,-250),8.0],
 	[Vector2(192,-28),Vector2(535,-28),10.0],
 	[Vector2(330,-23),Vector2(330,46),10.0],
 	[Vector2(430,-23),Vector2(430,46),10.0],
@@ -13941,7 +13964,7 @@ const LINK_ROADS := [
 	[Vector2(108,-205),Vector2(192,-205),8.0],
 	[Vector2(108,-300),Vector2(192,-300),8.0],
 	[Vector2(-111.5,-300),Vector2(-107.5,-300),8.0],
-	[Vector2(-446,-56),Vector2(-136,-56),10.0],
+	[Vector2(-660,-56),Vector2(-150,-56),20.0],
 	[Vector2(-300,-51.5),Vector2(-300,-44),10.0],
 	[Vector2(-360,-51.5),Vector2(-360,-44),10.0],
 	[Vector2(-420,-51.5),Vector2(-420,-44),10.0],
@@ -14120,13 +14143,13 @@ const SKY_CARS := 3
 const SKY_CAR_LEN := 13.0
 const SKY_GAP := 0.7
 const SKY_TRAINS := 2
-const SKY_CORNERS := [Vector2(-95,32),Vector2(130,32),Vector2(130,150),Vector2(530,150),Vector2(530,-28),Vector2(197,-28),Vector2(197,-300),Vector2(-330,-300),Vector2(-330,-56),Vector2(-360,-56),Vector2(-360,72),Vector2(-95,72)]
+const SKY_CORNERS := [Vector2(-95,32),Vector2(130,32),Vector2(130,150),Vector2(530,150),Vector2(530,-28),Vector2(197,-28),Vector2(197,-300),Vector2(-300,-300),Vector2(-300,72),Vector2(-95,72)]
 const SKY_STATIONS := [
 	{"name":"Harbor Waterfront","at":Vector2(22,32)},
 	{"name":"Sunset Beach","at":Vector2(380,150)},
 	{"name":"Harbor Raceway","at":Vector2(197,-178)},
 	{"name":"Union Station","at":Vector2(-205,-300)},
-	{"name":"Westside Market","at":Vector2(-330,72)},
+	{"name":"Westside Market","at":Vector2(-300,46)},
 ]
 const TOUR_BONUS := 750
 const TOUR_XP := 150
@@ -14346,7 +14369,8 @@ func _build_skytrain() -> void:
 		var g := Vector3(p.x,0,p.z)
 		var dir := _sky_dir(s)
 		var nrm := Vector3(-dir.z,0,dir.x)
-		var ok := s-last >= 30.0
+		# Only on straight stretches (in the road median); on the curved corners a pillar would land in a lane.
+		var ok := s-last >= 30.0 and maxf(absf(dir.x),absf(dir.z)) > 0.9995 and maxf(absf(_sky_dir(s-6.0).x),absf(_sky_dir(s-6.0).z)) > 0.9995 and maxf(absf(_sky_dir(s+6.0).x),absf(_sky_dir(s+6.0).z)) > 0.9995
 		if ok:
 			for k in [-1.0,1.0]:
 				if _on_road(g+nrm*k*8.5) or _on_road(g+dir*k*9.0) != _on_road(g):
@@ -15212,6 +15236,10 @@ func _city_shots() -> void:
 		["city-night-street",22.0,-1,Vector3(-180,8,-112),Vector3(-260,2,-100)],
 		["coast-road",16.0,-1,Vector3(240,22,-60),Vector3(330,0,-10)],
 		["boulevard",11.0,-1,Vector3(-250,14,-30),Vector3(-330,2,-60)],
+		["dt-street",14.0,-1,Vector3(-152,4,-214),Vector3(-400,10,-222)],
+		["dt-avenue",10.0,-1,Vector3(-136,4,-118),Vector3(-140,14,-440)],
+		["dt-aerial",12.0,-1,Vector3(-130,190,-10),Vector3(-400,0,-270)],
+		["dt-night-avenue",21.5,-1,Vector3(-296,5,-150),Vector3(-300,10,-420)],
 		["airport-terminal",11.0,-1,Vector3(40,30,-420),Vector3(40,4,-500)],
 		["airport-apron",15.0,-1,Vector3(-130,26,-600),Vector3(60,2,-548)],
 		["airport-runway",17.5,-1,Vector3(-330,20,-700),Vector3(0,2,-640)],

@@ -316,3 +316,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Shots: --expand-shots (docs/shots-0.26.0).
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.26.0 (source commit 0925805). APK SHA256 3a418a78f0edd87d21fb8a8f743abc52a3526873dc14643d28d49e39c83faf2a, 31943354 bytes, code 31. Pages run succeeded; live release.json, page and /play show 0.26.0.
 - Not driven across the bridges by hand; not tried on the Fold5 or a real browser.
+
+## v0.26.1 (2026-11-18): full-size houses
+
+- HOUSE_SCALE 2.0 (was 1.3; the house model is small, doors were knee height), HOUSE_STEP 20; rows re-spaced 17 m from road centres. Trophy quest moved to (214,0,-168) inside the Raceway gate; Westside cat to (-368,0,192). Smoke test now also asserts quest rings/items are not inside colliders (_blocked_at). Map re-baked.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.26.1 (source commit 39971c1). APK SHA256 ed8e68cedbe39f74c6b1d1bffe627b79260c9c887991cb496f895a3175b68ea7, 31939258 bytes, code 32. Pages run succeeded; live release.json, page and /play show 0.26.1.
+- Not tried on the Fold5 or a real browser.

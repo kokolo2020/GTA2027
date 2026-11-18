@@ -266,3 +266,14 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Dev shots: `--v23-shots`; saved in docs/shots-0.23.0.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.23.0 (source commit 8889c69). APK SHA256 b6265d73fd8eb083e5b42bb35ad497ac897771f8441b7d5de399f5eb89399872, 31193593 bytes, code 25. Pages run succeeded; live release.json, page and /play show 0.23.0.
 - Smoke test passed on desktop. Not tested on the Fold5.
+
+## v0.24.0 (2026-11-18): quick quests, 20 levels, all towns open, starter crate, QR join code, new sky
+
+- Graphics: ProceduralSky, always-on depth haze ending at camera.far (off for map bake), linear tonemap with saturation 1.16 / contrast 1.1, sun 1.05 with PSSM2 shadows. _material() returns shared world-triplanar noise materials for road (SURF_ASPHALT), grass and pavement colours. Follow view on foot uses the screen arrow (hud_arrow). Pines kept off North Highway cross streets (_near_cross_street); _prop_stretch is height-only now.
+- QR: scripts/make_qr.py (own encoder, version 3-L, needs only Pillow) writes game/map/join_qr.png for https://kokolo2020.github.io/GTA2027/play/?join=1. Verified with CoreImage (swift CIDetector). On web, ?join=1 switches Online on 2 s after boot (_qr_join_check).
+- Starter crate: _open_crate on boot when crate_done is false (also once for existing saves). CRATE_RARITY 60/30/10 -> cars 1/3/4, random paint, cash. Pauses the game while open; _toggle_menu ignored.
+- Quick quests: QUICK (20 stops), quick_on default true, pays 60+0.6*distance (+20 per lap) and 50 bonus XP. Activity cycle quick -> jobs -> explore.
+- Levels: LEVEL_XP has 20 entries; _xp() adds saved bonus_xp (quick quests, +25 per delivery). All towns open unless legacy_rules (set only during the older smoke checks, which expect locks and 5 levels).
+- Smoke test note: a run that fails part-way can leave the desktop test save changed; a backup of the restored test save was kept in the session scratchpad.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.24.0 (source commit a696f8e). APK SHA256 b091fe842e46efd36f7f29f27e53668765a68db66d68d1ab1ea39d59e9eeb7f2, 31218362 bytes, code 26. Pages run succeeded; live release.json, page and /play show 0.24.0.
+- Not tested on the Fold5 or in a real browser (including the QR join flow).

@@ -345,3 +345,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Idle pedestrians placed on a road are moved to the nearest pavement at build (_ped_curb; _curb_spot's player-capsule test always failed at ground level). Traffic edges past a pedestrian who stays in its lane > TRAFFIC_PED_PATIENCE (4 s) via ped_wait/ped_skip on each traffic car. Smoke asserts both.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.27.1 (source commit 64dd401). APK SHA256 1d5ca41519785cbe5e9e879ebb209030323080a7b71eb77603ab976d2c70620a, 31775418 bytes, code 35. Pages run succeeded; live release.json, page and /play show 0.27.1.
 - Not tried on the Fold5 or a real browser.
+
+## v0.28.0 (2026-11-19): Downtown rebuilt big (phase 1 of the big-city rebuild)
+
+- The user asked for the whole city at much bigger scale (wide multi-lane roads, big buildings) and chose a district-by-district rebuild, Downtown first. Next phases: Old City, North Highway, Civic Center, Westside, Marina, Sunset Beach, one at a time.
+- _build_downtown rewritten: DT_AVES x -140..-620 and DT_STREETS z -140..-380 on an 80 m grid (DT_BLOCK), all roads DT_ROAD 20 m (4 lanes, double yellow centre, dashes at +-5, curbs, 12-bar zebras, signals at +-12.6). Gaps for park/stadium/mall/station in DT_AVE_GAPS/DT_STREET_GAPS. Blocks via _dt_block(col,row). Towers x DT_TOWER_SCALE 1.7, shops x1.4, mall 1.35, station 1.4, STADIUM_SCALE 1.45 at (-540,-381.5). Park 136 m, plaza 50 m. Airport Road z -458 is the south (north on screen) street; Westside Boulevard is 20 m.
+- Downtown traffic loops all lane 6.0 (stopline needs lane >= ~5 on 20 m roads); 33 traffic cars total. Downtown sites, checkpoints, quick quests, ped lines, Skyline Dash (lane x -134) moved. Sky-train pillars only on straight stretches (a corner pillar stood in a Civic lane). Map MAP_CENTER (-25,-185), MAP_SIZE 1360, re-baked.
+- Bench: 70 fps, 81 with --web-lite. Shots in docs/shots-0.28.0 (dt-street, dt-avenue, dt-night-avenue, dt-aerial, map).
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.28.0 (source commit 4dd72de). APK SHA256 cc273b8e598c675cdd67c51515b4a4c19a68da3366fe13b4b9c9873309b5f598, 31718074 bytes, code 36. Pages run succeeded; live release.json, page and /play show 0.28.0; downloaded APK hash matches.
+- Not tried on the Fold5 or a real browser. Night tower windows glow as whole glass panels.

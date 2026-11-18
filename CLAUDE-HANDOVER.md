@@ -285,3 +285,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Quests list (top-left Quests button, 8 nearest quick quests, pay from distance), orange quick-quest dots on the minimap, own name tag (Label3D, fixed size), gold ring under you and cyan ring under online players, RUN beside the QR code, feed hidden while menus are open.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.24.1 (source commit 80b22d7). APK SHA256 70dbc98d76abb93c70fd690c52b985f6bb091d165865d810d483cac1870609c0, 31242938 bytes, code 27. Pages run succeeded; live release.json, page and /play show 0.24.1.
 - Not tested on the Fold5 or with real phones online together (FIND ME and shared treasure need that).
+
+## v0.24.2 (2026-11-18): treasure objects, FIND ME off the road
+
+- Treasure: TREASURE_PROPS (6 primitive-built objects) beside the chest, chosen per round by _treasure_prop(cycle); clue names the object. Object visible within 110 m, chest within 35 m, beam in the last 90 s.
+- Road map: _box/_box_batch/_box_batch_rot register thin asphalt boxes in road_rects; _on_road() and _curb_spot() find the nearest non-road open spot. FIND ME moves the hider there on start.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.24.2 (source commit d225d03). APK SHA256 697ae7255bf7426659e4763c59daf2a04823d82cb87c8513295ae34e112ca509, 31247034 bytes, code 28. Pages run succeeded; live release.json and page show 0.24.2.
+- Not tested on the Fold5 or with real phones online together.

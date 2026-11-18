@@ -255,3 +255,14 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.21.0 (tag at dc60
 ## v0.22.0 publication completed by Claude
 
 Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04cae2e). Download page and browser /play rebuilt. Pages deployed; live page and release.json show 0.22.0. Publisher verified the downloaded APK hash.
+
+## v0.23.0 (2026-11-18): RUN, fast travel, roadside job stops, taller trees, new hats
+
+- RUN toggle above the stick (walk 5 m/s, run 9 m/s, faster stride). Travel button under Chat opens FAST TRAVEL: jump with your car to any CHECKPOINTS entry whose area is open (TRAVEL_AREA maps each checkpoint to _area_open), 20 s wait, blocked in races, chases, trials, bus and seats.
+- Delivery stops moved 6.5 m from the road centre onto the pavement (STOP_* constants; PICKUP/DROPOFF updated). Driving reach 6.2 m.
+- _prop_stretch: tree_round 1.3/1.75, tree_pine 1.2/1.6, palm 1.15/1.5, lamp 1.0/1.3 (x/y) in _scatter and _model_batch.
+- Follow view: guide arrow lies small (0.42 scale) on the ground at your feet.
+- Hats rebuilt for the Blender head (hat_holder unscaled, head centre 0.555 above it); box hats kept for the no-model fallback.
+- Dev shots: `--v23-shots`; saved in docs/shots-0.23.0.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.23.0 (source commit 8889c69). APK SHA256 b6265d73fd8eb083e5b42bb35ad497ac897771f8441b7d5de399f5eb89399872, 31193593 bytes, code 25. Pages run succeeded; live release.json, page and /play show 0.23.0.
+- Smoke test passed on desktop. Not tested on the Fold5.

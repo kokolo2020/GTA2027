@@ -241,3 +241,17 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.20.0 (source 295a
 ## v0.21.0 publication completed by Claude
 
 Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.21.0 (tag at dc6034f). Download page and browser /play rebuilt (02ca86e). Pages deployed; live page and release.json show 0.21.0. Publisher verified the downloaded APK hash.
+
+## v0.22.0 Street-level camera, Call Car, new characters — 18 November 2026
+
+- User asked: a close "normal" view when walking (driving keeps the current view as default, user can pick), call the car instead of walking back to it, and much better characters.
+- Walking views are separate from driving views. `walk_view` (WALK_VIEWS Follow/Far/Close/Eye, default 0 Follow); driving still uses `view_mode` (Far/Close/In-car). `_cycle_view` changes the one in use. `eye_view` = walk_view 3 on foot; `follow_view` = walk_view 0 on foot.
+- Follow camera `_follow_walk_camera`: orbit at FOLLOW_DIST 4.6 around player+0.75 using `cam_yaw`/`cam_pitch` (0.05..1.1); ray (mask 1, excludes player, car and traffic) pulls it in at walls. Drag on the right side (`_look`) orbits and sets `cam_hold` 1.5 s; while walking the yaw eases behind the player unless walking back towards the camera. Follow far plane 200, fov 64. When seated it falls back to the old hub zoom.
+- Call Car: the action button reads CALL CAR when on foot and the car is 5 m or more away; `_call_car` / `_call_block_reason` / `_call_spot` (8 candidate spots beside or behind the player, ground ray, box overlap test with mask 1|HUB_CAR_LAYER). Cooldown CALL_COOL 8 s, CALL_COOL_CHASE 45 s as thief. Blocked inside Harbor Dome and inside the raceway outside the lot. Procedural horn `_play_horn`.
+- Characters: blender-src/make_people.py rewritten; person_0..3 (short, long, bun+ponytail, curly), ~3.6–4.3k tris each. New child nodes ShinL/ShinR (knee) under LegL/LegR, ForeArmL/ForeArmR (elbow) under ArmL/ArmR. Fixed materials EyeWhite, Mouth, Sole, Belt. `_pose_person` bends knees and elbows; `_sit_pose` hangs the shins. Peds, Harbor Dome bots and online peers use all 4 variants.
+- Smoke test starts with walk_view 1 (Far) so older steering checks are unchanged; `_smoke_follow_call` covers the follow camera and Call Car. Dev modes --follow-shots and --people-shots (now with a line-up and face close-up). Shots in docs/shots-0.22.0.
+- APK 31185401 bytes, SHA256 40253bcc...34df, code 24. NOT tested on the Fold5, and web performance with the heavier characters not checked.
+
+## v0.22.0 publication completed by Claude
+
+Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04cae2e). Download page and browser /play rebuilt. Pages deployed; live page and release.json show 0.22.0. Publisher verified the downloaded APK hash.

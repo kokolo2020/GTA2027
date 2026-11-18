@@ -1,15 +1,23 @@
 extends Node3D
 ## Harbor City: original single-player driving prototype. No external assets or services.
 
-const PICKUP := Vector3(-32, 0, 26)
-const DROPOFF := Vector3(32, 0, -29)
+# v0.23: job stops sit on the pavement beside the road (6.5 m from the road centre), not in the lanes.
+const PICKUP := Vector3(-25.5, 0, 26)
+const DROPOFF := Vector3(25.5, 0, -22)
+const STOP_PORT := Vector3(-25.5,0,26)
+const STOP_SUNSET := Vector3(25.5,0,-22)
+const STOP_CLOCK := Vector3(6.5,0,-22)
+const STOP_WEST := Vector3(-25.5,0,8)
+const STOP_EAST := Vector3(25.5,0,23)
+const STOP_NORTH := Vector3(-25.5,0,-22)
+const STOP_FERRY := Vector3(6.5,0,44)
 const ROUTES := [
-	{"pickup": Vector3(-32,0,26), "dropoff": Vector3(32,0,-29), "from": "Port Dispatch", "to": "Sunset Market", "pay": 150},
-	{"pickup": Vector3(0,0,-28), "dropoff": Vector3(-32,0,8), "from": "Clocktower", "to": "West Arcade", "pay": 175},
-	{"pickup": Vector3(32,0,23), "dropoff": Vector3(-32,0,-30), "from": "East Gardens", "to": "North Gate", "pay": 225},
-	{"pickup": Vector3(-32,0,-30), "dropoff": Vector3(0,0,46), "from": "North Gate", "to": "Ferry Steps", "pay": 200},
-	{"pickup": Vector3(32,0,-29), "dropoff": Vector3(32,0,23), "from": "Sunset Market", "to": "East Gardens", "pay": 125},
-	{"pickup": Vector3(-32,0,8), "dropoff": Vector3(0,0,-28), "from": "West Arcade", "to": "Clocktower", "pay": 175},
+	{"pickup": STOP_PORT, "dropoff": STOP_SUNSET, "from": "Port Dispatch", "to": "Sunset Market", "pay": 150},
+	{"pickup": STOP_CLOCK, "dropoff": STOP_WEST, "from": "Clocktower", "to": "West Arcade", "pay": 175},
+	{"pickup": STOP_EAST, "dropoff": STOP_NORTH, "from": "East Gardens", "to": "North Gate", "pay": 225},
+	{"pickup": STOP_NORTH, "dropoff": STOP_FERRY, "from": "North Gate", "to": "Ferry Steps", "pay": 200},
+	{"pickup": STOP_SUNSET, "dropoff": STOP_EAST, "from": "Sunset Market", "to": "East Gardens", "pay": 125},
+	{"pickup": STOP_WEST, "dropoff": STOP_CLOCK, "from": "West Arcade", "to": "Clocktower", "pay": 175},
 ]
 const FINDS := [
 	{"name": "Ferry Steps", "pos": Vector3(0,0,46)},
@@ -292,7 +300,7 @@ func _ready() -> void:
 	_load_progress()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots"]:
+	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -304,7 +312,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.22: new street-level camera on foot, and CALL CAR brings your car to you!")
+	_show_toast("Harbor City 0.23: tap RUN to sprint, Travel to jump between districts, and job stops are now on the pavement!")
 	booted = true
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
@@ -332,6 +340,8 @@ func _ready() -> void:
 		await _race_shots()
 	elif "--follow-shots" in OS.get_cmdline_user_args():
 		await _follow_shots()
+	elif "--v23-shots" in OS.get_cmdline_user_args():
+		await _v23_shots()
 	elif "--bake-map" in OS.get_cmdline_user_args():
 		await _bake_map()
 
@@ -876,13 +886,26 @@ func _scatter(path: String, points: Array, smin := 0.85, smax := 1.2, fixed_yaw 
 	for i in points.size():
 		var s := rng.randf_range(smin,smax)
 		var yaw := rng.randf()*TAU if fixed_yaw < 0.0 else fixed_yaw
-		var basis := Basis(Vector3.UP,yaw).scaled(Vector3(s,s,s))
+		var basis := Basis(Vector3.UP,yaw).scaled(Vector3(s,s,s)*_prop_stretch(path))
 		multi.set_instance_transform(i,Transform3D(basis,points[i]))
 	var instance := MultiMeshInstance3D.new()
 	instance.multimesh = multi
 	add_child(instance)
 	model.free()
 	return true
+
+func _prop_stretch(path: String) -> Vector3:
+	# v0.23: with the street-level camera, trees and street lamps looked short. Grow them taller
+	# (and trees a little wider) so you walk under the leaves.
+	if path.contains("tree_round"):
+		return Vector3(1.3,1.75,1.3)
+	if path.contains("tree_pine"):
+		return Vector3(1.2,1.6,1.2)
+	if path.contains("palm"):
+		return Vector3(1.15,1.5,1.15)
+	if path.contains("lamp"):
+		return Vector3(1.0,1.3,1.0)
+	return Vector3.ONE
 
 func _north_token(pos: Vector3, label: String) -> Node3D:
 	var token := Node3D.new()
@@ -1787,22 +1810,79 @@ func _set_hat(index: int) -> void:
 	for child in hat_holder.get_children():
 		child.queue_free()
 	var col: Color = HATS[index]["color"]
+	if player_person.is_empty():
+		# Old box head (no Blender model): simple box hats.
+		match index:
+			1:
+				_box(hat_holder,Vector3(0,0.93,0),Vector3(0.5,0.16,0.5),col)
+				_box(hat_holder,Vector3(0,0.87,-0.3),Vector3(0.46,0.05,0.2),col.darkened(0.25))
+			2:
+				_box(hat_holder,Vector3(0,0.92,0),Vector3(0.72,0.05,0.72),col)
+				_box(hat_holder,Vector3(0,1.14,0),Vector3(0.44,0.42,0.44),col)
+			3:
+				_box(hat_holder,Vector3(0,0.98,0),Vector3(0.58,0.3,0.58),col)
+			4:
+				_box(hat_holder,Vector3(0,0.96,0),Vector3(0.5,0.18,0.5),col)
+		return
+	# v0.23: hats shaped and sized for the Blender head (centre 0.555 above the holder, face towards -Z).
+	var hc := 0.555
 	match index:
 		1:
-			_box(hat_holder,Vector3(0,0.93,0),Vector3(0.5,0.16,0.5),col)
-			_box(hat_holder,Vector3(0,0.87,-0.3),Vector3(0.46,0.05,0.2),col.darkened(0.25))
+			var dome := SphereMesh.new()
+			dome.radius = 0.122
+			dome.height = 0.122
+			dome.is_hemisphere = true
+			dome.radial_segments = 16
+			dome.rings = 6
+			_hat_part(dome,Vector3(0,hc+0.045,0.005),Vector3(1.0,1.05,1.08),col)
+			var brim := CylinderMesh.new()
+			brim.top_radius = 0.085
+			brim.bottom_radius = 0.085
+			brim.height = 0.016
+			brim.radial_segments = 14
+			_hat_part(brim,Vector3(0,hc+0.05,-0.115),Vector3(1.15,1,1.0),col.darkened(0.25))
+			_hat_part(SphereMesh.new(),Vector3(0,hc+0.175,0.005),Vector3(0.03,0.03,0.03),col.darkened(0.25))
 		2:
-			_box(hat_holder,Vector3(0,0.92,0),Vector3(0.72,0.05,0.72),col)
-			_box(hat_holder,Vector3(0,1.14,0),Vector3(0.44,0.42,0.44),col)
-			_box(hat_holder,Vector3(0,0.98,0),Vector3(0.46,0.07,0.46),Color("d33a3a"))
+			_hat_part(_cyl(0.165,0.018),Vector3(0,hc+0.085,0),Vector3.ONE,col)
+			_hat_part(_cyl(0.108,0.2),Vector3(0,hc+0.19,0),Vector3.ONE,col)
+			_hat_part(_cyl(0.111,0.035),Vector3(0,hc+0.112,0),Vector3.ONE,Color("d33a3a"))
 		3:
-			_box(hat_holder,Vector3(0,0.98,0),Vector3(0.58,0.3,0.58),col)
-			_box(hat_holder,Vector3(0,0.88,-0.28),Vector3(0.42,0.1,0.06),Color("23262b"))
+			var shell := SphereMesh.new()
+			shell.radius = 0.142
+			shell.height = 0.142
+			shell.is_hemisphere = true
+			shell.radial_segments = 18
+			shell.rings = 7
+			_hat_part(shell,Vector3(0,hc+0.01,0.005),Vector3(1.0,1.15,1.08),col)
+			_hat_part(_cyl(0.145,0.03),Vector3(0,hc+0.012,0.005),Vector3(1.0,1,1.08),col.darkened(0.2))
+			_hat_part(BoxMesh.new(),Vector3(0,hc+0.075,-0.15),Vector3(0.16,0.035,0.012),Color("23262b"))
 		4:
-			_box(hat_holder,Vector3(0,0.96,0),Vector3(0.5,0.18,0.5),col)
-			for sx in [-0.2,0.2]:
-				for sz in [-0.2,0.2]:
-					_box(hat_holder,Vector3(sx,1.1,sz),Vector3(0.1,0.16,0.1),col)
+			_hat_part(_cyl(0.105,0.07),Vector3(0,hc+0.115,0),Vector3.ONE,col)
+			for k in 6:
+				var a := TAU*float(k)/6.0
+				var spike := PrismMesh.new()
+				spike.size = Vector3(0.06,0.07,0.02)
+				var part := _hat_part(spike,Vector3(sin(a)*0.098,hc+0.185,cos(a)*0.098),Vector3.ONE,col)
+				part.rotation.y = a
+				_hat_part(SphereMesh.new(),Vector3(sin(a)*0.098,hc+0.225,cos(a)*0.098),Vector3(0.022,0.022,0.022),Color("e0434f") if k % 2 == 0 else Color("4fb3e8"))
+
+func _cyl(radius: float, height: float) -> CylinderMesh:
+	var c := CylinderMesh.new()
+	c.top_radius = radius
+	c.bottom_radius = radius
+	c.height = height
+	c.radial_segments = 16
+	c.rings = 1
+	return c
+
+func _hat_part(mesh: Mesh, pos: Vector3, scale_v: Vector3, color: Color) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	m.mesh = mesh
+	m.position = pos
+	m.scale = scale_v
+	m.material_override = _material(color)
+	hat_holder.add_child(m)
+	return m
 
 func _apply_avatar() -> void:
 	shirt_mat.albedo_color = SHIRTS[av_shirt]["color"]
@@ -3000,8 +3080,6 @@ func _build_player() -> void:
 		(player_person["root"] as Node3D).position.y = -0.7
 		shirt_mat = player_person["mats"]["Shirt"]
 		pants_mats.append(player_person["mats"]["Pants"])
-		# Hats were sized for the old box head; shrink them onto the new head.
-		hat_holder.scale = Vector3.ONE*0.65
 		hat_holder.position.y = 0.29
 	camera = Camera3D.new()
 	camera.fov = 55
@@ -3275,6 +3353,7 @@ func _build_hud() -> void:
 	_build_guidance(root)
 	_build_game_panel(root)
 	_build_chat(root)
+	_build_travel(root)
 	_build_feed(root)
 	_build_raceway_ui(root)
 	status_label = _label("",20,Color("fff1c9"))
@@ -3357,7 +3436,7 @@ func _input(event: InputEvent) -> void:
 			# Godot mouse emulation handles only the first finger; dispatch touch UI explicitly.
 			for button: Button in touch_buttons:
 				if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
-					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button))
+					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button))
 					if not paused and in_overlay:
 						continue
 					if paused and not in_overlay:
@@ -3468,7 +3547,7 @@ func _physics_process(delta: float) -> void:
 	elif eye_view:
 		# Eye view: up/down walks forward/back, left/right turns.
 		player.rotation.y -= control.x*2.3*delta
-		var walk := -player.global_basis.z*(-control.y)*(5.0 if control.y < 0.0 else 3.0)
+		var walk := -player.global_basis.z*(-control.y)*(_walk_speed() if control.y < 0.0 else 3.0)
 		player.velocity.x = walk.x
 		player.velocity.z = walk.z
 		player.velocity.y -= 24*delta
@@ -3479,16 +3558,16 @@ func _physics_process(delta: float) -> void:
 		car.velocity.x = move_toward(car.velocity.x,0,delta*20)
 		car.velocity.z = move_toward(car.velocity.z,0,delta*20)
 	else:
-		player.velocity.x = direction.x*5.0
-		player.velocity.z = direction.z*5.0
+		player.velocity.x = direction.x*_walk_speed()
+		player.velocity.z = direction.z*_walk_speed()
 		if direction.length() > 0.08:
 			player.rotation.y = lerp_angle(player.rotation.y,atan2(-direction.x,-direction.z),delta*10)
 		player.velocity.y -= 24*delta
 		player.move_and_slide()
 		var walking := Vector2(player.velocity.x,player.velocity.z).length() > 0.4
 		player_walk = move_toward(player_walk,1.0 if walking else 0.0,delta*6.0)
-		player_phase += delta*9.0*player_walk
-		_pose_person(player_person,player_phase,player_walk)
+		player_phase += delta*(12.5 if run_on else 9.0)*player_walk
+		_pose_person(player_person,player_phase,player_walk*(1.35 if run_on else 1.0))
 		if follow_view:
 			# The camera slowly swings in behind you as you walk (not when you walk back towards it,
 			# and not right after you dragged to look around).
@@ -3649,7 +3728,8 @@ func _interact() -> void:
 		_refresh_hud()
 		return
 	var destination := _destination()
-	var nearby := Vector2(body.position.x-destination.x,body.position.z-destination.z).length() < 4.8
+	var reach := 6.2 if driving and not exploring else 4.8
+	var nearby := Vector2(body.position.x-destination.x,body.position.z-destination.z).length() < reach
 	var find_index := _nearest_find() if exploring else -1
 	if exploring and find_index >= 0 and nearby and not driving:
 		_collect_find(find_index)
@@ -3776,7 +3856,7 @@ func _refresh_hud() -> void:
 		action_button.text = "OPEN " + String(SHOPS[_nearest_shop()]["verb"])
 	elif exploring and index >= 0 and distance < 5 and not driving:
 		action_button.text = "COLLECT TOKEN"
-	elif not exploring and distance < 5:
+	elif not exploring and distance < (6 if driving else 5):
 		action_button.text = "DELIVER +$%d" % int(ROUTES[route_index]["pay"]) if carrying else "PICK UP PARCEL"
 	else:
 		var far_car := not driving and player.position.distance_to(car.position) >= 5.0
@@ -3802,6 +3882,8 @@ func _open_panel(panel: Control) -> void:
 		nick_panel.hide()
 	if rw_panel != null:
 		rw_panel.hide()
+	if travel_panel != null:
+		travel_panel.hide()
 	panel.show()
 	panel.reset_size()
 	_layout_panels()
@@ -3814,6 +3896,8 @@ func _layout_panels() -> void:
 		nick_panel.position = Vector2((view.x-nick_panel.size.x)/2.0,maxf(8.0,(view.y-nick_panel.size.y)/2.0-120.0))
 	if rw_panel != null:
 		rw_panel.position = Vector2((view.x-rw_panel.size.x)/2.0,maxf(8.0,(view.y-rw_panel.size.y)/2.0))
+	if travel_panel != null:
+		travel_panel.position = Vector2((view.x-travel_panel.size.x)/2.0,maxf(8.0,(view.y-travel_panel.size.y)/2.0))
 
 func _toggle_menu() -> void:
 	if shop_kind >= 0:
@@ -3831,6 +3915,8 @@ func _toggle_menu() -> void:
 		nick_panel.hide()
 	if rw_panel != null:
 		rw_panel.hide()
+	if travel_panel != null:
+		travel_panel.hide()
 	if paused:
 		_open_panel(menu)
 	else:
@@ -4164,6 +4250,7 @@ func _radio_refresh() -> void:
 
 func _process(delta: float) -> void:
 	_level_fx_tick(delta)
+	_hud_v23_tick()
 	if radio_station > 0 and radio_streams.has(radio_station):
 		radio_line_time += delta
 		if radio_line_time > 9.0:
@@ -4404,6 +4491,7 @@ func _smoke_test() -> void:
 	_smoke_level_fx()
 	await _smoke_stadium_eye()
 	await _smoke_follow_call()
+	_smoke_travel()
 	_smoke_bus()
 	_smoke_chase_extras()
 	_smoke_models()
@@ -4440,7 +4528,7 @@ func _smoke_test() -> void:
 	checkpoint_id = saved_checkpoint
 	_refresh_checkpoints()
 	_save_progress()
-	print("HARBOR_SMOKE_OK: follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -5664,7 +5752,7 @@ func _model_batch(path: String, items: Array, recolor := {}) -> MultiMeshInstanc
 	for i in items.size():
 		var it: Array = items[i]
 		var s := float(it[2]) if it.size() > 2 else 1.0
-		multi.set_instance_transform(i,Transform3D(Basis(Vector3.UP,float(it[1])).scaled(Vector3(s,s,s)),it[0]))
+		multi.set_instance_transform(i,Transform3D(Basis(Vector3.UP,float(it[1])).scaled(Vector3(s,s,s)*_prop_stretch(path)),it[0]))
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = multi
 	add_child(inst)
@@ -7305,8 +7393,12 @@ func _guidance_tick(delta: float) -> void:
 	var first_person := in_car_view or eye_view
 	guide_arrow.visible = guide_has_target and dist > 6.0 and not first_person
 	if guide_arrow.visible:
-		var lift := 3.0 if driving else 2.3
-		guide_arrow.position = body.position+Vector3(0,lift+sin(clock*3.0)*0.18,0)
+		# v0.23: in the street-level Follow view the arrow lies small on the pavement at your feet,
+		# so it no longer fills the middle of the screen.
+		var ground := follow_view and not driving
+		var lift := 3.0 if driving else (-0.55 if ground else 2.3)
+		guide_arrow.scale = Vector3.ONE*(0.42 if ground else 1.0)
+		guide_arrow.position = body.position+Vector3(0,lift+(0.0 if ground else sin(clock*3.0)*0.18),0)
 		var look := Vector3(guide_target_pos.x,guide_arrow.position.y,guide_target_pos.z)
 		if look.distance_to(guide_arrow.position) > 0.1:
 			guide_arrow.look_at(look,Vector3.UP)
@@ -9072,6 +9164,9 @@ func _relayout_hud() -> void:
 		view_button.position = Vector2(view.x-194,356)
 	if chat_button != null:
 		chat_button.position = Vector2(view.x-194,412)
+	if travel_button != null:
+		travel_button.position = Vector2(view.x-194,480)
+		run_button.position = Vector2(46,view.y-280)
 	if chat_panel != null:
 		chat_panel.position = Vector2(view.x-chat_panel.size.x-212,150)
 	if feed_box != null:
@@ -10968,3 +11063,226 @@ func _follow_shots() -> void:
 	await _save_shot("follow-call-after")
 	get_tree().quit()
 
+
+# ---------- v0.23: RUN toggle and fast travel between districts ----------
+const RUN_SPEED := 9.0
+const WALK_SPEED := 5.0
+# Which area must be open before you can travel to each checkpoint (see _area_open):
+# 0 city, 1 ridge (east), 2 bay (west), 3 north, 4 marina, 5 skyline downtown.
+const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1]
+const TRAVEL_COOL := 20.0
+var run_on := false
+var run_button: Button
+var travel_button: Button
+var travel_panel: PanelContainer
+var travel_info: Label
+var travel_buttons: Array = []
+var travel_ready_at := 0.0
+
+func _walk_speed() -> float:
+	return RUN_SPEED if run_on else WALK_SPEED
+
+func _build_travel(root: Control) -> void:
+	run_button = _button("RUN: OFF",_toggle_run)
+	run_button.custom_minimum_size = Vector2(150,52)
+	run_button.add_theme_font_size_override("font_size",20)
+	root.add_child(run_button)
+	run_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	run_button.position = Vector2(46,root.size.y-280)
+	travel_button = _button("Travel",_open_travel)
+	travel_button.custom_minimum_size = Vector2(170,48)
+	travel_button.add_theme_font_size_override("font_size",20)
+	root.add_child(travel_button)
+	travel_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	travel_button.position = Vector2(root.size.x-194,480)
+	travel_panel = PanelContainer.new()
+	root.add_child(travel_panel)
+	travel_panel.custom_minimum_size = Vector2(760,0)
+	travel_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	var r := VBoxContainer.new()
+	r.add_theme_constant_override("separation",10)
+	travel_panel.add_child(r)
+	r.add_child(_label("FAST TRAVEL",26,Color("f0bd62")))
+	travel_info = _label("",17,Color("cbd8de"))
+	travel_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	travel_info.custom_minimum_size.x = 700
+	r.add_child(travel_info)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation",10)
+	grid.add_theme_constant_override("v_separation",8)
+	r.add_child(grid)
+	for i in CHECKPOINTS.size():
+		var b := _button("",_travel_to.bind(i))
+		b.custom_minimum_size = Vector2(345,46)
+		b.add_theme_font_size_override("font_size",18)
+		travel_buttons.append(b)
+		grid.add_child(b)
+	var back := _button("Close",_close_travel)
+	r.add_child(back)
+	travel_panel.hide()
+
+func _toggle_run() -> void:
+	run_on = not run_on
+	_refresh_run()
+
+func _refresh_run() -> void:
+	if run_button == null:
+		return
+	run_button.text = "RUN: ON" if run_on else "RUN: OFF"
+	var sb := run_button.get_theme_stylebox("normal").duplicate() as StyleBoxFlat
+	sb.bg_color = Color("c9612f") if run_on else Color("213d4f")
+	run_button.add_theme_stylebox_override("normal",sb)
+
+func _hud_v23_tick() -> void:
+	if run_button == null:
+		return
+	var on_foot := not driving and not race_car and seat_id < 0 and not bus_riding and not paused
+	run_button.visible = on_foot
+	travel_button.visible = not paused and not race_car
+
+func _travel_block_reason() -> String:
+	if race_car:
+		return "Finish or quit the race first."
+	if chase_mode != 0 or online_role != 0:
+		return "No fast travel during a chase."
+	if trial_active >= 0:
+		return "Cancel the time trial first."
+	if bus_riding:
+		return "Get off the bus first."
+	if seat_id >= 0:
+		return "Stand up first."
+	var now := Time.get_ticks_msec()/1000.0
+	if now < travel_ready_at:
+		return "Fast travel is ready again in %ds." % int(ceil(travel_ready_at-now))
+	return ""
+
+func _travel_open(i: int) -> bool:
+	return _area_open(int(TRAVEL_AREA[i])) or i == checkpoint_id
+
+func _open_travel() -> void:
+	if not paused:
+		_toggle_menu()
+	_refresh_travel()
+	_open_panel(travel_panel)
+
+func _close_travel() -> void:
+	if paused:
+		_toggle_menu()
+
+func _refresh_travel() -> void:
+	var why := _travel_block_reason()
+	travel_info.text = why if why != "" else "Jump to any district you have opened. Your car comes with you. Locked districts open as you play."
+	for i in CHECKPOINTS.size():
+		var open := _travel_open(i)
+		travel_buttons[i].text = String(CHECKPOINTS[i]["name"]) if open else "%s · LOCKED" % CHECKPOINTS[i]["name"]
+		travel_buttons[i].disabled = not open or why != ""
+
+func _travel_to(i: int) -> void:
+	var why := _travel_block_reason()
+	if why != "" or not _travel_open(i):
+		_show_toast(why if why != "" else "That district is still locked.")
+		return
+	var pos: Vector3 = CHECKPOINTS[i]["pos"]
+	car.position = pos+Vector3(4.5,0.8,0)
+	car.rotation = Vector3.ZERO
+	car.velocity = Vector3.ZERO
+	car_speed = 0.0
+	player.position = pos+Vector3(0,0.75,0)
+	player.velocity = Vector3.ZERO
+	if not driving:
+		player.show()
+		player.get_child(0).set_deferred("disabled",false)
+	travel_ready_at = Time.get_ticks_msec()/1000.0+TRAVEL_COOL
+	if paused:
+		_toggle_menu()
+	_follow_camera(1.0)
+	_show_toast("Welcome to %s!" % CHECKPOINTS[i]["name"])
+	_refresh_hud()
+
+func _smoke_travel() -> void:
+	# RUN makes you faster on foot; fast travel moves you and your car, respects locks and the wait.
+	assert(not run_on and _walk_speed() == WALK_SPEED,"Walking speed by default")
+	_toggle_run()
+	assert(run_on and _walk_speed() == RUN_SPEED and run_button.text == "RUN: ON","RUN toggles on")
+	_toggle_run()
+	assert(not run_on,"RUN toggles off")
+	var was_driving := driving
+	var was_p := player.position
+	var was_c := car.position
+	driving = false
+	travel_ready_at = 0.0
+	_travel_to(0)
+	var cp: Vector3 = CHECKPOINTS[0]["pos"]
+	assert(Vector2(player.position.x-cp.x,player.position.z-cp.z).length() < 0.5 and car.position.distance_to(player.position) < 6.0,"Fast travel moves you and your car")
+	var at := player.position
+	_travel_to(9 if not _travel_open(1) else 0)
+	assert(player.position == at,"Fast travel waits, and locked districts stay locked")
+	for i in CHECKPOINTS.size():
+		assert(i == checkpoint_id or _travel_open(i) == _area_open(int(TRAVEL_AREA[i])),"Travel follows district locks")
+	assert(STOP_CLOCK.x > 4.5 and absf(STOP_WEST.x+32.0) > 4.5,"Job stops are beside the road, not on it")
+	travel_ready_at = 0.0
+	driving = was_driving
+	player.position = was_p
+	car.position = was_c
+
+func _v23_shots() -> void:
+	# Developer-only: roadside job stops, taller trees, hats, RUN and Travel. Never saves.
+	driving = false
+	player.show()
+	player.get_child(0).disabled = false
+	walk_view = 0
+	_apply_view()
+	exploring = false
+	next_job_pending = false
+	carrying = false
+	var stops := [["v23-stop-clock",1,Vector3(0,0.75,-12),PI],["v23-stop-west",5,Vector3(-26,0.75,-6),0.0],["v23-stop-port",0,Vector3(-20,0.75,12),PI*0.75]]
+	for it: Array in stops:
+		route_index = int(it[1])
+		player.position = it[2]
+		var d: Vector3 = _destination()-player.position
+		player.rotation.y = atan2(-d.x,-d.z)
+		cam_yaw = player.rotation.y
+		cam_pitch = 0.3
+		for i in 20:
+			await get_tree().physics_frame
+		_follow_camera(1.0)
+		_refresh_hud()
+		await _save_shot(String(it[0]))
+	# Run on, trees.
+	run_on = true
+	_refresh_run()
+	route_index = 0
+	player.position = Vector3(-6,0.75,30)
+	player.rotation.y = -PI/2.0
+	cam_yaw = player.rotation.y
+	for i in 20:
+		await get_tree().physics_frame
+	_follow_camera(1.0)
+	await _save_shot("v23-trees-run")
+	# Hats on the player, close up from the front.
+	for h in [1,2,3,4]:
+		av_hat = h
+		_apply_avatar()
+		paused = true
+		player.position = Vector3(4.6,0.75,5.2)
+		player.rotation.y = 0.0
+		for i in 3:
+			await get_tree().process_frame
+		camera.position = player.position+Vector3(0.45,0.95,-1.05)
+		camera.look_at(player.position+Vector3(0,0.82,0))
+		await _save_shot("v23-hat-%d" % h)
+		paused = false
+	av_hat = 1
+	_apply_avatar()
+	camera.position = player.position+Vector3(0.7,1.1,1.0)
+	camera.look_at(player.position+Vector3(0,0.82,0))
+	paused = true
+	await _save_shot("v23-hat-back")
+	paused = false
+	# Travel panel.
+	_open_travel()
+	for i in 3:
+		await get_tree().process_frame
+	await _save_shot("v23-travel")
+	get_tree().quit()

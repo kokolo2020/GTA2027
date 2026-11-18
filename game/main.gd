@@ -32,7 +32,7 @@ const FINDS := [
 const CARS := [
 	{"name":"Harbor Blue","price":0,"speed":18.0,"accel":9.0,"turn":3.4,"color":Color("438fd0"),"roof":Color("264d68"),"note":"Reliable starter car"},
 	{"name":"Mint Cruiser","price":500,"speed":21.0,"accel":10.0,"turn":3.9,"color":Color("52c79a"),"roof":Color("21614f"),"note":"Smooth, easy city handling"},
-	{"name":"Ridge Rover","price":1400,"speed":20.0,"accel":12.0,"turn":3.6,"color":Color("e2893a"),"roof":Color("6a3d1c"),"note":"Trail pass: opens the Ridge Gate"},
+	{"name":"Ridge Rover","price":1400,"speed":20.0,"accel":12.0,"turn":3.6,"color":Color("e2893a"),"roof":Color("6a3d1c"),"note":"Tough off-road climber"},
 	{"name":"Coast Runner","price":2600,"speed":25.0,"accel":13.0,"turn":4.3,"color":Color("e3555a"),"roof":Color("5a1f27"),"note":"Fast and sharp through corners"},
 	{"name":"Night Comet","price":4500,"speed":29.0,"accel":15.0,"turn":4.7,"color":Color("7b5bd6"),"roof":Color("2a1f55"),"note":"Top speed, quick grip"},
 	{"name":"Marina GT","price":7500,"speed":32.0,"accel":16.0,"turn":4.9,"color":Color("22b5c9"),"roof":Color("0f4a55"),"note":"Showroom grand tourer","premium":true,"model":4},
@@ -300,7 +300,7 @@ func _ready() -> void:
 	_load_progress()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots"]:
+	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -312,8 +312,10 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.23: tap RUN to sprint, Travel to jump between districts, and job stops are now on the pavement!")
+	_show_toast("Harbor City 0.24: quick quests, 20 levels, every town open, a new sky, and a Scan to play QR code!")
 	booted = true
+	if not dev_mode and not crate_done:
+		_open_crate()
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
 	elif "--shots" in OS.get_cmdline_user_args():
@@ -342,10 +344,66 @@ func _ready() -> void:
 		await _follow_shots()
 	elif "--v23-shots" in OS.get_cmdline_user_args():
 		await _v23_shots()
+	elif "--crate-shots" in OS.get_cmdline_user_args():
+		await _crate_shots()
 	elif "--bake-map" in OS.get_cmdline_user_args():
 		await _bake_map()
 
+const HAZE := Color("c6e1ea")
+# v0.24: big flat surfaces (roads, grass, pavements) get a subtle world-space texture.
+const SURF_ASPHALT := ["354653","4a5560","394552","33383e"]
+const SURF_GRASS := ["91ab82","6f945c","78a06b","6aa35a"]
+const SURF_PAVE := ["8f8d86","9c9a92","b9b6ad","a9a69e","8f8c85","e8d5ad"]
+var surf_mats := {}
+var surf_tex := {}
+
+func _surf_texture(kind: String) -> NoiseTexture2D:
+	if surf_tex.has(kind):
+		return surf_tex[kind]
+	var noise := FastNoiseLite.new()
+	noise.seed = {"asphalt":11,"grass":23,"pave":37}[kind]
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH if kind == "grass" else FastNoiseLite.TYPE_VALUE
+	noise.frequency = {"asphalt":0.35,"grass":0.025,"pave":0.12}[kind]
+	noise.fractal_octaves = 3
+	var tex := NoiseTexture2D.new()
+	tex.width = 256
+	tex.height = 256
+	tex.seamless = true
+	tex.generate_mipmaps = true
+	tex.noise = noise
+	var ramp := Gradient.new()
+	var lo := {"asphalt":0.8,"grass":0.78,"pave":0.86}[kind] as float
+	ramp.set_color(0,Color(lo,lo,lo))
+	ramp.set_color(1,Color(1,1,1))
+	tex.color_ramp = ramp
+	surf_tex[kind] = tex
+	return tex
+
+func _surface_material(color: Color, kind: String) -> StandardMaterial3D:
+	var key := color.to_html(false)
+	if surf_mats.has(key):
+		return surf_mats[key]
+	var mat := StandardMaterial3D.new()
+	var lift := {"asphalt":1.1,"grass":1.12,"pave":1.07}[kind] as float
+	mat.albedo_color = Color(color.r*lift,color.g*lift,color.b*lift)
+	mat.albedo_texture = _surf_texture(kind)
+	mat.uv1_triplanar = true
+	mat.uv1_world_triplanar = true
+	var sc := {"asphalt":0.22,"grass":0.05,"pave":0.4}[kind] as float
+	mat.uv1_scale = Vector3(sc,sc,sc)
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	mat.roughness = 0.95
+	surf_mats[key] = mat
+	return mat
+
 func _material(color: Color) -> StandardMaterial3D:
+	var hex := color.to_html(false)
+	if hex in SURF_ASPHALT:
+		return _surface_material(color,"asphalt")
+	if hex in SURF_GRASS:
+		return _surface_material(color,"grass")
+	if hex in SURF_PAVE:
+		return _surface_material(color,"pave")
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.85
@@ -385,19 +443,49 @@ func _sign(text: String, pos: Vector3, tint := Color.WHITE, font_size := 48) -> 
 func _build_world() -> void:
 	var world_env := WorldEnvironment.new()
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
+	# v0.24 graphics: a real gradient sky with a sun, soft distance haze, colour grading,
+	# stronger sunlight with softer shadows.
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color("3d7cc9")
+	sky_mat.sky_horizon_color = Color("c6e1ea")
+	sky_mat.sky_curve = 0.12
+	sky_mat.ground_bottom_color = Color("6d8f86")
+	sky_mat.ground_horizon_color = Color("c6e1ea")
+	sky_mat.sun_angle_max = 18.0
+	sky_mat.sun_curve = 0.12
+	var sky := Sky.new()
+	sky.sky_material = sky_mat
+	sky.radiance_size = Sky.RADIANCE_SIZE_32
+	env.sky = sky
+	env.background_mode = Environment.BG_SKY
 	env.background_color = Color("82bfc8")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("d4e5f1")
-	env.ambient_light_energy = 0.65
+	env.ambient_light_color = Color("c9dcef")
+	env.ambient_light_energy = 0.55
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	env.tonemap_exposure = 0.94
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.16
+	env.adjustment_contrast = 1.1
+	env.fog_enabled = true
+	env.fog_mode = Environment.FOG_MODE_DEPTH
+	env.fog_light_color = HAZE
+	env.fog_sky_affect = 0.0
+	env.fog_depth_curve = 1.6
+	env.fog_depth_begin = 90.0
+	env.fog_depth_end = 330.0
 	world_env.environment = env
 	world_env_res = env
 	add_child(world_env)
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55, -30, 0)
-	sun.light_color = Color("fff0cd")
-	sun.light_energy = 0.85
+	sun.rotation_degrees = Vector3(-50, -30, 0)
+	sun.light_color = Color("fff1d6")
+	sun.light_energy = 1.05
 	sun.shadow_enabled = true
+	sun.shadow_blur = 1.6
+	sun.shadow_opacity = 0.82
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = 110.0
 	add_child(sun)
 	_box(self, Vector3(0,-0.35,0), Vector3(112,0.6,112), Color("91ab82"), true)
 	_box(self, Vector3(0,-0.65,78), Vector3(230,0.3,55), Color("248caa"))
@@ -503,6 +591,8 @@ func _destination() -> Vector3:
 		return _rw_target()
 	if trial_active >= 0:
 		return TRIALS[trial_active]["cps"][trial_cp]
+	if quick_on:
+		return QUICK[quick_idx]["pos"]
 	if exploring:
 		var index := _nearest_find()
 		if index >= 0:
@@ -533,12 +623,23 @@ func _destination() -> Vector3:
 	return ROUTES[route_index]["dropoff"] if carrying else ROUTES[route_index]["pickup"]
 
 func _toggle_activity() -> void:
-	exploring = not exploring
+	# v0.25: Quick quests -> Delivery jobs -> Exploring -> Quick quests.
+	if quick_on:
+		quick_on = false
+		exploring = false
+	elif not exploring:
+		exploring = true
+	else:
+		exploring = false
+		quick_on = true
 	_save_progress()
 	if paused:
 		_toggle_menu()
 	_refresh_hud()
-	_show_toast("Explore freely. Find glowing blue tokens on foot." if exploring else "Delivery jobs: different routes and payouts. Follow the golden ring.")
+	if quick_on:
+		_show_toast("Quick quests: go to the golden ring, tap PICK UP, get paid. The next one starts right away!")
+	else:
+		_show_toast("Explore freely. Find glowing blue tokens on foot." if exploring else "Delivery jobs: different routes and payouts. Follow the golden ring.")
 
 func _collect_find(index: int) -> void:
 	if found_mask & (1 << index):
@@ -563,7 +664,8 @@ func _owned_count() -> int:
 	return n
 
 func _ridge_open() -> bool:
-	return (owned_mask & 4) != 0
+	# v0.25: every town is open from the start (legacy_rules keeps the old locks for the older tests).
+	return not legacy_rules or (owned_mask & 4) != 0
 
 func _ridge_count() -> int:
 	var n := 0
@@ -671,7 +773,7 @@ func _refresh_tune() -> void:
 		tune_buttons[u].disabled = cost < 0
 
 func _bay_open() -> bool:
-	return _ridge_count() == RIDGE.size()
+	return not legacy_rules or _ridge_count() == RIDGE.size()
 
 func _area_open(area: int) -> bool:
 	return area == 0 or (area == 1 and _ridge_open()) or (area == 2 and _bay_open()) or (area == 3 and _north_open()) or (area == 4 and _marina_open()) or (area == 5 and _downtown_open())
@@ -792,7 +894,7 @@ func _north_count() -> int:
 	return n
 
 func _north_open() -> bool:
-	return _bay_count() >= 3
+	return not legacy_rules or _bay_count() >= 3
 
 func _nearest_north() -> int:
 	var closest := -1
@@ -896,13 +998,14 @@ func _scatter(path: String, points: Array, smin := 0.85, smax := 1.2, fixed_yaw 
 
 func _prop_stretch(path: String) -> Vector3:
 	# v0.23: with the street-level camera, trees and street lamps looked short. Grow them taller
-	# (and trees a little wider) so you walk under the leaves.
+	# (width unchanged) so you walk under the leaves.
+	# Width stays as before so trees keep their old footprint beside the roads.
 	if path.contains("tree_round"):
-		return Vector3(1.3,1.75,1.3)
+		return Vector3(1.0,1.6,1.0)
 	if path.contains("tree_pine"):
-		return Vector3(1.2,1.6,1.2)
+		return Vector3(1.0,1.45,1.0)
 	if path.contains("palm"):
-		return Vector3(1.15,1.5,1.15)
+		return Vector3(1.0,1.4,1.0)
 	if path.contains("lamp"):
 		return Vector3(1.0,1.3,1.0)
 	return Vector3.ONE
@@ -1050,9 +1153,14 @@ func _build_north_landscape() -> void:
 			if side > 0.0 and ((z < -255 and z > -285) or (z < -138 and z > -162)):
 				continue
 			var edge := 102.0+rng.randf_range(0.0,5.0)
-			pines.append(Vector3(side*edge,0,float(z)+rng.randf_range(-2.0,2.0)))
-			if rng.randf() < 0.5 and not (z < -90 and z > -150):
-				pines.append(Vector3(side*(edge-8.0),0,float(z)+rng.randf_range(-3.0,3.0)))
+			var pz := float(z)+rng.randf_range(-2.0,2.0)
+			var inner := rng.randf() < 0.5 and not (z < -90 and z > -150)
+			var iz := float(z)+rng.randf_range(-3.0,3.0)
+			# v0.24: keep the pines off the cross streets that run out to the edge (8 m wide).
+			if not _near_cross_street(pz):
+				pines.append(Vector3(side*edge,0,pz))
+			if inner and not _near_cross_street(iz):
+				pines.append(Vector3(side*(edge-8.0),0,iz))
 	_scatter("res://models/tree_pine.glb",pines,0.9,1.4)
 	var rounds: Array = []
 	for z in [-184.0,-224.0,-232.0,-283.0]:
@@ -1069,6 +1177,12 @@ func _build_north_landscape() -> void:
 	for p in [Vector3(118,0,-262),Vector3(120,0,-278),Vector3(138,0,-264)]:
 		rocks.append(p)
 	_scatter("res://models/rock.glb",rocks,0.8,1.6)
+
+func _near_cross_street(z: float) -> bool:
+	for road_z in [-110.0,-150.0,-205.0,-250.0,-300.0]:
+		if absf(z-road_z) < 8.5:
+			return true
+	return false
 
 func _build_landscape() -> void:
 	# Lamps along the city avenues and pines/rocks around the Ridge approach.
@@ -1259,7 +1373,7 @@ func _online_peer_update(p: Dictionary) -> void:
 	peer["seen"] = Time.get_ticks_msec()/1000.0
 	peer["driving"] = int(p.get("d",1)) == 1
 	peer["role"] = clampi(int(p.get("t",0)),0,2)
-	peer["lvl"] = clampi(int(p.get("l",1)),1,9)
+	peer["lvl"] = clampi(int(p.get("l",1)),1,20)
 	var seat := int(p.get("s",-1))
 	peer["seat"] = seat if seat >= 0 and seat < hub_seats.size() else -1
 	var rc := int(p.get("rc",0)) == 1
@@ -1480,7 +1594,7 @@ var journal_page := 0
 var journal_next: Button
 
 func _marina_open() -> bool:
-	return _level() >= LEVEL_XP.size()
+	return not legacy_rules or _level() >= 5
 
 func _marina_count() -> int:
 	var n := 0
@@ -2047,20 +2161,29 @@ func _journal_flip() -> void:
 	_refresh_journal()
 
 # ---------- v0.12.0: player level (derived from progress, so old saves convert automatically) ----------
-const LEVEL_XP := [0,150,450,900,1500]
+# v0.25: 20 levels, quick to climb early on. Quick quests and delivery jobs add bonus XP on top
+# of the XP that comes from discoveries, trials and missions.
+const LEVEL_XP := [0,100,250,450,700,1000,1350,1750,2200,2700,3250,3850,4500,5200,5950,6750,7600,8500,9450,10450]
+const LEVEL_XP_LEGACY := [0,150,450,900,1500]
 var last_level := 0
+var bonus_xp := 0
+var legacy_rules := false
+
+func _level_table() -> Array:
+	return LEVEL_XP_LEGACY if legacy_rules else LEVEL_XP
 
 func _xp() -> int:
 	var missions := 0
 	for i in MISSIONS.size():
 		if claimed_mask & (1 << i):
 			missions += 1
-	return _find_count()*20+(_civic_count()+_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count())*25+_trial_count()*40+missions*60+mini(deliveries,ROUTES.size())*10
+	return _find_count()*20+(_civic_count()+_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count())*25+_trial_count()*40+missions*60+mini(deliveries,ROUTES.size())*10+(0 if legacy_rules else bonus_xp)
 
 func _level_for(xp: int) -> int:
 	var level := 1
-	for i in LEVEL_XP.size():
-		if xp >= int(LEVEL_XP[i]):
+	var table := _level_table()
+	for i in table.size():
+		if xp >= int(table[i]):
 			level = i+1
 	return level
 
@@ -2070,10 +2193,11 @@ func _level() -> int:
 func _level_text() -> String:
 	var xp := _xp()
 	var lv := _level_for(xp)
-	if lv >= LEVEL_XP.size():
+	var table := _level_table()
+	if lv >= table.size():
 		return "Level %d (MAX)  ·  %d XP" % [lv,xp]
-	var lo := int(LEVEL_XP[lv-1])
-	var hi := int(LEVEL_XP[lv])
+	var lo := int(table[lv-1])
+	var hi := int(table[lv])
 	return "Level %d  %s  %d/%d XP" % [lv,_bar(float(xp-lo),float(hi-lo)),xp-lo,hi-lo]
 
 func _check_level() -> void:
@@ -2085,7 +2209,7 @@ func _check_level() -> void:
 		return
 	if lv > last_level:
 		last_level = lv
-		var extra := " Max level! Marina Heights is open: cross the bridge south of the Ferry Steps." if lv >= LEVEL_XP.size() else ""
+		var extra := " MAX LEVEL! You are a Harbor City legend." if lv >= _level_table().size() else ""
 		_show_toast("LEVEL UP! You are now Level %d.%s" % [lv,extra])
 		_level_up_fx(lv)
 
@@ -3270,6 +3394,7 @@ func _build_hud() -> void:
 	info.custom_minimum_size = Vector2(430,125)
 	info.add_theme_stylebox_override("panel",_panel(Color(0.06,0.13,0.18,0.97)))
 	root.add_child(info)
+	hud_info = info
 	var column := VBoxContainer.new()
 	info.add_child(column)
 	mission_label = _label("HARBOR CITY  /  CITY DISCOVERY",18,Color("8ddacb"))
@@ -3354,6 +3479,7 @@ func _build_hud() -> void:
 	_build_game_panel(root)
 	_build_chat(root)
 	_build_travel(root)
+	_build_qr(root)
 	_build_feed(root)
 	_build_raceway_ui(root)
 	status_label = _label("",20,Color("fff1c9"))
@@ -3436,7 +3562,7 @@ func _input(event: InputEvent) -> void:
 			# Godot mouse emulation handles only the first finger; dispatch touch UI explicitly.
 			for button: Button in touch_buttons:
 				if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
-					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button))
+					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button))
 					if not paused and in_overlay:
 						continue
 					if paused and not in_overlay:
@@ -3599,7 +3725,7 @@ func _physics_process(delta: float) -> void:
 	_online_tick(delta)
 	_check_missions()
 	_check_level()
-	marker.visible = (race_car and rec_act > 0) or trial_active >= 0 or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or _nearest_civic() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0 or (_north_open() and _nearest_north() >= 0) or (_downtown_open() and _nearest_downtown() >= 0) or (_marina_open() and _nearest_marina() >= 0)))
+	marker.visible = (race_car and rec_act > 0) or trial_active >= 0 or quick_on or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or _nearest_civic() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0 or (_north_open() and _nearest_north() >= 0) or (_downtown_open() and _nearest_downtown() >= 0) or (_marina_open() and _nearest_marina() >= 0)))
 	for index in find_nodes.size():
 		find_nodes[index].visible = not bool(found_mask & (1 << index))
 		find_nodes[index].rotation.y += delta
@@ -3721,7 +3847,13 @@ func _interact() -> void:
 		_refresh_hud()
 		return
 	var body: CharacterBody3D = car if driving else player
-	if not exploring and next_job_pending:
+	if quick_on and trial_active < 0:
+		var qd := _destination()
+		if Vector2(body.position.x-qd.x,body.position.z-qd.z).length() < (6.2 if driving else 4.8):
+			_quick_complete()
+			_refresh_hud()
+			return
+	if not exploring and not quick_on and next_job_pending:
 		next_job_pending = false
 		_save_progress()
 		_show_toast("Next job: %s → %s  •  $%d" % [ROUTES[route_index]["from"],ROUTES[route_index]["to"],ROUTES[route_index]["pay"]])
@@ -3733,11 +3865,12 @@ func _interact() -> void:
 	var find_index := _nearest_find() if exploring else -1
 	if exploring and find_index >= 0 and nearby and not driving:
 		_collect_find(find_index)
-	elif not exploring and nearby:
+	elif not exploring and not quick_on and nearby:
 		var route: Dictionary = ROUTES[route_index]
 		if carrying:
 			cash += int(route["pay"])
 			deliveries += 1
+			bonus_xp += 25
 			carrying = false
 			route_index = (route_index+1) % ROUTES.size()
 			next_job_pending = true
@@ -3812,6 +3945,10 @@ func _refresh_hud() -> void:
 		var running: Dictionary = TRIALS[trial_active]
 		mission_label.text = "HARBOR CITY  /  TIME TRIAL"
 		objective.text = "%s  ring %d/%d  ·  %.1fs / par %ds" % [running["name"],trial_cp+1,running["cps"].size(),clock-trial_start,int(running["par"])]
+	if quick_on and trial_active < 0:
+		var q: Dictionary = QUICK[quick_idx]
+		mission_label.text = "HARBOR CITY  /  QUICK QUEST %d" % (quick_done+1)
+		objective.text = "%s  ·  %dm" % [q["task"],distance]
 	mission_label.text += "  ·  LV %d" % _level()
 	balance_label.text = "$%d  ·  %d/8 finds  ·  %d/%d sites  ·  %d jobs" % [cash,count,_civic_count()+_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count(),CIVIC.size()+RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size()+DOWNTOWN.size(),deliveries]
 	var offset: Vector3 = destination-body.position
@@ -3850,18 +3987,20 @@ func _refresh_hud() -> void:
 		action_button.disabled = bus_dwell <= 0.0
 	elif _bus_near() and _nearest_shop() < 0:
 		action_button.text = "BOARD BUS  $%d" % BUS_FARE
-	elif not exploring and next_job_pending:
+	elif not exploring and not quick_on and next_job_pending:
 		action_button.text = "NEXT JOB"
 	elif _nearest_shop() >= 0:
 		action_button.text = "OPEN " + String(SHOPS[_nearest_shop()]["verb"])
-	elif exploring and index >= 0 and distance < 5 and not driving:
+	elif quick_on and trial_active < 0 and distance < (6 if driving else 5):
+		action_button.text = "PICK UP  +$%d" % _quick_pay(quick_idx)
+	elif exploring and not quick_on and index >= 0 and distance < 5 and not driving:
 		action_button.text = "COLLECT TOKEN"
-	elif not exploring and distance < (6 if driving else 5):
+	elif not exploring and not quick_on and distance < (6 if driving else 5):
 		action_button.text = "DELIVER +$%d" % int(ROUTES[route_index]["pay"]) if carrying else "PICK UP PARCEL"
 	else:
 		var far_car := not driving and player.position.distance_to(car.position) >= 5.0
 		action_button.text = "EXIT CAR" if driving else ("CALL CAR" if far_car else "ENTER CAR")
-	mode_button.text = "Switch to delivery jobs" if exploring else "Switch to exploring"
+	mode_button.text = "Switch to delivery jobs" if quick_on else ("Switch to quick quests" if exploring else "Switch to exploring")
 	_rw_hud()
 	_refresh_nick_button()
 	var discovered: PackedStringArray = []
@@ -3900,6 +4039,8 @@ func _layout_panels() -> void:
 		travel_panel.position = Vector2((view.x-travel_panel.size.x)/2.0,maxf(8.0,(view.y-travel_panel.size.y)/2.0))
 
 func _toggle_menu() -> void:
+	if crate_open:
+		return
 	if shop_kind >= 0:
 		shop_kind = -1
 		_apply_car()
@@ -3991,11 +4132,23 @@ func _save_progress() -> void:
 	file.set_value("progress","car_paint",car_paint)
 	file.set_value("progress","av_look",[av_shirt,av_pants,av_hat])
 	file.set_value("progress","av_own",av_own)
+	file.set_value("progress","crate_done",crate_done)
+	file.set_value("progress","bonus_xp",bonus_xp)
+	file.set_value("progress","quick_on",quick_on)
+	file.set_value("progress","quick_idx",quick_idx)
+	file.set_value("progress","quick_done",quick_done)
 	file.save(SAVE_PATH)
 
 func _load_progress() -> void:
 	var file := ConfigFile.new()
 	if file.load(SAVE_PATH) == OK:
+		crate_done = bool(file.get_value("progress","crate_done",false))
+		bonus_xp = maxi(0,int(file.get_value("progress","bonus_xp",0)))
+		quick_on = bool(file.get_value("progress","quick_on",true))
+		quick_idx = posmod(int(file.get_value("progress","quick_idx",0)),QUICK.size())
+		quick_done = maxi(0,int(file.get_value("progress","quick_done",0)))
+		if legacy_rules:
+			quick_on = false
 		cash = maxi(0,int(file.get_value("progress","cash",0)))
 		deliveries = maxi(0,int(file.get_value("progress","deliveries",0)))
 		found_mask = int(file.get_value("progress","found_mask",0)) & 255
@@ -4367,6 +4520,11 @@ func _smoke_test() -> void:
 	# Exercise the actual mission and driving transitions; preserve the player's save.
 	var saved_checkpoint := checkpoint_id
 	checkpoint_id = -1
+	# The older checks were written for the locked towns, 5 levels and no quick quests.
+	legacy_rules = true
+	var saved_quick := [quick_on,quick_idx,quick_done,bonus_xp]
+	quick_on = false
+	_update_gate()
 	# Older checks steer on foot with the fixed far camera; the follow camera has its own test.
 	walk_view = 1
 	_apply_view()
@@ -4492,9 +4650,18 @@ func _smoke_test() -> void:
 	await _smoke_stadium_eye()
 	await _smoke_follow_call()
 	_smoke_travel()
+	_smoke_qr()
+	_smoke_crate()
 	_smoke_bus()
 	_smoke_chase_extras()
 	_smoke_models()
+	legacy_rules = false
+	_update_gate()
+	quick_on = saved_quick[0]
+	quick_idx = saved_quick[1]
+	quick_done = saved_quick[2]
+	bonus_xp = saved_quick[3]
+	_smoke_quick()
 	cash = original_cash
 	deliveries = original_deliveries
 	found_mask = original_mask
@@ -4528,7 +4695,7 @@ func _smoke_test() -> void:
 	checkpoint_id = saved_checkpoint
 	_refresh_checkpoints()
 	_save_progress()
-	print("HARBOR_SMOKE_OK: RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: quick quests, 20 levels, all towns open, starter crate, QR join code, graphics, RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -6776,11 +6943,12 @@ func _apply_view() -> void:
 	if hat_holder != null:
 		hat_holder.visible = not eye_view
 	if world_env_res != null:
-		world_env_res.fog_enabled = close_up
+		# Haze always on, ending at the far clip so the city fades into the sky instead of popping.
+		world_env_res.fog_enabled = true
 		world_env_res.fog_mode = Environment.FOG_MODE_DEPTH
-		world_env_res.fog_light_color = Color("82bfc8")
-		world_env_res.fog_depth_begin = 60.0
-		world_env_res.fog_depth_end = 146.0
+		world_env_res.fog_light_color = HAZE
+		world_env_res.fog_depth_begin = 60.0 if close_up else (75.0 if follow_view else 120.0)
+		world_env_res.fog_depth_end = camera.far-4.0
 		world_env_res.fog_density = 1.0
 	if cockpit != null:
 		cockpit.visible = in_car_view
@@ -6818,6 +6986,8 @@ func _bake_map() -> void:
 	camera.size = MAP_SIZE
 	camera.near = 1.0
 	camera.far = 600.0
+	if world_env_res != null:
+		world_env_res.fog_enabled = false
 	camera.global_transform = Transform3D(Basis.from_euler(Vector3(-PI/2.0,0,0)),Vector3(MAP_CENTER.x,300,MAP_CENTER.y))
 	for i in 8:
 		await get_tree().process_frame
@@ -7053,7 +7223,7 @@ func _fx_material(color: Color, alpha: float) -> StandardMaterial3D:
 func _level_up_fx(lv: int) -> void:
 	# Banner.
 	if lvl_root != null:
-		lvl_sub.text = ("You reached Level %d (MAX)\nMarina Heights is open!" % lv) if lv >= LEVEL_XP.size() else "You are now Level %d" % lv
+		lvl_sub.text = ("You reached Level %d (MAX)\nHarbor City legend!" % lv) if lv >= _level_table().size() else "You are now Level %d" % lv
 		lvl_root.show()
 		lvl_root.scale = Vector2(0.25,0.25)
 		lvl_root.modulate = Color(1,1,1,0)
@@ -7150,7 +7320,7 @@ func _smoke_level_fx() -> void:
 	assert(lvl_root.visible and lvl_sub.text.contains("Level 3"),"Level-up banner shows")
 	assert(get_child_count() == before+1,"Level-up world effect spawned")
 	_level_up_fx(5)
-	assert(lvl_sub.text.contains("MAX") and lvl_sub.text.contains("Marina"),"Max level banner mentions Marina")
+	assert(lvl_sub.text.contains("MAX") and lvl_sub.text.contains("legend"),"Max level banner shows")
 	assert(_level_sound().data.size() > 40000,"Level-up jingle generated")
 
 func _levelup_shots() -> void:
@@ -7390,15 +7560,14 @@ func _guidance_tick(delta: float) -> void:
 	if guide_has_target:
 		guide_target_pos = target
 		dist = Vector2(guide_target_pos.x-body.position.x,guide_target_pos.z-body.position.z).length()
-	var first_person := in_car_view or eye_view
+	# v0.24: the street-level Follow view uses the screen arrow too (a 3D arrow there either
+	# fills the screen or hides behind your character).
+	var first_person := in_car_view or eye_view or (follow_view and not driving)
 	guide_arrow.visible = guide_has_target and dist > 6.0 and not first_person
 	if guide_arrow.visible:
-		# v0.23: in the street-level Follow view the arrow lies small on the pavement at your feet,
-		# so it no longer fills the middle of the screen.
-		var ground := follow_view and not driving
-		var lift := 3.0 if driving else (-0.55 if ground else 2.3)
-		guide_arrow.scale = Vector3.ONE*(0.42 if ground else 1.0)
-		guide_arrow.position = body.position+Vector3(0,lift+(0.0 if ground else sin(clock*3.0)*0.18),0)
+		var lift := 3.0 if driving else 2.3
+		guide_arrow.scale = Vector3.ONE
+		guide_arrow.position = body.position+Vector3(0,lift+sin(clock*3.0)*0.18,0)
 		var look := Vector3(guide_target_pos.x,guide_arrow.position.y,guide_target_pos.z)
 		if look.distance_to(guide_arrow.position) > 0.1:
 			guide_arrow.look_at(look,Vector3.UP)
@@ -11140,6 +11309,9 @@ func _hud_v23_tick() -> void:
 	var on_foot := not driving and not race_car and seat_id < 0 and not bus_riding and not paused
 	run_button.visible = on_foot
 	travel_button.visible = not paused and not race_car
+	if qr_small != null:
+		qr_small.position = Vector2(24,hud_info.position.y+hud_info.size.y+10)
+		qr_small.visible = not paused and qr_show and not qr_big.visible
 
 func _travel_block_reason() -> String:
 	if race_car:
@@ -11280,9 +11452,629 @@ func _v23_shots() -> void:
 	paused = true
 	await _save_shot("v23-hat-back")
 	paused = false
+	# v0.24: the North Highway edge where pines used to stand on the cross street.
+	for spot: Array in [["v24-pines-110",Vector3(-88,0.8,-110)],["v24-pines-150",Vector3(-88,0.8,-150)]]:
+		driving = true
+		player.hide()
+		car.position = spot[1]
+		car.rotation.y = PI/2.0
+		view_mode = 0
+		_apply_view()
+		for i in 20:
+			await get_tree().physics_frame
+		_follow_camera(1.0)
+		await _save_shot(String(spot[0]))
+	driving = false
+	player.show()
+	_apply_view()
+	# v0.24 QR code, small and enlarged.
+	route_index = 0
+	player.position = Vector3(4.6,0.75,5.2)
+	player.rotation.y = PI
+	cam_yaw = PI
+	for i in 15:
+		await get_tree().physics_frame
+	_follow_camera(1.0)
+	await _save_shot("v24-qr-small")
+	qr_big.show()
+	await _save_shot("v24-qr-big")
+	qr_big.hide()
 	# Travel panel.
 	_open_travel()
 	for i in 3:
 		await get_tree().process_frame
 	await _save_shot("v23-travel")
 	get_tree().quit()
+
+# ---------- v0.24: "Scan to play" QR code (opens the browser version and turns Online on) ----------
+const JOIN_URL := "https://kokolo2020.github.io/GTA2027/play/?join=1"
+var hud_info: Control
+var qr_small: Button
+var qr_big: Button
+var qr_show := true
+
+func _build_qr(root: Control) -> void:
+	if not ResourceLoader.exists("res://map/join_qr.png"):
+		return
+	var tex: Texture2D = load("res://map/join_qr.png")
+	qr_small = _qr_button(tex,108,"SCAN TO PLAY")
+	root.add_child(qr_small)
+	qr_small.pressed.connect(func(): qr_big.show())
+	qr_big = _qr_button(tex,420,"Scan with your phone camera to play Harbor City in the browser and join online.\nTap to close.")
+	root.add_child(qr_big)
+	qr_big.pressed.connect(func(): qr_big.hide())
+	qr_big.hide()
+	get_viewport().size_changed.connect(_qr_layout)
+	_qr_layout()
+	if OS.has_feature("web"):
+		get_tree().create_timer(2.0).timeout.connect(_qr_join_check)
+
+func _qr_button(tex: Texture2D, side: int, caption: String) -> Button:
+	var b := Button.new()
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	var card := PanelContainer.new()
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := _panel(Color("fbfbf7"),14 if side < 200 else 24)
+	var pad := 6 if side < 200 else 14
+	sb.content_margin_left = pad
+	sb.content_margin_right = pad
+	sb.content_margin_top = pad
+	sb.content_margin_bottom = 4
+	card.add_theme_stylebox_override("panel",sb)
+	b.add_child(card)
+	var col := VBoxContainer.new()
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_theme_constant_override("separation",4)
+	card.add_child(col)
+	var img := TextureRect.new()
+	img.texture = tex
+	img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	img.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	img.custom_minimum_size = Vector2(side,side)
+	col.add_child(img)
+	var l := _label(caption,13 if side < 200 else 19,Color("132b3a"))
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = side
+	col.add_child(l)
+	card.reset_size()
+	b.custom_minimum_size = card.get_combined_minimum_size()
+	b.size = b.custom_minimum_size
+	touch_buttons.append(b)
+	return b
+
+func _qr_layout() -> void:
+	if qr_big == null:
+		return
+	var view := get_viewport().get_visible_rect().size
+	qr_big.position = (view-qr_big.size)/2.0
+
+func _qr_join_check() -> void:
+	# Opened from the QR code (…/play/?join=1): switch Online on straight away.
+	var search = JavaScriptBridge.eval("window.location.search",true)
+	if typeof(search) == TYPE_STRING and String(search).contains("join=1") and not online_on:
+		_online_toggle()
+
+func _smoke_qr() -> void:
+	assert(qr_small != null and qr_big != null and not qr_big.visible,"QR code built, big view closed")
+	qr_small.pressed.emit()
+	assert(qr_big.visible,"Tapping the QR code enlarges it")
+	qr_big.pressed.emit()
+	assert(not qr_big.visible,"Tapping the big QR code closes it")
+
+# ---------- v0.24: starter crate (new players) / welcome-back crate (one time for existing saves) ----------
+# Free, earned in game, never bought. Rarity picks the car; the paint is random; cash comes on top.
+const CRATE_RARITY := [
+	{"name":"COMMON","chance":0.6,"car":1,"bonus":[100,250],"color":Color("9fb7c4")},
+	{"name":"RARE","chance":0.3,"car":3,"bonus":[250,400],"color":Color("4fa3ff")},
+	{"name":"EPIC","chance":0.1,"car":4,"bonus":[400,500],"color":Color("c27cff")},
+]
+const CRATE_START_CASH := 1000
+var crate_done := false
+var crate_open := false
+var crate_root: Control
+var crate_buttons: Array = []
+var crate_card: PanelContainer
+var crate_title: Label
+var crate_reward := {}
+var crate_new_player := false
+var crate_cash_label: Label
+var crate_car_draw: Control
+var crate_drive: Button
+
+func _crate_roll(rng: RandomNumberGenerator, new_player: bool) -> Dictionary:
+	var roll := rng.randf()
+	var tier := 0
+	var acc := 0.0
+	for i in CRATE_RARITY.size():
+		acc += float(CRATE_RARITY[i]["chance"])
+		if roll < acc:
+			tier = i
+			break
+	var r: Dictionary = CRATE_RARITY[tier]
+	var bonus := rng.randi_range(int(r["bonus"][0]),int(r["bonus"][1]))
+	var car := int(r["car"])
+	var already := (owned_mask & (1 << car)) != 0
+	return {"tier":tier,"car":car,"paint":rng.randi_range(1,PAINTS.size()-1),"bonus":bonus,
+		"cash":(CRATE_START_CASH if new_player else 0)+bonus+(500 if already else 0),"already":already}
+
+func _open_crate() -> void:
+	crate_new_player = deliveries == 0 and owned_mask == 1 and found_mask == 0
+	crate_open = true
+	paused = true
+	stick = Vector2.ZERO
+	if crate_root == null:
+		_build_crate_ui()
+	crate_card.hide()
+	for b: Button in crate_buttons:
+		b.show()
+		b.modulate = Color.WHITE
+		b.scale = Vector2.ONE
+		b.rotation = 0.0
+		b.disabled = false
+	crate_title.text = "PICK YOUR STARTER CRATE" if crate_new_player else "WELCOME BACK! PICK A FREE CRATE"
+	crate_root.show()
+
+func _build_crate_ui() -> void:
+	crate_root = Control.new()
+	crate_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	crate_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	hud.add_child(crate_root)
+	var dim := ColorRect.new()
+	dim.color = Color(0.03,0.07,0.1,0.86)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crate_root.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crate_root.add_child(center)
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation",22)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.add_child(col)
+	crate_title = _label("",38,Color("f0bd62"))
+	crate_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(crate_title)
+	var sub := _label("Each crate holds a car, a paint job and cash. Tap one!",20,Color("cbd8de"))
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(sub)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation",34)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(row)
+	var tints := [Color("b07a3e"),Color("a0643a"),Color("b8873e")]
+	for i in 3:
+		var b := Button.new()
+		b.text = "?"
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(190,190)
+		b.add_theme_font_size_override("font_size",84)
+		b.add_theme_color_override("font_color",Color("fff3d0"))
+		for state in ["normal","hover","pressed","disabled"]:
+			var sb := StyleBoxFlat.new()
+			sb.bg_color = (tints[i] as Color).lightened(0.12 if state == "hover" else 0.0)
+			sb.set_corner_radius_all(16)
+			sb.set_border_width_all(10)
+			sb.border_color = Color("5c3a1c")
+			sb.shadow_color = Color(0,0,0,0.45)
+			sb.shadow_size = 10
+			b.add_theme_stylebox_override(state,sb)
+		b.pressed.connect(_crate_pick.bind(i))
+		touch_buttons.append(b)
+		crate_buttons.append(b)
+		row.add_child(b)
+	# Reveal card (hidden until a crate opens).
+	crate_card = PanelContainer.new()
+	crate_card.add_theme_stylebox_override("panel",_panel(Color("132b3a"),26))
+	col.add_child(crate_card)
+	var cc := VBoxContainer.new()
+	cc.add_theme_constant_override("separation",8)
+	crate_card.add_child(cc)
+	var badge := _label("",26,Color.WHITE)
+	badge.name = "Badge"
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cc.add_child(badge)
+	crate_car_draw = Control.new()
+	crate_car_draw.custom_minimum_size = Vector2(520,170)
+	crate_car_draw.draw.connect(_crate_draw_car)
+	cc.add_child(crate_car_draw)
+	var name_l := _label("",34,Color("fff5dc"))
+	name_l.name = "CarName"
+	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cc.add_child(name_l)
+	var paint_l := _label("",20,Color("cbd8de"))
+	paint_l.name = "Paint"
+	paint_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cc.add_child(paint_l)
+	crate_cash_label = _label("",36,Color("7ee08a"))
+	crate_cash_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cc.add_child(crate_cash_label)
+	crate_drive = _button("DRIVE IT!",_crate_drive)
+	crate_drive.add_theme_font_size_override("font_size",28)
+	for state in ["normal","hover","pressed"]:
+		var sb := _panel(Color("f0bd62") if state != "pressed" else Color("d9a24a"),18)
+		crate_drive.add_theme_stylebox_override(state,sb)
+	crate_drive.add_theme_color_override("font_color",Color("132b3a"))
+	crate_drive.add_theme_color_override("font_hover_color",Color("132b3a"))
+	cc.add_child(crate_drive)
+	crate_card.hide()
+
+func _crate_pick(i: int) -> void:
+	if crate_reward.has("picked") or not crate_open:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	crate_reward = _crate_roll(rng,crate_new_player)
+	crate_reward["picked"] = i
+	for k in crate_buttons.size():
+		var b: Button = crate_buttons[k]
+		b.disabled = true
+		if k != i:
+			create_tween().tween_property(b,"modulate:a",0.0,0.25)
+	var chosen: Button = crate_buttons[i]
+	chosen.pivot_offset = chosen.size/2.0
+	var tw := create_tween()
+	for n in 6:
+		tw.tween_property(chosen,"rotation",0.14 if n % 2 == 0 else -0.14,0.07)
+	tw.tween_property(chosen,"rotation",0.0,0.05)
+	tw.tween_property(chosen,"scale",Vector2(1.25,1.25),0.18)
+	tw.parallel().tween_property(chosen,"modulate",Color(3,3,3,1),0.18)
+	tw.tween_callback(_crate_reveal)
+	_crate_sound(false)
+
+func _crate_reveal() -> void:
+	for b: Button in crate_buttons:
+		b.hide()
+	var tier: Dictionary = CRATE_RARITY[int(crate_reward["tier"])]
+	var spec: Dictionary = CARS[int(crate_reward["car"])]
+	var paint: Dictionary = PAINTS[int(crate_reward["paint"])]
+	var badge := crate_card.find_child("Badge",true,false) as Label
+	badge.text = "★ %s ★" % tier["name"]
+	badge.add_theme_color_override("font_color",tier["color"])
+	(crate_card.find_child("CarName",true,false) as Label).text = String(spec["name"]).to_upper()
+	(crate_card.find_child("Paint",true,false) as Label).text = "%s paint  •  %s%s" % [paint["name"],spec["note"],"\nAlready in your garage: +$500 extra" if crate_reward["already"] else ""]
+	crate_card.show()
+	crate_card.modulate.a = 0.0
+	crate_card.pivot_offset = crate_card.size/2.0
+	crate_card.scale = Vector2(0.6,0.6)
+	var tw := create_tween()
+	tw.tween_property(crate_card,"modulate:a",1.0,0.2)
+	tw.parallel().tween_property(crate_card,"scale",Vector2.ONE,0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var total := int(crate_reward["cash"])
+	var count := func(v: float): crate_cash_label.text = "+$%d" % int(v)
+	tw.tween_method(count,0.0,float(total),1.1)
+	crate_car_draw.queue_redraw()
+	_crate_confetti(tier["color"])
+	_crate_sound(true)
+
+func _crate_draw_car() -> void:
+	if crate_reward.is_empty():
+		return
+	var c: Color = PAINTS[int(crate_reward["paint"])]["color"]
+	var w := crate_car_draw.size.x
+	var o := Vector2(w/2.0-190,20)
+	var body := PackedVector2Array([o+Vector2(0,100),o+Vector2(8,62),o+Vector2(70,52),o+Vector2(120,10),o+Vector2(255,10),o+Vector2(310,52),o+Vector2(372,62),o+Vector2(380,100)])
+	crate_car_draw.draw_colored_polygon(body,c)
+	crate_car_draw.draw_polyline(body+PackedVector2Array([body[0]]),c.darkened(0.45),4.0,true)
+	var glass := PackedVector2Array([o+Vector2(132,20),o+Vector2(185,20),o+Vector2(185,52),o+Vector2(92,52)])
+	crate_car_draw.draw_colored_polygon(glass,Color("2a3d4f"))
+	var glass2 := PackedVector2Array([o+Vector2(197,20),o+Vector2(248,20),o+Vector2(290,52),o+Vector2(197,52)])
+	crate_car_draw.draw_colored_polygon(glass2,Color("2a3d4f"))
+	for wx in [85.0,295.0]:
+		crate_car_draw.draw_circle(o+Vector2(wx,102),30,Color("1c2228"))
+		crate_car_draw.draw_circle(o+Vector2(wx,102),14,Color("b9c2c9"))
+	crate_car_draw.draw_rect(Rect2(o+Vector2(358,70),Vector2(16,10)),Color("fff0b8"))
+	crate_car_draw.draw_rect(Rect2(o+Vector2(6,70),Vector2(14,10)),Color("e96963"))
+
+func _crate_confetti(tint: Color) -> void:
+	var p := CPUParticles2D.new()
+	crate_root.add_child(p)
+	p.position = crate_root.size/2.0
+	p.amount = 140
+	p.one_shot = true
+	p.explosiveness = 0.95
+	p.lifetime = 2.2
+	p.direction = Vector2(0,-1)
+	p.spread = 180.0
+	p.initial_velocity_min = 260.0
+	p.initial_velocity_max = 620.0
+	p.gravity = Vector2(0,700)
+	p.scale_amount_min = 5.0
+	p.scale_amount_max = 10.0
+	p.angular_velocity_min = -400.0
+	p.angular_velocity_max = 400.0
+	var g := Gradient.new()
+	g.set_color(0,tint)
+	g.set_color(1,Color("f0bd62"))
+	g.add_point(0.5,Color("7ee08a"))
+	p.color_initial_ramp = g
+	p.emitting = true
+	get_tree().create_timer(2.6).timeout.connect(p.queue_free)
+
+func _crate_sound(burst: bool) -> void:
+	if "--smoke-test" in OS.get_cmdline_user_args():
+		return
+	var gen := AudioStreamGenerator.new()
+	gen.mix_rate = 22050.0
+	var sp := AudioStreamPlayer.new()
+	sp.stream = gen
+	sp.volume_db = -8.0
+	add_child(sp)
+	sp.play()
+	var pb := sp.get_stream_playback() as AudioStreamGeneratorPlayback
+	var n := int(gen.mix_rate*(0.7 if burst else 0.45))
+	for i in n:
+		var t := float(i)/gen.mix_rate
+		var v := 0.0
+		if burst:
+			# Rising "ta-da" arpeggio.
+			var notes := [523.25,659.25,783.99,1046.5]
+			var k := mini(int(t/0.12),3)
+			v = sin(TAU*float(notes[k])*t)*0.32*exp(-(t-float(k)*0.12)*4.0)
+		else:
+			# Wooden rattle.
+			v = (randf()*2.0-1.0)*0.35*(0.5+0.5*sin(TAU*18.0*t))*exp(-t*3.0)
+		pb.push_frame(Vector2(v,v))
+	get_tree().create_timer(1.2).timeout.connect(sp.queue_free)
+
+func _crate_drive() -> void:
+	if crate_reward.is_empty() or not crate_reward.has("picked"):
+		return
+	var car_i := int(crate_reward["car"])
+	cash += int(crate_reward["cash"])
+	owned_mask |= 1 << car_i
+	while car_paint.size() < CARS.size():
+		car_paint.append(0)
+	car_paint[car_i] = int(crate_reward["paint"])
+	car_id = car_i
+	crate_done = true
+	crate_open = false
+	crate_root.hide()
+	paused = false
+	_apply_car()
+	# Start in the car.
+	if not driving and not race_car and seat_id < 0:
+		car.position = player.position+Vector3(2.4,0.1,0)
+		car.rotation.y = player.rotation.y
+		driving = true
+		player.hide()
+		player.get_child(0).set_deferred("disabled",true)
+	_save_progress()
+	_follow_camera(1.0)
+	_show_toast("Your %s is ready! +$%d. Follow the golden ring." % [CARS[car_i]["name"],int(crate_reward["cash"])])
+	if online_on:
+		_feed_add_system("%s unboxed a %s %s!" % [online_name,String(CRATE_RARITY[int(crate_reward["tier"])]["name"]).capitalize(),CARS[car_i]["name"]])
+	crate_reward = {}
+	_refresh_hud()
+
+func _feed_add_system(text: String) -> void:
+	_feed_add(text,"")
+
+func _smoke_crate() -> void:
+	var was := [cash,owned_mask,car_id,car_paint.duplicate(),crate_done,driving,player.position,car.position,deliveries,found_mask]
+	# A brand-new player.
+	cash = 0
+	owned_mask = 1
+	car_id = 0
+	deliveries = 0
+	found_mask = 0
+	crate_done = false
+	driving = false
+	player.show()
+	_open_crate()
+	assert(crate_open and paused and crate_new_player and crate_root.visible,"Starter crate shows for a new player")
+	_toggle_menu()
+	assert(paused and crate_open,"Menu cannot close the crate")
+	_crate_pick(1)
+	assert(crate_reward.has("picked"),"Picking a crate rolls a reward")
+	var r := crate_reward.duplicate()
+	assert(int(r["cash"]) >= CRATE_START_CASH+100 and int(r["cash"]) <= CRATE_START_CASH+500,"Starter cash plus bonus")
+	_crate_drive()
+	assert(not crate_open and not paused and crate_done and driving,"DRIVE IT closes the crate and puts you in the car")
+	assert(car_id == int(r["car"]) and (owned_mask & (1 << car_id)) != 0 and int(car_paint[car_id]) == int(r["paint"]),"Crate car is yours, with its paint")
+	assert(cash == int(r["cash"]),"Crate cash added once")
+	# Rolls: rarity odds and owned-car bonus.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var tiers := [0,0,0]
+	for i in 2000:
+		tiers[int(_crate_roll(rng,false)["tier"])] += 1
+	assert(tiers[0] > tiers[1] and tiers[1] > tiers[2] and tiers[2] > 100,"Common > Rare > Epic")
+	owned_mask = (1 << CARS.size())-1
+	assert(bool(_crate_roll(rng,false)["already"]) and int(_crate_roll(rng,false)["cash"]) >= 600,"Owned car pays +$500 instead")
+	cash = was[0]
+	owned_mask = was[1]
+	car_id = was[2]
+	car_paint = was[3]
+	crate_done = was[4]
+	driving = was[5]
+	player.position = was[6]
+	car.position = was[7]
+	deliveries = was[8]
+	found_mask = was[9]
+	if not driving:
+		player.show()
+		player.get_child(0).set_deferred("disabled",false)
+	_apply_car()
+	_save_progress()
+
+func _crate_shots() -> void:
+	# Developer-only: the starter crate. Never saves.
+	cash = 0
+	owned_mask = 1
+	deliveries = 0
+	found_mask = 0
+	_open_crate()
+	for i in 5:
+		await get_tree().process_frame
+	await _save_shot("crate-pick")
+	_crate_pick(0)
+	await get_tree().create_timer(0.75).timeout
+	await _save_shot("crate-open")
+	await get_tree().create_timer(1.6).timeout
+	await _save_shot("crate-reveal")
+	# v0.25 quick quest right after the crate: walking towards the first stop, then at it.
+	crate_open = false
+	crate_root.hide()
+	paused = false
+	quick_on = true
+	quick_idx = 0
+	quick_done = 0
+	driving = false
+	player.show()
+	walk_view = 0
+	_apply_view()
+	player.position = Vector3(4.6,0.75,5.2)
+	var d: Vector3 = QUICK[0]["pos"]-player.position
+	player.rotation.y = atan2(-d.x,-d.z)
+	cam_yaw = player.rotation.y
+	for i in 20:
+		await get_tree().physics_frame
+	_follow_camera(1.0)
+	_refresh_hud()
+	await _save_shot("quick-1")
+	player.position = QUICK[0]["pos"]+Vector3(0,0.75,3.0)
+	for i in 10:
+		await get_tree().physics_frame
+	_refresh_hud()
+	await _save_shot("quick-at")
+	get_tree().quit()
+
+# ---------- v0.25: quick quests (short pick-ups, paid on the spot, next one starts at once) ----------
+# The first nine stay in the old city a short walk apart; then the chain tours every town.
+const QUICK := [
+	{"task":"Grab a coffee at Harbor Café","pos":Vector3(6.5,0,16)},
+	{"task":"Pick up a watch at the Clocktower","pos":Vector3(6.5,0,-22)},
+	{"task":"Fetch flowers at West Arcade","pos":Vector3(-25.5,0,8)},
+	{"task":"Collect a parcel at the North Gate post office","pos":Vector3(-25.5,0,-22)},
+	{"task":"Pick up a pizza at Sunset Market","pos":Vector3(25.5,0,-22)},
+	{"task":"Collect seed packets at East Gardens","pos":Vector3(25.5,0,23)},
+	{"task":"Grab a ferry ticket at Ferry Steps","pos":Vector3(6.5,0,44)},
+	{"task":"Pick up a toolbox at Port Dispatch","pos":Vector3(-25.5,0,26)},
+	{"task":"Find a lost cat by the Harbor Waterfront","pos":Vector3(14.5,0,27)},
+	{"task":"Pick up sunglasses in Marina Heights","pos":Vector3(-5.5,0,116)},
+	{"task":"Collect a trail map at Ridge Trailhead","pos":Vector3(78.5,0,4)},
+	{"task":"Grab game tokens at Harbor Dome","pos":Vector3(152.5,0,36)},
+	{"task":"Pick up a trophy at Harbor Raceway","pos":Vector3(174.5,0,-150)},
+	{"task":"Fetch spare parts from the Industrial Quarter","pos":Vector3(16.5,0,-72)},
+	{"task":"Collect a birthday cake in Maple Suburbs","pos":Vector3(18.5,0,-228)},
+	{"task":"Grab a postcard at Harbor Airfield","pos":Vector3(26.5,0,-312)},
+	{"task":"Pick up a train ticket at Union Station","pos":Vector3(-205.5,0,-360)},
+	{"task":"Rescue a kite in Central Park","pos":Vector3(-275.5,0,-270)},
+	{"task":"Return library books at Civic Center","pos":Vector3(-145.5,0,23)},
+	{"task":"Collect seashells at Bay Promenade","pos":Vector3(-95.5,0,9)},
+]
+const QUICK_XP := 50
+var quick_on := true
+var quick_idx := 0
+var quick_done := 0
+
+func _quick_pay(i: int) -> int:
+	# More for the longer trips out of town; a little more every lap of the chain.
+	var prev: Vector3 = QUICK[posmod(i-1,QUICK.size())]["pos"]
+	var here: Vector3 = QUICK[i]["pos"]
+	var lap := quick_done/QUICK.size()
+	return 60+int(clampf(prev.distance_to(here)*0.6,0.0,240.0))+lap*20
+
+func _quick_complete() -> void:
+	var pay := _quick_pay(quick_idx)
+	var at: Vector3 = QUICK[quick_idx]["pos"]
+	cash += pay
+	bonus_xp += QUICK_XP
+	quick_done += 1
+	quick_idx = (quick_idx+1) % QUICK.size()
+	_save_progress()
+	_show_toast("DONE!  +$%d  +%d XP   Next: %s" % [pay,QUICK_XP,QUICK[quick_idx]["task"]])
+	_quick_fx(at)
+	if not ("--smoke-test" in OS.get_cmdline_user_args()):
+		_play_coin()
+
+func _quick_fx(at: Vector3) -> void:
+	var fx := Node3D.new()
+	add_child(fx)
+	fx.global_position = at+Vector3(0,0.4,0)
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 1.7
+	torus.outer_radius = 2.1
+	ring.mesh = torus
+	ring.material_override = _fx_material(Color("ffd86a"),0.9)
+	fx.add_child(ring)
+	var tw := create_tween()
+	tw.tween_property(fx,"scale",Vector3(2.4,2.4,2.4),0.6)
+	tw.parallel().tween_property(fx,"position:y",fx.position.y+1.5,0.6)
+	tw.tween_callback(fx.queue_free)
+
+func _play_coin() -> void:
+	var gen := AudioStreamGenerator.new()
+	gen.mix_rate = 22050.0
+	var sp := AudioStreamPlayer.new()
+	sp.stream = gen
+	sp.volume_db = -8.0
+	add_child(sp)
+	sp.play()
+	var pb := sp.get_stream_playback() as AudioStreamGeneratorPlayback
+	var n := int(gen.mix_rate*0.35)
+	for i in n:
+		var t := float(i)/gen.mix_rate
+		var f := 988.0 if t < 0.08 else 1319.0
+		var v := sin(TAU*f*t)*0.3*exp(-maxf(t-(0.0 if t < 0.08 else 0.08),0.0)*9.0)
+		pb.push_frame(Vector2(v,v))
+	get_tree().create_timer(0.8).timeout.connect(sp.queue_free)
+
+func _smoke_quick() -> void:
+	var was := [cash,bonus_xp,quick_on,quick_idx,quick_done,exploring,driving,player.position,car.position]
+	# All towns are open from the start.
+	for a in 6:
+		assert(_area_open(a),"Every town is open")
+	_update_gate()
+	assert(not north_gate_body.visible and not marina_gate_body.visible and not bay_gate_body.visible,"No gates block the roads")
+	# 20 levels, early ones quick.
+	assert(LEVEL_XP.size() == 20 and _level_for(0) == 1 and _level_for(100) == 2 and _level_for(10450) == 20 and _level_for(99999) == 20,"Levels 1-20")
+	# Quick quest chain: first stop is a short walk, pay and XP on the spot, then the next one.
+	quick_on = true
+	quick_idx = 0
+	quick_done = 0
+	driving = false
+	player.show()
+	assert(_destination().is_equal_approx(QUICK[0]["pos"]),"Quick quest leads the guidance")
+	assert(Vector2(QUICK[0]["pos"].x-4.6,QUICK[0]["pos"].z-5.2).length() < 15.0,"First quick quest is right by the start")
+	player.position = QUICK[0]["pos"]+Vector3(1,0.75,0)
+	_refresh_hud()
+	assert(action_button.text.begins_with("PICK UP"),"PICK UP shows at the stop")
+	var c0 := cash
+	var x0 := _xp()
+	var pay := _quick_pay(0)
+	_interact()
+	assert(cash == c0+pay and _xp() == x0+QUICK_XP and quick_idx == 1 and quick_done == 1,"Quick quest pays and moves on")
+	_interact()
+	assert(quick_idx == 1,"Can't collect the next one from far away")
+	for i in QUICK.size():
+		var p: Vector3 = QUICK[i]["pos"]
+		if i < 9:
+			assert(Vector2(p.x,p.z).length() < 56.0,"Early quick quests are in the old city")
+	# Mode cycle: quick -> jobs -> explore -> quick.
+	_toggle_activity()
+	assert(not quick_on and not exploring,"Then delivery jobs")
+	_toggle_activity()
+	assert(exploring,"Then exploring")
+	_toggle_activity()
+	assert(quick_on and not exploring,"Back to quick quests")
+	cash = was[0]
+	bonus_xp = was[1]
+	quick_on = was[2]
+	quick_idx = was[3]
+	quick_done = was[4]
+	exploring = was[5]
+	driving = was[6]
+	player.position = was[7]
+	car.position = was[8]
+	_save_progress()

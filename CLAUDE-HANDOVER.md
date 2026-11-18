@@ -300,3 +300,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Shots: --daily-shots (docs/shots-0.25.0).
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.25.0 (source commit b99b7bd). APK SHA256 304381652da310e1e172c3c018ce71f15448ba093e0c5683a330f168ff9bcd15, 31259322 bytes, code 29. Pages run succeeded; live release.json, page and /play show 0.25.0.
 - Not tested on the Fold5 or with real phones online together.
+
+## v0.25.1 (2026-11-18): FIND ME fixes, lighter browser build
+
+- FIND ME: FM_REACH 4.5 (whole glow counts); finder re-sends fmf every 3 s until paid; host includes "pl" (winners) in every fms announce and _fm_check_paid pays from fms or fmr once; finder banner shows Waiting / place and prize.
+- Web: _web_perf_setup (web or --web-lite): 3D scaling to ~1.1 MP (bilinear), one shadow split at 55 m, 2048 atlas; ?fps=1 shows a counter. --bench prints average fps (desktop 2560x1440: 67 -> 88 fps with lite).
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.25.1 (source commit 6c711ee). APK SHA256 39f84ca1cb93bda9e86ef977eca8d73470145a1c54b17244efc383d77d6aa80e, 31263418 bytes, code 30. Pages run succeeded; live release.json, page and /play show 0.25.1.
+- Not measured in a real browser; FIND ME not retested with two phones.

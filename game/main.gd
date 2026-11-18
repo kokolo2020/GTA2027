@@ -312,7 +312,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.24.1: treasure hunts every 5 minutes, FIND ME!, a Quests list, and your name over your head!")
+	_show_toast("Harbor City 0.24.2: each treasure hunt now tells you what object to look for!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -410,6 +410,7 @@ func _material(color: Color) -> StandardMaterial3D:
 	return mat
 
 func _box(parent: Node3D, pos: Vector3, size: Vector3, color: Color, solid := false) -> MeshInstance3D:
+	_note_road(pos,size,0.0,color)
 	var mesh := MeshInstance3D.new()
 	var shape := BoxMesh.new()
 	shape.size = size
@@ -5922,6 +5923,7 @@ func _box_batch(color: Color, items: Array) -> MultiMeshInstance3D:
 	for i in items.size():
 		var it: Array = items[i]
 		multi.set_instance_transform(i,Transform3D(Basis.from_scale(it[1]),it[0]))
+		_note_road(it[0],it[1],0.0,color)
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = multi
 	inst.material_override = _material(color)
@@ -9859,6 +9861,7 @@ func _box_batch_rot(color: Color, items: Array) -> MultiMeshInstance3D:
 	for i in items.size():
 		var it: Array = items[i]
 		multi.set_instance_transform(i,Transform3D(Basis(Vector3.UP,float(it[2]))*Basis.from_scale(it[1]),it[0]))
+		_note_road(it[0],it[1],float(it[2]),color)
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = multi
 	inst.material_override = _material(color)
@@ -12028,6 +12031,17 @@ func _crate_shots() -> void:
 	for i in 6:
 		await get_tree().physics_frame
 	await _save_shot("treasure")
+	paused = true
+	for k in treasure_props.size():
+		treasure_node.visible = true
+		for j in treasure_props.size():
+			(treasure_props[j] as Node3D).visible = j == k
+		(treasure_node.get_node("Chest") as Node3D).visible = true
+		treasure_beam.visible = false
+		camera.position = treasure_node.position+Vector3(9.0,3.2,7.0)
+		camera.look_at(treasure_node.position+Vector3(1.4,2.0,0))
+		await _save_shot("prop-%d" % k)
+	paused = false
 	player.position = Vector3(25.0,0.75,-10)
 	camera.position = player.position+Vector3(2.2,1.4,3.0)
 	camera.look_at(player.position+Vector3(0,-0.2,0))
@@ -12038,7 +12052,9 @@ func _crate_shots() -> void:
 	# v0.24.1 Find Me as the hider.
 	fm_test = true
 	cash = 1000
-	player.position = Vector3(26.5,0.75,-6)
+	player.position = Vector3(32.0,0.75,-6)
+	player.rotation.y = 0.0
+	cam_yaw = 0.0
 	_fm_start()
 	_fm_msg("fmf",{"i":"h1","n":"Mia","f":fm_id})
 	for i in 10:
@@ -12370,6 +12386,7 @@ const TREASURE_BEAM_AT := 90.0
 const TREASURE_SEE := 35.0
 var treasure_node: Node3D
 var treasure_beam: MeshInstance3D
+var treasure_props: Array = []
 var treasure_label: Label
 var treasure_cycle := -1
 var treasure_got := -1
@@ -12407,11 +12424,90 @@ func _treasure_district(pos: Vector3) -> String:
 # first the district, then the landmark it's hidden at, and in the last 90 seconds the light beam.
 func _treasure_clue(left: float) -> String:
 	var spot: Array = treasure_spots[_treasure_pick(treasure_cycle)]
+	var obj := String(TREASURE_PROPS[_treasure_prop(treasure_cycle)])
 	if left > 180.0:
-		return "Clue: somewhere around %s" % _treasure_district(spot[0])
+		return "Look for a %s somewhere around %s" % [obj,_treasure_district(spot[0])]
 	if left > TREASURE_BEAM_AT:
-		return "Clue: hidden at %s (%s)" % [spot[1],_treasure_district(spot[0])]
-	return "Look for the golden beam at %s!" % spot[1]
+		return "The %s is at %s (%s)" % [obj,spot[1],_treasure_district(spot[0])]
+	return "Golden beam at %s, by the %s!" % [spot[1],obj]
+
+# v0.24.2: every round hides the chest next to a big, odd object you can spot from a distance.
+const TREASURE_PROPS := ["GIANT RUBBER DUCK","RED BEACH UMBRELLA","PURPLE HOT-AIR BALLOON","PIRATE FLAG","STACK OF BLUE BARRELS","GIANT PINEAPPLE"]
+const TREASURE_PROP_SEE := 110.0
+
+func _treasure_prop(cycle: int) -> int:
+	return posmod(cycle*5+3,TREASURE_PROPS.size())
+
+func _tp_part(parent: Node3D, mesh: Mesh, pos: Vector3, color: Color, rot := Vector3.ZERO, sc := Vector3.ONE) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	m.mesh = mesh
+	m.position = pos
+	m.rotation = rot
+	m.scale = sc
+	m.material_override = _material(color)
+	parent.add_child(m)
+	return m
+
+func _tp_sphere(r: float) -> SphereMesh:
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r*2.0
+	sm.radial_segments = 16
+	sm.rings = 8
+	return sm
+
+func _tp_cyl(top: float, bottom: float, h: float) -> CylinderMesh:
+	var c := CylinderMesh.new()
+	c.top_radius = top
+	c.bottom_radius = bottom
+	c.height = h
+	c.radial_segments = 14
+	c.rings = 1
+	return c
+
+func _build_treasure_props() -> void:
+	treasure_props.clear()
+	for k in TREASURE_PROPS.size():
+		var n := Node3D.new()
+		treasure_node.add_child(n)
+		n.position = Vector3(2.2,0,0.6)
+		match k:
+			0: # giant rubber duck
+				_tp_part(n,_tp_sphere(1.1),Vector3(0,1.1,0),Color("ffd23f"),Vector3.ZERO,Vector3(1.25,0.85,1.0))
+				_tp_part(n,_tp_sphere(0.7),Vector3(0.75,2.2,0),Color("ffd23f"))
+				_tp_part(n,_tp_sphere(0.32),Vector3(1.4,2.1,0),Color("ff8a1f"),Vector3.ZERO,Vector3(1.4,0.5,1.0))
+				for z in [-0.3,0.3]:
+					_tp_part(n,_tp_sphere(0.09),Vector3(1.2,2.42,z),Color("1c1c22"))
+			1: # red beach umbrella
+				_tp_part(n,_tp_cyl(0.06,0.06,3.4),Vector3(0,1.7,0),Color("eeeeee"))
+				_tp_part(n,_tp_cyl(0.05,2.0,0.9),Vector3(0,3.5,0),Color("e0433a"))
+				_tp_part(n,_tp_cyl(0.05,1.0,0.5),Vector3(0,3.75,0),Color("fff3e8"))
+			2: # purple hot-air balloon, floating
+				_tp_part(n,_tp_sphere(1.8),Vector3(0,7.0,0),Color("8e4fd6"),Vector3.ZERO,Vector3(1.0,1.2,1.0))
+				_tp_part(n,_tp_cyl(0.7,0.35,1.0),Vector3(0,5.0,0),Color("8e4fd6"))
+				_tp_part(n,BoxMesh.new(),Vector3(0,3.6,0),Color("8a5a2b"),Vector3.ZERO,Vector3(0.9,0.6,0.9))
+				for x in [-0.4,0.4]:
+					_tp_part(n,_tp_cyl(0.02,0.02,1.2),Vector3(x,4.4,0),Color("3b2a1a"))
+				_tp_part(n,_tp_cyl(0.03,0.03,3.3),Vector3(0,1.7,0),Color("c8b89a"))
+			3: # pirate flag
+				_tp_part(n,_tp_cyl(0.08,0.1,5.0),Vector3(0,2.5,0),Color("5c3a1c"))
+				_tp_part(n,BoxMesh.new(),Vector3(0.95,4.3,0),Color("1c1c22"),Vector3.ZERO,Vector3(1.8,1.2,0.05))
+				_tp_part(n,_tp_sphere(0.28),Vector3(0.95,4.4,0.04),Color("f4f1e8"))
+				_tp_part(n,BoxMesh.new(),Vector3(0.95,4.05,0.04),Color("f4f1e8"),Vector3(0,0,0.6),Vector3(0.9,0.1,0.02))
+				_tp_part(n,BoxMesh.new(),Vector3(0.95,4.05,0.04),Color("f4f1e8"),Vector3(0,0,-0.6),Vector3(0.9,0.1,0.02))
+			4: # stack of blue barrels
+				for b: Vector3 in [Vector3(-0.55,0.55,0),Vector3(0.55,0.55,0),Vector3(0,0.55,0.9),Vector3(-0.1,1.65,0.35),Vector3(0.35,1.65,-0.2),Vector3(0.1,2.75,0.1)]:
+					_tp_part(n,_tp_cyl(0.48,0.48,1.1),b,Color("2f6fd0"))
+					_tp_part(n,_tp_cyl(0.5,0.5,0.08),b+Vector3(0,0.3,0),Color("c9d4dd"))
+			5: # giant pineapple
+				_tp_part(n,_tp_sphere(1.0),Vector3(0,1.3,0),Color("e8a628"),Vector3.ZERO,Vector3(1.0,1.35,1.0))
+				for a in 6:
+					var leaf := _tp_part(n,PrismMesh.new(),Vector3(0,2.9,0),Color("3e9e4a"),Vector3(0,float(a)*PI/3.0,0.35),Vector3(0.35,1.4,0.1))
+					leaf.position += Vector3(cos(float(a)*PI/3.0),0,-sin(float(a)*PI/3.0))*0.25
+		for c in n.get_children():
+			(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		n.hide()
+		treasure_props.append(n)
 
 func _build_treasure(root: Control) -> void:
 	treasure_node = Node3D.new()
@@ -12469,6 +12565,7 @@ func _build_treasure(root: Control) -> void:
 	tag.pixel_size = 0.012
 	tag.position = Vector3(0,2.4,0)
 	treasure_node.add_child(tag)
+	_build_treasure_props()
 	treasure_node.hide()
 	treasure_label = _label("",21,Color("ffe29a"))
 	var sb := _panel(Color(0.32,0.2,0.02,0.9),16)
@@ -12504,9 +12601,15 @@ func _treasure_tick(_delta: float) -> void:
 			_show_toast("NEW TREASURE HUNT! Read the clue at the top. You have 5 minutes!")
 	var active := treasure_got != cycle and not race_car
 	var body: Node3D = car if driving else player
-	var near := Vector2(body.position.x-treasure_node.position.x,body.position.z-treasure_node.position.z).length() < TREASURE_SEE
-	treasure_node.visible = active and (near or left <= TREASURE_BEAM_AT)
+	var far := Vector2(body.position.x-treasure_node.position.x,body.position.z-treasure_node.position.z).length()
+	var near := far < TREASURE_SEE
+	# The object shows from further away than the chest; the beam only in the last 90 seconds.
+	treasure_node.visible = active and (far < TREASURE_PROP_SEE or left <= TREASURE_BEAM_AT)
 	treasure_beam.visible = left <= TREASURE_BEAM_AT
+	(treasure_node.get_node("Chest") as Node3D).visible = near or left <= TREASURE_BEAM_AT
+	var pk := _treasure_prop(cycle)
+	for k in treasure_props.size():
+		(treasure_props[k] as Node3D).visible = k == pk
 	if active:
 		(treasure_node.get_node("Chest") as Node3D).rotation.y += _delta*1.2
 		var dist := Vector2(body.position.x-treasure_node.position.x,body.position.z-treasure_node.position.z).length()
@@ -12602,10 +12705,11 @@ func _smoke_treasure() -> void:
 	treasure_time_override = 1002.0*TREASURE_CYCLE+10.0
 	player.position = Vector3(500,0.75,500)
 	_treasure_tick(0.0)
+	assert(treasure_label.text.contains("Look for a ") and treasure_label.text.contains(String(TREASURE_PROPS[_treasure_prop(1002)])),"The clue names the object to look for")
 	assert(treasure_label.text.contains("somewhere around") and not treasure_label.text.contains("m\n") and not treasure_label.text.contains(" m") and not treasure_beam.visible and not treasure_node.visible,"Early: district clue only, chest and beam hidden far away")
 	treasure_time_override = 1002.0*TREASURE_CYCLE+200.0
 	_treasure_tick(0.0)
-	assert(treasure_label.text.contains("hidden at"),"Later: the landmark clue")
+	assert(treasure_label.text.contains(" is at "),"Later: the landmark clue")
 	treasure_time_override = 1002.0*TREASURE_CYCLE+250.0
 	_treasure_tick(0.0)
 	assert(treasure_beam.visible and treasure_node.visible,"Last 90 seconds: the beam shows")
@@ -12699,6 +12803,11 @@ func _fm_start() -> void:
 	if why != "":
 		_show_toast(why)
 		return
+	# Hide on the pavement, not in the middle of the road.
+	var spot := _curb_spot(player.position)
+	if not spot.is_equal_approx(player.position):
+		player.position = spot
+		player.velocity = Vector3.ZERO
 	var pool := int(FM_PRIZES[0]+FM_PRIZES[1]+FM_PRIZES[2])
 	cash -= pool
 	fm_refund = pool
@@ -12852,10 +12961,12 @@ func _smoke_findme() -> void:
 	driving = false
 	online_id = "me1"
 	online_name = "Koko"
-	player.position = Vector3(6,0.75,-6)
+	player.position = Vector3(1.0,0.75,-12)
 	cash = 1000
+	assert(_on_road(player.position),"Middle of the avenue counts as road")
 	_fm_start()
 	assert(fm_hosting and cash == 650 and fm_refund == 350,"Find Me takes the prize pool")
+	assert(not _on_road(player.position) and absf(player.position.x) < 12.0,"The hider moves from the road to the pavement nearby")
 	assert(not fm_sent.is_empty() and fm_sent[0][0] == "fms","Find Me is announced")
 	var at := player.position
 	stick = Vector2(0,-1)
@@ -12901,3 +13012,42 @@ func _smoke_findme() -> void:
 	fm_hunts.clear()
 	fm_paid.clear()
 	_save_progress()
+
+# ---------- v0.24.2: road map (for moving people off the road) ----------
+var road_rects: Array = []
+
+func _note_road(pos: Vector3, size: Vector3, yaw: float, color: Color) -> void:
+	if size.y > 0.15 or size.x < 3.0 or size.z < 3.0:
+		return
+	if not (color.to_html(false) in SURF_ASPHALT):
+		return
+	road_rects.append([Vector2(pos.x,pos.z),Vector2(size.x/2.0,size.z/2.0),yaw])
+
+func _on_road(p: Vector3) -> bool:
+	for r in road_rects:
+		var d := Vector2(p.x,p.z)-(r[0] as Vector2)
+		if float(r[2]) != 0.0:
+			d = d.rotated(float(r[2]))
+		var h: Vector2 = r[1]
+		if absf(d.x) <= h.x+0.3 and absf(d.y) <= h.y+0.3:
+			return true
+	return false
+
+func _curb_spot(from: Vector3) -> Vector3:
+	# Nearest open spot that isn't on a road, searching outwards in rings.
+	if not _on_road(from):
+		return from
+	var space := get_world_3d().direct_space_state
+	for r in range(2,16):
+		for k in 24:
+			var a := TAU*float(k)/24.0
+			var c := from+Vector3(cos(a),0,sin(a))*(float(r)+0.6)
+			if _on_road(c):
+				continue
+			var q := PhysicsShapeQueryParameters3D.new()
+			q.shape = player.get_child(0).shape
+			q.transform = Transform3D(Basis.IDENTITY,c+Vector3(0,0.2,0))
+			q.exclude = [player.get_rid(),car.get_rid()]
+			if space.intersect_shape(q,1).is_empty():
+				return c
+	return from

@@ -322,3 +322,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - HOUSE_SCALE 2.0 (was 1.3; the house model is small, doors were knee height), HOUSE_STEP 20; rows re-spaced 17 m from road centres. Trophy quest moved to (214,0,-168) inside the Raceway gate; Westside cat to (-368,0,192). Smoke test now also asserts quest rings/items are not inside colliders (_blocked_at). Map re-baked.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.26.1 (source commit 39971c1). APK SHA256 ed8e68cedbe39f74c6b1d1bffe627b79260c9c887991cb496f895a3175b68ea7, 31939258 bytes, code 32. Pages run succeeded; live release.json, page and /play show 0.26.1.
 - Not tried on the Fold5 or a real browser.
+
+## v0.26.2 (2026-11-18): proper houses in the new districts
+
+- Root cause of the long, low houses: _model_batch used only the first mesh and ignored its node transform inside the .glb. New param use_local (4th) multiplies in the mesh node's transform; used for house_* in _build_expansion. HOUSE_SCALE back to 1.0 (same as Maple Suburbs), HOUSE_STEP 16, rows HOUSE_ROW 14 m from road centres, HOUSE_EDGE 14.4. Map re-baked.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.26.2 (source commit 5bea402). APK SHA256 8385949fa800327774bce42a016d13df9c48b1091afb592c75aea0d5bb1eff69, 31943354 bytes, code 33. Pages run succeeded; live release.json, page and /play show 0.26.2.
+- Not tried on the Fold5 or a real browser.

@@ -277,3 +277,11 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Smoke test note: a run that fails part-way can leave the desktop test save changed; a backup of the restored test save was kept in the session scratchpad.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.24.0 (source commit a696f8e). APK SHA256 b091fe842e46efd36f7f29f27e53668765a68db66d68d1ab1ea39d59e9eeb7f2, 31218362 bytes, code 26. Pages run succeeded; live release.json, page and /play show 0.24.0.
 - Not tested on the Fold5 or in a real browser (including the QR join flow).
+
+## v0.24.1 (2026-11-18): treasure hunts, FIND ME!, Quests list, name tags, player rings
+
+- Treasure hunt: 300 s rounds from the system clock (same chest for everyone online, picked from FINDS and all site lists). Clues only: district (first 120 s), landmark (next 90 s), beam in the last 90 s; chest visible within 35 m. $300 + 100 bonus XP, once per round (treasure_got).
+- FIND ME!: online events fms (announce, repeated every 3 s), fmf (hunter found), fmr (places, decided by the hider). Hider pays $350 up front, frozen 2 min on a glowing floor; unclaimed prizes refunded, fm_refund restored on next load if the app closed mid-game. Hunters get 60 XP with their prize.
+- Quests list (top-left Quests button, 8 nearest quick quests, pay from distance), orange quick-quest dots on the minimap, own name tag (Label3D, fixed size), gold ring under you and cyan ring under online players, RUN beside the QR code, feed hidden while menus are open.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.24.1 (source commit 80b22d7). APK SHA256 70dbc98d76abb93c70fd690c52b985f6bb091d165865d810d483cac1870609c0, 31242938 bytes, code 27. Pages run succeeded; live release.json, page and /play show 0.24.1.
+- Not tested on the Fold5 or with real phones online together (FIND ME and shared treasure need that).

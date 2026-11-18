@@ -81,13 +81,13 @@ const BAY := [
 const BAY_BONUS := 1000
 const NORTH_GATE := Vector3(0,0,-56.5)
 const NORTH := [
-	{"name":"Container Yard","pos":Vector3(-72,0,-125),"pay":400},
-	{"name":"Smokestack Works","pos":Vector3(74,0,-98),"pay":400},
-	{"name":"Maple Court","pos":Vector3(-62,0,-228),"pay":450},
-	{"name":"Skate Plaza","pos":Vector3(58,0,-228),"pay":450},
-	{"name":"Hangar 3","pos":Vector3(-26,0,-350),"pay":550},
-	{"name":"Control Tower","pos":Vector3(26,0,-340),"pay":550},
-	{"name":"Runway End","pos":Vector3(0,0,-426),"pay":700},
+	{"name":"Container Yard","pos":Vector3(-72,0,-110),"pay":400},
+	{"name":"Smokestack Works","pos":Vector3(86,0,-108),"pay":400},
+	{"name":"Maple Court","pos":Vector3(-90,0,-281),"pay":450},
+	{"name":"Skate Plaza","pos":Vector3(90,0,-247),"pay":450},
+	{"name":"Hangar 3","pos":Vector3(50,0,-401),"pay":550},
+	{"name":"Control Tower","pos":Vector3(62,0,-318),"pay":550},
+	{"name":"Runway End","pos":Vector3(92,0,-440),"pay":700},
 	{"name":"Summit Pass Overlook","pos":Vector3(178,5.7,-270),"pay":800},
 ]
 const NORTH_BONUS := 2000
@@ -98,7 +98,7 @@ const BUS_STOPS := [
 	{"name":"North Gate","z":-48.0},
 	{"name":"Industrial Quarter","z":-90.0},
 	{"name":"Maple Suburbs","z":-180.0},
-	{"name":"Harbor Airfield","z":-288.0}]
+	{"name":"Harbor Airfield","z":-324.0}]
 const BUS_FARE := 15
 const CHASE_BLOCK_TIMES := [12.0,40.0,68.0]
 const CHASE_HELI_START := 30.0
@@ -113,7 +113,7 @@ const TRIALS := [
 	{"name":"Pizza Rush","area":0,"start":Vector3(0,0,32),"cps":[Vector3(0,0,0),Vector3(32,0,0),Vector3(32,0,-32),Vector3(0,0,-32),Vector3(-32,0,-32),Vector3(-32,0,0),Vector3(-32,0,32)],"par":38.0,"pay":400},
 	{"name":"Waterfront Dash","area":0,"start":Vector3(-50,0,0),"cps":[Vector3(-20,0,0),Vector3(20,0,0),Vector3(50,0,0)],"par":11.0,"pay":250},
 	{"name":"North Highway","area":3,"start":Vector3(0,0,-70),"cps":[Vector3(0,0,-130),Vector3(0,0,-200),Vector3(0,0,-270),Vector3(0,0,-330)],"par":15.0,"pay":700},
-	{"name":"Runway Dash","area":3,"start":Vector3(0,0,-305),"cps":[Vector3(0,0,-340),Vector3(0,0,-385),Vector3(0,0,-425)],"par":8.0,"pay":600},
+	{"name":"Runway Dash","area":3,"start":Vector3(92,0,-322),"cps":[Vector3(92,0,-355),Vector3(92,0,-395),Vector3(92,0,-435)],"par":8.0,"pay":600},
 	{"name":"Marina Boulevard","area":4,"start":Vector3(0,0,114),"cps":[Vector3(0,0,150),Vector3(0,0,205),Vector3(0,0,234)],"par":9.0,"pay":900},
 	{"name":"Skyline Dash","area":5,"start":Vector3(-134,0,-100),"cps":[Vector3(-134,0,-190),Vector3(-134,0,-290),Vector3(-134,0,-390),Vector3(-220,0,-386),Vector3(-300,0,-386)],"par":36.0,"pay":1200},
 ]
@@ -320,7 +320,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.28.0: the Skyline District is rebuilt big, with 4-lane avenues, wide pavements and much taller towers. More districts next.")
+	_show_toast("Harbor City 0.29.0: clean screen (tap the minimap for the Menu), running by default, the North Highway rebuilt big, and tall new traffic lights and street lamps.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -998,6 +998,13 @@ func _first_mesh(node: Node) -> MeshInstance3D:
 func _scatter(path: String, points: Array, smin := 0.85, smax := 1.2, fixed_yaw := -1.0) -> bool:
 	if points.is_empty():
 		return false
+	if path.ends_with("/lamp.glb"):
+		# v0.30: street lamps are the tall city lamps; these old rows had their arms facing away from the road.
+		var items := []
+		for pt in points:
+			items.append([pt,maxf(fixed_yaw,0.0)+PI,1.0])
+		_model_batch(path,items)
+		return true
 	var model := _try_model(path)
 	if model == null:
 		return false
@@ -1053,85 +1060,151 @@ func _north_token(pos: Vector3, label: String) -> Node3D:
 	_box(self,pos+Vector3(0,0.1,0),Vector3(2.4,0.18,2.4),Color("5a4326"))
 	return token
 
+# v0.29: the North Highway district rebuilt at big-city scale, on the same grid as the Skyline District.
+const NM_X0 := -110.5
+const NM_X1 := 110.0
+const NM_Z0 := -56.0
+const NM_Z1 := -458.0
+const NM_SIGNALS := [Vector2(-60,-140),Vector2(-60,-220),Vector2(-60,-300),Vector2(-60,-380),Vector2(0,-140),Vector2(0,-220),Vector2(0,-300),Vector2(0,-380),Vector2(60,-140),Vector2(60,-220),Vector2(60,-300)]
+const NM_HOUSE_SCALE := 1.3
+const NM_PARK := Vector3(-90,0,-260)
+const NM_SKATE := Vector3(90,0,-247)
+
+func _nm_roads() -> Array:
+	# [from, to, width]: the highway, two avenues, four cross streets, the industrial roads and the Summit Pass link.
+	return [
+		[Vector2(0,NM_Z0),Vector2(0,NM_Z1),20.0],
+		[Vector2(-60,-140),Vector2(-60,NM_Z1),20.0],
+		[Vector2(60,-140),Vector2(60,-300),20.0],
+		[Vector2(NM_X0,-140),Vector2(NM_X1,-140),20.0],
+		[Vector2(NM_X0,-220),Vector2(NM_X1,-220),20.0],
+		[Vector2(NM_X0,-300),Vector2(NM_X1,-300),20.0],
+		[Vector2(NM_X0,-380),Vector2(0,-380),20.0],
+		[Vector2(-32,NM_Z0),Vector2(-32,-140),12.0],
+		[Vector2(32,NM_Z0),Vector2(32,-140),12.0],
+		[Vector2(60,-270),Vector2(NM_X1,-270),10.0],
+	]
+
+func _prop_big(path: String, pos: Vector3, size: Vector3, yaw_deg: float, s: float, color := Color("b8bfc2"), solid := true) -> Node3D:
+	# Like _prop, but the model is scaled up (the collider grows with it).
+	var holder := Node3D.new()
+	holder.position = pos
+	holder.rotation_degrees.y = yaw_deg
+	add_child(holder)
+	var model := _try_model(path)
+	if model != null:
+		model.scale = Vector3.ONE*s
+		holder.add_child(model)
+	else:
+		_box(holder,Vector3(0,size.y*s/2.0,0),size*s,color)
+	if solid:
+		_collider(holder,Vector3(0,size.y*s/2.0,0),size*s)
+	return holder
+
+func _nm_near_cross(p: Vector2, n: Vector2, w: float) -> bool:
+	for s in [-1.0,1.0]:
+		var q: Vector2 = p+n*s*(w/2.0+3.0)
+		if _on_road(Vector3(q.x,0,q.y)):
+			return true
+	return false
+
 func _build_north() -> void:
-	var grass := Color("6f945c")
-	var asphalt := Color("354653")
-	var rock := Color("7d776c")
-	var line := Color("e7d9a4")
-	# One big joined ground slab. v0.27: no border walls; it joins the land around it.
-	_slab(Vector3(0,-0.35,-248),Vector3(220,0.6,384),0,grass)
-	north_gate_body = _slab(NORTH_GATE+Vector3(0,2,0),Vector3(12,4,1),0,Color("e0902f"))
-	_box(north_gate_body,Vector3(0,1.0,0.52),Vector3(11,0.8,0.1),Color("fff3d0"))
-	_box(north_gate_body,Vector3(0,-0.8,0.52),Vector3(11,0.8,0.1),Color("fff3d0"))
+	var asphalt := Color("394552")
+	var walk := Color("8f8d86")
+	# One joined pavement slab; blocks get their own ground on top. v0.27: no border walls.
+	_slab(Vector3((NM_X0+NM_X1)/2.0,-0.35,(NM_Z0-453.0)/2.0),Vector3(NM_X1-NM_X0,0.6,NM_Z0+453.0),0,walk)
+	north_gate_body = _slab(NORTH_GATE+Vector3(0,2,0),Vector3(20,4,1),0,Color("e0902f"))
+	_box(north_gate_body,Vector3(0,1.0,0.52),Vector3(19,0.8,0.1),Color("fff3d0"))
+	_box(north_gate_body,Vector3(0,-0.8,0.52),Vector3(19,0.8,0.1),Color("fff3d0"))
 	north_gate_sign = _sign("",Vector3(0,5.6,-57.5),Color("ffd9a0"),38)
-	# Highway spine and cross streets.
-	_box(self,Vector3(0,0.005,-120),Vector3(218,0.06,120),Color("565c5f"))
-	_box(self,Vector3(0,0.004,-235),Vector3(218,0.05,110),Color("7ea76a"))
-	_box(self,Vector3(0,0.005,-366),Vector3(218,0.06,140),Color("5b6166"))
-	_box(self,Vector3(0,0.01,-248),Vector3(10,0.08,384),asphalt)
-	for z in range(-64,-296,-8):
-		_box(self,Vector3(0,0.07,float(z)),Vector3(0.15,0.02,3),line)
-	for z in [-110.0,-150.0,-205.0,-250.0,-300.0]:
-		_box(self,Vector3(0,0.015,z),Vector3(218,0.08,8),asphalt)
-		for x in range(-104,105,8):
-			if absi(x) > 6:
-				_box(self,Vector3(float(x),0.075,z),Vector3(3,0.02,0.15),line)
-	_sign("NORTH HIGHWAY",Vector3(0,7.2,-64),Color("ffe0b8"),52)
-	_sign("INDUSTRIAL QUARTER",Vector3(0,6.4,-100),Color("d8dde0"),44)
-	_sign("MAPLE SUBURBS",Vector3(0,6.4,-190),Color("e3f5d0"),44)
-	_sign("HARBOR AIRFIELD",Vector3(0,6.4,-296),Color("cfe6ff"),44)
-	# Industrial Quarter.
-	for z in [-88.0,-130.0,-168.0]:
-		for x in [-30.0,-55.0,30.0,55.0]:
-			_prop("res://models/warehouse.glb",Vector3(x,0,z),Vector3(20,6.4,12),90.0 if x < 0 else -90.0)
-	for r in 6:
-		for c in 2:
-			var cx := -96.0 if c == 0 else -89.0
-			var cz := -117.0-float(r)*4.2
-			_prop("res://models/container_%d.glb" % ((r+c) % 3),Vector3(cx,0,cz),Vector3(6,2.6,2.4),0.0,Color("c4533f"))
-			if (r+c) % 2 == 0:
-				_prop("res://models/container_%d.glb" % ((r+c+1) % 3),Vector3(cx,2.6,cz),Vector3(6,2.6,2.4),0.0,Color("3f78a8"))
-	_prop("res://models/crane.glb",Vector3(-82,0,-98),Vector3(1,1,1),0.0,Color("e3a428"),false)
-	for lx in [-6.0,6.0]:
-		for lz in [-2.5,2.5]:
-			_collider(self,Vector3(-82+lx,7,-98-lz),Vector3(0.8,14,0.8))
-	_box(self,Vector3(88,4,-92),Vector3(16,8,12),Color("c4c0b8"),true)
-	_box(self,Vector3(88,8.4,-92),Vector3(16.6,0.8,12.6),Color("8d979e"))
-	_box(self,Vector3(97,13,-92),Vector3(3.2,26,3.2),Color("b36a4c"),true)
-	for y in [20.0,23.0]:
-		_box(self,Vector3(97,y,-92),Vector3(3.5,1.2,3.5),Color("f2e6d2"))
-	# Maple Suburbs.
-	var xs := [-84.0,-66.0,-48.0,-30.0,30.0,48.0,66.0,84.0]
-	var rows := [[-196.0,180.0],[-214.0,0.0],[-241.0,180.0],[-259.0,0.0]]
-	var hi := 0
-	for row in rows:
-		for x in xs:
-			_prop("res://models/house_%d.glb" % (hi % 2),Vector3(x,0,row[0]),Vector3(8,5.6,7),row[1],Color("efe2c8"))
-			hi += 1
-	_box(self,Vector3(58,0.06,-228),Vector3(18,0.1,13),Color("9a9d98"))
-	_slab(Vector3(54,0.5,-228),Vector3(5,0.3,5),-12.0,Color("c9a96a"))
-	_slab(Vector3(63,0.5,-228),Vector3(5,0.3,5),12.0,Color("c9a96a"))
-	_box(self,Vector3(58,0.45,-224.5),Vector3(8,0.9,0.5),Color("6d7a82"),true)
-	_box(self,Vector3(-62,0.04,-228),Vector3(14,0.08,12),Color("9cc085"))
-	for bx in [-67.0,-57.0]:
-		_box(self,Vector3(bx,0.45,-224),Vector3(2.4,0.9,0.7),Color("8a6a43"),true)
-	# Harbor Airfield.
-	_box(self,Vector3(0,0.02,-366),Vector3(20,0.08,140),Color("2c3640"))
-	for z in range(-305,-432,-12):
-		_box(self,Vector3(0,0.075,float(z)),Vector3(0.5,0.02,5),Color("f4f1e8"))
-	for x in [-9.5,9.5]:
-		_box(self,Vector3(x,0.075,-366),Vector3(0.3,0.02,140),Color("f4f1e8"))
-	for bx in range(-8,9,4):
-		_box(self,Vector3(float(bx),0.075,-431),Vector3(1.4,0.02,6),Color("f4f1e8"))
-	_box(self,Vector3(-24,0.012,-350),Vector3(30,0.07,100),Color("434d56"))
-	for z in [-320.0,-380.0]:
-		_prop("res://models/hangar.glb",Vector3(-50,0,z-4.0),Vector3(24,9,22),90.0,Color("c9d0d4"))
-		_prop("res://models/airplane.glb",Vector3(-26,0,z),Vector3(14,4,12),90.0,Color("f0f2f4"))
-	_prop("res://models/hangar.glb",Vector3(-50,0,-352),Vector3(24,9,22),90.0,Color("c9d0d4"))
-	_prop("res://models/tower.glb",Vector3(40,0,-340),Vector3(8.4,26,8.4),0.0,Color("d8dcd8"))
-	_prop("res://models/building_3.glb",Vector3(50,0,-385),Vector3(11,10.6,10),-90.0,Color("b3a2ad"))
-	_prop("res://models/building_1.glb",Vector3(50,0,-410),Vector3(11,6.2,10),-90.0,Color("e2c994"))
-	# Summit Pass: a branch road from the highway up to a lookout.
+	# Roads first (so crossings are known), then markings.
+	var roads := []
+	for r in _nm_roads():
+		var a: Vector2 = r[0]
+		var b: Vector2 = r[1]
+		var w: float = r[2]
+		var mid := (a+b)/2.0
+		var size := Vector3(absf(b.x-a.x),0.08,w) if absf(b.x-a.x) > absf(b.y-a.y) else Vector3(w,0.08,absf(b.y-a.y))
+		roads.append([Vector3(mid.x,0.011,mid.y),size])
+	# The Harbor Raceway approach road (z -150) joins the east end of the -140 street.
+	roads.append([Vector3(NM_X1-6.0,0.012,-142.5),Vector3(14,0.08,25)])
+	_box_batch(asphalt,roads)
+	var yellow := []
+	var dashes := []
+	var curbs := []
+	for r in _nm_roads():
+		var a: Vector2 = r[0]
+		var b: Vector2 = r[1]
+		var w: float = r[2]
+		var len := a.distance_to(b)
+		var dir := (b-a)/len
+		var n := Vector2(-dir.y,dir.x)
+		var along_z := absf(dir.y) > 0.5
+		var t := 4.0
+		while t < len-2.0:
+			var p := a+dir*t
+			if not _nm_near_cross(p,n,w):
+				if w >= 20.0:
+					for s in [-0.25,0.25]:
+						var q: Vector2 = p+n*s
+						yellow.append([Vector3(q.x,0.06,q.y),Vector3(0.16,0.02,4.2) if along_z else Vector3(4.2,0.02,0.16)])
+					for s in [-5.0,5.0]:
+						var q: Vector2 = p+n*s
+						dashes.append([Vector3(q.x,0.06,q.y),Vector3(0.18,0.02,3) if along_z else Vector3(3,0.02,0.18)])
+				else:
+					dashes.append([Vector3(p.x,0.06,p.y),Vector3(0.18,0.02,3) if along_z else Vector3(3,0.02,0.18)])
+			t += 8.0
+		# Curbs in 4 m pieces, left out where another road joins.
+		t = 2.0
+		while t < len-1.0:
+			var p := a+dir*t
+			for s in [-1.0,1.0]:
+				var e: Vector2 = p+n*s*(w/2.0+0.2)
+				var out: Vector2 = p+n*s*(w/2.0+1.2)
+				if not _on_road(Vector3(out.x,0,out.y)) and not _on_road(Vector3(e.x,0,e.y)+Vector3(n.x,0,n.y)*s*1.0):
+					curbs.append([Vector3(e.x,0.06,e.y),Vector3(0.4,0.12,4.0) if along_z else Vector3(4.0,0.12,0.4)])
+			t += 4.0
+	_box_batch(Color("f2c230"),yellow)
+	_box_batch(Color("eef0ec"),dashes)
+	_box_batch(Color("b3b0a8"),curbs)
+	# Crossings and traffic signals.
+	var zebra := []
+	var poles := []
+	var ns_caps := []
+	var ew_caps := []
+	var half := 10.0
+	for sp: Vector2 in NM_SIGNALS:
+		light_spots.append(Vector3(sp.x,0,sp.y))
+		for s in [-1.0,1.0]:
+			if _on_road(Vector3(sp.x,0,sp.y+s*(half+2.0))):
+				for k in 12:
+					zebra.append([Vector3(sp.x-8.8+1.6*k,0.065,sp.y+s*(half+2.0)),Vector3(0.7,0.02,3.0)])
+			if _on_road(Vector3(sp.x+s*(half+2.0),0,sp.y)):
+				for k in 12:
+					zebra.append([Vector3(sp.x+s*(half+2.0),0.067,sp.y-8.8+1.6*k),Vector3(3.0,0.02,0.7)])
+		var c := half+2.6
+		var at := Vector3(sp.x,0,sp.y)
+		_signal_pole(poles,ns_caps,ew_caps,at+Vector3(c,0,c),PI,true)
+		_signal_pole(poles,ns_caps,ew_caps,at+Vector3(-c,0,-c),0.0,true)
+		_signal_pole(poles,ns_caps,ew_caps,at+Vector3(-c,0,c),PI/2.0,false)
+		_signal_pole(poles,ns_caps,ew_caps,at+Vector3(c,0,-c),-PI/2.0,false)
+	_box_batch(Color("eef0ec"),zebra)
+	_model_batch("res://models/traffic_light.glb",poles)
+	var ns_inst := _box_batch(Color.WHITE,ns_caps)
+	var ew_inst := _box_batch(Color.WHITE,ew_caps)
+	if light_ns_mat == null:
+		light_ns_mat = _material(Color("4fd36a"))
+		light_ew_mat = _material(Color("e04a3a"))
+		for m in [light_ns_mat,light_ew_mat]:
+			m.emission_enabled = true
+			m.emission_energy_multiplier = 1.4
+	if ns_inst != null:
+		ns_inst.material_override = light_ns_mat
+	if ew_inst != null:
+		ew_inst.material_override = light_ew_mat
+	# Summit Pass: a branch road east up to a lookout.
+	var grass := Color("6f945c")
+	var rock := Color("7d776c")
 	_slab(Vector3(127,-0.35,-270),Vector3(34,0.6,24),0,grass)
 	_box(self,Vector3(127,0.01,-270),Vector3(34,0.08,8),asphalt)
 	_slab(Vector3(151.7,2.51,-270),Vector3(24,0.6,20),14.0,Color("93866f"))
@@ -1142,60 +1215,137 @@ func _build_north() -> void:
 		_box(self,Vector3(176.3,6.7,z),Vector3(26,2,0.8),rock,true)
 	_box(self,Vector3(189.8,6.7,-270),Vector3(0.8,2,21),rock,true)
 	_sign("SUMMIT PASS",Vector3(112,5.2,-270),Color("ffe0b8"),44)
-	# Discovery sites.
+	_sign("NORTH HIGHWAY",Vector3(0,9.0,-64),Color("ffe0b8"),60)
+	_sign("INDUSTRIAL QUARTER",Vector3(-32,7.0,-66),Color("d8dde0"),48)
+	_sign("MAPLE SUBURBS",Vector3(0,8.0,-158),Color("e3f5d0"),52)
+	_sign("MIDTOWN",Vector3(-60,8.0,-318),Color("e8f0ff"),56)
+	_sign("HARBOR AIRFIELD",Vector3(14,8.0,-318),Color("cfe6ff"),52)
+	_build_nm_blocks()
 	for site in NORTH:
 		north_nodes.append(_north_token(site["pos"],site["name"]))
 	_build_north_landscape()
 
-func _build_north_landscape() -> void:
-	var lamps_left: Array = []
-	var lamps_right: Array = []
-	for z in range(-72,-296,-24):
-		lamps_right.append(Vector3(7.5,0,float(z)))
-		lamps_left.append(Vector3(-7.5,0,float(z)-12.0))
-	for z in range(-308,-432,-24):
-		lamps_right.append(Vector3(12.5,0,float(z)))
-		lamps_left.append(Vector3(-12.5,0,float(z)-12.0))
-	_scatter("res://models/lamp.glb",lamps_right,1.0,1.0,0.0)
-	_scatter("res://models/lamp.glb",lamps_left,1.0,1.0,PI)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 77
-	var pines: Array = []
-	for z in range(-64,-436,-7):
-		for side in [-1.0,1.0]:
-			if side > 0.0 and ((z < -255 and z > -285) or (z < -138 and z > -162)):
-				continue
-			var edge := 102.0+rng.randf_range(0.0,5.0)
-			var pz := float(z)+rng.randf_range(-2.0,2.0)
-			var inner := rng.randf() < 0.5 and not (z < -90 and z > -150)
-			var iz := float(z)+rng.randf_range(-3.0,3.0)
-			# v0.24: keep the pines off the cross streets that run out to the edge (8 m wide).
-			if not _near_cross_street(pz):
-				pines.append(Vector3(side*edge,0,pz))
-			if inner and not _near_cross_street(iz):
-				pines.append(Vector3(side*(edge-8.0),0,iz))
-	_scatter("res://models/tree_pine.glb",pines,0.9,1.4)
-	var rounds: Array = []
-	for z in [-184.0,-224.0,-232.0,-283.0]:
-		for x in range(-100,101,12):
-			if absi(x) > 12 and absf(float(x)+62.0) > 9.0 and absf(float(x)-58.0) > 11.0 or (absi(x) > 12 and z == -184.0):
-				rounds.append(Vector3(float(x)+rng.randf_range(-2.0,2.0),0,z+rng.randf_range(-1.5,1.5)))
-	for p in [Vector3(-70,0,-221),Vector3(-54,0,-222),Vector3(-66,0,-234),Vector3(-56,0,-232)]:
-		rounds.append(p)
-	_scatter("res://models/tree_round.glb",rounds,0.9,1.3)
-	var rocks: Array = []
-	for z in range(-80,-430,-31):
-		rocks.append(Vector3(-98.0+rng.randf_range(-2.0,2.0),0,float(z)))
-		rocks.append(Vector3(98.0+rng.randf_range(-2.0,2.0),0,float(z)-15.0))
-	for p in [Vector3(118,0,-262),Vector3(120,0,-278),Vector3(138,0,-264)]:
-		rocks.append(p)
-	_scatter("res://models/rock.glb",rocks,0.8,1.6)
+func _build_nm_blocks() -> void:
+	var plates := {}
+	var add_plate := func(col: Color, x0: float, x1: float, z0: float, z1: float) -> void:
+		var key := col.to_html(false)
+		if not plates.has(key):
+			plates[key] = []
+		plates[key].append([Vector3((x0+x1)/2.0,0.03,(z0+z1)/2.0),Vector3(x1-x0,0.06,z1-z0)])
+	var concrete := Color("9d9a92")
+	var lawn := Color("7fae68")
+	var paved := Color("a19c90")
+	# Industrial Quarter (between the Old City and the -140 street).
+	add_plate.call(concrete,-105.5,-43.0,-125.0,-63.0)
+	add_plate.call(concrete,43.0,105.0,-125.0,-63.0)
+	add_plate.call(lawn,-21.0,-15.0,-125.0,-63.0)
+	add_plate.call(lawn,15.0,21.0,-125.0,-63.0)
+	for z in [-75.0,-111.0]:
+		_prop_big("res://models/warehouse.glb",Vector3(-52,0,z),Vector3(20,6.4,12),90.0,1.4)
+		_prop_big("res://models/warehouse.glb",Vector3(52,0,z),Vector3(20,6.4,12),-90.0,1.4)
+	for r in 6:
+		for c in 2:
+			var cx := -99.0 if c == 0 else -91.0
+			var cz := -100.0-float(r)*4.2
+			_prop("res://models/container_%d.glb" % ((r+c) % 3),Vector3(cx,0,cz),Vector3(6,2.6,2.4),0.0,Color("c4533f"))
+			if (r+c) % 2 == 0:
+				_prop("res://models/container_%d.glb" % ((r+c+1) % 3),Vector3(cx,2.6,cz),Vector3(6,2.6,2.4),0.0,Color("3f78a8"))
+	_prop("res://models/crane.glb",Vector3(-82,0,-75),Vector3(1,1,1),0.0,Color("e3a428"),false)
+	for lx in [-6.0,6.0]:
+		for lz in [-2.5,2.5]:
+			_collider(self,Vector3(-82+lx,7,-75-lz),Vector3(0.8,14,0.8))
+	_box(self,Vector3(88,5.2,-80),Vector3(20.8,10.4,15.6),Color("c4c0b8"),true)
+	_box(self,Vector3(88,10.9,-80),Vector3(21.6,1.0,16.4),Color("8d979e"))
+	_box(self,Vector3(102,17,-80),Vector3(4,34,4),Color("b36a4c"),true)
+	for y in [26.0,30.0]:
+		_box(self,Vector3(102,y,-80),Vector3(4.4,1.4,4.4),Color("f2e6d2"))
+	# Maple Suburbs: houses on the outer blocks, shops and apartments along the highway.
+	var items := {}
+	for c in [Vector2(-90.25,-180),Vector2(90,-180)]:
+		add_plate.call(lawn,c.x-15.25,c.x+15.25,c.y-25.0,c.y+25.0)
+	add_plate.call(lawn,NM_PARK.x-15.25,NM_PARK.x+15.25,-285.0,-235.0)
+	add_plate.call(paved,75.0,105.0,-260.0,-235.0)
+	var hi := 0
+	for cz in [-196.0,-180.0,-164.0]:
+		for hx in [[-80.0,90.0],[-100.0,-90.0],[80.0,-90.0],[100.0,90.0]]:
+			_prop_big("res://models/house_%d.glb" % (hi % 2),Vector3(float(hx[0]),0,cz),Vector3(8,5.6,7),float(hx[1]),NM_HOUSE_SCALE,Color("efe2c8"))
+			hi += 1
+	for c in [Vector2(-30,-180),Vector2(30,-260)]:
+		add_plate.call(paved,c.x-15.0,c.x+15.0,c.y-25.0,c.y+25.0)
+		_place(items,"tower_3",Vector3(c.x,0,c.y),0.0,1.2)
+	for c in [Vector2(30,-180),Vector2(-30,-260)]:
+		add_plate.call(paved,c.x-15.0,c.x+15.0,c.y-25.0,c.y+25.0)
+		_place(items,"shops_0",Vector3(c.x,0,c.y+14.0),0.0,1.2)
+		_place(items,"shops_1",Vector3(c.x,0,c.y-14.0),PI,1.2)
+	_build_park(NM_PARK,30.0)
+	# Skate Plaza.
+	_box(self,NM_SKATE+Vector3(0,0.07,0),Vector3(18,0.1,13),Color("9a9d98"))
+	_slab(NM_SKATE+Vector3(-4,0.5,0),Vector3(5,0.3,5),-12.0,Color("c9a96a"))
+	_slab(NM_SKATE+Vector3(5,0.5,0),Vector3(5,0.3,5),12.0,Color("c9a96a"))
+	_box(self,NM_SKATE+Vector3(0,0.45,3.5),Vector3(8,0.9,0.5),Color("6d7a82"),true)
+	# Midtown: towers that carry the Skyline on east of the -140 avenue.
+	for e in [["tower_1",-90.25,-340.0,0.0,1.5],["tower_0",-30.0,-340.0,0.0,1.5],["tower_2",-90.25,-419.0,PI/2.0,1.25],["tower_3",-30.0,-419.0,0.0,1.6]]:
+		var c := Vector3(float(e[1]),0,float(e[2]))
+		add_plate.call(paved,c.x-15.0,c.x+15.0,c.z-25.0 if c.z > -400.0 else -443.0,c.z+25.0 if c.z > -400.0 else -395.0)
+		_place(items,e[0],c,float(e[3]),float(e[4]))
+	for key in items:
+		_model_batch("res://models/%s.glb" % key,items[key])
+	# Harbor Airfield (east of the highway, north of the -300 street): apron, runway, hangars, tower.
+	add_plate.call(Color("8f9396"),15.0,105.0,-443.0,-315.0)
+	_box(self,Vector3(92,0.07,-381),Vector3(16,0.06,126),Color("2c3640"))
+	var marks := []
+	var z2 := -324.0
+	while z2 > -440.0:
+		marks.append([Vector3(92,0.105,z2),Vector3(0.5,0.02,5)])
+		z2 -= 12.0
+	for x in [84.6,99.4]:
+		marks.append([Vector3(x,0.105,-381),Vector3(0.3,0.02,126)])
+	for bx in range(86,99,4):
+		marks.append([Vector3(float(bx),0.105,-441),Vector3(1.4,0.02,5)])
+	_box_batch(Color("f4f1e8"),marks)
+	for z in [-338.0,-380.0,-422.0]:
+		_prop_big("res://models/hangar.glb",Vector3(31,0,z),Vector3(24,9,22),90.0,1.3,Color("c9d0d4"))
+		_prop_big("res://models/airplane.glb",Vector3(64,0,z),Vector3(14,4,12),90.0,1.3,Color("f0f2f4"))
+	_prop_big("res://models/tower.glb",Vector3(76,0,-319),Vector3(8.4,26,8.4),0.0,1.3,Color("d8dcd8"))
+	for key in plates:
+		_box_batch(Color(key),plates[key])
 
-func _near_cross_street(z: float) -> bool:
-	for road_z in [-110.0,-150.0,-205.0,-250.0,-300.0]:
-		if absf(z-road_z) < 8.5:
-			return true
-	return false
+func _build_north_landscape() -> void:
+	# Lamps and street trees on the pavements, and the rocks at the Summit Pass turn.
+	var lamps := []
+	var trees := []
+	for r in _nm_roads():
+		var a: Vector2 = r[0]
+		var b: Vector2 = r[1]
+		var w: float = r[2]
+		var len := a.distance_to(b)
+		var dir := (b-a)/len
+		var n := Vector2(-dir.y,dir.x)
+		var t := 14.0
+		var k := 0
+		while t < len-8.0:
+			for s in [-1.0,1.0]:
+				var lp: Vector2 = a+dir*(t+(0.0 if s > 0.0 else 13.0))+n*s*(w/2.0+1.4)
+				var tp: Vector2 = a+dir*(t+6.5*s)+n*s*(w/2.0+3.6)
+				if _nm_free(lp,dir):
+					lamps.append([Vector3(lp.x,0,lp.y),atan2(-n.y*s,n.x*s)+PI])
+				if k % 2 == 0 and _nm_free(tp,dir) and not _blocked_at(Vector3(tp.x,1.0,tp.y),1.2):
+					trees.append([Vector3(tp.x,0,tp.y),float(k)*1.7,0.7])
+			t += 26.0
+			k += 1
+	_model_batch("res://models/lamp.glb",lamps)
+	_model_batch("res://models/tree_round.glb",trees)
+	_scatter("res://models/rock.glb",[Vector3(118,0,-262),Vector3(120,0,-279),Vector3(138,0,-264)],0.8,1.6)
+
+func _nm_free(p: Vector2, dir: Vector2) -> bool:
+	# A pavement spot away from crossings, bus stops and anything solid.
+	var p3 := Vector3(p.x,0,p.y)
+	if _on_road(p3) or _on_road(p3+Vector3(dir.x,0,dir.y)*5.0) or _on_road(p3-Vector3(dir.x,0,dir.y)*5.0):
+		return false
+	for st in BUS_STOPS:
+		if absf(p.x) < 16.0 and absf(p.y-float(st["z"])) < 6.0:
+			return false
+	return not _blocked_at(p3+Vector3(0,1.0,0),0.6)
 
 func _build_landscape() -> void:
 	# Lamps along the city avenues and pines/rocks around the Ridge approach.
@@ -1715,10 +1865,12 @@ func _build_bus() -> void:
 	for i in BUS_STOPS.size():
 		var z: float = BUS_STOPS[i]["z"]
 		var parts: Array = []
-		parts.append(_box(self,Vector3(6.6,1.7,z),Vector3(0.3,3.4,0.3),Color("2f7fb8")))
-		parts.append(_box(self,Vector3(6.6,3.5,z),Vector3(1.6,0.9,0.2),Color("f4f7fa")))
-		parts.append(_box(self,Vector3(7.6,0.15,z),Vector3(2.6,0.1,4.2),Color("8fa0aa")))
-		parts.append(_sign("BUS STOP\n"+String(BUS_STOPS[i]["name"]),Vector3(6.6,5.2,z),Color("bfe4ff"),40))
+		# v0.29: north of the Old City the highway is 20 m wide, so the shelters stand on its pavement.
+		var sx := _bus_side(z)
+		parts.append(_box(self,Vector3(sx,1.7,z),Vector3(0.3,3.4,0.3),Color("2f7fb8")))
+		parts.append(_box(self,Vector3(sx,3.5,z),Vector3(1.6,0.9,0.2),Color("f4f7fa")))
+		parts.append(_box(self,Vector3(sx+1.0,0.15,z),Vector3(2.6,0.1,4.2),Color("8fa0aa")))
+		parts.append(_sign("BUS STOP\n"+String(BUS_STOPS[i]["name"]),Vector3(sx,5.2,z),Color("bfe4ff"),40))
 		if i == 0:
 			bus_stop_nodes = parts
 	bus = Node3D.new()
@@ -1740,6 +1892,9 @@ func _build_bus() -> void:
 	bus_label.pixel_size = 0.014
 	bus.add_child(bus_label)
 	_bus_reset()
+
+func _bus_side(z: float) -> float:
+	return 6.6 if z > NM_Z0 else 12.6
 
 func _bus_reset() -> void:
 	bus_idx = _bus_first()
@@ -1827,7 +1982,7 @@ func _bus_alight(force := false) -> void:
 		return
 	bus_riding = false
 	var z := bus.position.z
-	player.position = Vector3(5.2,0.9,z+3.2)
+	player.position = Vector3(_bus_side(z)-1.4,0.9,z+3.2)
 	player.velocity = Vector3.ZERO
 	player.show()
 	player.get_child(0).set_deferred("disabled",false)
@@ -3535,19 +3690,134 @@ func _build_hud() -> void:
 	chase_open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	shop_row.add_child(chase_open)
 	mode_button = _button("Switch activity",_toggle_activity)
-	items.add_child(mode_button)
 	nick_button = _button("Nickname: (not set)",_open_nick)
-	items.add_child(nick_button)
 	time_button = _button("Time: Live day & night",_cycle_day_mode)
-	items.add_child(time_button)
-	items.add_child(_button("Continue",_toggle_menu))
-	items.add_child(_button("Return to the car",_rescue))
+	# v0.29: with the clean screen, everything that used to sit on screen lives here.
+	var row1 := HBoxContainer.new()
+	row1.add_theme_constant_override("separation",10)
+	items.add_child(row1)
+	var row2 := HBoxContainer.new()
+	row2.add_theme_constant_override("separation",10)
+	items.add_child(row2)
+	for e in [[row1,"Map",_open_map],[row1,"Quests",_open_quests],[row1,"Travel",_open_travel],[row1,"Call car",_menu_call_car],[row2,"Chat",_toggle_chat]]:
+		var b := _button(String(e[1]),_menu_go.bind(e[2]))
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		(e[0] as HBoxContainer).add_child(b)
+	menu_view_button = _button("View",_menu_stay.bind(_cycle_view))
+	menu_radio_button = _button("Radio",_menu_stay.bind(_radio_next))
+	menu_online_button = _button("Online",_menu_stay.bind(_online_toggle))
+	for b in [menu_view_button,menu_radio_button,menu_online_button]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row2.add_child(b)
+	var row3 := HBoxContainer.new()
+	row3.add_theme_constant_override("separation",10)
+	items.add_child(row3)
+	menu_run_button = _button("Run: ON",_menu_stay.bind(_toggle_run))
+	menu_screen_button = _button("Screen: Clean",_menu_stay.bind(_toggle_clean_hud))
+	for b in [menu_run_button,menu_screen_button,time_button]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row3.add_child(b)
+	var row4 := HBoxContainer.new()
+	row4.add_theme_constant_override("separation",10)
+	items.add_child(row4)
+	for b in [mode_button,nick_button]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row4.add_child(b)
+	var row5 := HBoxContainer.new()
+	row5.add_theme_constant_override("separation",10)
+	items.add_child(row5)
+	for b in [_button("Continue",_toggle_menu),_button("Return to the car",_rescue)]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row5.add_child(b)
 	items.add_child(_label("Built with Godot Engine • MIT license\nLicense and attribution: credits.txt in the project",14,Color("8ddacb")))
 	_build_panels(root)
 	_build_nick_panel(root)
 	menu.hide()
 	hud_pause_button = pause_button
 	get_viewport().size_changed.connect(_relayout_hud)
+
+# ---------- v0.29: clean screen (only the QR code and a small minimap; the rest is in the Menu) ----------
+const CLEAN_MINI_SCALE := 0.68
+var hud_clean := true
+var hud_clean_applied := false
+var hud_force_full := false
+
+func _clean_on() -> bool:
+	return hud_clean and not hud_force_full
+var menu_view_button: Button
+var menu_radio_button: Button
+var menu_online_button: Button
+var menu_run_button: Button
+var menu_screen_button: Button
+
+func _minimap_tap() -> void:
+	# On the clean screen the minimap is the way into the Menu (the full map is the first Menu button).
+	if _clean_on():
+		_toggle_menu()
+	else:
+		_open_map()
+
+func _menu_go(f: Callable) -> void:
+	if paused and menu.visible:
+		_toggle_menu()
+	f.call()
+
+func _menu_stay(f: Callable) -> void:
+	f.call()
+	_refresh_menu_buttons()
+
+func _menu_call_car() -> void:
+	if driving:
+		_show_toast("You are already in your car.")
+	elif not _call_car():
+		_show_toast("Your car can't come here right now.")
+
+func _toggle_clean_hud() -> void:
+	hud_clean = not hud_clean
+	_save_progress()
+	_relayout_hud()
+	_clean_hud_tick()
+
+func _refresh_menu_buttons() -> void:
+	if menu_view_button == null:
+		return
+	if view_button != null:
+		menu_view_button.text = view_button.text
+	menu_radio_button.text = radio_button.text
+	menu_online_button.text = online_button.text
+	menu_run_button.text = "Run: ON" if run_on else "Run: OFF"
+	menu_screen_button.text = "Screen: Clean" if hud_clean else "Screen: Full"
+
+func _clean_hud_tick() -> void:
+	if hud == null or action_button == null:
+		return
+	if menu != null and menu.visible:
+		_refresh_menu_buttons()
+	if not _clean_on():
+		if hud_clean_applied:
+			hud_clean_applied = false
+			# Things nothing else re-shows each frame come back by hand.
+			for c in [hud_info,hud_pause_button,radio_button,online_button,view_button,chat_button,clock_label]:
+				if c != null:
+					(c as CanvasItem).visible = true
+			if my_tag != null:
+				my_tag.visible = true
+			action_button.visible = true
+		if minimap != null and minimap.scale != Vector2.ONE:
+			_relayout_hud()
+		return
+	hud_clean_applied = true
+	for c in [hud_info,hud_pause_button,radio_button,radio_caption,online_button,view_button,chat_button,travel_button,run_button,quests_button,feed_box,hud_arrow,clock_label,treasure_label]:
+		if c != null:
+			(c as CanvasItem).visible = false
+	if my_tag != null:
+		my_tag.visible = false
+	# The big button only shows when there is something to do right here (not the standing CALL CAR).
+	action_button.visible = action_button.text != "CALL CAR"
+	if qr_small != null:
+		qr_small.position = Vector2(18,18)
+	if minimap != null and minimap.scale.x != CLEAN_MINI_SCALE:
+		_relayout_hud()
 
 func _draw_joystick() -> void:
 	joystick.draw_circle(Vector2(90,90),86,Color(0.05,0.12,0.18,0.55))
@@ -4187,6 +4457,7 @@ func _save_progress() -> void:
 	file.set_value("progress","quick_day",quick_day)
 	file.set_value("progress","quick_got",quick_got)
 	file.set_value("progress","day_mode",day_mode)
+	file.set_value("progress","hud_clean",hud_clean)
 	file.set_value("progress","tour_day",tour_day)
 	file.set_value("progress","tour_got",tour_got)
 	file.set_value("progress","treasure_got",treasure_got)
@@ -4205,6 +4476,7 @@ func _load_progress() -> void:
 		quick_day = String(file.get_value("progress","quick_day",""))
 		quick_got = int(file.get_value("progress","quick_got",0)) & ((1 << QUICK.size())-1)
 		day_mode = clampi(int(file.get_value("progress","day_mode",0)),0,DAY_MODES.size()-1)
+		hud_clean = bool(file.get_value("progress","hud_clean",true))
 		tour_day = String(file.get_value("progress","tour_day",""))
 		tour_got = int(file.get_value("progress","tour_got",0)) & ((1 << SKY_STATIONS.size())-1)
 		treasure_got = int(file.get_value("progress","treasure_got",-1))
@@ -4472,6 +4744,7 @@ func _process(delta: float) -> void:
 	_level_fx_tick(delta)
 	_hud_v23_tick()
 	_my_tag_tick()
+	_clean_hud_tick()
 	if radio_station > 0 and radio_streams.has(radio_station):
 		radio_line_time += delta
 		if radio_line_time > 9.0:
@@ -4508,6 +4781,17 @@ func _build_peds() -> void:
 			dt_lines.append([Vector3(-126,0,z+sz),Vector3(-646,0,z+sz)])
 	for i in 36:
 		plan.append([dt_lines[i % dt_lines.size()][0],dt_lines[i % dt_lines.size()][1],false])
+	# v0.29: North Highway pavements (12.6 m from the road centre) and people at the park, skate plaza and yard.
+	var nm_lines: Array = []
+	for sx in [-12.6,12.6]:
+		nm_lines.append([Vector3(sx,0,-66),Vector3(sx,0,-446)])
+	for z in [-220.0,-300.0]:
+		for sz in [-12.6,12.6]:
+			nm_lines.append([Vector3(-104,0,z+sz),Vector3(104,0,z+sz)])
+	for i in 14:
+		plan.append([nm_lines[i % nm_lines.size()][0],nm_lines[i % nm_lines.size()][1],false])
+	for spot in [Vector3(-85,0,-283),Vector3(-95,0,-283),Vector3(84,0,-254),Vector3(96,0,-254),Vector3(-70,0,-104),Vector3(48,0,-399)]:
+		plan.append([spot,spot,true])
 	# Civic Center sidewalks (6.2 m from the road centre) and people at the school, park and mall.
 	var civ_lines := [[Vector3(-60,0,25.8),Vector3(-238,0,25.8)],[Vector3(-62,0,38.2),Vector3(-238,0,38.2)],[Vector3(-62,0,65.8),Vector3(-238,0,65.8)],[Vector3(-62,0,78.2),Vector3(-238,0,78.2)]]
 	for i in 16:
@@ -4632,6 +4916,10 @@ func _smoke_test() -> void:
 	# Exercise the actual mission and driving transitions; preserve the player's save.
 	var saved_checkpoint := checkpoint_id
 	checkpoint_id = -1
+	# The older checks look at the full HUD; the clean screen is checked at the end.
+	hud_force_full = true
+	_clean_hud_tick()
+	_relayout_hud()
 	# The older checks were written for the locked towns, 5 levels and no quick quests.
 	legacy_rules = true
 	var saved_quick := [quick_on,quick_idx,quick_done,bonus_xp]
@@ -4813,6 +5101,22 @@ func _smoke_test() -> void:
 	checkpoint_id = saved_checkpoint
 	_refresh_checkpoints()
 	_save_progress()
+	# v0.29: clean screen: only the QR code, a small minimap and the stick are left; tapping the minimap opens the Menu.
+	hud_force_full = false
+	var saved_clean := hud_clean
+	hud_clean = true
+	_relayout_hud()
+	_clean_hud_tick()
+	assert(not hud_info.visible and not hud_pause_button.visible and not radio_button.visible and not online_button.visible and not view_button.visible and not chat_button.visible and not travel_button.visible and not run_button.visible and not quests_button.visible and not treasure_label.visible,"Clean screen hides the panels and buttons")
+	assert(minimap.visible and is_equal_approx(minimap.scale.x,CLEAN_MINI_SCALE) and minimap.position.y < 30.0,"Small minimap in the top right")
+	assert(qr_small == null or is_equal_approx(qr_small.position.x,18.0),"QR code in the top left")
+	if not paused:
+		_minimap_tap()
+	assert(paused and menu.visible,"Tapping the minimap opens the Menu")
+	_toggle_menu()
+	assert(run_on,"Running is on by default")
+	hud_clean = saved_clean
+	_relayout_hud()
 	print("HARBOR_SMOKE_OK: Harbor International Airport, no walls and joined roads, sea tow, Harbor Loop sky train, City Tour, day and night, find me, treasure hunt, player rings, name tag, quests list, quick quests, 20 levels, all towns open, starter crate, QR join code, graphics, RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
@@ -5175,7 +5479,7 @@ func _wait_radio(station: int) -> void:
 	assert(radio_streams.has(station),"Radio station %d did not generate" % station)
 
 func _smoke_radio_peds() -> void:
-	assert(peds.size() == 188,"Pedestrians missing: %d" % peds.size())
+	assert(peds.size() == 208,"Pedestrians missing: %d" % peds.size())
 	assert(not player_person.is_empty() and player_person["mats"].has("Shirt"),"Player person model missing")
 	for p in peds:
 		assert(not (p["person"] as Dictionary).is_empty(),"Pedestrian person model missing")
@@ -5936,6 +6240,8 @@ const TRAFFIC_LOOPS := [
 	{"lane":6.0,"speed":11.0,"cars":4,"pts":[Vector2(-140,-220),Vector2(-300,-220),Vector2(-300,-300),Vector2(-140,-300)]},
 	{"lane":6.0,"speed":12.0,"cars":4,"pts":[Vector2(-380,-140),Vector2(-620,-140),Vector2(-620,-300),Vector2(-380,-300)]},
 	{"lane":6.0,"speed":11.0,"cars":3,"pts":[Vector2(-140,-56),Vector2(-300,-56),Vector2(-300,-140),Vector2(-140,-140)]},
+	{"lane":6.0,"speed":12.0,"cars":5,"pts":[Vector2(60,-140),Vector2(-60,-140),Vector2(-60,-300),Vector2(60,-300)]},
+	{"lane":6.0,"speed":11.0,"cars":3,"pts":[Vector2(0,-300),Vector2(-60,-300),Vector2(-60,-380),Vector2(0,-380)]},
 	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(32,-32),Vector2(32,32),Vector2(-32,32)]},
 	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(-32,32),Vector2(32,32),Vector2(32,-32)]},
 	{"lane":2.5,"speed":9.0,"cars":4,"pts":[Vector2(-95,32),Vector2(-230,32),Vector2(-230,72),Vector2(-95,72)]},
@@ -6055,6 +6361,13 @@ func _model_batch(path: String, items: Array, recolor := {}, use_local := false)
 	if path.ends_with("/lamp.glb"):
 		for it in items:
 			lamp_spots.append([it[0],float(it[1])])
+		model.free()
+		_city_lamps(items)
+		return null
+	if path.ends_with("/traffic_light.glb"):
+		model.free()
+		_city_signals(items)
+		return null
 	var multi := MultiMesh.new()
 	multi.transform_format = MultiMesh.TRANSFORM_3D
 	multi.mesh = mesh
@@ -6111,9 +6424,115 @@ func _place(items: Dictionary, name: String, pos: Vector3, yaw: float, scale := 
 		_collider(self,pos+Vector3(0,size.y/2.0,0),size)
 
 func _signal_pole(poles: Array, ns_caps: Array, ew_caps: Array, corner: Vector3, yaw: float, ns: bool, reach := 3.9) -> void:
-	poles.append([corner,yaw,1.0])
-	var head := corner+Basis(Vector3.UP,yaw)*Vector3(reach,0,0)
-	(ns_caps if ns else ew_caps).append([head+Vector3(0,5.27,0),Vector3(0.64,0.14,0.54)])
+	# v0.30: tall mast-arm signals. 4-lane roads get two lights hanging over the lanes, narrow roads one.
+	var heads: Array = [5.1,10.1] if reach > 3.8 else [reach+0.3]
+	poles.append([corner,yaw,heads])
+	var b := Basis(Vector3.UP,yaw)
+	var size := Vector3(0.06,0.36,0.36) if absf(sin(yaw)) > 0.7 else Vector3(0.36,0.36,0.06)
+	for r in heads:
+		var h := corner+b*Vector3(float(r),0,0)+Vector3(0,SIG_HEAD_Y,0)
+		for f in [-1.0,1.0]:
+			(ns_caps if ns else ew_caps).append([h+b*Vector3(0,0,f*0.23),size])
+
+const SIG_POLE_H := 7.4
+const SIG_ARM_Y := 7.1
+const SIG_HEAD_Y := 6.0
+const LAMP_H := 8.8
+const LAMP_ARM := 3.2
+
+func _cyl_batch(color: Color, items: Array, top := 0.8) -> MultiMeshInstance3D:
+	# items: [position (centre), radius, height]
+	if items.is_empty():
+		return null
+	var cm := CylinderMesh.new()
+	cm.top_radius = top
+	cm.bottom_radius = 1.0
+	cm.height = 1.0
+	cm.radial_segments = 8
+	cm.rings = 1
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.mesh = cm
+	multi.instance_count = items.size()
+	for i in items.size():
+		var it: Array = items[i]
+		var r := float(it[1])
+		multi.set_instance_transform(i,Transform3D(Basis.from_scale(Vector3(r,float(it[2]),r)),it[0]))
+	var inst := MultiMeshInstance3D.new()
+	inst.multimesh = multi
+	inst.material_override = _material(color)
+	add_child(inst)
+	return inst
+
+func _city_signals(items: Array) -> void:
+	# items: [corner, yaw, head distances along the arm]. A slim grey pole, a long arm over the road,
+	# dark light housings (the lit middle lamp is drawn from the signal caps), and a walk signal.
+	var poles := []
+	var bases := []
+	var arms := []
+	var housings := []
+	var hangers := []
+	var reds := []
+	var greens := []
+	var walks := []
+	for it in items:
+		var c: Vector3 = it[0]
+		var b := Basis(Vector3.UP,float(it[1]))
+		var heads: Array = it[2]
+		var far := float(heads.max())
+		poles.append([c+Vector3(0,SIG_POLE_H/2.0,0),0.15,SIG_POLE_H])
+		bases.append([c+Vector3(0,0.3,0),0.3,0.6])
+		arms.append([c+b*Vector3((far+0.5)/2.0,0,0)+Vector3(0,SIG_ARM_Y,0),Vector3(far+0.5,0.18,0.18),float(it[1])])
+		walks.append([c+b*Vector3(0,0,0.32)+Vector3(0,3.0,0),Vector3(0.38,0.55,0.3),float(it[1])])
+		for r in heads:
+			var h := c+b*Vector3(float(r),0,0)+Vector3(0,SIG_HEAD_Y,0)
+			housings.append([h,Vector3(0.5,1.45,0.4),float(it[1])])
+			hangers.append([h+Vector3(0,0.9,0),Vector3(0.08,0.5,0.08),float(it[1])])
+			for f in [-1.0,1.0]:
+				reds.append([h+b*Vector3(0,0.46,f*0.215),Vector3(0.3,0.3,0.04),float(it[1])])
+				greens.append([h+b*Vector3(0,-0.46,f*0.215),Vector3(0.3,0.3,0.04),float(it[1])])
+	_cyl_batch(Color("5b6066"),poles,0.75)
+	_cyl_batch(Color("4a4f55"),bases,0.8)
+	_box_batch_rot(Color("5b6066"),arms)
+	_box_batch_rot(Color("5b6066"),hangers)
+	_box_batch_rot(Color("1d2023"),housings)
+	_box_batch_rot(Color("1d2023"),walks)
+	_box_batch_rot(Color("4a1712"),reds)
+	_box_batch_rot(Color("123a1f"),greens)
+
+var lamp_glow_mat: StandardMaterial3D
+
+func _city_lamps(items: Array) -> void:
+	# items: [position, yaw, scale]. A 9 m street lamp; its arm (local +x) reaches out over the road.
+	if lamp_glow_mat == null:
+		lamp_glow_mat = StandardMaterial3D.new()
+		lamp_glow_mat.resource_name = "LampGlow"
+		lamp_glow_mat.albedo_color = Color("f1ecdc")
+		lamp_glow_mat.emission_enabled = true
+		lamp_glow_mat.emission = Color("ffe2a0")
+		lamp_glow_mat.emission_energy_multiplier = 0.3
+		if not night_lamps.has(lamp_glow_mat):
+			night_lamps.append(lamp_glow_mat)
+	var poles := []
+	var bases := []
+	var arms := []
+	var heads := []
+	for it in items:
+		var p: Vector3 = it[0]
+		var a := float(it[1])
+		var s := float(it[2]) if it.size() > 2 else 1.0
+		var b := Basis(Vector3.UP,a)
+		var h := LAMP_H*s
+		poles.append([p+Vector3(0,h/2.0,0),0.13,h])
+		bases.append([p+Vector3(0,0.45,0),0.22,0.9])
+		arms.append([p+b*Vector3(LAMP_ARM/2.0,0,0)+Vector3(0,h-0.15,0),Vector3(LAMP_ARM,0.13,0.13),a])
+		heads.append([p+b*Vector3(LAMP_ARM-0.1,0,0)+Vector3(0,h-0.3,0),Vector3(1.15,0.22,0.5),a])
+	_cyl_batch(Color("5d6266"),poles,0.7)
+	_cyl_batch(Color("4c5156"),bases,0.8)
+	_box_batch_rot(Color("5d6266"),arms)
+	var inst := _box_batch_rot(Color("f1ecdc"),heads)
+	if inst != null:
+		inst.material_override = lamp_glow_mat
 
 func _build_downtown() -> void:
 	# v0.28: big-city scale. 4-lane avenues and streets (20 m) on an 80 m grid, 5 m pavements,
@@ -6281,11 +6700,12 @@ func _build_downtown() -> void:
 	_model_batch("res://models/bin.glb",bins)
 	_model_batch("res://models/hydrant.glb",hydrants)
 	_model_batch("res://models/traffic_light.glb",poles)
-	light_ns_mat = _material(Color("4fd36a"))
-	light_ew_mat = _material(Color("e04a3a"))
-	for m in [light_ns_mat,light_ew_mat]:
-		m.emission_enabled = true
-		m.emission_energy_multiplier = 1.4
+	if light_ns_mat == null:
+		light_ns_mat = _material(Color("4fd36a"))
+		light_ew_mat = _material(Color("e04a3a"))
+		for m in [light_ns_mat,light_ew_mat]:
+			m.emission_enabled = true
+			m.emission_energy_multiplier = 1.4
 	var ns_inst := _box_batch(Color.WHITE,ns_caps)
 	var ew_inst := _box_batch(Color.WHITE,ew_caps)
 	if ns_inst != null:
@@ -6658,6 +7078,24 @@ func _smoke_downtown() -> void:
 				for lane in [-6.25,-2.75,2.75,6.25]:
 					assert(not _blocked_at(Vector3(x,1.0,z+lane),0.7),"Street blocked at %s" % str(Vector3(x,0,z+lane)))
 				x += 6.0
+	# v0.29: the North Highway district's lanes too (sky-train pillars stand in the median, not in a lane).
+	for r in _nm_roads():
+		var a: Vector2 = r[0]
+		var b: Vector2 = r[1]
+		var w: float = r[2]
+		var l := a.distance_to(b)
+		var d := (b-a)/l
+		var n := Vector2(-d.y,d.x)
+		var t := 3.0
+		while t < l-3.0:
+			for lane in ([-6.25,-2.75,2.75,6.25] if w >= 20.0 else [-2.5,2.5]):
+				var q: Vector2 = a+d*t+n*lane
+				var pos := Vector3(q.x,1.0,q.y)
+				assert(not _blocked_at(pos,0.7),"North road blocked at %s by %s" % [str(pos),_blocker(pos,0.7)])
+			t += 6.0
+	for pt in [Vector3(-90,1.0,-340),Vector3(31,1.0,-380),Vector3(-52,1.0,-75)]:
+		assert(_blocked_at(pt,0.3),"North building missing at %s" % str(pt))
+	assert(_on_road(Vector3(9,0,-200)) and _on_road(Vector3(-100,0,-145)) and not _on_road(Vector3(13,0,-200)),"North Highway is 4 lanes")
 	blocked_skip_traffic = false
 	# Discovery pays once.
 	var saved_mask := downtown_mask
@@ -6677,7 +7115,7 @@ func _smoke_downtown() -> void:
 	player.position = was_pos
 	driving = was_driving
 	# Traffic: built, moves, stops at a red light and behind an obstacle.
-	assert(traffic.size() == 33 and light_spots.size() >= 40,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
+	assert(traffic.size() == 41 and light_spots.size() >= 51,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
 	var was_car := car.position
 	var was_clock := clock
 	car.position = Vector3(400,0.8,400)
@@ -6776,7 +7214,7 @@ const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(0,-370)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -6918,7 +7356,7 @@ func _build_minimap(root: Control) -> void:
 	minimap_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	minimap_overlay.draw.connect(_draw_minimap)
 	minimap.add_child(minimap_overlay)
-	minimap_button = _button("",_open_map)
+	minimap_button = _button("",_minimap_tap)
 	minimap_button.flat = true
 	for state in ["normal","hover","pressed","focus"]:
 		minimap_button.add_theme_stylebox_override(state,StyleBoxEmpty.new())
@@ -7716,8 +8154,8 @@ const CHECKPOINTS := [
 	{"name":"Ridge Trailhead","pos":Vector3(74,0,4)},
 	{"name":"Bay Promenade","pos":Vector3(-100,0,9)},
 	{"name":"North Highway","pos":Vector3(12,0,-72)},
-	{"name":"Maple Suburbs","pos":Vector3(14,0,-228)},
-	{"name":"Harbor Airfield","pos":Vector3(22,0,-312)},
+	{"name":"Maple Suburbs","pos":Vector3(12,0,-206)},
+	{"name":"Harbor Airfield","pos":Vector3(13,0,-318)},
 	{"name":"Central Park","pos":Vector3(-430,0,-206)},
 	{"name":"Union Station","pos":Vector3(-196,0,-317)},
 	{"name":"Marina Heights","pos":Vector3(-10,0,116)},
@@ -9576,7 +10014,12 @@ func _relayout_hud() -> void:
 	action_button.position = Vector2(view.x-248,view.y-124)
 	status_label.position = Vector2(view.x/2-340,view.y-48)
 	if minimap != null:
-		minimap.position = Vector2(view.x-218,154)
+		if _clean_on():
+			minimap.scale = Vector2.ONE*CLEAN_MINI_SCALE
+			minimap.position = Vector2(view.x-MINI_SIZE*CLEAN_MINI_SCALE-18.0,18)
+		else:
+			minimap.scale = Vector2.ONE
+			minimap.position = Vector2(view.x-218,154)
 	if view_button != null:
 		view_button.position = Vector2(view.x-194,356)
 	if chat_button != null:
@@ -11473,7 +11916,7 @@ const WALK_SPEED := 5.0
 # 0 city, 1 ridge (east), 2 bay (west), 3 north, 4 marina, 5 skyline downtown.
 const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1,0,0,0]
 const TRAVEL_COOL := 20.0
-var run_on := false
+var run_on := true
 var run_button: Button
 var travel_button: Button
 var travel_panel: PanelContainer
@@ -11630,11 +12073,11 @@ func _travel_to(i: int) -> void:
 
 func _smoke_travel() -> void:
 	# RUN makes you faster on foot; fast travel moves you and your car, respects locks and the wait.
-	assert(not run_on and _walk_speed() == WALK_SPEED,"Walking speed by default")
+	assert(run_on and _walk_speed() == RUN_SPEED,"v0.29: running by default")
 	_toggle_run()
-	assert(run_on and _walk_speed() == RUN_SPEED and run_button.text == "RUN: ON","RUN toggles on")
+	assert(not run_on and _walk_speed() == WALK_SPEED and run_button.text == "RUN: OFF","RUN toggles off")
 	_toggle_run()
-	assert(not run_on,"RUN toggles off")
+	assert(run_on and run_button.text == "RUN: ON","RUN toggles back on")
 	var was_driving := driving
 	var was_p := player.position
 	var was_c := car.position
@@ -12277,8 +12720,8 @@ const QUICK := [
 	{"task":"Grab game tokens at Harbor Dome","pos":Vector3(155.0,0,40.5),"item":"tokens"},
 	{"task":"Pick up a trophy at Harbor Raceway","pos":Vector3(214,0,-168),"item":"trophy"},
 	{"task":"Fetch spare parts from the Industrial Quarter","pos":Vector3(16.5,0,-72),"item":"spare parts"},
-	{"task":"Collect a birthday cake in Maple Suburbs","pos":Vector3(18.5,0,-228),"item":"cake"},
-	{"task":"Grab a postcard at Harbor Airfield","pos":Vector3(26.5,0,-312),"item":"postcard"},
+	{"task":"Collect a birthday cake in Maple Suburbs","pos":Vector3(13,0,-205),"item":"cake"},
+	{"task":"Grab a postcard at Harbor Airfield","pos":Vector3(12.5,0,-345),"item":"postcard"},
 	{"task":"Pick up a train ticket at Union Station","pos":Vector3(-240,0,-316),"item":"train ticket"},
 	{"task":"Rescue a kite in Central Park","pos":Vector3(-436,0,-250),"item":"kite"},
 	{"task":"Return library books at Civic Center","pos":Vector3(-145.5,0,23),"item":"books"},
@@ -13951,19 +14394,12 @@ const LAND_FILLS := [
 const LINK_ROADS := [
 	[Vector2(197,-453),Vector2(197,-23),10.0],
 	[Vector2(-660,-458),Vector2(460,-458),10.0],
-	[Vector2(0,-440.5),Vector2(0,-453),10.0],
-	[Vector2(-130,-110),Vector2(-108,-110),8.0],
-	[Vector2(-130,-150),Vector2(-108,-150),8.0],
-	[Vector2(-130,-205),Vector2(-108,-205),8.0],
-	[Vector2(-130,-250),Vector2(-108,-250),8.0],
 	[Vector2(192,-28),Vector2(535,-28),10.0],
 	[Vector2(330,-23),Vector2(330,46),10.0],
 	[Vector2(430,-23),Vector2(430,46),10.0],
 	[Vector2(530,-23),Vector2(530,46),10.0],
-	[Vector2(108,-110),Vector2(192,-110),8.0],
-	[Vector2(108,-205),Vector2(192,-205),8.0],
-	[Vector2(108,-300),Vector2(192,-300),8.0],
-	[Vector2(-111.5,-300),Vector2(-107.5,-300),8.0],
+	[Vector2(108,-220),Vector2(192,-220),10.0],
+	[Vector2(108,-300),Vector2(192,-300),10.0],
 	[Vector2(-660,-56),Vector2(-150,-56),20.0],
 	[Vector2(-300,-51.5),Vector2(-300,-44),10.0],
 	[Vector2(-360,-51.5),Vector2(-360,-44),10.0],
@@ -14093,7 +14529,7 @@ func _v27_in_district(q: Vector3) -> bool:
 		return true
 	if q.x > SB_X0-2.0 and q.x < SB_X1+2.0 and q.z > SB_Z0-2.0 and q.z < SB_Z1+2.0:
 		return true
-	if q.x > -112.0 and q.x < 112.0 and q.z > -442.0 and q.z < -54.0:
+	if q.x > -112.0 and q.x < 112.0 and q.z > -455.0 and q.z < -54.0:
 		return true
 	if q.x > DT_WEST-2.0 and q.x < DT_EAST+2.0 and q.z > DT_SOUTH-2.0 and q.z < DT_NORTH+2.0:
 		return true
@@ -14373,7 +14809,8 @@ func _build_skytrain() -> void:
 		var ok := s-last >= 30.0 and maxf(absf(dir.x),absf(dir.z)) > 0.9995 and maxf(absf(_sky_dir(s-6.0).x),absf(_sky_dir(s-6.0).z)) > 0.9995 and maxf(absf(_sky_dir(s+6.0).x),absf(_sky_dir(s+6.0).z)) > 0.9995
 		if ok:
 			for k in [-1.0,1.0]:
-				if _on_road(g+nrm*k*8.5) or _on_road(g+dir*k*9.0) != _on_road(g):
+				# v0.29: 12.5 m out, so pillars also stand in the median of the 20 m (4-lane) roads.
+				if _on_road(g+nrm*k*12.5) or _on_road(g+dir*k*9.0) != _on_road(g):
 					ok = false
 			if ok and _blocked_at(g+Vector3(0,1.2,0),1.0):
 				ok = false
@@ -14856,12 +15293,12 @@ func _night_setup() -> void:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		var pm := PlaneMesh.new()
-		pm.size = Vector2(11,11)
+		pm.size = Vector2(14,14)
 		mm.mesh = pm
 		mm.instance_count = lamp_spots.size()
 		for i in lamp_spots.size():
 			var sp: Array = lamp_spots[i]
-			var off := Basis(Vector3.UP,float(sp[1]))*Vector3(1.6,0,0)
+			var off := Basis(Vector3.UP,float(sp[1]))*Vector3(LAMP_ARM-0.2,0,0)
 			mm.set_instance_transform(i,Transform3D(Basis.IDENTITY,(sp[0] as Vector3)*Vector3(1,0,1)+off+Vector3(0,0.13,0)))
 		lamp_pool_mm = MultiMeshInstance3D.new()
 		lamp_pool_mm.multimesh = mm
@@ -15044,7 +15481,7 @@ func _smoke_v27() -> void:
 		q.exclude = [player.get_rid(),car.get_rid()]
 		var hit := space.intersect_ray(q)
 		assert(not hit.is_empty() and absf(float((hit["position"] as Vector3).y)+0.05) < 0.06,"No ground at %s" % str(p))
-	for p in [Vector3(150,0,-300),Vector3(197,0,-100),Vector3(400,0,-28),Vector3(530,0,0),Vector3(330,0,10),Vector3(-300,0,-56),Vector3(-200,0,0),Vector3(-109.5,0,-300),Vector3(150,0,-205),Vector3(-140,0,8)]:
+	for p in [Vector3(150,0,-300),Vector3(197,0,-100),Vector3(400,0,-28),Vector3(530,0,0),Vector3(330,0,10),Vector3(-300,0,-56),Vector3(-200,0,0),Vector3(-109.5,0,-300),Vector3(150,0,-220),Vector3(-140,0,8)]:
 		assert(_on_road(p),"New road missing at %s" % str(p))
 	# Every new road is clear to drive along (no posts, trees or lamps in the way).
 	blocked_skip_traffic = true
@@ -15240,6 +15677,12 @@ func _city_shots() -> void:
 		["dt-avenue",10.0,-1,Vector3(-136,4,-118),Vector3(-140,14,-440)],
 		["dt-aerial",12.0,-1,Vector3(-130,190,-10),Vector3(-400,0,-270)],
 		["dt-night-avenue",21.5,-1,Vector3(-296,5,-150),Vector3(-300,10,-420)],
+		["nm-highway",10.5,-1,Vector3(4,4,-70),Vector3(0,8,-400)],
+		["nm-suburbs",16.5,-1,Vector3(-58,5,-150),Vector3(-90,2,-200)],
+		["nm-midtown",13.0,-1,Vector3(-60,5,-282),Vector3(-60,20,-420)],
+		["nm-airfield",15.5,-1,Vector3(130,24,-300),Vector3(60,0,-395)],
+		["nm-aerial",12.0,-1,Vector3(120,95,-110),Vector3(-10,0,-260)],
+		["nm-night",21.5,-1,Vector3(-4,5,-128),Vector3(0,8,-420)],
 		["airport-terminal",11.0,-1,Vector3(40,30,-420),Vector3(40,4,-500)],
 		["airport-apron",15.0,-1,Vector3(-130,26,-600),Vector3(60,2,-548)],
 		["airport-runway",17.5,-1,Vector3(-330,20,-700),Vector3(0,2,-640)],
@@ -15261,6 +15704,17 @@ func _city_shots() -> void:
 		camera.look_at(sh[4])
 		await _save_shot(String(sh[0]))
 		cam_lock = false
+	# v0.29: the clean screen's Menu.
+	day_hour_override = 13.0
+	_daynight_apply(true)
+	player.position = Vector3(0,0.75,-180)
+	for f in 8:
+		await get_tree().physics_frame
+	_toggle_menu()
+	for f in 4:
+		await get_tree().process_frame
+	await _save_shot("menu")
+	_toggle_menu()
 	# Riding view.
 	day_hour_override = 17.6
 	_daynight_apply(true)

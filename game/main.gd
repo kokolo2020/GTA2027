@@ -315,7 +315,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.26: two new districts! Sunset Beach and Westside, and twice as many people in the streets.")
+	_show_toast("Harbor City 0.26.1: bigger houses in Sunset Beach and Westside.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -12211,7 +12211,7 @@ const QUICK := [
 	{"task":"Pick up sunglasses in Marina Heights","pos":Vector3(-5.5,0,116),"item":"sunglasses"},
 	{"task":"Collect a trail map at Ridge Trailhead","pos":Vector3(78.5,0,4),"item":"trail map"},
 	{"task":"Grab game tokens at Harbor Dome","pos":Vector3(155.0,0,40.5),"item":"tokens"},
-	{"task":"Pick up a trophy at Harbor Raceway","pos":Vector3(174.5,0,-157.5),"item":"trophy"},
+	{"task":"Pick up a trophy at Harbor Raceway","pos":Vector3(214,0,-168),"item":"trophy"},
 	{"task":"Fetch spare parts from the Industrial Quarter","pos":Vector3(16.5,0,-72),"item":"spare parts"},
 	{"task":"Collect a birthday cake in Maple Suburbs","pos":Vector3(18.5,0,-228),"item":"cake"},
 	{"task":"Grab a postcard at Harbor Airfield","pos":Vector3(26.5,0,-312),"item":"postcard"},
@@ -12224,7 +12224,7 @@ const QUICK := [
 	{"task":"Grab a postcard at the Sunset Lighthouse","pos":Vector3(578,0,372),"item":"postcard"},
 	{"task":"Collect fresh bread at Westside Market","pos":Vector3(-320,0,86),"item":"bread"},
 	{"task":"Pick up sunflowers at Westside Windmill","pos":Vector3(-430,0,218),"item":"flowers"},
-	{"task":"Find a lost cat on Westside Hill","pos":Vector3(-372,0,163),"item":"cat"},
+	{"task":"Find a lost cat on Westside Hill","pos":Vector3(-368,0,192),"item":"cat"},
 ]
 const QUICK_XP := 50
 const QUICK_ALL_BONUS := 500
@@ -12619,7 +12619,7 @@ func _smoke_quick() -> void:
 	var bad := []
 	for i in QUICK.size():
 		var ip := (quick_props[i] as Node3D).position
-		if _on_road(ip) or _on_road(QUICK[i]["pos"]):
+		if _on_road(ip) or _on_road(QUICK[i]["pos"]) or _blocked_at(ip+Vector3(0,1.0,0),0.4) or _blocked_at(QUICK[i]["pos"]+Vector3(0,1.0,0),0.4):
 			bad.append([i,QUICK[i]["pos"],ip,_curb_spot(QUICK[i]["pos"])])
 	if not bad.is_empty():
 		print("QUICK_ON_ROAD ",bad)
@@ -13578,11 +13578,14 @@ const WS_Z1 := 340.0
 const WS_AVES := [-300.0,-360.0,-420.0]
 const WS_STREETS := [0.0,72.0,150.0,230.0,300.0]
 const WS_MARKET := Vector3(-330,0,111)
+# The house model is small (doors below a person's waist at 1.3x); 2x gives person-height doors.
+const HOUSE_SCALE := 2.0
+const HOUSE_STEP := 20.0
 
 func _ex_house(items: Dictionary, pos: Vector3, yaw: float, rng: RandomNumberGenerator) -> void:
 	var key := "house_0" if rng.randf() < 0.5 else "house_1"
-	_place(items,key,pos,yaw,1.3,false)
-	var size := Vector3(8.8,5.6,7.8)*1.3
+	_place(items,key,pos,yaw,HOUSE_SCALE,false)
+	var size := Vector3(8.8,5.6,7.8)*HOUSE_SCALE
 	if absf(sin(yaw)) > 0.7:
 		size = Vector3(size.z,size.y,size.x)
 	_collider(self,pos+Vector3(0,size.y/2.0,0),size)
@@ -13752,15 +13755,15 @@ func _build_expansion() -> void:
 	for bi in 4:
 		var bx0: float = xs[bi]
 		var bx1: float = xs[bi+1]
-		var x := bx0+15.0
-		while x <= bx1-13.0:
-			_ex_house(items,Vector3(x,0,74.0),0.0,rng)
-			_ex_house(items,Vector3(x,0,106.0),PI,rng)
-			_ex_house(items,Vector3(x,0,234.0),0.0,rng)
+		var x := bx0+(11.0 if bi == 0 else 17.8)
+		while x <= bx1-(11.0 if bi == 3 else 17.8):
+			_ex_house(items,Vector3(x,0,73.0),0.0,rng)
+			_ex_house(items,Vector3(x,0,107.0),PI,rng)
+			_ex_house(items,Vector3(x,0,233.0),0.0,rng)
 			if not (bi == 2):
-				_ex_house(items,Vector3(x,0,266.0),PI,rng)
-				_ex_house(items,Vector3(x,0,302.0),0.0,rng)
-			x += 16.0
+				_ex_house(items,Vector3(x,0,267.0),PI,rng)
+				_ex_house(items,Vector3(x,0,301.0),0.0,rng)
+			x += HOUSE_STEP
 		trees.append([Vector3((bx0+bx1)/2.0,0,200),rng.randf()*TAU,1.0])
 		trees.append([Vector3((bx0+bx1)/2.0-12.0,0,206),rng.randf()*TAU,0.9])
 		trees.append([Vector3((bx0+bx1)/2.0+12.0,0,194),rng.randf()*TAU,0.9])
@@ -13822,14 +13825,14 @@ func _build_expansion() -> void:
 				continue # windmill park
 			if bi == 1 and bj == 4:
 				continue # water tower
-			var x := bx0+(14.0 if bi > 0 else 12.0)
-			while x <= bx1-12.0:
+			var x := bx0+(5.0 if bi == 0 else 17.8)
+			while x <= bx1-(11.0 if bi == 3 else 17.8):
 				if bz1-bz0 > 40.0:
-					_ex_house(items,Vector3(x,0,bz0+(16.0 if bj > 0 else 12.0)),PI,rng)
-					_ex_house(items,Vector3(x,0,bz1-16.0),0.0,rng)
+					_ex_house(items,Vector3(x,0,bz0+(4.0 if bj == 0 else 17.0)),PI,rng)
+					_ex_house(items,Vector3(x,0,bz1-17.0),0.0,rng)
 				elif bj > 0 and bz1-bz0 > 30.0:
 					_ex_house(items,Vector3(x,0,(bz0+bz1)/2.0),PI,rng)
-				x += 16.0
+				x += HOUSE_STEP
 			if bz1-bz0 > 60.0:
 				trees.append([Vector3((bx0+bx1)/2.0,0,(bz0+bz1)/2.0),rng.randf()*TAU,1.0])
 	for key in items:
@@ -13850,7 +13853,7 @@ func _expand_shots() -> void:
 	walk_view = 0
 	_apply_view()
 	# [name, stand here, look towards]
-	for s in [["bridge",Vector3(130,0,60),Vector3(130,0,150)],["sb-blvd",Vector3(342,0,157),Vector3(450,0,150)],["sb-beach",Vector3(380,0,330),Vector3(450,0,380)],["sb-pier",Vector3(430,0,350),Vector3(SB_PIER_X,0,SB_Z1+40.0)],["sb-hotel",Vector3(470,0,326),Vector3(480,0,290)],["ws-gate",Vector3(-230,0,76),Vector3(-300,0,72)],["ws-market",Vector3(-345,0,80),Vector3(-330,0,111)],["ws-street",Vector3(-300,0,160),Vector3(-300,0,240)],["ws-windmill",Vector3(-420,0,240),Vector3(-441,0,258)]]:
+	for s in [["bridge",Vector3(130,0,60),Vector3(130,0,150)],["sb-blvd",Vector3(342,0,157),Vector3(450,0,150)],["sb-beach",Vector3(380,0,330),Vector3(450,0,380)],["sb-pier",Vector3(430,0,350),Vector3(SB_PIER_X,0,SB_Z1+40.0)],["sb-hotel",Vector3(470,0,326),Vector3(480,0,290)],["ws-gate",Vector3(-230,0,76),Vector3(-300,0,72)],["ws-market",Vector3(-345,0,80),Vector3(-330,0,111)],["ws-street",Vector3(-300,0,160),Vector3(-300,0,240)],["ws-windmill",Vector3(-420,0,240),Vector3(-441,0,258)],["ws-houses",Vector3(-318,0,157),Vector3(-336,0,172)],["sb-houses",Vector3(372,0,243),Vector3(357,0,228)]]:
 		player.position = (s[1] as Vector3)+Vector3(0,0.75,0)
 		var d: Vector3 = (s[2] as Vector3)-(s[1] as Vector3)
 		player.rotation.y = atan2(-d.x,-d.z)

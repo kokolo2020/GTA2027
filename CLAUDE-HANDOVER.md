@@ -292,3 +292,11 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Road map: _box/_box_batch/_box_batch_rot register thin asphalt boxes in road_rects; _on_road() and _curb_spot() find the nearest non-road open spot. FIND ME moves the hider there on start.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.24.2 (source commit d225d03). APK SHA256 697ae7255bf7426659e4763c59daf2a04823d82cb87c8513295ae34e112ca509, 31247034 bytes, code 28. Pages run succeeded; live release.json and page show 0.24.2.
 - Not tested on the Fold5 or with real phones online together.
+
+## v0.25.0 (2026-11-18): daily quests with real items
+
+- Fixed money glitch: the Quests list let you re-pick the stop you just finished, and pay grew with distance, so PICK UP at 0 m paid forever. Now quick_got (bitmask) + quick_day (local date, saved) make each QUICK stop pay once per day; _quick_pay(i) is fixed per stop (60 + 0.4 x distance from the start, max +240). _quick_fix_target keeps quick_idx on an open stop; all 20 done gives QUICK_ALL_BONUS $500, then quick quests pause until midnight and _toggle_activity skips to delivery jobs.
+- Items: each QUICK entry has "item"; _build_quick_props builds a primitive item (street-stall table for small items) at the stop, 1.6 m toward the building via _quick_side, scale 1.3; hidden once picked today. Raceway and Harbor Dome stops moved off the road; the smoke test asserts every ring and item is off the road.
+- Shots: --daily-shots (docs/shots-0.25.0).
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.25.0 (source commit b99b7bd). APK SHA256 304381652da310e1e172c3c018ce71f15448ba093e0c5683a330f168ff9bcd15, 31259322 bytes, code 29. Pages run succeeded; live release.json, page and /play show 0.25.0.
+- Not tested on the Fold5 or with real phones online together.

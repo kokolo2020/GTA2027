@@ -299,6 +299,7 @@ func _ready() -> void:
 	_build_hud()
 	_load_progress()
 	_quick_daily_check()
+	_web_perf_setup()
 	_refresh_checkpoints()
 	var dev_mode := false
 	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots"]:
@@ -313,7 +314,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.25: daily quests! Pick up the real item at each stop, once a day.")
+	_show_toast("Harbor City 0.25.1: FIND ME counts anywhere on the glow, and the browser version runs smoother.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -491,6 +492,7 @@ func _build_world() -> void:
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_max_distance = 110.0
 	add_child(sun)
+	sun_light = sun
 	_box(self, Vector3(0,-0.35,0), Vector3(112,0.6,112), Color("91ab82"), true)
 	_box(self, Vector3(0,-0.65,78), Vector3(230,0.3,55), Color("248caa"))
 	_box(self, Vector3(0,0.01,49), Vector3(112,0.1,7), Color("e8d5ad"))
@@ -6697,6 +6699,61 @@ var view_button: Button
 var cockpit: Node3D
 var cockpit_wheel: Node3D
 var world_env_res: Environment
+# v0.25.1: the browser runs single-threaded WebGL at full screen density, so it gets a lighter setup.
+var sun_light: DirectionalLight3D
+var web_lite := false
+var fps_label: Label
+const WEB_3D_PIXELS := 1100000.0
+
+func _web_perf_setup() -> void:
+	if "--bench" in OS.get_cmdline_user_args():
+		# Desktop check: average frame rate over 8 seconds of normal play, then quit.
+		get_tree().create_timer(4.0).timeout.connect(func():
+			var f0 := Engine.get_process_frames()
+			var t0 := Time.get_ticks_msec()
+			get_tree().create_timer(8.0).timeout.connect(func():
+				print("HC_BENCH fps=%.1f lite=%s scale=%.2f" % [float(Engine.get_process_frames()-f0)*1000.0/float(Time.get_ticks_msec()-t0),str(web_lite),get_viewport().scaling_3d_scale])
+				get_tree().quit()))
+	web_lite = OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()
+	if not web_lite:
+		return
+	if sun_light != null:
+		# One shadow split and a shorter shadow range: much cheaper, still has shadows near you.
+		sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+		sun_light.directional_shadow_max_distance = 55.0
+	RenderingServer.directional_shadow_atlas_set_size(2048,true)
+	get_viewport().size_changed.connect(_web_scale)
+	_web_scale()
+	var show_fps := "--web-lite" in OS.get_cmdline_user_args()
+	if OS.has_feature("web"):
+		var search = JavaScriptBridge.eval("window.location.search",true)
+		show_fps = typeof(search) == TYPE_STRING and String(search).contains("fps=1")
+	if show_fps:
+		fps_label = Label.new()
+		fps_label.add_theme_font_size_override("font_size",18)
+		fps_label.add_theme_color_override("font_color",Color("9cff9c"))
+		fps_label.add_theme_color_override("font_outline_color",Color.BLACK)
+		fps_label.add_theme_constant_override("outline_size",6)
+		fps_label.position = Vector2(8,4)
+		fps_label.z_index = 100
+		var layer := CanvasLayer.new()
+		layer.layer = 100
+		add_child(layer)
+		layer.add_child(fps_label)
+
+func _web_scale() -> void:
+	# Draw the 3D world at about 1.1 million pixels (menus and text stay sharp).
+	var vp := get_viewport()
+	var px := float(vp.get_visible_rect().size.x*vp.get_visible_rect().size.y)
+	var real := Vector2(get_window().size)
+	if real.x*real.y > 0.0:
+		px = real.x*real.y
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = clampf(sqrt(WEB_3D_PIXELS/maxf(px,1.0)),0.5,1.0)
+
+func _web_fps_tick() -> void:
+	if fps_label != null:
+		fps_label.text = "%d fps  ·  3D %d%%" % [Engine.get_frames_per_second(),int(get_viewport().scaling_3d_scale*100.0)]
 var in_car_view := false
 var eye_view := false
 var look_pitch := 0.0
@@ -11372,6 +11429,7 @@ func _refresh_run() -> void:
 func _hud_v23_tick() -> void:
 	if run_button == null:
 		return
+	_web_fps_tick()
 	if quick_day != _quick_today():
 		_quick_daily_check()
 	var on_foot := not driving and not race_car and seat_id < 0 and not bus_riding and not paused
@@ -13080,7 +13138,8 @@ func _smoke_treasure() -> void:
 # The hider's game decides the places and announces them; unclaimed prize money is refunded.
 const FM_PRIZES := [200,100,50]
 const FM_TIME := 120.0
-const FM_REACH := 3.0
+# Anywhere on the glowing floor (radius 2.6, pulsing) counts, plus room for network lag.
+const FM_REACH := 4.5
 var fm_hosting := false
 var fm_id := ""
 var fm_end := 0.0
@@ -13178,7 +13237,7 @@ func _fm_start() -> void:
 	_refresh_hud()
 
 func _fm_announce() -> void:
-	_fm_send("fms",{"f":fm_id,"x":snappedf(player.position.x,0.1),"z":snappedf(player.position.z,0.1),"a":_fm_area(player.position),"e":fm_end,"won":fm_places.size()})
+	_fm_send("fms",{"f":fm_id,"x":snappedf(player.position.x,0.1),"z":snappedf(player.position.z,0.1),"a":_fm_area(player.position),"e":fm_end,"won":fm_places.size(),"pl":fm_places})
 
 func _fm_finish(reason: String) -> void:
 	var paid := 0
@@ -13215,6 +13274,7 @@ func _fm_msg(ev: String, p: Dictionary) -> void:
 		h["end"] = minf(float(p.get("e",0.0)),_fm_now()+FM_TIME+5.0)
 		h["won"] = int(p.get("won",0))
 		fm_hunts[f] = h
+		_fm_check_paid(f,p.get("pl",[]))
 		if not known:
 			_feed_add_system("%s started FIND ME near %s! Prizes $%d / $%d / $%d. Look for the glowing floor!" % [h["name"],h["area"],FM_PRIZES[0],FM_PRIZES[1],FM_PRIZES[2]])
 	elif ev == "fmf":
@@ -13226,7 +13286,7 @@ func _fm_msg(ev: String, p: Dictionary) -> void:
 				return
 		if online_peers.has(from):
 			var pp: Vector3 = online_peers[from]["target"]
-			if Vector2(pp.x-player.position.x,pp.z-player.position.z).length() > FM_REACH+4.0:
+			if Vector2(pp.x-player.position.x,pp.z-player.position.z).length() > FM_REACH+6.0:
 				return
 		elif not fm_test:
 			return
@@ -13240,23 +13300,30 @@ func _fm_msg(ev: String, p: Dictionary) -> void:
 		var pl = p.get("pl",[])
 		if not pl is Array:
 			return
-		for k in mini((pl as Array).size(),3):
-			var row = pl[k]
-			if row is Array and row.size() >= 3 and String(row[0]) == online_id and not fm_paid.has(f):
-				fm_paid[f] = true
-				var amount := clampi(int(row[2]),0,int(FM_PRIZES[k]))
-				cash += amount
-				bonus_xp += 60
-				_save_progress()
-				_show_toast("YOU FOUND THEM! %s place  +$%d  +60 XP" % [["1st","2nd","3rd"][k],amount])
-				if not ("--smoke-test" in OS.get_cmdline_user_args()):
-					_play_coin()
+		_fm_check_paid(f,pl)
 		if fm_hunts.has(f):
 			fm_hunts[f]["won"] = (pl as Array).size()
 			if int(p.get("done",0)) == 1:
 				if fm_hunts[f].has("glow"):
 					(fm_hunts[f]["glow"] as Node3D).queue_free()
 				fm_hunts.erase(f)
+
+func _fm_check_paid(f: String, pl) -> void:
+	# Pays you once if the hider's winners list has your id in it.
+	if not pl is Array or fm_paid.has(f):
+		return
+	for k in mini((pl as Array).size(),3):
+		var row = pl[k]
+		if row is Array and row.size() >= 3 and String(row[0]) == online_id:
+			var amount := clampi(int(row[2]),0,int(FM_PRIZES[k]))
+			fm_paid[f] = [k,amount]
+			cash += amount
+			bonus_xp += 60
+			_save_progress()
+			_show_toast("YOU FOUND THEM! %s place  +$%d  +60 XP" % [["1st","2nd","3rd"][k],amount])
+			if not ("--smoke-test" in OS.get_cmdline_user_args()):
+				_play_coin()
+			return
 
 func _fm_tick(delta: float) -> void:
 	var now := _fm_now()
@@ -13296,12 +13363,21 @@ func _fm_tick(delta: float) -> void:
 		var pulse := 1.0+sin(clock*4.0)*0.08
 		g.scale = Vector3(pulse,1,pulse)
 		var left := maxf(float(h["end"])-now,0.0)
-		if int(h["won"]) < 3:
-			lines.append("FIND %s near %s  %d:%02d" % [h["name"],h["area"],int(left)/60,int(left)%60])
-		if not bool(h["sent"]) and not driving and Vector2(body.position.x-pos.x,body.position.z-pos.z).length() < FM_REACH:
-			h["sent"] = true
+		var near := not driving and Vector2(body.position.x-pos.x,body.position.z-pos.z).length() < FM_REACH
+		# Ask (again every 3 s while you stand there) until the hider confirms your place.
+		if near and not fm_paid.has(f) and int(h["won"]) < 3 and now >= float(h.get("sent_t",0.0)):
+			h["sent_t"] = now+3.0
 			_fm_send("fmf",{"f":f})
-			_show_toast("You found %s! Checking your place..." % h["name"])
+			if not bool(h["sent"]):
+				_show_toast("You found %s! Checking your place..." % h["name"])
+			h["sent"] = true
+		if fm_paid.has(f):
+			var won: Array = fm_paid[f] if fm_paid[f] is Array else [0,0]
+			lines.append("You found %s!  %s place  +$%d" % [h["name"],["1st","2nd","3rd"][int(won[0])],int(won[1])])
+		elif bool(h["sent"]):
+			lines.append("Found %s! Waiting for your place..." % h["name"] if int(h["won"]) < 3 else "%s: all 3 prizes are taken" % h["name"])
+		elif int(h["won"]) < 3:
+			lines.append("FIND %s near %s  %d:%02d" % [h["name"],h["area"],int(left)/60,int(left)%60])
 	if not lines.is_empty():
 		fm_banner = (fm_banner+"\n" if fm_banner != "" else "")+"\n".join(lines)
 
@@ -13347,6 +13423,21 @@ func _smoke_findme() -> void:
 	player.position = Vector3(21,0.75,-6)
 	_fm_tick(0.1)
 	assert(not fm_sent.is_empty() and fm_sent[0][0] == "fmf","Reaching the glowing floor reports a find")
+	assert(fm_banner.contains("Found Mia! Waiting") and not fm_banner.contains("FIND Mia"),"Hunter's banner stops saying FIND once you reach them")
+	_fm_tick(0.1)
+	assert(fm_sent.size() == 1,"No spam: one report per 3 seconds")
+	fm_hunts["p5-1"]["sent_t"] = 0.0
+	_fm_tick(0.1)
+	assert(fm_sent.size() == 2,"Report is sent again if the hider hasn't answered")
+	# The hider's regular announce carries the winners, so a lost result message still pays.
+	_fm_msg("fms",{"i":"p5","n":"Mia","f":"p5-1","x":20.0,"z":-6.0,"a":"Sunset Market","e":_fm_now()+60.0,"won":2,"pl":[["zz","Zed",200],["me1","Koko",100]]})
+	assert(cash == c0+100,"Paid from the announce")
+	_fm_tick(0.1)
+	assert(fm_banner.contains("You found Mia!") and fm_banner.contains("2nd place") and fm_banner.contains("+$100"),"Banner shows your place")
+	var n_sent := fm_sent.size()
+	fm_hunts["p5-1"]["sent_t"] = 0.0
+	_fm_tick(0.1)
+	assert(fm_sent.size() == n_sent,"No more reports once paid")
 	_fm_msg("fmr",{"i":"p5","f":"p5-1","pl":[["zz","Zed",200],["me1","Koko",100]],"done":0})
 	_fm_msg("fmr",{"i":"p5","f":"p5-1","pl":[["zz","Zed",200],["me1","Koko",100]],"done":1})
 	assert(cash == c0+100,"2nd place paid once")

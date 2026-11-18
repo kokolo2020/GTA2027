@@ -339,3 +339,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Bench (2560x1440): 68 fps, 78 with --web-lite.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.27.0 (source commit b7109fa). APK SHA256 88255d7ff91e2d32c38ac434ae81886511b03dd972f8c58c7b191ea1b511c775, 31775418 bytes, code 34. Pages run succeeded; live release.json, page and /play show 0.27.0.
 - Not tried on the Fold5, in a real browser, or with phones online together.
+
+## v0.27.1 (2026-11-19): traffic no longer stuck behind people
+
+- Idle pedestrians placed on a road are moved to the nearest pavement at build (_ped_curb; _curb_spot's player-capsule test always failed at ground level). Traffic edges past a pedestrian who stays in its lane > TRAFFIC_PED_PATIENCE (4 s) via ped_wait/ped_skip on each traffic car. Smoke asserts both.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.27.1 (source commit 64dd401). APK SHA256 1d5ca41519785cbe5e9e879ebb209030323080a7b71eb77603ab976d2c70620a, 31775418 bytes, code 35. Pages run succeeded; live release.json, page and /play show 0.27.1.
+- Not tried on the Fold5 or a real browser.

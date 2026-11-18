@@ -312,7 +312,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.24: quick quests, 20 levels, every town open, a new sky, and a Scan to play QR code!")
+	_show_toast("Harbor City 0.24.1: treasure hunts every 5 minutes, FIND ME!, a Quests list, and your name over your head!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -1329,6 +1329,10 @@ func _online_handle(text: String) -> void:
 			var inner = outer.get("payload",{})
 			if inner is Dictionary:
 				_race_msg(String(outer.get("event","")),inner)
+		elif outer is Dictionary and String(outer.get("event","")) in ["fms","fmf","fmr"]:
+			var inner = outer.get("payload",{})
+			if inner is Dictionary:
+				_fm_msg(String(outer.get("event","")),inner)
 		elif outer is Dictionary and (String(outer.get("event","")) == "lfp" or String(outer.get("event","")) == "lfa"):
 			var inner = outer.get("payload",{})
 			if inner is Dictionary:
@@ -1420,6 +1424,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	if foot_person.is_empty():
 		_box(foot_node,Vector3(0,0.75,0),Vector3(0.5,1.2,0.35),body_color)
 		_box(foot_node,Vector3(0,1.5,0),Vector3(0.4,0.4,0.4),Color("e8c9a0"))
+	_player_ring(foot_node,Color("4fe3ff"))
 	foot_node.hide()
 	var label := Label3D.new()
 	label.text = nm
@@ -3205,6 +3210,9 @@ func _build_player() -> void:
 		shirt_mat = player_person["mats"]["Shirt"]
 		pants_mats.append(player_person["mats"]["Pants"])
 		hat_holder.position.y = 0.29
+	# Real players stand on a glowing ring (yours gold, other players cyan); NPC walkers have none.
+	my_ring = _player_ring(player,Color("ffcf4a"))
+	my_ring.position.y = -0.66
 	camera = Camera3D.new()
 	camera.fov = 55
 	camera.far = 340
@@ -3480,6 +3488,8 @@ func _build_hud() -> void:
 	_build_chat(root)
 	_build_travel(root)
 	_build_qr(root)
+	_build_quest_list(root)
+	_build_treasure(root)
 	_build_feed(root)
 	_build_raceway_ui(root)
 	status_label = _label("",20,Color("fff1c9"))
@@ -3562,7 +3572,7 @@ func _input(event: InputEvent) -> void:
 			# Godot mouse emulation handles only the first finger; dispatch touch UI explicitly.
 			for button: Button in touch_buttons:
 				if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
-					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button))
+					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button)) or (quest_panel != null and quest_panel.is_ancestor_of(button))
 					if not paused and in_overlay:
 						continue
 					if paused and not in_overlay:
@@ -3624,6 +3634,8 @@ func _physics_process(delta: float) -> void:
 	if not booted or paused:
 		return
 	clock += delta
+	_treasure_tick(delta)
+	_fm_tick(delta)
 	_update_peds(delta)
 	var keyboard := Vector2(
 		float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT))-float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)),
@@ -3673,7 +3685,7 @@ func _physics_process(delta: float) -> void:
 	elif eye_view:
 		# Eye view: up/down walks forward/back, left/right turns.
 		player.rotation.y -= control.x*2.3*delta
-		var walk := -player.global_basis.z*(-control.y)*(_walk_speed() if control.y < 0.0 else 3.0)
+		var walk := -player.global_basis.z*(-control.y)*(_walk_speed() if control.y < 0.0 else 3.0)*(0.0 if fm_hosting else 1.0)
 		player.velocity.x = walk.x
 		player.velocity.z = walk.z
 		player.velocity.y -= 24*delta
@@ -3684,8 +3696,8 @@ func _physics_process(delta: float) -> void:
 		car.velocity.x = move_toward(car.velocity.x,0,delta*20)
 		car.velocity.z = move_toward(car.velocity.z,0,delta*20)
 	else:
-		player.velocity.x = direction.x*_walk_speed()
-		player.velocity.z = direction.z*_walk_speed()
+		player.velocity.x = direction.x*_walk_speed()*(0.0 if fm_hosting else 1.0)
+		player.velocity.z = direction.z*_walk_speed()*(0.0 if fm_hosting else 1.0)
 		if direction.length() > 0.08:
 			player.rotation.y = lerp_angle(player.rotation.y,atan2(-direction.x,-direction.z),delta*10)
 		player.velocity.y -= 24*delta
@@ -3847,6 +3859,9 @@ func _interact() -> void:
 		_refresh_hud()
 		return
 	var body: CharacterBody3D = car if driving else player
+	if fm_hosting:
+		_show_toast("You're hiding for FIND ME! Stay put until it ends.")
+		return
 	if quick_on and trial_active < 0:
 		var qd := _destination()
 		if Vector2(body.position.x-qd.x,body.position.z-qd.z).length() < (6.2 if driving else 4.8):
@@ -4023,6 +4038,8 @@ func _open_panel(panel: Control) -> void:
 		rw_panel.hide()
 	if travel_panel != null:
 		travel_panel.hide()
+	if quest_panel != null:
+		quest_panel.hide()
 	panel.show()
 	panel.reset_size()
 	_layout_panels()
@@ -4037,6 +4054,8 @@ func _layout_panels() -> void:
 		rw_panel.position = Vector2((view.x-rw_panel.size.x)/2.0,maxf(8.0,(view.y-rw_panel.size.y)/2.0))
 	if travel_panel != null:
 		travel_panel.position = Vector2((view.x-travel_panel.size.x)/2.0,maxf(8.0,(view.y-travel_panel.size.y)/2.0))
+	if quest_panel != null:
+		quest_panel.position = Vector2((view.x-quest_panel.size.x)/2.0,maxf(8.0,(view.y-quest_panel.size.y)/2.0))
 
 func _toggle_menu() -> void:
 	if crate_open:
@@ -4058,6 +4077,8 @@ func _toggle_menu() -> void:
 		rw_panel.hide()
 	if travel_panel != null:
 		travel_panel.hide()
+	if quest_panel != null:
+		quest_panel.hide()
 	if paused:
 		_open_panel(menu)
 	else:
@@ -4137,6 +4158,9 @@ func _save_progress() -> void:
 	file.set_value("progress","quick_on",quick_on)
 	file.set_value("progress","quick_idx",quick_idx)
 	file.set_value("progress","quick_done",quick_done)
+	file.set_value("progress","treasure_got",treasure_got)
+	file.set_value("progress","treasure_count",treasure_count)
+	file.set_value("progress","fm_refund",fm_refund)
 	file.save(SAVE_PATH)
 
 func _load_progress() -> void:
@@ -4147,6 +4171,12 @@ func _load_progress() -> void:
 		quick_on = bool(file.get_value("progress","quick_on",true))
 		quick_idx = posmod(int(file.get_value("progress","quick_idx",0)),QUICK.size())
 		quick_done = maxi(0,int(file.get_value("progress","quick_done",0)))
+		treasure_got = int(file.get_value("progress","treasure_got",-1))
+		treasure_count = maxi(0,int(file.get_value("progress","treasure_count",0)))
+		var refund := maxi(0,int(file.get_value("progress","fm_refund",0)))
+		if refund > 0 and not fm_hosting:
+			cash += refund
+			fm_refund = 0
 		if legacy_rules:
 			quick_on = false
 		cash = maxi(0,int(file.get_value("progress","cash",0)))
@@ -4404,6 +4434,7 @@ func _radio_refresh() -> void:
 func _process(delta: float) -> void:
 	_level_fx_tick(delta)
 	_hud_v23_tick()
+	_my_tag_tick()
 	if radio_station > 0 and radio_streams.has(radio_station):
 		radio_line_time += delta
 		if radio_line_time > 9.0:
@@ -4662,6 +4693,11 @@ func _smoke_test() -> void:
 	quick_done = saved_quick[2]
 	bonus_xp = saved_quick[3]
 	_smoke_quick()
+	_smoke_quests()
+	_smoke_treasure()
+	_smoke_findme()
+	_my_tag_tick()
+	assert(my_tag != null and my_tag.text.contains("Lv ") and my_tag.text.begins_with(_my_name()),"Your name tag shows name and level")
 	cash = original_cash
 	deliveries = original_deliveries
 	found_mask = original_mask
@@ -4695,7 +4731,7 @@ func _smoke_test() -> void:
 	checkpoint_id = saved_checkpoint
 	_refresh_checkpoints()
 	_save_progress()
-	print("HARBOR_SMOKE_OK: quick quests, 20 levels, all towns open, starter crate, QR join code, graphics, RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: find me, treasure hunt, player rings, name tag, quests list, quick quests, 20 levels, all towns open, starter crate, QR join code, graphics, RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -6815,6 +6851,15 @@ func _draw_minimap() -> void:
 		if p.length() < limit:
 			ctl.draw_circle(c+p*MINI_SIZE,4.5,Color("132b3a"))
 			ctl.draw_circle(c+p*MINI_SIZE,3.2,m[1])
+	if quick_on:
+		# v0.24.1: every quick quest nearby shows as a small orange dot.
+		for i in QUICK.size():
+			if i == quick_idx:
+				continue
+			var qp := _mini_point(QUICK[i]["pos"],me,cs,sn)
+			if qp.length() < limit:
+				ctl.draw_circle(c+qp*MINI_SIZE,5.0,Color("132b3a"))
+				ctl.draw_circle(c+qp*MINI_SIZE,3.6,Color("ff9a3a"))
 	for u in chase_units:
 		var p := _mini_point((u["node"] as Node3D).position,me,cs,sn)
 		if p.length() < limit:
@@ -6942,6 +6987,8 @@ func _apply_view() -> void:
 		(player_person["root"] as Node3D).visible = not eye_view
 	if hat_holder != null:
 		hat_holder.visible = not eye_view
+	if my_ring != null:
+		my_ring.visible = not eye_view
 	if world_env_res != null:
 		# Haze always on, ending at the far clip so the city fades into the sky instead of popping.
 		world_env_res.fog_enabled = true
@@ -9335,7 +9382,6 @@ func _relayout_hud() -> void:
 		chat_button.position = Vector2(view.x-194,412)
 	if travel_button != null:
 		travel_button.position = Vector2(view.x-194,480)
-		run_button.position = Vector2(46,view.y-280)
 	if chat_panel != null:
 		chat_panel.position = Vector2(view.x-chat_panel.size.x-212,150)
 	if feed_box != null:
@@ -11309,9 +11355,25 @@ func _hud_v23_tick() -> void:
 	var on_foot := not driving and not race_car and seat_id < 0 and not bus_riding and not paused
 	run_button.visible = on_foot
 	travel_button.visible = not paused and not race_car
+	if feed_box != null:
+		feed_box.visible = not paused
+	if quests_button != null:
+		quests_button.visible = not paused and not race_car
+	var below := hud_info.position.y+hud_info.size.y+10.0
+	# v0.24.1: RUN sits up top, right beside the QR code (or under the job panel when the QR is
+	# hidden), well away from the stick so a thumb on the stick can't switch it off by accident.
+	# Quests sits right under the job panel too (top of the column beside the QR), RUN below it.
+	var col_x := 24.0
 	if qr_small != null:
-		qr_small.position = Vector2(24,hud_info.position.y+hud_info.size.y+10)
+		qr_small.position = Vector2(24,below)
 		qr_small.visible = not paused and qr_show and not qr_big.visible
+		if qr_small.visible:
+			col_x = qr_small.position.x+qr_small.size.x+12.0
+	if quests_button != null:
+		quests_button.position = Vector2(col_x,below)
+		run_button.position = Vector2(col_x,below+quests_button.size.y+10.0)
+	else:
+		run_button.position = Vector2(col_x,below)
 
 func _travel_block_reason() -> String:
 	if race_car:
@@ -11324,6 +11386,8 @@ func _travel_block_reason() -> String:
 		return "Get off the bus first."
 	if seat_id >= 0:
 		return "Stand up first."
+	if fm_hosting:
+		return "You're hiding for FIND ME!"
 	var now := Time.get_ticks_msec()/1000.0
 	if now < travel_ready_at:
 		return "Fast travel is ready again in %ds." % int(ceil(travel_ready_at-now))
@@ -11946,6 +12010,47 @@ func _crate_shots() -> void:
 		await get_tree().physics_frame
 	_refresh_hud()
 	await _save_shot("quick-at")
+	# v0.24.1: the Quests list.
+	player.position = Vector3(26.5,0.75,-6)
+	player.rotation.y = 0.0
+	cam_yaw = 0.0
+	for i in 10:
+		await get_tree().physics_frame
+	_follow_camera(1.0)
+	_refresh_hud()
+	await _save_shot("quests-hud")
+	# v0.24.1 treasure hunt, placed just ahead for the picture.
+	treasure_time_override = 1000.0*TREASURE_CYCLE+48.0
+	treasure_got = -1
+	_treasure_tick(0.0)
+	treasure_node.position = Vector3(25.0,0,-17)
+	treasure_time_override = 1000.0*TREASURE_CYCLE+120.0
+	for i in 6:
+		await get_tree().physics_frame
+	await _save_shot("treasure")
+	player.position = Vector3(25.0,0.75,-10)
+	camera.position = player.position+Vector3(2.2,1.4,3.0)
+	camera.look_at(player.position+Vector3(0,-0.2,0))
+	paused = true
+	await _save_shot("player-ring")
+	paused = false
+	treasure_node.position = Vector3(500,0,500)
+	# v0.24.1 Find Me as the hider.
+	fm_test = true
+	cash = 1000
+	player.position = Vector3(26.5,0.75,-6)
+	_fm_start()
+	_fm_msg("fmf",{"i":"h1","n":"Mia","f":fm_id})
+	for i in 10:
+		await get_tree().physics_frame
+	_follow_camera(1.0)
+	await _save_shot("findme-host")
+	_fm_finish("test")
+	fm_test = false
+	_open_quests()
+	for i in 3:
+		await get_tree().process_frame
+	await _save_shot("quests-list")
 	get_tree().quit()
 
 # ---------- v0.25: quick quests (short pick-ups, paid on the spot, next one starts at once) ----------
@@ -11980,6 +12085,8 @@ var quick_done := 0
 func _quick_pay(i: int) -> int:
 	# More for the longer trips out of town; a little more every lap of the chain.
 	var prev: Vector3 = QUICK[posmod(i-1,QUICK.size())]["pos"]
+	if i == quick_idx and quick_from.x < 1e8:
+		prev = quick_from
 	var here: Vector3 = QUICK[i]["pos"]
 	var lap := quick_done/QUICK.size()
 	return 60+int(clampf(prev.distance_to(here)*0.6,0.0,240.0))+lap*20
@@ -11991,6 +12098,7 @@ func _quick_complete() -> void:
 	bonus_xp += QUICK_XP
 	quick_done += 1
 	quick_idx = (quick_idx+1) % QUICK.size()
+	quick_from = Vector3(1e9,0,0)
 	_save_progress()
 	_show_toast("DONE!  +$%d  +%d XP   Next: %s" % [pay,QUICK_XP,QUICK[quick_idx]["task"]])
 	_quick_fx(at)
@@ -12077,4 +12185,719 @@ func _smoke_quick() -> void:
 	driving = was[6]
 	player.position = was[7]
 	car.position = was[8]
+	_save_progress()
+
+# ---------- v0.24.1: Quests list (nearby quick quests, pick any one) ----------
+const QUEST_LIST_SIZE := 8
+var quests_button: Button
+var quest_panel: PanelContainer
+var quest_info: Label
+var quest_buttons: Array = []
+var quest_order: Array = []
+var quick_from := Vector3(1e9,0,0)
+
+func _build_quest_list(root: Control) -> void:
+	quests_button = _button("Quests",_open_quests)
+	quests_button.custom_minimum_size = Vector2(150,52)
+	quests_button.add_theme_font_size_override("font_size",20)
+	for state in ["normal","hover"]:
+		var sb := quests_button.get_theme_stylebox(state).duplicate() as StyleBoxFlat
+		sb.bg_color = Color("8a5a12") if state == "normal" else Color("a36c18")
+		quests_button.add_theme_stylebox_override(state,sb)
+	root.add_child(quests_button)
+	quests_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	quests_button.position = Vector2(24,240)
+	quest_panel = PanelContainer.new()
+	root.add_child(quest_panel)
+	quest_panel.custom_minimum_size = Vector2(820,0)
+	quest_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	var r := VBoxContainer.new()
+	r.add_theme_constant_override("separation",10)
+	quest_panel.add_child(r)
+	r.add_child(_label("QUESTS NEAR YOU",26,Color("f0bd62")))
+	quest_info = _label("",17,Color("cbd8de"))
+	quest_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	quest_info.custom_minimum_size.x = 760
+	r.add_child(quest_info)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation",10)
+	grid.add_theme_constant_override("v_separation",8)
+	r.add_child(grid)
+	for i in QUEST_LIST_SIZE:
+		var b := _button("",_quest_pick.bind(i))
+		b.custom_minimum_size = Vector2(375,62)
+		b.add_theme_font_size_override("font_size",16)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		quest_buttons.append(b)
+		grid.add_child(b)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",10)
+	r.add_child(row)
+	var fm := _button("FIND ME!  ($%d prizes)" % (FM_PRIZES[0]+FM_PRIZES[1]+FM_PRIZES[2]),_fm_start)
+	fm.name = "FindMe"
+	fm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for state in ["normal","hover"]:
+		var fsb := _panel(Color("1f8a8a") if state == "normal" else Color("27a3a3"),18)
+		fm.add_theme_stylebox_override(state,fsb)
+	row.add_child(fm)
+	var mode := _button("",_quest_mode)
+	mode.name = "Mode"
+	mode.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(mode)
+	var close := _button("Close",_close_quests)
+	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(close)
+	quest_panel.hide()
+
+func _quest_nearby() -> Array:
+	# Quick quest indexes sorted by distance from you, nearest first.
+	var body: Node3D = car if driving else player
+	var idx: Array = range(QUICK.size())
+	idx.sort_custom(func(a,b): return (QUICK[a]["pos"] as Vector3).distance_to(body.position) < (QUICK[b]["pos"] as Vector3).distance_to(body.position))
+	return idx
+
+func _open_quests() -> void:
+	if not paused:
+		_toggle_menu()
+	_refresh_quests()
+	_open_panel(quest_panel)
+
+func _close_quests() -> void:
+	if paused:
+		_toggle_menu()
+
+func _refresh_quests() -> void:
+	var body: Node3D = car if driving else player
+	quest_order = _quest_nearby().slice(0,QUEST_LIST_SIZE)
+	if not quick_on:
+		quest_info.text = "You are on %s. Tap a quest to switch to quick quests and go there." % ("exploring" if exploring else "delivery jobs")
+	else:
+		quest_info.text = "Tap a quest to go there. Each one pays on the spot, plus %d XP. Orange dots on the minimap are quests too." % QUICK_XP
+	for k in QUEST_LIST_SIZE:
+		var b: Button = quest_buttons[k]
+		var i := int(quest_order[k])
+		var d := int(Vector2(QUICK[i]["pos"].x-body.position.x,QUICK[i]["pos"].z-body.position.z).length())
+		var pay := 60+int(clampf(float(d)*0.6,0.0,240.0))+(quick_done/QUICK.size())*20
+		var tracking := quick_on and i == quick_idx
+		b.text = "%s%s\n%dm  ·  +$%d" % ["▶ " if tracking else "",QUICK[i]["task"],d,pay]
+		var sb := _panel(Color("2f6b3a") if tracking else Color("213d4f"),14)
+		sb.content_margin_top = 6
+		sb.content_margin_bottom = 6
+		b.add_theme_stylebox_override("normal",sb)
+	(quest_panel.find_child("Mode",true,false) as Button).text = "Switch activity (now: %s)" % ("quick quests" if quick_on else ("exploring" if exploring else "delivery jobs"))
+
+func _quest_pick(k: int) -> void:
+	if k >= quest_order.size():
+		return
+	var body: Node3D = car if driving else player
+	quick_on = true
+	quick_idx = int(quest_order[k])
+	quick_from = body.position
+	_save_progress()
+	if paused:
+		_toggle_menu()
+	_refresh_hud()
+	_show_toast("Quest: %s. Follow the golden ring!" % QUICK[quick_idx]["task"])
+
+func _quest_mode() -> void:
+	_toggle_activity()
+
+func _smoke_quests() -> void:
+	var was := [quick_on,quick_idx,quick_done,player.position,driving,exploring]
+	driving = false
+	player.position = Vector3(25,0.75,-20)
+	_open_quests()
+	assert(paused and quest_panel.visible,"Quests list opens")
+	assert(int(quest_order[0]) == 4,"Nearest quest is listed first (Sunset Market)")
+	var listed := 0
+	for b: Button in quest_buttons:
+		if b.text.contains("m  ·  +$"):
+			listed += 1
+	assert(listed == QUEST_LIST_SIZE,"Quests list shows distance and pay")
+	_quest_pick(2)
+	assert(not paused and quick_on and quick_idx == int(quest_order[2]),"Picking a quest tracks it")
+	assert(_destination().is_equal_approx(QUICK[quick_idx]["pos"]),"Guidance goes to the picked quest")
+	quick_on = was[0]
+	quick_idx = was[1]
+	quick_done = was[2]
+	player.position = was[3]
+	driving = was[4]
+	exploring = was[5]
+	quick_from = Vector3(1e9,0,0)
+	_save_progress()
+
+# ---------- v0.24.1: your own name tag above your head (or above your car) ----------
+var my_tag: Label3D
+var my_ring: MeshInstance3D
+
+func _my_name() -> String:
+	return online_name if online_name != "" else "You"
+
+func _my_tag_tick() -> void:
+	if player == null:
+		return
+	if my_tag == null:
+		my_tag = Label3D.new()
+		my_tag.font_size = 44
+		my_tag.outline_size = 12
+		my_tag.outline_modulate = Color("132b3a")
+		my_tag.modulate = Color("ffd86a")
+		my_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		my_tag.no_depth_test = true
+		my_tag.fixed_size = true
+		my_tag.pixel_size = 0.0011
+		my_tag.render_priority = 10
+		add_child(my_tag)
+	var body: Node3D = car if driving else player
+	my_tag.visible = booted and not eye_view and not in_car_view and not crate_open and not (bus_riding and not driving)
+	if not my_tag.visible:
+		return
+	var lift := 1.7 if driving else (1.18 if seat_id < 0 else 0.9)
+	my_tag.position = body.position+Vector3(0,lift,0)
+	var t := "%s  ·  Lv %d" % [_my_name(),_level()]
+	if my_tag.text != t:
+		my_tag.text = t
+
+# ---------- v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online) ----------
+# The 5-minute window comes from the clock, so every player sees the same chest at the same place.
+# Reach it before the timer runs out; if nobody gets there in time it vanishes and a new one appears.
+const TREASURE_CYCLE := 300
+const TREASURE_CASH := 300
+const TREASURE_XP := 100
+const TREASURE_BEAM_AT := 90.0
+const TREASURE_SEE := 35.0
+var treasure_node: Node3D
+var treasure_beam: MeshInstance3D
+var treasure_label: Label
+var treasure_cycle := -1
+var treasure_got := -1
+var treasure_count := 0
+var treasure_spots: Array = []
+var treasure_time_override := -1.0
+
+func _treasure_now() -> float:
+	return treasure_time_override if treasure_time_override >= 0.0 else Time.get_unix_time_from_system()
+
+func _treasure_pick(cycle: int) -> int:
+	if treasure_spots.is_empty():
+		for arr in [FINDS,CIVIC,RIDGE,BAY,NORTH,DOWNTOWN,MARINA]:
+			for it in arr:
+				treasure_spots.append([it["pos"],String(it["name"])])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(cycle*7919+13)
+	return rng.randi_range(0,treasure_spots.size()-1)
+
+func _treasure_spot(cycle: int) -> Vector3:
+	var i := _treasure_pick(cycle)
+	return treasure_spots[i][0]
+
+func _treasure_district(pos: Vector3) -> String:
+	var best := ""
+	var bd := INF
+	for c in CHECKPOINTS:
+		var d := (c["pos"] as Vector3).distance_to(pos)
+		if d < bd:
+			bd = d
+			best = c["name"]
+	return best
+
+# v0.24.2: no arrow, distance or map dot. Clues get better as time runs out:
+# first the district, then the landmark it's hidden at, and in the last 90 seconds the light beam.
+func _treasure_clue(left: float) -> String:
+	var spot: Array = treasure_spots[_treasure_pick(treasure_cycle)]
+	if left > 180.0:
+		return "Clue: somewhere around %s" % _treasure_district(spot[0])
+	if left > TREASURE_BEAM_AT:
+		return "Clue: hidden at %s (%s)" % [spot[1],_treasure_district(spot[0])]
+	return "Look for the golden beam at %s!" % spot[1]
+
+func _build_treasure(root: Control) -> void:
+	treasure_node = Node3D.new()
+	add_child(treasure_node)
+	var gold := _material(Color("f2c94c"))
+	gold.emission_enabled = true
+	gold.emission = Color("a8781a")
+	gold.metallic = 0.6
+	gold.roughness = 0.35
+	var wood := _material(Color("8a5a2b"))
+	var chest := Node3D.new()
+	chest.name = "Chest"
+	treasure_node.add_child(chest)
+	for part: Array in [[Vector3(0,0.35,0),Vector3(1.1,0.6,0.75),wood],[Vector3(0,0.75,0),Vector3(1.14,0.24,0.79),gold],[Vector3(0,0.35,-0.39),Vector3(0.22,0.3,0.04),gold]]:
+		var m := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = part[1]
+		m.mesh = b
+		m.position = part[0]
+		m.material_override = part[2]
+		chest.add_child(m)
+	for x in [-0.5,0.5]:
+		var band := MeshInstance3D.new()
+		var bb := BoxMesh.new()
+		bb.size = Vector3(0.08,0.64,0.78)
+		band.mesh = bb
+		band.position = Vector3(x,0.37,0)
+		band.material_override = gold
+		chest.add_child(band)
+	# A tall golden light beam you can see from across town.
+	var beam := MeshInstance3D.new()
+	treasure_beam = beam
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.35
+	cyl.bottom_radius = 0.9
+	cyl.height = 70.0
+	cyl.radial_segments = 12
+	cyl.rings = 1
+	beam.mesh = cyl
+	beam.position = Vector3(0,35.0,0)
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bm.albedo_color = Color(1.0,0.72,0.12,0.5)
+	bm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	beam.material_override = bm
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	treasure_node.add_child(beam)
+	var tag := Label3D.new()
+	tag.text = "TREASURE"
+	tag.font_size = 48
+	tag.outline_size = 12
+	tag.modulate = Color("ffd86a")
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.pixel_size = 0.012
+	tag.position = Vector3(0,2.4,0)
+	treasure_node.add_child(tag)
+	treasure_node.hide()
+	treasure_label = _label("",21,Color("ffe29a"))
+	var sb := _panel(Color(0.32,0.2,0.02,0.9),16)
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	treasure_label.add_theme_stylebox_override("normal",sb)
+	treasure_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(treasure_label)
+	treasure_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	treasure_label.custom_minimum_size = Vector2(330,0)
+	treasure_label.hide()
+
+func _treasure_dir_char(to: Vector3) -> String:
+	var body: Node3D = car if driving else player
+	var d := Vector2(to.x-body.position.x,to.z-body.position.z)
+	var f := Vector2(-camera.global_basis.z.x,-camera.global_basis.z.z).normalized()
+	var r := Vector2(camera.global_basis.x.x,camera.global_basis.x.z).normalized()
+	var a := atan2(d.dot(r),d.dot(f))
+	var arrows := ["↑","↗","→","↘","↓","↙","←","↖"]
+	return arrows[posmod(int(round(a/(PI/4.0))),8)]
+
+func _treasure_tick(_delta: float) -> void:
+	if treasure_node == null:
+		return
+	var now := _treasure_now()
+	var cycle := int(floor(now/float(TREASURE_CYCLE)))
+	var left := float(TREASURE_CYCLE)-fmod(now,float(TREASURE_CYCLE))
+	if cycle != treasure_cycle:
+		var first := treasure_cycle < 0
+		treasure_cycle = cycle
+		treasure_node.position = _treasure_spot(cycle)
+		if not first and treasure_got != cycle and not race_car:
+			_show_toast("NEW TREASURE HUNT! Read the clue at the top. You have 5 minutes!")
+	var active := treasure_got != cycle and not race_car
+	var body: Node3D = car if driving else player
+	var near := Vector2(body.position.x-treasure_node.position.x,body.position.z-treasure_node.position.z).length() < TREASURE_SEE
+	treasure_node.visible = active and (near or left <= TREASURE_BEAM_AT)
+	treasure_beam.visible = left <= TREASURE_BEAM_AT
+	if active:
+		(treasure_node.get_node("Chest") as Node3D).rotation.y += _delta*1.2
+		var dist := Vector2(body.position.x-treasure_node.position.x,body.position.z-treasure_node.position.z).length()
+		if dist < (5.0 if driving else 3.2) and absf(body.position.y-treasure_node.position.y) < 4.0:
+			_treasure_claim()
+			active = false
+	var view := get_viewport().get_visible_rect().size
+	var vis := not paused and not race_car and chase_mode == 0 and online_role == 0 and not crate_open
+	treasure_label.visible = vis
+	if not vis:
+		if hud_arrow != null:
+			hud_arrow.position.y = 96.0
+		return
+	var mm := int(left)/60
+	var ss := int(left)%60
+	var extra := ("\n"+fm_banner) if fm_banner != "" else ""
+	if active:
+		treasure_label.text = "TREASURE HUNT  %d:%02d\n%s" % [mm,ss,_treasure_clue(left)]+extra
+		treasure_label.add_theme_color_override("font_color",Color("ff7a5a") if left < 60.0 else Color("ffe29a"))
+	else:
+		treasure_label.text = "Treasure found!  Next hunt in %d:%02d" % [mm,ss]+extra
+		treasure_label.add_theme_color_override("font_color",Color("9fe0a8"))
+	# Sits between the job panel and the Online/Radio buttons; long clues wrap onto more lines.
+	var left_x := hud_info.position.x+hud_info.size.x+16.0
+	var w := clampf(view.x-390.0-left_x,240.0,520.0)
+	treasure_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	treasure_label.custom_minimum_size = Vector2(w,0)
+	treasure_label.size = Vector2(w,0)
+	treasure_label.reset_size()
+	treasure_label.position = Vector2(maxf(left_x,minf(view.x/2.0-w/2.0,view.x-390.0-w)),24)
+	if hud_arrow != null:
+		# Keep the quest arrow just below the banner instead of under it.
+		var ax := view.x/2.0-70.0
+		var overlaps := ax+140.0 > treasure_label.position.x and ax < treasure_label.position.x+treasure_label.size.x
+		hud_arrow.position.y = maxf(96.0,treasure_label.position.y+treasure_label.size.y+4.0) if overlaps else 96.0
+
+func _treasure_claim() -> void:
+	treasure_got = treasure_cycle
+	treasure_node.visible = false
+	treasure_count += 1
+	cash += TREASURE_CASH
+	bonus_xp += TREASURE_XP
+	_save_progress()
+	_quick_fx(treasure_node.position)
+	if not ("--smoke-test" in OS.get_cmdline_user_args()):
+		_play_coin()
+	_show_toast("TREASURE!  +$%d  +%d XP   A new hunt starts in %d:%02d" % [TREASURE_CASH,TREASURE_XP,int(float(TREASURE_CYCLE)-fmod(_treasure_now(),float(TREASURE_CYCLE)))/60,int(float(TREASURE_CYCLE)-fmod(_treasure_now(),float(TREASURE_CYCLE)))%60])
+	if online_on:
+		_feed_add_system("%s found the treasure!" % _my_name())
+	_refresh_hud()
+
+# ---------- v0.24.1: glowing ring under real players (NPC walkers have none) ----------
+func _player_ring(parent: Node3D, color: Color) -> MeshInstance3D:
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.42
+	torus.outer_radius = 0.56
+	torus.rings = 24
+	torus.ring_segments = 6
+	ring.mesh = torus
+	ring.scale = Vector3(1,0.18,1)
+	ring.position = Vector3(0,0.04,0)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = color
+	ring.material_override = m
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(ring)
+	return ring
+
+func _smoke_treasure() -> void:
+	var was := [cash,bonus_xp,treasure_got,treasure_count,player.position,driving,treasure_time_override]
+	driving = false
+	treasure_time_override = 1000.0*TREASURE_CYCLE+10.0
+	treasure_got = -1
+	_treasure_tick(0.0)
+	assert(treasure_got != 1000 and treasure_cycle == 1000,"A treasure is out")
+	var spot := treasure_node.position
+	assert(spot.is_equal_approx(_treasure_spot(1000)),"Everyone gets the same spot for the same 5 minutes")
+	treasure_time_override = 1001.0*TREASURE_CYCLE+10.0
+	_treasure_tick(0.0)
+	assert(treasure_got != 1001 and treasure_cycle == 1001 and not treasure_node.position.is_equal_approx(Vector3(-99999,0,0)),"When the timer runs out a new treasure appears")
+	var c0 := cash
+	var x0 := _xp()
+	player.position = treasure_node.position+Vector3(1.0,0.75,0)
+	_treasure_tick(0.0)
+	assert(cash == c0+TREASURE_CASH and _xp() == x0+TREASURE_XP and treasure_got == 1001 and not treasure_node.visible,"Reaching the treasure pays once")
+	_treasure_tick(0.0)
+	assert(cash == c0+TREASURE_CASH,"No double reward")
+	assert(treasure_label.text.begins_with("Treasure found"),"Banner shows the wait for the next hunt")
+	# Clues only: no distance or arrow; district first, landmark next, beam in the last 90 s.
+	treasure_got = -1
+	treasure_time_override = 1002.0*TREASURE_CYCLE+10.0
+	player.position = Vector3(500,0.75,500)
+	_treasure_tick(0.0)
+	assert(treasure_label.text.contains("somewhere around") and not treasure_label.text.contains("m\n") and not treasure_label.text.contains(" m") and not treasure_beam.visible and not treasure_node.visible,"Early: district clue only, chest and beam hidden far away")
+	treasure_time_override = 1002.0*TREASURE_CYCLE+200.0
+	_treasure_tick(0.0)
+	assert(treasure_label.text.contains("hidden at"),"Later: the landmark clue")
+	treasure_time_override = 1002.0*TREASURE_CYCLE+250.0
+	_treasure_tick(0.0)
+	assert(treasure_beam.visible and treasure_node.visible,"Last 90 seconds: the beam shows")
+	cash = was[0]
+	bonus_xp = was[1]
+	treasure_got = was[2]
+	treasure_count = was[3]
+	player.position = was[4]
+	driving = was[5]
+	treasure_time_override = was[6]
+	treasure_cycle = -1
+	_save_progress()
+
+# ---------- v0.24.1: FIND ME! (online hide-and-seek with prize money) ----------
+# A player pays the prize pool up front, then is frozen for 2 minutes on a glowing floor.
+# Everyone online gets a hint of the area. The first three to reach them win the prizes.
+# The hider's game decides the places and announces them; unclaimed prize money is refunded.
+const FM_PRIZES := [200,100,50]
+const FM_TIME := 120.0
+const FM_REACH := 3.0
+var fm_hosting := false
+var fm_id := ""
+var fm_end := 0.0
+var fm_places: Array = []
+var fm_refund := 0
+var fm_send_t := 0.0
+var fm_banner := ""
+var fm_glow: MeshInstance3D
+var fm_hunts := {}
+var fm_paid := {}
+var fm_test := false
+var fm_sent: Array = []
+
+func _fm_now() -> float:
+	return Time.get_unix_time_from_system()
+
+func _fm_send(event: String, payload: Dictionary) -> void:
+	if fm_test:
+		fm_sent.append([event,payload.duplicate(true)])
+		return
+	_online_event_send(event,payload)
+
+func _fm_area(pos: Vector3) -> String:
+	var best := ""
+	var bd := INF
+	for c in CHECKPOINTS:
+		var d := (c["pos"] as Vector3).distance_to(pos)
+		if d < bd:
+			bd = d
+			best = c["name"]
+	for q in QUICK:
+		var d := (q["pos"] as Vector3).distance_to(pos)
+		var t := String(q["task"])
+		if d < bd and t.contains(" at "):
+			bd = d
+			best = t.substr(t.rfind(" at ")+4)
+	return best
+
+func _fm_glow_mesh() -> MeshInstance3D:
+	var g := MeshInstance3D.new()
+	var c := CylinderMesh.new()
+	c.top_radius = 2.6
+	c.bottom_radius = 2.6
+	c.height = 0.04
+	c.radial_segments = 32
+	c.rings = 1
+	g.mesh = c
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0.45,1.0,0.95,0.55)
+	g.material_override = m
+	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(g)
+	return g
+
+func _fm_block_reason() -> String:
+	if not (fm_test or (online_on and online_state == 3)):
+		return "Turn Online on first (top right). Find Me is for playing with others."
+	if fm_hosting:
+		return "Your Find Me is already running."
+	if driving or race_car or seat_id >= 0 or bus_riding or chase_mode != 0 or online_role != 0:
+		return "Get out on foot first."
+	var pool := int(FM_PRIZES[0]+FM_PRIZES[1]+FM_PRIZES[2])
+	if cash < pool:
+		return "You need $%d for the prizes." % pool
+	return ""
+
+func _fm_start() -> void:
+	var why := _fm_block_reason()
+	if why != "":
+		_show_toast(why)
+		return
+	var pool := int(FM_PRIZES[0]+FM_PRIZES[1]+FM_PRIZES[2])
+	cash -= pool
+	fm_refund = pool
+	fm_hosting = true
+	fm_places = []
+	fm_end = _fm_now()+FM_TIME
+	fm_id = "%s-%d" % [online_id if online_id != "" else "me",int(_fm_now())]
+	fm_send_t = 0.0
+	if fm_glow == null:
+		fm_glow = _fm_glow_mesh()
+	_save_progress()
+	if paused:
+		_toggle_menu()
+	_fm_announce()
+	_show_toast("FIND ME! You're frozen for 2 minutes. First three to find you win $%d / $%d / $%d." % [FM_PRIZES[0],FM_PRIZES[1],FM_PRIZES[2]])
+	_feed_add_system("You started FIND ME near %s!" % _fm_area(player.position))
+	_refresh_hud()
+
+func _fm_announce() -> void:
+	_fm_send("fms",{"f":fm_id,"x":snappedf(player.position.x,0.1),"z":snappedf(player.position.z,0.1),"a":_fm_area(player.position),"e":fm_end,"won":fm_places.size()})
+
+func _fm_finish(reason: String) -> void:
+	var paid := 0
+	for pl in fm_places:
+		paid += int(pl[2])
+	var pool := int(FM_PRIZES[0]+FM_PRIZES[1]+FM_PRIZES[2])
+	cash += pool-paid
+	fm_refund = 0
+	fm_hosting = false
+	_fm_send("fmr",{"f":fm_id,"pl":fm_places,"done":1})
+	_save_progress()
+	if fm_glow != null:
+		fm_glow.hide()
+	var names: Array = []
+	for pl in fm_places:
+		names.append("%s $%d" % [pl[1],int(pl[2])])
+	_show_toast("FIND ME over (%s). %s%s" % [reason,("Winners: "+", ".join(names)) if not names.is_empty() else "Nobody found you!",(" Refund +$%d." % (pool-paid)) if pool-paid > 0 else ""])
+	_refresh_hud()
+
+func _fm_msg(ev: String, p: Dictionary) -> void:
+	var from := String(p.get("i",""))
+	var f := String(p.get("f",""))
+	if from == "" or f == "" or f.length() > 48:
+		return
+	if ev == "fms":
+		if from == online_id:
+			return
+		var known := fm_hunts.has(f)
+		var h: Dictionary = fm_hunts[f] if known else {"sent":false}
+		h["host"] = from
+		h["name"] = _online_clean_name(String(p.get("n","Player")))
+		h["pos"] = Vector3(float(p.get("x",0.0)),0,float(p.get("z",0.0)))
+		h["area"] = String(p.get("a","")).substr(0,32)
+		h["end"] = minf(float(p.get("e",0.0)),_fm_now()+FM_TIME+5.0)
+		h["won"] = int(p.get("won",0))
+		fm_hunts[f] = h
+		if not known:
+			_feed_add_system("%s started FIND ME near %s! Prizes $%d / $%d / $%d. Look for the glowing floor!" % [h["name"],h["area"],FM_PRIZES[0],FM_PRIZES[1],FM_PRIZES[2]])
+	elif ev == "fmf":
+		# Someone says they found me: check they really are close, then give out the next place.
+		if not fm_hosting or f != fm_id or fm_places.size() >= 3:
+			return
+		for pl in fm_places:
+			if String(pl[0]) == from:
+				return
+		if online_peers.has(from):
+			var pp: Vector3 = online_peers[from]["target"]
+			if Vector2(pp.x-player.position.x,pp.z-player.position.z).length() > FM_REACH+4.0:
+				return
+		elif not fm_test:
+			return
+		var place := fm_places.size()
+		fm_places.append([from,_online_clean_name(String(p.get("n","Player"))),int(FM_PRIZES[place])])
+		_feed_add_system("%s found you! %s place +$%d" % [fm_places[place][1],["1st","2nd","3rd"][place],int(FM_PRIZES[place])])
+		_fm_send("fmr",{"f":fm_id,"pl":fm_places,"done":0})
+		if fm_places.size() >= 3:
+			_fm_finish("all three prizes won")
+	elif ev == "fmr":
+		var pl = p.get("pl",[])
+		if not pl is Array:
+			return
+		for k in mini((pl as Array).size(),3):
+			var row = pl[k]
+			if row is Array and row.size() >= 3 and String(row[0]) == online_id and not fm_paid.has(f):
+				fm_paid[f] = true
+				var amount := clampi(int(row[2]),0,int(FM_PRIZES[k]))
+				cash += amount
+				bonus_xp += 60
+				_save_progress()
+				_show_toast("YOU FOUND THEM! %s place  +$%d  +60 XP" % [["1st","2nd","3rd"][k],amount])
+				if not ("--smoke-test" in OS.get_cmdline_user_args()):
+					_play_coin()
+		if fm_hunts.has(f):
+			fm_hunts[f]["won"] = (pl as Array).size()
+			if int(p.get("done",0)) == 1:
+				if fm_hunts[f].has("glow"):
+					(fm_hunts[f]["glow"] as Node3D).queue_free()
+				fm_hunts.erase(f)
+
+func _fm_tick(delta: float) -> void:
+	var now := _fm_now()
+	fm_banner = ""
+	if fm_hosting:
+		var left := fm_end-now
+		if fm_glow != null:
+			fm_glow.show()
+			fm_glow.position = Vector3(player.position.x,player.position.y-0.6,player.position.z)
+			var pulse := 1.0+sin(clock*4.0)*0.08
+			fm_glow.scale = Vector3(pulse,1,pulse)
+		fm_banner = "FIND ME (hiding)  %d:%02d   found %d/3" % [int(maxf(left,0.0))/60,int(maxf(left,0.0))%60,fm_places.size()]
+		fm_send_t -= delta
+		if fm_send_t <= 0.0:
+			fm_send_t = 3.0
+			_fm_announce()
+		if left <= 0.0:
+			_fm_finish("time's up")
+	# Hunting: glowing floors under hiders, a hint banner, and "found" when you reach them.
+	var body: Node3D = car if driving else player
+	var lines: Array = []
+	for f in fm_hunts.keys():
+		var h: Dictionary = fm_hunts[f]
+		if now > float(h["end"])+5.0:
+			if h.has("glow"):
+				(h["glow"] as Node3D).queue_free()
+			fm_hunts.erase(f)
+			continue
+		var pos: Vector3 = h["pos"]
+		if online_peers.has(h["host"]):
+			var t: Vector3 = online_peers[h["host"]]["target"]
+			pos = Vector3(t.x,t.y-0.62,t.z)
+		if not h.has("glow"):
+			h["glow"] = _fm_glow_mesh()
+		var g: MeshInstance3D = h["glow"]
+		g.position = pos+Vector3(0,0.02,0)
+		var pulse := 1.0+sin(clock*4.0)*0.08
+		g.scale = Vector3(pulse,1,pulse)
+		var left := maxf(float(h["end"])-now,0.0)
+		if int(h["won"]) < 3:
+			lines.append("FIND %s near %s  %d:%02d" % [h["name"],h["area"],int(left)/60,int(left)%60])
+		if not bool(h["sent"]) and not driving and Vector2(body.position.x-pos.x,body.position.z-pos.z).length() < FM_REACH:
+			h["sent"] = true
+			_fm_send("fmf",{"f":f})
+			_show_toast("You found %s! Checking your place..." % h["name"])
+	if not lines.is_empty():
+		fm_banner = (fm_banner+"\n" if fm_banner != "" else "")+"\n".join(lines)
+
+func _smoke_findme() -> void:
+	var was := [cash,bonus_xp,online_id,online_name,player.position,driving]
+	fm_test = true
+	fm_sent = []
+	driving = false
+	online_id = "me1"
+	online_name = "Koko"
+	player.position = Vector3(6,0.75,-6)
+	cash = 1000
+	_fm_start()
+	assert(fm_hosting and cash == 650 and fm_refund == 350,"Find Me takes the prize pool")
+	assert(not fm_sent.is_empty() and fm_sent[0][0] == "fms","Find Me is announced")
+	var at := player.position
+	stick = Vector2(0,-1)
+	for i in 3:
+		_physics_process(0.1)
+	stick = Vector2.ZERO
+	assert(Vector2(player.position.x-at.x,player.position.z-at.z).length() < 0.05,"The hider is frozen")
+	# Three hunters find them; a fourth is too late; a repeat doesn't count twice.
+	for h in ["h1","h2","h1","h3","h4"]:
+		_fm_msg("fmf",{"i":h,"n":h.to_upper(),"f":fm_id})
+	assert(not fm_hosting and cash == 650 and fm_refund == 0,"All prizes won: nothing refunded, Find Me ends")
+	var last = fm_sent[fm_sent.size()-1]
+	assert(last[0] == "fmr" and (last[1]["pl"] as Array).size() == 3 and last[1]["pl"][0][0] == "h1" and last[1]["pl"][1][0] == "h2" and last[1]["pl"][2][0] == "h3","Places in order, no repeats")
+	# Time runs out with one winner: the rest is refunded.
+	cash = 1000
+	_fm_start()
+	_fm_msg("fmf",{"i":"h9","n":"Nine","f":fm_id})
+	fm_end = _fm_now()-1.0
+	_fm_tick(0.1)
+	assert(not fm_hosting and cash == 650+150,"Unclaimed prizes come back")
+	# As a hunter: someone else hides, we find them and get paid once.
+	fm_sent = []
+	var c0 := cash
+	_fm_msg("fms",{"i":"p5","n":"Mia","f":"p5-1","x":20.0,"z":-6.0,"a":"Sunset Market","e":_fm_now()+60.0,"won":0})
+	_fm_tick(0.1)
+	assert(fm_banner.contains("FIND Mia near Sunset Market"),"Hunters get the hint")
+	player.position = Vector3(21,0.75,-6)
+	_fm_tick(0.1)
+	assert(not fm_sent.is_empty() and fm_sent[0][0] == "fmf","Reaching the glowing floor reports a find")
+	_fm_msg("fmr",{"i":"p5","f":"p5-1","pl":[["zz","Zed",200],["me1","Koko",100]],"done":0})
+	_fm_msg("fmr",{"i":"p5","f":"p5-1","pl":[["zz","Zed",200],["me1","Koko",100]],"done":1})
+	assert(cash == c0+100,"2nd place paid once")
+	fm_test = false
+	cash = was[0]
+	bonus_xp = was[1]
+	online_id = was[2]
+	online_name = was[3]
+	player.position = was[4]
+	driving = was[5]
+	for f in fm_hunts:
+		if fm_hunts[f].has("glow"):
+			(fm_hunts[f]["glow"] as Node3D).queue_free()
+	fm_hunts.clear()
+	fm_paid.clear()
 	_save_progress()

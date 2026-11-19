@@ -337,7 +337,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.34.3: going live? Menu > Streamer mode gives a clean screen with a join code for your viewers.")
+	_show_toast("Harbor City 0.34.5: the city 100 years from now! Glowing roads, sleek buildings, slim sky-train columns, and a parked car goes home after 2 minutes.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -436,6 +436,15 @@ func _surface_material(color: Color, kind: String) -> StandardMaterial3D:
 	if surf_mats.has(key):
 		return surf_mats[key]
 	var mat := StandardMaterial3D.new()
+	if kind == "asphalt":
+		# v0.34.4: futuristic roads: smooth dark glossy panels with thin glowing seams (no cracks).
+		_future_road(mat,color)
+		surf_mats[key] = mat
+		return mat
+	if kind == "pave":
+		_future_pave(mat,color)
+		surf_mats[key] = mat
+		return mat
 	# v0.30: photo textures (CC0, Poly Haven) instead of flat noise. The tint keeps each surface's hue.
 	var photo := {"asphalt":"asphalt","grass":"grass","pave":"pavement"}[kind] as String
 	var sc := {"asphalt":0.3,"grass":0.22,"pave":0.45}[kind] as float
@@ -457,6 +466,146 @@ func _surface_material(color: Color, kind: String) -> StandardMaterial3D:
 	mat.roughness = 0.95
 	surf_mats[key] = mat
 	return mat
+
+# ---------- v0.34.4: "100 years from now" skins for walls, roofs and pavements ----------
+var skin_mats: Array = []
+var wall_tex: ImageTexture
+var wall_glow: ImageTexture
+var roof_tex: ImageTexture
+var pave_tex: ImageTexture
+
+func _skin_textures() -> void:
+	if wall_tex != null:
+		return
+	var n := 128
+	var wi := Image.create(n,n,true,Image.FORMAT_RGB8)
+	var wg := Image.create(n,n,true,Image.FORMAT_RGB8)
+	var ri := Image.create(n,n,true,Image.FORMAT_RGB8)
+	var pi := Image.create(n,n,true,Image.FORMAT_RGB8)
+	for y in n:
+		for x in n:
+			# Walls: smooth pearl panels (one tile = 6 m: two 3 m floors), a slim seam between panels
+			# and a glowing band at every floor line.
+			var v := 0.93-0.05*float(y % 64)/64.0
+			var c := Color(v,v,v*1.01)
+			var g := Color.BLACK
+			if y % 64 < 3:
+				c = Color(0.55,0.62,0.7)
+				g = Color(0.25,0.9,1.0) if y % 64 == 1 else Color(0.05,0.3,0.4)
+			elif x % 32 == 0:
+				c = Color(0.78,0.8,0.84)
+			wi.set_pixel(x,y,c)
+			wg.set_pixel(x,y,g)
+			# Roofs: deep blue solar glass in a fine grid.
+			var rv := Color(0.12,0.17,0.3) if (x % 16 != 0 and y % 16 != 0) else Color(0.55,0.65,0.8)
+			ri.set_pixel(x,y,rv)
+			# Pavements: smooth light stone slabs with thin seams (one tile = 3 m).
+			var pv := 0.86+0.02*sin(float(x)*0.2)*sin(float(y)*0.17)
+			pi.set_pixel(x,y,Color(0.68,0.72,0.77) if (x % 64 == 0 or y % 64 == 0) else Color(pv,pv,pv*1.02))
+	for im in [wi,wg,ri,pi]:
+		(im as Image).generate_mipmaps()
+	wall_tex = ImageTexture.create_from_image(wi)
+	wall_glow = ImageTexture.create_from_image(wg)
+	roof_tex = ImageTexture.create_from_image(ri)
+	pave_tex = ImageTexture.create_from_image(pi)
+
+func _skin_common(mat: BaseMaterial3D, tex: Texture2D, scale: float) -> void:
+	mat.albedo_texture = tex
+	mat.normal_enabled = false
+	mat.uv1_triplanar = true
+	mat.uv1_world_triplanar = true
+	mat.uv1_scale = Vector3(scale,scale,scale)
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+
+func _future_wall(mat: BaseMaterial3D, color: Color) -> void:
+	_skin_textures()
+	_skin_common(mat,wall_tex,1.0/6.0)
+	# A soft hint of each building's old colour, as a pastel on pearl.
+	mat.albedo_color = Color.WHITE.lerp(Color(color.r,color.g,color.b).lightened(0.25),0.35)
+	mat.emission_enabled = true
+	mat.emission = Color.BLACK
+	mat.emission_texture = wall_glow
+	mat.emission_energy_multiplier = 0.25
+	mat.metallic = 0.2
+	mat.roughness = 0.3
+	mat.metallic_specular = 0.6
+	skin_mats.append(mat)
+
+func _future_roof(mat: BaseMaterial3D) -> void:
+	_skin_textures()
+	_skin_common(mat,roof_tex,1.0/3.0)
+	mat.albedo_color = Color.WHITE
+	mat.metallic = 0.6
+	mat.roughness = 0.15
+	mat.metallic_specular = 0.9
+
+func _future_pave(mat: BaseMaterial3D, color: Color) -> void:
+	_skin_textures()
+	_skin_common(mat,pave_tex,1.0/3.0)
+	mat.albedo_color = Color.WHITE.lerp(color.lightened(0.2),0.3)
+	mat.roughness = 0.45
+	mat.metallic_specular = 0.5
+
+# ---------- v0.34.4: futuristic road surface ----------
+const ROAD_TILE := 256
+const ROAD_PANEL := 128   # pixels per panel; one texture tile covers 4 m, so panels are 2 m
+var road_mats: Array = []
+var road_tex: ImageTexture
+var road_glow: ImageTexture
+
+func _road_textures() -> void:
+	if road_tex != null:
+		return
+	var img := Image.create(ROAD_TILE,ROAD_TILE,true,Image.FORMAT_RGB8)
+	var glow := Image.create(ROAD_TILE,ROAD_TILE,true,Image.FORMAT_RGB8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2034
+	for y in ROAD_TILE:
+		for x in ROAD_TILE:
+			var px := x % ROAD_PANEL
+			var py := y % ROAD_PANEL
+			# Smooth composite with a very fine grain, a soft sheen across each panel.
+			var v := 0.62+rng.randf_range(-0.035,0.035)+0.04*sin(float(px)/float(ROAD_PANEL)*PI)
+			var c := Color(v*0.92,v*0.95,v)
+			var g := Color.BLACK
+			var seam := px < 2 or py < 2
+			if seam:
+				c = Color(0.3,0.36,0.42)
+				g = Color(0.15,0.85,1.0)
+			elif (px == 4 or py == 4 or px == ROAD_PANEL-3 or py == ROAD_PANEL-3):
+				c = c.darkened(0.12)
+			# Tiny light dots at the panel corners.
+			if (px >= 60 and px <= 67 and py >= 60 and py <= 67) and (x/ROAD_PANEL+y/ROAD_PANEL) % 2 == 0:
+				var d := Vector2(px-63.5,py-63.5).length()
+				if d < 3.5:
+					c = Color(0.5,0.6,0.7)
+					g = Color(0.5,0.3,1.0)
+			img.set_pixel(x,y,c)
+			glow.set_pixel(x,y,g)
+	img.generate_mipmaps()
+	glow.generate_mipmaps()
+	road_tex = ImageTexture.create_from_image(img)
+	road_glow = ImageTexture.create_from_image(glow)
+
+func _future_road(mat: StandardMaterial3D, color: Color) -> void:
+	_road_textures()
+	# Each old asphalt colour keeps a slightly different shade, all deep graphite-blue.
+	var shade := 0.2+0.12*color.v
+	mat.albedo_color = Color(shade*0.92,shade,shade*1.15)
+	mat.albedo_texture = road_tex
+	mat.emission_enabled = true
+	# Emission adds the colour and the texture, so the colour stays black: only the seams glow.
+	mat.emission = Color.BLACK
+	mat.emission_texture = road_glow
+	mat.emission_energy_multiplier = 0.35
+	mat.roughness = 0.62
+	mat.metallic = 0.0
+	mat.metallic_specular = 0.3
+	mat.uv1_triplanar = true
+	mat.uv1_world_triplanar = true
+	mat.uv1_scale = Vector3(0.25,0.25,0.25)
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	road_mats.append(mat)
 
 # ---------- v0.30: real-looking materials (CC0 photo textures from Poly Haven, see credits.txt) ----------
 const REAL_WALLS := {
@@ -570,7 +719,12 @@ func _realify(model: Node) -> void:
 			var bm := m as BaseMaterial3D
 			var base := m.resource_name.get_slice(".",0)
 			var kind := _real_kind(base)
-			if kind != "":
+			if kind == "roof":
+				_future_roof(bm)
+			elif kind != "" and kind != "bark":
+				# v0.34.4: 100 years on: no brick or plaster, sleek pearl panels with glowing floor bands.
+				_future_wall(bm,bm.albedo_color)
+			elif kind != "":
 				var tint := Color.WHITE.lerp(bm.albedo_color,float(REAL_TINT.get(kind,0.5)))
 				_real_setup(bm,kind,tint,1.0/float(REAL_SIZE[kind]))
 				bm.roughness = 0.9
@@ -4777,6 +4931,10 @@ func _future_lights(night: float) -> void:
 		m.emission_energy_multiplier = k
 	for m: StandardMaterial3D in night_lines:
 		m.emission_energy_multiplier = 0.55*night
+	for m: StandardMaterial3D in road_mats:
+		m.emission_energy_multiplier = 0.5+1.3*night
+	for m: BaseMaterial3D in skin_mats:
+		m.emission_energy_multiplier = 0.25+1.4*night
 
 # ---------- v0.32: social. Friends, invites, crews, gifts, high-fives, dance floor, photos ----------
 # Online play only relays live messages between phones, so friends, your crew and kindness are kept on
@@ -7138,7 +7296,7 @@ func _interact() -> void:
 		car_speed = 0
 		car.velocity.x = 0
 		car.velocity.z = 0
-	elif player.position.distance_to(car.position) < 5.0:
+	elif player.position.distance_to(car.position) < 5.0 and not car_gone:
 		driving = true
 		player.hide()
 		player.get_child(0).set_deferred("disabled",true)
@@ -7240,7 +7398,7 @@ func _refresh_hud() -> void:
 	elif not exploring and not quick_on and distance < (6 if driving else 5):
 		action_button.text = "DELIVER +$%d" % int(ROUTES[route_index]["pay"]) if carrying else "PICK UP PARCEL"
 	else:
-		var far_car := not driving and player.position.distance_to(car.position) >= 5.0
+		var far_car := not driving and (player.position.distance_to(car.position) >= 5.0 or car_gone)
 		action_button.text = "EXIT CAR" if driving else ("CALL CAR" if far_car else "ENTER CAR")
 	mode_button.text = "Switch to delivery jobs" if quick_on else ("Switch to quick quests" if exploring else "Switch to exploring")
 	_rw_hud()
@@ -7745,6 +7903,7 @@ func _process(delta: float) -> void:
 	_market_tick(delta)
 	_board_tick(delta)
 	_display_tick(delta)
+	_car_park_tick(delta)
 	_social_tick(delta)
 	_streamer_tick(delta)
 	_quiz_tick(delta)
@@ -8291,6 +8450,17 @@ func _smoke_test() -> void:
 	_ds_render_news()
 	assert(ds_news.text.contains("online") and ds_news.text.contains("Richest: Amy"),"v0.34.2: the news screen shows city news")
 	assert(get_node_or_null("HarborLive") != null,"v0.34.2: Harbor Live plaza is built")
+	var was_drv := driving
+	driving = false
+	car_idle = 0.0
+	_car_park_tick(CAR_PARK_TIME+1.0)
+	assert(car_gone and not car.visible,"v0.34.5: a parked car goes home after 2 minutes")
+	player.position = car.position+Vector3(2,0,0)
+	_refresh_hud()
+	assert(action_button.text == "CALL CAR" or action_button.text.begins_with("CALL"),"v0.34.5: with the car gone the button says CALL CAR (%s)" % action_button.text)
+	_car_back()
+	assert(not car_gone and car.visible,"v0.34.5: CALL CAR brings it back")
+	driving = was_drv
 	_toggle_streamer()
 	_streamer_tick(0.016)
 	assert(streamer_on and st_root.visible and not cash_pill.visible and st_badge.text.contains("LIVE") and st_top.text.contains("Top: Zed"),"v0.34.3: streamer mode shows the LIVE badge, join code and leaders")
@@ -9830,11 +10000,12 @@ func _signal_pole(poles: Array, ns_caps: Array, ew_caps: Array, corner: Vector3,
 	poles.append([corner,yaw,heads,ns])
 	var b := Basis(Vector3.UP,yaw)
 	# v0.33: a glowing LED bar along the arm (both faces) instead of three round lamps.
-	var size := Vector3(0.05,0.16,1.5) if absf(sin(yaw)) > 0.7 else Vector3(1.5,0.16,0.05)
+	# v0.34.4: no more poles over the road. The signal is a glowing strip set into the road along the
+	# stop line (green, amber, red), one per lane, so the street stays open and clean.
+	var size := Vector3(0.32,0.05,4.2) if absf(sin(yaw)) > 0.7 else Vector3(4.2,0.05,0.32)
 	for r in heads:
-		var h := corner+b*Vector3(float(r),0,0)+Vector3(0,SIG_HEAD_Y,0)
-		for f in [-1.0,1.0]:
-			(ns_caps if ns else ew_caps).append([h+b*Vector3(0,0,f*0.13),size])
+		var h := corner+b*Vector3(float(r),0,0)+Vector3(0,0.075,0)
+		(ns_caps if ns else ew_caps).append([h,size])
 
 const SIG_POLE_H := 7.4
 const SIG_ARM_Y := 7.1
@@ -9871,64 +10042,27 @@ func _city_signals(items: Array) -> void:
 	# A slim white pole, a thin arm with a cyan light line underneath, a sleek dark bar under the arm
 	# whose LED faces (the signal caps) glow green, amber or red, a neon ring at the foot that matches
 	# the light, and a glass walk panel.
-	var poles := []
-	var bases := []
-	var arms := []
-	var arm_lines := []
-	var bars := []
-	var tips := []
-	var walks := []
+	# v0.34.4: just a short glowing bollard at each corner (the light itself is in the road).
+	var posts := []
+	var caps := []
 	var rings_ns := []
 	var rings_ew := []
 	for it in items:
 		var c: Vector3 = it[0]
-		var yaw := float(it[1])
-		var b := Basis(Vector3.UP,yaw)
-		var heads: Array = it[2]
 		var ns := bool(it[3]) if it.size() > 3 else true
-		var far := float(heads.max())
-		poles.append([c+Vector3(0,SIG_POLE_H/2.0,0),0.1,SIG_POLE_H])
-		bases.append([c+Vector3(0,0.15,0),0.24,0.3])
-		arms.append([c+b*Vector3((far+0.9)/2.0,0,0)+Vector3(0,SIG_ARM_Y,0),Vector3(far+0.9,0.12,0.14),yaw])
-		arm_lines.append([c+b*Vector3((far+0.9)/2.0,0,0)+Vector3(0,SIG_ARM_Y-0.08,0),Vector3(far+0.9,0.04,0.06),yaw])
-		tips.append([c+Vector3(0,SIG_POLE_H+0.05,0),Vector3(0.24,0.1,0.24),yaw])
-		walks.append([c+b*Vector3(0,0,0.2)+Vector3(0,3.0,0),Vector3(0.34,0.6,0.08),yaw])
-		(rings_ns if ns else rings_ew).append([c+Vector3(0,0.04,0),Vector3(1.1,0.04,1.1),yaw])
-		for r in heads:
-			var h := c+b*Vector3(float(r),0,0)+Vector3(0,SIG_HEAD_Y,0)
-			bars.append([h,Vector3(1.7,0.28,0.2),yaw])
+		posts.append([c+Vector3(0,0.55,0),0.16,1.1])
+		caps.append([c+Vector3(0,1.14,0),Vector3(0.3,0.08,0.3),0.0])
+		(rings_ns if ns else rings_ew).append([c+Vector3(0,0.04,0),Vector3(1.1,0.04,1.1),0.0])
 	var white := StandardMaterial3D.new()
-	white.albedo_color = Color("e9edf0")
-	white.metallic = 0.35
-	white.roughness = 0.3
-	var pi := _cyl_batch(Color("e9edf0"),poles,0.8)
+	white.albedo_color = Color("eef2f5")
+	white.metallic = 0.3
+	white.roughness = 0.25
+	var pi := _cyl_batch(Color("eef2f5"),posts,0.85)
 	if pi != null:
 		pi.material_override = white
-	var bi := _cyl_batch(Color("2a2f36"),bases,0.9)
-	var ai := _box_batch_rot(Color("e9edf0"),arms)
-	if ai != null:
-		ai.material_override = white
-	var li := _box_batch_rot(NEON_CYAN,arm_lines)
-	if li != null:
-		li.material_override = _neon_mat(NEON_CYAN)
-	var ti := _box_batch_rot(NEON_CYAN,tips)
+	var ti := _box_batch_rot(NEON_CYAN,caps)
 	if ti != null:
 		ti.material_override = _neon_mat(NEON_CYAN)
-	var dark := StandardMaterial3D.new()
-	dark.albedo_color = Color("15181d")
-	dark.metallic = 0.5
-	dark.roughness = 0.25
-	var ri := _box_batch_rot(Color("15181d"),bars)
-	if ri != null:
-		ri.material_override = dark
-	var wi := _box_batch_rot(Color("1b2a33"),walks)
-	if wi != null:
-		var wm := StandardMaterial3D.new()
-		wm.albedo_color = Color("1b2a33")
-		wm.emission_enabled = true
-		wm.emission = Color("ffffff")
-		wm.emission_energy_multiplier = 0.6
-		wi.material_override = wm
 	# Foot rings take the same live colour as the light bars (set up in _ensure_light_mats).
 	_ensure_light_mats()
 	for pair in [[rings_ns,light_ns_mat],[rings_ew,light_ew_mat]]:
@@ -9975,23 +10109,35 @@ func _city_lamps(items: Array) -> void:
 		lamp_glow_mat.emission_energy_multiplier = 0.3
 		if not night_lamps.has(lamp_glow_mat):
 			night_lamps.append(lamp_glow_mat)
+	# v0.34.4: slim "light blade" lamps: a white pillar with a glowing seam and a floating light disc,
+	# no arm hanging over the road.
 	var poles := []
-	var bases := []
-	var arms := []
+	var seams := []
 	var heads := []
+	var rims := []
 	for it in items:
 		var p: Vector3 = it[0]
 		var a := float(it[1])
 		var s := float(it[2]) if it.size() > 2 else 1.0
 		var b := Basis(Vector3.UP,a)
-		var h := LAMP_H*s
-		poles.append([p+Vector3(0,h/2.0,0),0.13,h])
-		bases.append([p+Vector3(0,0.45,0),0.22,0.9])
-		arms.append([p+b*Vector3(LAMP_ARM/2.0,0,0)+Vector3(0,h-0.15,0),Vector3(LAMP_ARM,0.13,0.13),a])
-		heads.append([p+b*Vector3(LAMP_ARM-0.1,0,0)+Vector3(0,h-0.3,0),Vector3(1.15,0.22,0.5),a])
-	_cyl_batch(Color("5d6266"),poles,0.7)
-	_cyl_batch(Color("4c5156"),bases,0.8)
-	_box_batch_rot(Color("5d6266"),arms)
+		var h := 5.6*s
+		poles.append([p+Vector3(0,h/2.0,0),0.09,h])
+		seams.append([p+b*Vector3(0.085,0,0)+Vector3(0,h*0.45,0),Vector3(0.04,h*0.75,0.05),a])
+		heads.append([p+Vector3(0,h+0.35,0),Vector3(1.1,0.07,1.1),a+PI/4.0])
+		rims.append([p+Vector3(0,h+0.28,0),Vector3(1.2,0.03,1.2),a+PI/4.0])
+	var white := StandardMaterial3D.new()
+	white.albedo_color = Color("eef2f5")
+	white.metallic = 0.3
+	white.roughness = 0.25
+	var pi := _cyl_batch(Color("eef2f5"),poles,0.6)
+	if pi != null:
+		pi.material_override = white
+	var si := _box_batch_rot(NEON_CYAN,seams)
+	if si != null:
+		si.material_override = _neon_mat(NEON_CYAN)
+	var ri := _box_batch_rot(NEON_VIOLET,rims)
+	if ri != null:
+		ri.material_override = _neon_mat(NEON_VIOLET)
 	var inst := _box_batch_rot(Color("f1ecdc"),heads)
 	if inst != null:
 		inst.material_override = lamp_glow_mat
@@ -15352,6 +15498,7 @@ func _call_car() -> bool:
 	if spot == Vector3.INF:
 		_show_toast("No space for your car here. Step out into the open street.")
 		return false
+	_car_back()
 	car.position = spot
 	car.rotation = Vector3(0,player.rotation.y,0)
 	car.velocity = Vector3.ZERO
@@ -18274,6 +18421,43 @@ func _streamer_tick(delta: float) -> void:
 		st_fetch_t = 45.0
 		ds_get.request(_lb_url("leaderboard?select=name,level,xp,cash,ach,kind&order=level.desc,xp.desc&limit=50"),_lb_headers())
 
+# ---------- v0.34.5: a parked car drives itself home after 2 minutes ----------
+# So it never blocks a street, pavement or doorway. CALL CAR brings it straight back.
+const CAR_PARK_TIME := 120.0
+var car_idle := 0.0
+var car_gone := false
+
+func _car_away() -> void:
+	car_gone = true
+	car.visible = false
+	(car.get_child(0) as CollisionShape3D).set_deferred("disabled",true)
+	car.velocity = Vector3.ZERO
+	car_speed = 0.0
+
+func _car_back() -> void:
+	if not car_gone:
+		return
+	car_gone = false
+	car.visible = true
+	(car.get_child(0) as CollisionShape3D).set_deferred("disabled",false)
+
+func _car_park_tick(delta: float) -> void:
+	if car == null or player == null:
+		return
+	if driving or race_car or paused:
+		car_idle = 0.0
+		if driving:
+			_car_back()
+		return
+	if car_gone:
+		return
+	car_idle += delta
+	if car_idle >= CAR_PARK_TIME:
+		car_idle = 0.0
+		_car_away()
+		_show_toast("Your car went home so it won't block the street. Tap CALL CAR any time.")
+		_refresh_hud()
+
 # ---------- v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online) ----------
 # The 5-minute window comes from the clock, so every player sees the same chest at the same place.
 # Reach it before the timer runs out; if nobody gets there in time it vanishes and a new one appears.
@@ -19729,6 +19913,7 @@ func _build_skytrain() -> void:
 	var beam := []
 	var rails := []
 	var walls := []
+	var glow := []
 	for i in sky_pts.size()-1:
 		var a := sky_pts[i]
 		var b := sky_pts[i+1]
@@ -19739,14 +19924,24 @@ func _build_skytrain() -> void:
 		var yaw := atan2(d.x,d.z)
 		var mid := (a+b)/2.0
 		var right := Vector3(d.z,0,-d.x)/l
-		beam.append([mid+Vector3(0,-0.55,0),Vector3(3.4,1.1,l+0.08),yaw])
+		beam.append([mid+Vector3(0,-0.35,0),Vector3(3.2,0.7,l+0.08),yaw])
+		glow.append([mid+Vector3(0,-0.72,0),Vector3(0.35,0.04,l+0.05),yaw])
 		for s in [-0.75,0.75]:
 			rails.append([mid+right*s+Vector3(0,0.1,0),Vector3(0.2,0.2,l+0.05),yaw])
 		for s in [-1.6,1.6]:
 			walls.append([mid+right*s+Vector3(0,0.25,0),Vector3(0.2,0.5,l+0.05),yaw])
-	_box_batch_rot(Color("cfd2cc"),beam)
+	var bmi := _box_batch_rot(Color("eef2f5"),beam)
+	if bmi != null:
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = Color("eef2f5")
+		bm.metallic = 0.3
+		bm.roughness = 0.22
+		bmi.material_override = bm
 	_box_batch_rot(Color("5d666c"),rails)
 	_box_batch_rot(Color("e9ece6"),walls)
+	var gli := _box_batch_rot(NEON_CYAN,glow)
+	if gli != null:
+		gli.material_override = _neon_mat(NEON_CYAN)
 	sky_window_mat = StandardMaterial3D.new()
 	sky_window_mat.albedo_color = Color("1d2e3a")
 	sky_window_mat.roughness = 0.2
@@ -19764,6 +19959,8 @@ func _build_skytrain() -> void:
 		sky_st_info.append(_sky_build_station(i))
 	var pil := []
 	var caps := []
+	var seams := []
+	var collars := []
 	var last := -100.0
 	var s := 0.0
 	while s < sky_len:
@@ -19783,13 +19980,32 @@ func _build_skytrain() -> void:
 		if ok:
 			last = s
 			var yaw := atan2(dir.x,dir.z)
-			pil.append([g+Vector3(0,(SKY_Y-1.1-2.0)/2.0,0),Vector3(1.3,SKY_Y-1.1+2.0,1.3),yaw])
-			caps.append([g+Vector3(0,SKY_Y-1.4,0),Vector3(3.0,0.6,1.6),yaw])
-			_collider(self,g+Vector3(0,2.5,0),Vector3(1.3,5.0,1.3))
+			# v0.34.5: slim white columns with a glowing seam and neon collars, a thin saddle on top.
+			var ph := SKY_Y-0.7
+			pil.append([g+Vector3(0,ph/2.0,0),0.32,ph])
+			seams.append([g+Vector3(0,ph/2.0,0)+Vector3(-dir.z,0,dir.x)*0.31,Vector3(0.06,ph*0.86,0.06),yaw])
+			collars.append([g+Vector3(0,0.35,0),Vector3(0.95,0.08,0.95),yaw+PI/4.0])
+			collars.append([g+Vector3(0,ph-0.5,0),Vector3(0.95,0.08,0.95),yaw+PI/4.0])
+			caps.append([g+Vector3(0,ph-0.15,0),Vector3(1.9,0.3,0.8),yaw])
+			_collider(self,g+Vector3(0,2.5,0),Vector3(0.7,5.0,0.7))
 			sky_pillars.append(g)
 		s += 2.0
-	_box_batch_rot(Color("bfc2bc"),pil)
-	_box_batch_rot(Color("b3b6b0"),caps)
+	var pearl := StandardMaterial3D.new()
+	pearl.albedo_color = Color("eef2f5")
+	pearl.metallic = 0.3
+	pearl.roughness = 0.22
+	var pci := _cyl_batch(Color("eef2f5"),pil,0.75)
+	if pci != null:
+		pci.material_override = pearl
+	var cpi := _box_batch_rot(Color("eef2f5"),caps)
+	if cpi != null:
+		cpi.material_override = pearl
+	var smi := _box_batch_rot(NEON_CYAN,seams)
+	if smi != null:
+		smi.material_override = _neon_mat(NEON_CYAN)
+	var cli := _box_batch_rot(NEON_VIOLET,collars)
+	if cli != null:
+		cli.material_override = _neon_mat(NEON_VIOLET)
 	# Trains.
 	sky_trains.clear()
 	sky_labels.clear()
@@ -19915,17 +20131,22 @@ func _sky_build_station(i: int) -> Dictionary:
 	_box(self,edge+Vector3(0,SKY_Y+0.26,0),Vector3(44,0.03,0.3) if along_x else Vector3(0.3,0.03,44),Color("f2c230"))
 	# Roof over the platform and the track, on posts at the back edge.
 	var roof_c := g+nrm*side*2.6
-	_box(self,roof_c+Vector3(0,SKY_Y+4.9,0),Vector3(46,0.3,6.6) if along_x else Vector3(6.6,0.3,46),Color("2f6f8f"))
+	_box(self,roof_c+Vector3(0,SKY_Y+4.9,0),Vector3(46,0.2,6.6) if along_x else Vector3(6.6,0.2,46),Color("eef2f5"))
 	var strip := _box(self,roof_c+Vector3(0,SKY_Y+4.72,0),Vector3(42,0.08,0.5) if along_x else Vector3(0.5,0.08,42),Color("fff6d8"))
 	strip.material_override = sky_light_mat if sky_light_mat != null else strip.material_override
 	for k in range(-2,3):
 		var post := g+nrm*side*5.6+dir*float(k)*10.5
 		_box(self,post+Vector3(0,SKY_Y+2.6,0),Vector3(0.3,4.6,0.3),Color("5d666c"))
 	# Glass lift tower from the street up to the platform, and a walkway across.
-	_box(self,lift+Vector3(0,(SKY_Y+3.2)/2.0,0),Vector3(3.0,SKY_Y+3.2,3.0),Color("8fc8dc"))
+	# v0.34.5: a slim see-through glass tube with a glowing ring at the top and bottom.
+	var tube := _fc_part(self,_fc_cone(1.1,1.1,SKY_Y+3.2),lift+Vector3(0,(SKY_Y+3.2)/2.0,0),_fc_glass())
+	tube.mesh.set("radial_segments",20)
+	_fc_part(self,_fc_torus(1.05,1.18),lift+Vector3(0,0.15,0),_fc_glow(NEON_CYAN))
+	_fc_part(self,_fc_torus(1.05,1.18),lift+Vector3(0,SKY_Y+3.1,0),_fc_glow(NEON_VIOLET))
+	_collider(self,lift+Vector3(0,(SKY_Y+3.2)/2.0,0),Vector3(2.0,SKY_Y+3.2,2.0))
 	for cx in [-1.0,1.0]:
 		for cz in [-1.0,1.0]:
-			_box(self,lift+Vector3(cx*1.5,(SKY_Y+3.4)/2.0,cz*1.5),Vector3(0.25,SKY_Y+3.4,0.25),Color("2f6f8f"))
+			_box(self,lift+Vector3(cx*0.85,(SKY_Y+3.4)/2.0,cz*0.85),Vector3(0.06,SKY_Y+3.4,0.06),Color("eef2f5"))
 	var walk_c := g+dir*3.6+nrm*side*(5.75+off)/2.0
 	var walk_len := maxf(off-5.75,0.5)
 	_box(self,walk_c+Vector3(0,SKY_Y-0.05,0),Vector3(2.4,0.4,walk_len) if along_x else Vector3(walk_len,0.4,2.4),Color("d8d4c8"))

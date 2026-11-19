@@ -493,3 +493,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - City Loop buses: traffic loops with >=4 cars use bus.glb for k==0 (and k==3 if >=6 cars), `_bus_skin` recolours BusBlue, traffic dict "half" (5.7 bus, 1.8 car) used for gaps and stop lines; red-light smoke test accounts for half.
 - Release commit 42cf5e8, tag v0.34.7, versionCode 57. APK SHA256 acc32f05f744bef44fe3a12256bc00c90eef923de5f1f6c8ae917c77bcf4cd6f (43339344 bytes), same certificate. Bench about 52 fps.
 - Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.
+
+## v0.34.8 (released 2026-11-19)
+
+- Fix: a car that went home (`car_gone`) skips gravity/move_and_slide and is ignored by the y < -5 rescue check (it used to fall through the ground and loop the checkpoint rescue). `_rescue` calls `_car_back` first.
+- `_travel_to` on foot calls `_car_away` (car stays home, CALL CAR brings it); driving still brings the car.
+- Release commit 79bfa83, tag v0.34.8, versionCode 58. APK SHA256 d0463f48ab49fcfa771cec281a84a79d755bc7e0f2ab8f7ea0f4b9595ec24a50 (43339344 bytes), same certificate.
+- Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.

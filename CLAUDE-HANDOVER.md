@@ -407,3 +407,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 
 - Passive lobby watcher (_watch_tick, called from _process so it runs while paused): when Online is off, a second WebSocket joins the lobby without broadcasting and records pos-frame ids in watch_seen (dropped after ONLINE_TIMEOUT). online_pill is now a Button under the minimap on the clean screen: offline "● N ONLINE · JOIN" / "○ GO ONLINE" (tap = _online_toggle), online "● N ONLINE" (tap = Players panel). Dev flag --watch-check prints the watcher count after 14 s; verified live with a probe broadcaster.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.33.1 (source commit c92cf9d). Code 44. Pages run succeeded; live release.json, page and /play show 0.33.1; downloaded APK hash matches.
+
+## v0.33.2 (2026-11-19): symbols on every device, fixed rainbow ring, lower name tags
+
+- Web builds have no system font fallback, so ● ◆ ▶ ✕ ★ ♥ showed as boxes on iPad. _symbol_font (first thing in _ready) appends game/fonts/NotoSansSymbols2-Regular.ttf (OFL, credits.txt + fonts/OFL.txt) to ThemeDB.fallback_font.fallbacks. Thin arrows (←↑→↓ etc.) are not in that font, so all were replaced with ⬅⬆➡⬇⬉⬈⬊⬋. Smoke asserts every symbol has a font.
+- Level 20 ring: RAINBOW_SHADER (hue by angle, static) instead of a time-cycling colour that differed per device. Peers restyle when their level changes (ring_lv).
+- Peer name tags: fixed_size like your own, at 1.2 m above the body on foot (2.8 driving), so they don't go off screen up close.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.33.2 (source commit c33da72). Code 45. Pages run succeeded; live release.json, page and /play show 0.33.2; downloaded APK hash matches.

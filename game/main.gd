@@ -334,7 +334,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.33.3: quests start by themselves. Just follow the arrow! Tap ✕ on the quest bar to skip one.")
+	_show_toast("Harbor City 0.33.4: other players now look just like they dress, and their name tags no longer fill the screen up close.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -1661,7 +1661,7 @@ func _online_pos_frame() -> Dictionary:
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
 		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
-		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size()}
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat]}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -1782,6 +1782,7 @@ func _online_peer_update(p: Dictionary) -> void:
 	var seat := int(p.get("s",-1))
 	peer["seat"] = seat if seat >= 0 and seat < hub_seats.size() else -1
 	peer["id"] = id
+	_peer_look(peer,p.get("av",null))
 	_social_peer_extras(peer,p)
 	var rc := int(p.get("rc",0)) == 1
 	if rc != bool(peer.get("rc",false)):
@@ -1844,6 +1845,37 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	node.add_child(label)
 	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true,"role":0,"lvl":1,"shown":0,"red":red_light,"blue":blue_light,"person":foot_person,"seat":-1,"qn":0,"en":0,"ring":peer_ring}
 
+func _peer_look(peer: Dictionary, av: Variant) -> void:
+	# v0.33.4: other players look the way they dress themselves (body, shirt, pants and hat),
+	# so everyone sees the same person on every phone. Older versions send no look: keep the random one.
+	if not (av is Array) or (av as Array).size() < 3 or (peer.get("person",{}) as Dictionary).is_empty():
+		return
+	var sh := clampi(int(av[0]),0,SHIRTS.size()-1)
+	var pa := clampi(int(av[1]),0,PANTS.size()-1)
+	var ht := clampi(int(av[2]),0,HATS.size()-1)
+	var key := "%d|%d|%d" % [sh,pa,ht]
+	if String(peer.get("look","")) == key:
+		return
+	var foot: Node3D = peer["foot"]
+	if not peer.has("look"):
+		# First real look: rebuild the body as the same character everyone plays.
+		var old: Dictionary = peer["person"]
+		(old["root"] as Node).queue_free()
+		var pp := _make_person(foot,0,{"Shirt":SHIRTS[sh]["color"],"Pants":PANTS[pa]["color"],"Skin":Color("ac7552"),"Hair":Color("2b1d14"),"Shoes":Color("eef1f2"),"Eye":Color("1c1c22")})
+		if pp.is_empty():
+			return
+		peer["person"] = pp
+		var hh := Node3D.new()
+		hh.position.y = 0.99
+		foot.add_child(hh)
+		peer["hat"] = hh
+	else:
+		var pm: Dictionary = (peer["person"] as Dictionary)["mats"]
+		(pm["Shirt"] as StandardMaterial3D).albedo_color = SHIRTS[sh]["color"]
+		(pm["Pants"] as StandardMaterial3D).albedo_color = PANTS[pa]["color"]
+	peer["look"] = key
+	_build_hat(peer["hat"],ht,false)
+
 func _online_tint(node: Node, color: Color) -> void:
 	if node is MeshInstance3D:
 		var mi := node as MeshInstance3D
@@ -1905,7 +1937,13 @@ func _online_update_peers(delta: float) -> void:
 		node.rotation.y = lerp_angle(node.rotation.y,float(peer["yaw"]),minf(1.0,delta*8.0))
 		(peer["car"] as Node3D).visible = peer["driving"]
 		(peer["foot"] as Node3D).visible = not peer["driving"]
-		(peer["label"] as Label3D).position.y = 2.8 if peer["driving"] else 1.2
+		var plab: Label3D = peer["label"]
+		plab.position.y = 2.8 if peer["driving"] else 1.2
+		# v0.33.4: a player standing right at or behind your camera would get a giant name
+		# smeared across the screen; hide the tag until they are in front of you.
+		if camera != null:
+			var lp := plab.global_position
+			plab.visible = not camera.is_position_behind(lp) and camera.global_position.distance_to(lp) > 2.5
 		var role := int(peer["role"])
 		var cop := role == 2
 		var flash := int(clock*6.0) % 2 == 0
@@ -2356,10 +2394,16 @@ func _build_marina() -> void:
 
 # Avatar and shop UI.
 func _set_hat(index: int) -> void:
+	_build_hat(hat_holder,index,player_person.is_empty())
+
+func _build_hat(holder: Node3D, index: int, boxy: bool) -> void:
+	# v0.33.4: shared by your own hat and other online players' hats.
+	var prev := hat_holder
+	hat_holder = holder
 	for child in hat_holder.get_children():
 		child.queue_free()
 	var col: Color = HATS[index]["color"]
-	if player_person.is_empty():
+	if boxy:
 		# Old box head (no Blender model): simple box hats.
 		match index:
 			1:
@@ -2372,6 +2416,7 @@ func _set_hat(index: int) -> void:
 				_box(hat_holder,Vector3(0,0.98,0),Vector3(0.58,0.3,0.58),col)
 			4:
 				_box(hat_holder,Vector3(0,0.96,0),Vector3(0.5,0.18,0.5),col)
+		hat_holder = prev
 		return
 	# v0.23: hats shaped and sized for the Blender head (centre 0.555 above the holder, face towards -Z).
 	var hc := 0.555
@@ -2414,6 +2459,7 @@ func _set_hat(index: int) -> void:
 				var part := _hat_part(spike,Vector3(sin(a)*0.098,hc+0.185,cos(a)*0.098),Vector3.ONE,col)
 				part.rotation.y = a
 				_hat_part(SphereMesh.new(),Vector3(sin(a)*0.098,hc+0.225,cos(a)*0.098),Vector3(0.022,0.022,0.022),Color("e0434f") if k % 2 == 0 else Color("4fb3e8"))
+	hat_holder = prev
 
 func _cyl(radius: float, height: float) -> CylinderMesh:
 	var c := CylinderMesh.new()
@@ -8041,6 +8087,13 @@ func _smoke_test() -> void:
 	_online_update_peers(0.016)
 	var plab: Label3D = online_peers["col1"]["label"]
 	assert(plab.modulate.is_equal_approx(_tier_color(3)) and plab.text.contains("◆40"),"Their name tag shows their Legend colour and achievement count")
+	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":16,"av":[1,1,2]})
+	var avp: Dictionary = online_peers["col1"]["person"]
+	assert((avp["mats"]["Shirt"] as StandardMaterial3D).albedo_color.is_equal_approx(SHIRTS[1]["color"]) and (avp["mats"]["Pants"] as StandardMaterial3D).albedo_color.is_equal_approx(PANTS[1]["color"]),"v0.33.4: other players wear their own shirt and pants")
+	assert((online_peers["col1"]["hat"] as Node3D).get_child_count() > 0,"v0.33.4: other players wear their own hat")
+	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":16,"av":[2,1,0]})
+	assert((online_peers["col1"]["person"]["mats"]["Shirt"] as StandardMaterial3D).albedo_color.is_equal_approx(SHIRTS[2]["color"]),"v0.33.4: a new shirt shows straight away")
+	assert(_online_pos_frame()["payload"]["payload"]["av"] == [av_shirt,av_pants,av_hat],"v0.33.4: your look is sent to other players")
 	(online_peers["col1"]["node"] as Node3D).queue_free()
 	online_peers.erase("col1")
 	_ach_msg({"i":"mia9","n":"Mia","a":"lv20"})

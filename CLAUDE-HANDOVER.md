@@ -393,3 +393,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Bench: 63 fps desktop.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.32.0 (source commit 6725114). Code 42. Pages run succeeded; live release.json, page and /play show 0.32.0; downloaded APK hash matches.
 - Not tried with real phones online together.
+
+## v0.33.0 (2026-11-19): dome game centre, 91 achievements, level/achievement colours, LED signals
+
+- Dome: _build_arcade (C4_TABLES 4, tables 0-1 robot; RX_CABS 2 two-seat cabinets, cab 0 robot; MEM_CABS 2 solo) with hub seats kinds c4/rx/mem; game panel gains c4 board, reaction button, memory grid (_build_arcade_panel/_refresh_arcade_panel). Online moves via "gm" k=c (42-char board), k=x (go/time per round), k=m (memory best time). _robot_table/_game_state generalise ttt/rps code; LFP invites accept c4/rx. Party Quiz at QUIZ_C (234,0,54), radius 9: unix-clock slots (20 s per question, 8 per round + results), _quiz_question seeded by round/number (no repeats within a round), 40 questions, scores broadcast "qz", two deterministic robot contestants, winner $300+50 XP. quiz_time_override for tests.
+- Achievements: ACH (91 entries, tiers b/s/g/l), stats dict (drive_m, walk_m, night_m, dance_s and event counters via _stat_add), ach_got; saved under [ach]. _ach_check every second (disabled during --smoke-test except explicit calls); first check after load awards silently. Gold/Legend broadcast "ach" and go to the feed; _ach_msg shows others'. Menu > Achievements panel. Players panel now hidden by _toggle_menu (bug fix).
+- Highlights: _style_ring sets ring = level band colour (rainbow at 20, animated), halo = best tier colour, inner ring = crew; name tag modulate = tier colour; tags show ◆count. Pos frame carries at/ac.
+- Signals: _city_signals rebuilt as white poles/arms with cyan line, dark LED bars lit by signal caps (bars 1.5 m), base neon rings using light_ns/ew mats; amber via _light_look (last 1.6 s of green). Online peer bound widened 600 -> 950 m.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.33.0 (source commit 7302bd3). Code 43. Pages run succeeded; live release.json, page and /play show 0.33.0; downloaded APK hash matches.
+- Not tried with real phones online together.

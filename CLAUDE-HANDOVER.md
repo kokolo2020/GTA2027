@@ -402,3 +402,8 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Signals: _city_signals rebuilt as white poles/arms with cyan line, dark LED bars lit by signal caps (bars 1.5 m), base neon rings using light_ns/ew mats; amber via _light_look (last 1.6 s of green). Online peer bound widened 600 -> 950 m.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.33.0 (source commit 7302bd3). Code 43. Pages run succeeded; live release.json, page and /play show 0.33.0; downloaded APK hash matches.
 - Not tried with real phones online together.
+
+## v0.33.1 (2026-11-19): online player count under the minimap
+
+- Passive lobby watcher (_watch_tick, called from _process so it runs while paused): when Online is off, a second WebSocket joins the lobby without broadcasting and records pos-frame ids in watch_seen (dropped after ONLINE_TIMEOUT). online_pill is now a Button under the minimap on the clean screen: offline "● N ONLINE · JOIN" / "○ GO ONLINE" (tap = _online_toggle), online "● N ONLINE" (tap = Players panel). Dev flag --watch-check prints the watcher count after 14 s; verified live with a probe broadcaster.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.33.1 (source commit c92cf9d). Code 44. Pages run succeeded; live release.json, page and /play show 0.33.1; downloaded APK hash matches.

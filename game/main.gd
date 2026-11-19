@@ -20,14 +20,14 @@ const ROUTES := [
 	{"pickup": STOP_WEST, "dropoff": STOP_CLOCK, "from": "West Arcade", "to": "Clocktower", "pay": 175},
 ]
 const FINDS := [
-	{"name": "Ferry Steps", "pos": Vector3(0,0,46)},
+	{"name": "Ferry Steps", "pos": Vector3(-6.5,0,46)},
 	{"name": "Lighthouse Walk", "pos": Vector3(-46,0,49)},
 	{"name": "East Lookout", "pos": Vector3(46,0,49)},
-	{"name": "East Gardens", "pos": Vector3(32,0,23)},
-	{"name": "Sunset Market", "pos": Vector3(32,0,-29)},
-	{"name": "Clocktower", "pos": Vector3(0,0,-28)},
-	{"name": "North Gate", "pos": Vector3(-32,0,-30)},
-	{"name": "West Arcade", "pos": Vector3(-32,0,8)},
+	{"name": "East Gardens", "pos": Vector3(38.5,0,23)},
+	{"name": "Sunset Market", "pos": Vector3(38.5,0,-24.5)},
+	{"name": "Clocktower", "pos": Vector3(6.5,0,-25.5)},
+	{"name": "North Gate", "pos": Vector3(-25.5,0,-25.5)},
+	{"name": "West Arcade", "pos": Vector3(-25.5,0,8)},
 ]
 const CARS := [
 	{"name":"Harbor Blue","price":0,"speed":18.0,"accel":9.0,"turn":3.4,"color":Color("438fd0"),"roof":Color("264d68"),"note":"Reliable starter car"},
@@ -41,7 +41,7 @@ const CARS := [
 ]
 const RIDGE_GATE := Vector3(57,0,0)
 const RIDGE := [
-	{"name":"Ridge Pass Marker","pos":Vector3(68,0,0),"pay":150},
+	{"name":"Ridge Pass Marker","pos":Vector3(69,0,5.5),"pay":150},
 	{"name":"Trailhead Camp","pos":Vector3(82,0,14),"pay":200},
 	{"name":"Old Mill","pos":Vector3(90,0,-14),"pay":200},
 	{"name":"Pine Hollow","pos":Vector3(102,0,17),"pay":250},
@@ -76,7 +76,7 @@ const BAY := [
 	{"name":"Whale Rock","pos":Vector3(-126,0,9),"pay":400},
 	{"name":"Glass Beach","pos":Vector3(-144,0,-9),"pay":400},
 	{"name":"Windmill Point","pos":Vector3(-160,0,9),"pay":500},
-	{"name":"Lighthouse Light","pos":Vector3(-172,0,0),"pay":600},
+	{"name":"Lighthouse Light","pos":Vector3(-173,0,-5.5),"pay":600},
 ]
 const BAY_BONUS := 1000
 const NORTH_GATE := Vector3(0,0,-56.5)
@@ -296,6 +296,7 @@ func _ready() -> void:
 	_build_skytrain()
 	_build_peds()
 	_build_traffic()
+	_build_future()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
 	radio_player = AudioStreamPlayer.new()
 	radio_player.volume_db = -6.0
@@ -308,7 +309,7 @@ func _ready() -> void:
 	_refresh_time_button()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check"]:
+	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -320,7 +321,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.30.0: real-looking city. Photo textures on roads, walls and roofs, glass towers lit window by window at night, leafy trees, rounded glossy cars, a real bus and a sleek sky train.")
+	_show_toast("Harbor City 0.31.0: Neo Harbor! Neon-lit towers, floating holograms, hover cars and drones overhead, LED streets. Quests now pop up near you to accept.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -361,6 +362,13 @@ func _ready() -> void:
 			var e: Vector3 = sky_st_info[i]["entrance"]
 			print("SKYST ",i," ",e," road=",_on_road(e)," blk=",_blocker(e+Vector3(0,1.0,0),0.6)," side=",sky_st_info[i]["side"])
 		print("SKYLEN ",sky_len," period ",sky_period," pillars ",sky_pillars.size())
+		get_tree().quit()
+	elif "--road-check" in OS.get_cmdline_user_args():
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		for row in _collectibles_on_road():
+			print("ONROAD ",row[0]," ",row[1]," -> ",_offroad(row[1]))
+		print("ROADCHECK DONE")
 		get_tree().quit()
 	elif "--city-shots" in OS.get_cmdline_user_args():
 		await _city_shots()
@@ -548,6 +556,11 @@ func _realify(model: Node) -> void:
 				_real_glass(bm,base != "WinGlass")
 			elif base in FOLIAGE_NAMES:
 				_real_foliage(bm)
+			elif base == "BoardFace":
+				# v0.31: billboards are glowing hologram screens.
+				if holo_board_mat == null:
+					holo_board_mat = _holo_material(0.5)
+				(n as MeshInstance3D).set_surface_override_material(si,holo_board_mat)
 
 func _real_glass(bm: BaseMaterial3D, grid: bool) -> void:
 	# Glass reflects the sky. Big curtain walls get window frames, and at night only some windows are lit.
@@ -610,6 +623,18 @@ func _material(color: Color) -> StandardMaterial3D:
 		return _surface_material(color,"grass")
 	if hex in SURF_PAVE:
 		return _surface_material(color,"pave")
+	if hex in ["eef0ec","f2c230","e7d9a4","f4f1e8"]:
+		# v0.31: road lines share one material per colour and glow faintly at night.
+		if not line_mats.has(hex):
+			var lm := StandardMaterial3D.new()
+			lm.albedo_color = color
+			lm.roughness = 0.85
+			lm.emission_enabled = true
+			lm.emission = color.lerp(Color("bff6ff"),0.4)
+			lm.emission_energy_multiplier = 0.0
+			line_mats[hex] = lm
+			night_lines.append(lm)
+		return line_mats[hex]
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.85
@@ -713,6 +738,7 @@ func _build_world() -> void:
 			var vis: Array = []
 			_box(self, Vector3(x,0.12,z), Vector3(15,0.25,15), Color("ccd0c3"))
 			vis.append(_box(self, Vector3(x,height/2.0,z), Vector3(11,height,10), palette[count % 4], true))
+			neon_boxes.append([Vector3(x,0.12,z),Vector3(11,height+0.35,10)])
 			vis.append(_box(self, Vector3(x,height+0.15,z), Vector3(11.5,0.35,10.5), Color("f2e6d2")))
 			for floor_index in range(1,int(height/2.0)+1):
 				for column in [-3.2,0.0,3.2]:
@@ -763,12 +789,13 @@ func _build_collectibles() -> void:
 		token.add_child(gem)
 		find_nodes.append(token)
 		_sign(find["name"].to_upper(),pos+Vector3(0,4.6,0),Color("adf2f5"),36)
-		_box(self,pos+Vector3(0,0.1,0),Vector3(2.4,0.18,2.4),Color("365a69"))
+		# v0.30.1: no base slab any more (it sat in the middle of the crossings); the floating gem marks the spot.
 	# Simple original landmarks make the waterfront finds recognizable.
 	_box(self,Vector3(-49,4,47),Vector3(2.6,8,2.6),Color("eee2c2"),true)
 	_box(self,Vector3(-49,8.5,47),Vector3(3.3,1,3.3),Color("e4b95a"))
-	_box(self,Vector3(4,5,-28),Vector3(2.2,10,2.2),Color("cfb892"),true)
-	_sign("12 : 00",Vector3(4,11.2,-28),Color("f7edd4"),30)
+	# The clock column stands on the pavement, clear of the road.
+	_box(self,Vector3(7.6,5,-28),Vector3(2.0,10,2.0),Color("cfb892"),true)
+	_sign("12 : 00",Vector3(7.6,11.2,-28),Color("f7edd4"),30)
 	for x in [42.0,46.0,50.0]:
 		_box(self,Vector3(x,0.6,53),Vector3(0.3,1.2,0.3),Color("a8855b"))
 	_box(self,Vector3(46,1.1,53),Vector3(8,0.2,0.2),Color("ead0a0"))
@@ -1880,11 +1907,11 @@ const BASE_TRIALS := 7
 const PAINT_PRICE := 150
 const MARINA_GATE := Vector3(0,0,58)
 const MARINA := [
-	{"name":"Bridge Midpoint","pos":Vector3(0,0,82),"pay":500},
+	{"name":"Bridge Gate","pos":Vector3(0,0,56),"pay":500},
 	{"name":"Fountain Plaza","pos":Vector3(-35,0,166.5),"pay":600},
 	{"name":"Yacht Club","pos":Vector3(-62,0,216),"pay":700},
 	{"name":"Sunset Boardwalk","pos":Vector3(70,0,222),"pay":700},
-	{"name":"Marina Lighthouse","pos":Vector3(0,0,232),"pay":900},
+	{"name":"Marina Lighthouse","pos":Vector3(7,0,232),"pay":900},
 ]
 const MARINA_BONUS := 3000
 const SHOPS := [
@@ -3568,7 +3595,7 @@ func _build_player() -> void:
 		hat_holder.position.y = 0.29
 	# Real players stand on a glowing ring (yours gold, other players cyan); NPC walkers have none.
 	my_ring = _player_ring(player,Color("ffcf4a"))
-	my_ring.position.y = -0.66
+	my_ring.position.y = -0.58
 	camera = Camera3D.new()
 	camera.fov = 55
 	camera.far = 340
@@ -3851,6 +3878,7 @@ func _build_hud() -> void:
 	_build_travel(root)
 	_build_qr(root)
 	_build_quest_list(root)
+	_build_quest_offer(root)
 	_build_treasure(root)
 	_build_feed(root)
 	_build_raceway_ui(root)
@@ -3957,6 +3985,543 @@ var menu_online_button: Button
 var menu_run_button: Button
 var menu_screen_button: Button
 
+var online_pill: Label
+
+func _online_pill_tick() -> void:
+	# A small "N ONLINE" tag under the minimap while online play is on (tap the minimap > Online to switch).
+	if minimap == null:
+		return
+	if online_pill == null:
+		online_pill = Label.new()
+		online_pill.add_theme_font_size_override("font_size",17)
+		online_pill.add_theme_color_override("font_color",Color("6fe8ff"))
+		online_pill.add_theme_color_override("font_outline_color",Color(0,0,0,0.85))
+		online_pill.add_theme_constant_override("outline_size",6)
+		online_pill.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		online_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		minimap.get_parent().add_child(online_pill)
+	online_pill.visible = online_on and _clean_on() and not paused
+	if online_pill.visible:
+		online_pill.text = "● %d ONLINE" % (online_peers.size()+1) if online_state >= 3 else "● CONNECTING…"
+		online_pill.size = Vector2(MINI_SIZE*CLEAN_MINI_SCALE,24)
+		online_pill.position = minimap.position+Vector2(0,MINI_SIZE*CLEAN_MINI_SCALE+4)
+
+# ---------- v0.30.1: nothing to collect stands in a road ----------
+const OFFROAD_MARGIN := 1.6
+
+func _offroad_ok(p: Vector3) -> bool:
+	for d in [Vector3.ZERO,Vector3(OFFROAD_MARGIN,0,0),Vector3(-OFFROAD_MARGIN,0,0),Vector3(0,0,OFFROAD_MARGIN),Vector3(0,0,-OFFROAD_MARGIN)]:
+		if _on_road(p+d):
+			return false
+	return true
+
+func _offroad(p: Vector3) -> Vector3:
+	# Nearest spot at least OFFROAD_MARGIN from every road, with nothing solid there.
+	if _offroad_ok(p):
+		return p
+	for r in range(1,60):
+		for k in 32:
+			var a := TAU*float(k)/32.0
+			var c := p+Vector3(cos(a),0,sin(a))*(float(r)*0.5)
+			c = Vector3(snappedf(c.x,0.5),p.y,snappedf(c.z,0.5))
+			if _offroad_ok(c) and not _blocked_at(c+Vector3(0,1.0,0),0.6) and _ground_near(c):
+				return c
+	return p
+
+func _ground_near(c: Vector3) -> bool:
+	# Solid ground right under the spot, at about the same height (not water, not a gap).
+	var q := PhysicsRayQueryParameters3D.create(c+Vector3(0,2.5,0),c-Vector3(0,1.5,0))
+	q.exclude = [player.get_rid(),car.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return not hit.is_empty() and absf(float((hit["position"] as Vector3).y)-c.y) < 0.4
+
+func _collectibles_on_road() -> Array:
+	var out := []
+	for g in [["FINDS",FINDS],["RIDGE",RIDGE],["BAY",BAY],["NORTH",NORTH],["MARINA",MARINA],["DOWNTOWN",DOWNTOWN],["CIVIC",CIVIC],["QUICK",QUICK]]:
+		for it in g[1]:
+			var pos: Vector3 = it["pos"]
+			if pos.y < 1.0 and not _offroad_ok(pos):
+				out.append([String(g[0])+" "+String(it.get("name",it.get("task",""))),pos])
+	return out
+
+# ---------- v0.30.1: quests are offered when you get near them; you choose to take them ----------
+const QUEST_OFFER_RADIUS := 40.0
+const QUEST_DECLINE_TIME := 300.0
+var quest_active := false
+var quest_offer_idx := -1
+var quest_declined := {}
+var quest_offer_panel: PanelContainer
+var quest_offer_text: Label
+var quest_offer_accept: Button
+var quest_offer_no: Button
+var quest_bar: Button
+
+func _qt() -> bool:
+	# A daily quest is being done right now (accepted, or the older always-on rules in tests).
+	return quick_on and (quest_active or legacy_rules)
+
+func _build_quest_offer(root: Control) -> void:
+	quest_offer_panel = PanelContainer.new()
+	quest_offer_panel.add_theme_stylebox_override("panel",_panel(Color(0.06,0.13,0.18,0.94),18))
+	quest_offer_panel.custom_minimum_size = Vector2(520,0)
+	root.add_child(quest_offer_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",8)
+	quest_offer_panel.add_child(col)
+	col.add_child(_label("QUEST NEARBY",18,Color("f0bd62")))
+	quest_offer_text = _label("",21,Color("fff5dc"))
+	quest_offer_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	quest_offer_text.custom_minimum_size.x = 480
+	col.add_child(quest_offer_text)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",12)
+	col.add_child(row)
+	quest_offer_accept = _button("ACCEPT",_quest_accept)
+	quest_offer_no = _button("NO THANKS",_quest_decline)
+	for b in [quest_offer_accept,quest_offer_no]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(b)
+	quest_offer_accept.add_theme_stylebox_override("normal",_panel(Color("f0bd62"),18))
+	quest_offer_accept.add_theme_color_override("font_color",Color("182b38"))
+	quest_offer_panel.hide()
+	quest_bar = _button("",_quest_stop)
+	quest_bar.add_theme_font_size_override("font_size",19)
+	quest_bar.add_theme_stylebox_override("normal",_panel(Color(0.06,0.13,0.18,0.85),16))
+	root.add_child(quest_bar)
+	quest_bar.hide()
+
+func _quest_offer_tick() -> void:
+	if quest_offer_panel == null or player == null:
+		return
+	var view := get_viewport().get_visible_rect().size
+	var body: Node3D = car if driving else player
+	var busy := paused or legacy_rules or race_car or trial_active >= 0 or chase_mode != 0 or online_role != 0 or bus_riding or sky_riding or crate_open or seat_id >= 0
+	# The quest you are doing: a small bar at the top (tap it to stop) and the arrow shows the way.
+	var doing := _qt() and not legacy_rules and trial_active < 0 and not paused and not race_car
+	quest_bar.visible = doing
+	if doing:
+		var q: Vector3 = QUICK[quick_idx]["pos"]
+		var d := Vector2(q.x-body.position.x,q.z-body.position.z).length()
+		quest_bar.text = "▶  %s  ·  %d m    ✕" % [QUICK[quick_idx]["task"],int(d)]
+		quest_bar.size = Vector2(0,0)
+		quest_bar.position = Vector2((view.x-quest_bar.get_combined_minimum_size().x)/2.0,18)
+	# Offers: the nearest quest not done today, within reach, that you haven't just turned down.
+	var offer := -1
+	if not busy and quick_on and not quest_active:
+		var bd := QUEST_OFFER_RADIUS
+		for i in QUICK.size():
+			if _quick_is_done(i):
+				continue
+			if quest_declined.has(i) and clock-float(quest_declined[i]) < QUEST_DECLINE_TIME:
+				continue
+			var p: Vector3 = QUICK[i]["pos"]
+			var d := Vector2(p.x-body.position.x,p.z-body.position.z).length()
+			if d < bd:
+				bd = d
+				offer = i
+	if offer != quest_offer_idx:
+		quest_offer_idx = offer
+		if offer >= 0:
+			var p: Vector3 = QUICK[offer]["pos"]
+			var d := Vector2(p.x-body.position.x,p.z-body.position.z).length()
+			quest_offer_text.text = "%s\n+$%d  ·  +%d XP  ·  %d m away" % [QUICK[offer]["task"],_quick_pay(offer),QUICK_XP,int(d)]
+	quest_offer_panel.visible = offer >= 0
+	if quest_offer_panel.visible:
+		quest_offer_panel.size = Vector2(0,0)
+		quest_offer_panel.position = Vector2((view.x-quest_offer_panel.get_combined_minimum_size().x)/2.0,18)
+
+func _quest_accept() -> void:
+	if quest_offer_idx < 0:
+		return
+	var body: Node3D = car if driving else player
+	quick_on = true
+	quick_idx = quest_offer_idx
+	quest_active = true
+	quick_from = body.position
+	quest_offer_idx = -1
+	quest_offer_panel.hide()
+	_save_progress()
+	_refresh_hud()
+	_show_toast("Quest accepted: %s. Follow the arrow!" % QUICK[quick_idx]["task"])
+
+func _quest_decline() -> void:
+	if quest_offer_idx >= 0:
+		quest_declined[quest_offer_idx] = clock
+	quest_offer_idx = -1
+	quest_offer_panel.hide()
+
+func _quest_stop() -> void:
+	if not quest_active:
+		return
+	quest_active = false
+	quest_declined[quick_idx] = clock
+	_save_progress()
+	_refresh_hud()
+	_show_toast("Quest stopped. Others pop up as you explore, or tap QUESTS.")
+
+# ---------- v0.31: a futuristic Harbor City (neon strips, holograms, flying traffic, glowing streets) ----------
+const NEON_CYAN := Color("3df0ff")
+const NEON_VIOLET := Color("b46bff")
+const HOLO_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
+uniform vec4 col_a : source_color = vec4(0.2, 0.95, 1.0, 1.0);
+uniform vec4 col_b : source_color = vec4(0.72, 0.38, 1.0, 1.0);
+uniform float energy = 1.0;
+void fragment() {
+	float scan = 0.72 + 0.28 * sin(UV.y * 160.0 - TIME * 5.0);
+	float flick = 0.9 + 0.1 * sin(TIME * 21.0 + UV.x * 3.0);
+	ALBEDO = mix(col_a.rgb, col_b.rgb, UV.y) * scan * flick * energy;
+}
+"""
+var neon_boxes: Array = []
+var neon_mats: Array = []
+var holo_mat: ShaderMaterial
+var holo_board_mat: ShaderMaterial
+var holo_nodes: Array = []
+var sky_traffic: Array = []
+var night_lines: Array = []
+var line_mats := {}
+
+func _neon_mat(color: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color.darkened(0.6)
+	m.emission_enabled = true
+	m.emission = color
+	m.emission_energy_multiplier = 1.0
+	neon_mats.append(m)
+	return m
+
+func _holo_material(energy: float) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = HOLO_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("energy",energy)
+	return m
+
+func _build_future() -> void:
+	_build_neon()
+	_build_holograms()
+	_build_sky_traffic()
+	# A soft bloom so neon, holograms and lit windows glow (skipped in the browser for speed).
+	if world_env_res != null and not (OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()):
+		world_env_res.glow_enabled = true
+		world_env_res.glow_intensity = 0.55
+		world_env_res.glow_strength = 0.9
+		world_env_res.glow_bloom = 0.0
+		world_env_res.glow_hdr_threshold = 1.05
+		world_env_res.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+
+func _build_neon() -> void:
+	# LED strips along roof edges, up the corners of tall buildings and as floor bands on towers.
+	var cyan := []
+	var violet := []
+	var aabbs := {}
+	var profs := {}
+	for i in neon_boxes.size():
+		var b: Array = neon_boxes[i]
+		var c: Vector3 = b[0]
+		var s: Vector3 = b[1]
+		if b.size() > 2:
+			# Fit the strips to the model's real body (towers step in near the top), not its collider.
+			var nm := String(b[2])
+			if not aabbs.has(nm):
+				aabbs[nm] = _model_body_box(nm)
+			var bb: AABB = aabbs[nm]
+			if bb.size != Vector3.ZERO:
+				var sc := float(b[3])
+				s = Vector3(bb.size.x,bb.size.y,bb.size.z)*sc
+				if absf(sin(float(b[4]))) > 0.7:
+					s = Vector3(s.z,s.y,s.x)
+				c = c+Vector3(0,bb.position.y*sc,0)
+		var list: Array = cyan if (int(absf(c.x)*7.0+absf(c.z)*3.0) % 2) == 0 else violet
+		var hx := s.x/2.0+0.06
+		var hz := s.z/2.0+0.06
+		var h := s.y
+		var prof: Array = []
+		var psc := 1.0
+		var swap := false
+		if b.size() > 2:
+			var nm2 := String(b[2])
+			if not profs.has(nm2):
+				profs[nm2] = _model_profile(nm2)
+			prof = profs[nm2]
+			psc = float(b[3])
+			swap = absf(sin(float(b[4]))) > 0.7
+			c = Vector3(b[0].x,b[0].y,b[0].z)
+		for y in [h]+([] if h < 40.0 else range(16,int(h)-6,16)):
+			var yy := float(y)
+			var bx := hx
+			var bz := hz
+			if not prof.is_empty():
+				# Width of the building at this height (bands hug each step of a stepped tower).
+				var row: Array = prof[clampi(int(round(yy/psc)),0,prof.size()-1)]
+				bx = float(row[1])*psc+0.08
+				bz = float(row[2])*psc+0.08
+				if swap:
+					var t := bx
+					bx = bz
+					bz = t
+				if bx < 1.0 or bz < 1.0:
+					continue
+			list.append([c+Vector3(0,yy,bz),Vector3(bx*2.0+0.3,0.34,0.3),0.0])
+			list.append([c+Vector3(0,yy,-bz),Vector3(bx*2.0+0.3,0.34,0.3),0.0])
+			list.append([c+Vector3(bx,yy,0),Vector3(0.3,0.34,bz*2.0+0.3),0.0])
+			list.append([c+Vector3(-bx,yy,0),Vector3(0.3,0.34,bz*2.0+0.3),0.0])
+		if h > 18.0 and b.size() <= 2:
+			for sx in [-1.0,1.0]:
+				for sz in [-1.0,1.0]:
+					list.append([c+Vector3(sx*hx,h/2.0,sz*hz),Vector3(0.26,h,0.26),0.0])
+	var ci := _box_batch_rot(NEON_CYAN,cyan)
+	if ci != null:
+		ci.material_override = _neon_mat(NEON_CYAN)
+		ci.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var vi := _box_batch_rot(NEON_VIOLET,violet)
+	if vi != null:
+		vi.material_override = _neon_mat(NEON_VIOLET)
+		vi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+func _model_profile(name: String) -> Array:
+	# Half-widths of a model at each metre of height: [height, half_x, half_z] (empty if unknown).
+	var model := _try_model("res://models/%s.glb" % name)
+	if model == null:
+		return []
+	var mi := _first_mesh(model)
+	var prof := []
+	if mi != null:
+		var top := int(ceil(mi.get_aabb().end.y))
+		for y in top+1:
+			prof.append([float(y),0.0,0.0])
+		for si in mi.mesh.get_surface_count():
+			var verts: PackedVector3Array = mi.mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]
+			for v in verts:
+				var yi := clampi(int(round(v.y)),0,top)
+				for k in [yi-1,yi,yi+1]:
+					if k >= 0 and k <= top:
+						var row: Array = prof[k]
+						row[1] = maxf(float(row[1]),absf(v.x))
+						row[2] = maxf(float(row[2]),absf(v.z))
+	model.free()
+	return prof
+
+func _model_body_box(name: String) -> AABB:
+	# The main block of a model: the widest box that covers most of its height (ignores spires and roofs).
+	var model := _try_model("res://models/%s.glb" % name)
+	if model == null:
+		return AABB()
+	var mi := _first_mesh(model)
+	var out := AABB()
+	if mi != null:
+		var full := mi.get_aabb()
+		# Keep the strips to the lower 80% so they hug the main body, not the narrower crown.
+		out = AABB(Vector3(full.position.x*0.98,0.0,full.position.z*0.98),Vector3(full.size.x*0.98,full.size.y*0.8,full.size.z*0.98))
+	model.free()
+	return out
+
+func _build_holograms() -> void:
+	# Floating, slowly turning hologram signs over plazas and on top of a Midtown tower.
+	holo_mat = _holo_material(1.6)
+	var spots := [
+		[DT_PLAZA+Vector3(0,24,0),"NEO HARBOR",9.0],
+		[DT_STATION+Vector3(0,30,0),"UNION STATION",7.0],
+		[DT_MALL+Vector3(0,32,0),"GRAND MALL",7.0],
+		[Vector3(-30,86,-340),"MIDTOWN",8.0],
+		[Vector3(0,22,0),"HARBOR CITY",6.0],
+	]
+	for sp in spots:
+		var n := Node3D.new()
+		n.position = sp[0]
+		add_child(n)
+		var r := float(sp[2])
+		for k in 2:
+			var ring := MeshInstance3D.new()
+			var tm := TorusMesh.new()
+			tm.inner_radius = r-0.5-float(k)*1.2
+			tm.outer_radius = r-float(k)*1.2
+			tm.rings = 40
+			tm.ring_segments = 4
+			ring.mesh = tm
+			ring.material_override = holo_mat
+			ring.rotation.x = PI/2.0 if k == 0 else 0.0
+			ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			n.add_child(ring)
+		var beam := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = r*0.55
+		cm.bottom_radius = 0.2
+		cm.height = sp[0].y
+		cm.cap_top = false
+		cm.cap_bottom = false
+		beam.mesh = cm
+		beam.position = Vector3(0,-sp[0].y/2.0,0)
+		beam.material_override = _holo_material(0.12)
+		beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		n.add_child(beam)
+		var lab := Label3D.new()
+		lab.text = sp[1]
+		lab.font_size = 120
+		lab.pixel_size = 0.04*r/8.0
+		lab.modulate = Color("c8fbff")
+		lab.outline_modulate = Color(0.25,0.1,0.6,0.9)
+		lab.outline_size = 18
+		lab.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		n.add_child(lab)
+		holo_nodes.append(n)
+
+func _holo_tick(delta: float) -> void:
+	for i in holo_nodes.size():
+		var n: Node3D = holo_nodes[i]
+		var rings := n.get_children()
+		(rings[0] as Node3D).rotation.z += delta*0.6
+		(rings[1] as Node3D).rotation.y -= delta*0.9
+		n.position.y += sin(clock*1.3+float(i))*0.004
+
+# Flying traffic: hover cars and delivery drones in sky lanes above the road centres (no buildings there).
+const SKY_LANES := [
+	{"y":42.0,"speed":26.0,"n":6,"kind":0,"pts":[Vector2(-140,-140),Vector2(-620,-140),Vector2(-620,-380),Vector2(-140,-380)]},
+	{"y":58.0,"speed":30.0,"n":5,"kind":0,"pts":[Vector2(-140,-380),Vector2(-620,-380),Vector2(-620,-140),Vector2(-140,-140)]},
+	{"y":48.0,"speed":28.0,"n":5,"kind":0,"pts":[Vector2(0,-60),Vector2(0,-458),Vector2(-140,-458),Vector2(-140,-60)]},
+	{"y":52.0,"speed":32.0,"n":6,"kind":0,"pts":[Vector2(0,-40),Vector2(330,-40),Vector2(330,150),Vector2(0,150)]},
+	{"y":28.0,"speed":12.0,"n":8,"kind":1,"pts":[Vector2(-140,-220),Vector2(-620,-220),Vector2(-620,-300),Vector2(-140,-300)]},
+]
+
+func _build_sky_traffic() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2031
+	var bodies := [Color("eef2f5"),Color("b9c3cc"),Color("1d232a"),Color("2b6fd6"),Color("e8eef2")]
+	for li in SKY_LANES.size():
+		var lane: Dictionary = SKY_LANES[li]
+		var pts: Array = lane["pts"]
+		var cum := [0.0]
+		for i in pts.size():
+			cum.append(float(cum[i])+(pts[(i+1) % pts.size()] as Vector2).distance_to(pts[i]))
+		var total := float(cum[pts.size()])
+		for k in int(lane["n"]):
+			var node := _sky_drone() if int(lane["kind"]) == 1 else _sky_hover_car(bodies[rng.randi() % bodies.size()])
+			node.scale = Vector3.ONE*(2.2 if int(lane["kind"]) == 1 else 1.5)
+			add_child(node)
+			sky_traffic.append({"node":node,"lane":li,"s":total*float(k)/float(lane["n"])+rng.randf_range(0,8),"cum":cum,"total":total,"y":float(lane["y"])+rng.randf_range(-3,3),"bob":rng.randf()*TAU})
+	_sky_traffic_tick(0.0)
+
+func _sky_hover_car(body_col: Color) -> Node3D:
+	var n := Node3D.new()
+	var paint := _paint_mat(body_col)
+	var body := MeshInstance3D.new()
+	var cap := CapsuleMesh.new()
+	cap.radius = 0.85
+	cap.height = 4.6
+	body.mesh = cap
+	body.rotation.x = PI/2.0
+	body.scale = Vector3(1.0,1.0,0.5)
+	body.material_override = paint
+	n.add_child(body)
+	var glass := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.7
+	sm.height = 1.4
+	glass.mesh = sm
+	glass.position = Vector3(0,0.35,-0.3)
+	glass.scale = Vector3(1.0,0.55,1.7)
+	var gm := StandardMaterial3D.new()
+	gm.albedo_color = Color("162430")
+	gm.metallic = 0.6
+	gm.roughness = 0.1
+	glass.material_override = gm
+	n.add_child(glass)
+	var thrust := _neon_mat(NEON_CYAN)
+	for x in [-0.6,0.6]:
+		for z in [-1.4,1.4]:
+			var t := MeshInstance3D.new()
+			var cy := CylinderMesh.new()
+			cy.top_radius = 0.32
+			cy.bottom_radius = 0.38
+			cy.height = 0.12
+			t.mesh = cy
+			t.position = Vector3(x,-0.42,z)
+			t.material_override = thrust
+			t.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			n.add_child(t)
+	var tail := MeshInstance3D.new()
+	var bx := BoxMesh.new()
+	bx.size = Vector3(1.2,0.1,0.06)
+	tail.mesh = bx
+	tail.position = Vector3(0,0.05,2.3)
+	tail.material_override = _neon_mat(Color("ff3355"))
+	n.add_child(tail)
+	return n
+
+func _sky_drone() -> Node3D:
+	var n := Node3D.new()
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color("2a3038")
+	dark.metallic = 0.4
+	var body := MeshInstance3D.new()
+	var bx := BoxMesh.new()
+	bx.size = Vector3(0.9,0.28,0.9)
+	body.mesh = bx
+	body.material_override = dark
+	n.add_child(body)
+	var rotor := StandardMaterial3D.new()
+	rotor.albedo_color = Color(0.8,0.9,1.0,0.35)
+	rotor.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	for x in [-0.6,0.6]:
+		for z in [-0.6,0.6]:
+			var r := MeshInstance3D.new()
+			var cy := CylinderMesh.new()
+			cy.top_radius = 0.38
+			cy.bottom_radius = 0.38
+			cy.height = 0.03
+			r.mesh = cy
+			r.position = Vector3(x,0.18,z)
+			r.material_override = rotor
+			n.add_child(r)
+	var lamp := MeshInstance3D.new()
+	var s := SphereMesh.new()
+	s.radius = 0.12
+	s.height = 0.24
+	lamp.mesh = s
+	lamp.position = Vector3(0,-0.2,0)
+	lamp.material_override = _neon_mat(NEON_CYAN)
+	n.add_child(lamp)
+	var parcel := MeshInstance3D.new()
+	var pb := BoxMesh.new()
+	pb.size = Vector3(0.45,0.35,0.45)
+	parcel.mesh = pb
+	parcel.position = Vector3(0,-0.5,0)
+	var pm := StandardMaterial3D.new()
+	pm.albedo_color = Color("c89552")
+	parcel.material_override = pm
+	n.add_child(parcel)
+	return n
+
+func _sky_traffic_tick(delta: float) -> void:
+	for v in sky_traffic:
+		var lane: Dictionary = SKY_LANES[int(v["lane"])]
+		var pts: Array = lane["pts"]
+		var cum: Array = v["cum"]
+		v["s"] = fposmod(float(v["s"])+float(lane["speed"])*delta,float(v["total"]))
+		var s := float(v["s"])
+		for i in pts.size():
+			if s <= float(cum[i+1]):
+				var a: Vector2 = pts[i]
+				var b: Vector2 = pts[(i+1) % pts.size()]
+				var t := (s-float(cum[i]))/maxf(float(cum[i+1])-float(cum[i]),0.001)
+				var p := a.lerp(b,t)
+				var node: Node3D = v["node"]
+				node.position = Vector3(p.x,float(v["y"])+sin(clock*1.5+float(v["bob"]))*0.4,p.y)
+				var d := (b-a).normalized()
+				node.rotation.y = lerp_angle(node.rotation.y,atan2(-d.x,-d.y),minf(1.0,delta*3.0)) if delta > 0.0 else atan2(-d.x,-d.y)
+				break
+
+func _future_lights(night: float) -> void:
+	# Neon is soft by day and bright at night; street lines glow faintly after dark.
+	var k := 1.6+2.6*night
+	for m: StandardMaterial3D in neon_mats:
+		m.emission_energy_multiplier = k
+	for m: StandardMaterial3D in night_lines:
+		m.emission_energy_multiplier = 0.55*night
+
 func _minimap_tap() -> void:
 	# On the clean screen the minimap is the way into the Menu (the full map is the first Menu button).
 	if _clean_on():
@@ -4016,11 +4581,11 @@ func _clean_hud_tick() -> void:
 			_relayout_hud()
 		return
 	hud_clean_applied = true
-	for c in [hud_info,hud_pause_button,radio_button,radio_caption,online_button,view_button,chat_button,travel_button,run_button,feed_box,hud_arrow,clock_label,treasure_label]:
+	for c in [hud_info,hud_pause_button,radio_button,radio_caption,online_button,view_button,chat_button,travel_button,run_button,feed_box,clock_label,treasure_label]:
 		if c != null:
 			(c as CanvasItem).visible = false
-	if my_tag != null:
-		my_tag.visible = false
+	# v0.30.1: your name tag and glowing ring stay on the clean screen, like everyone else online.
+	_online_pill_tick()
 	# v0.29.2: the big button always shows on the clean screen, including CALL CAR.
 	action_button.visible = true
 	if qr_small != null:
@@ -4228,7 +4793,7 @@ func _physics_process(delta: float) -> void:
 	_online_tick(delta)
 	_check_missions()
 	_check_level()
-	marker.visible = (race_car and rec_act > 0) or trial_active >= 0 or quick_on or (not exploring and not next_job_pending) or (exploring and (_nearest_find() >= 0 or _nearest_civic() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0 or (_north_open() and _nearest_north() >= 0) or (_downtown_open() and _nearest_downtown() >= 0) or (_marina_open() and _nearest_marina() >= 0)))
+	marker.visible = (race_car and rec_act > 0) or trial_active >= 0 or _qt() or (not exploring and not quick_on and not next_job_pending) or (exploring and (_nearest_find() >= 0 or _nearest_civic() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0 or (_north_open() and _nearest_north() >= 0) or (_downtown_open() and _nearest_downtown() >= 0) or (_marina_open() and _nearest_marina() >= 0)))
 	for index in find_nodes.size():
 		find_nodes[index].visible = not bool(found_mask & (1 << index))
 		find_nodes[index].rotation.y += delta
@@ -4369,7 +4934,7 @@ func _interact() -> void:
 	if fm_hosting:
 		_show_toast("You're hiding for FIND ME! Stay put until it ends.")
 		return
-	if quick_on and trial_active < 0:
+	if _qt() and trial_active < 0:
 		var qd := _destination()
 		if Vector2(body.position.x-qd.x,body.position.z-qd.z).length() < (6.2 if driving else 4.8):
 			_quick_complete()
@@ -4515,7 +5080,7 @@ func _refresh_hud() -> void:
 		action_button.text = "NEXT JOB"
 	elif _nearest_shop() >= 0:
 		action_button.text = "OPEN " + String(SHOPS[_nearest_shop()]["verb"])
-	elif quick_on and trial_active < 0 and distance < (6 if driving else 5):
+	elif _qt() and trial_active < 0 and distance < (6 if driving else 5):
 		action_button.text = "PICK UP  +$%d" % _quick_pay(quick_idx)
 	elif exploring and not quick_on and index >= 0 and distance < 5 and not driving:
 		action_button.text = "COLLECT TOKEN"
@@ -4674,6 +5239,7 @@ func _save_progress() -> void:
 	file.set_value("progress","quick_got",quick_got)
 	file.set_value("progress","day_mode",day_mode)
 	file.set_value("progress","hud_clean",hud_clean)
+	file.set_value("progress","quest_active",quest_active)
 	file.set_value("progress","tour_day",tour_day)
 	file.set_value("progress","tour_got",tour_got)
 	file.set_value("progress","treasure_got",treasure_got)
@@ -4693,6 +5259,7 @@ func _load_progress() -> void:
 		quick_got = int(file.get_value("progress","quick_got",0)) & ((1 << QUICK.size())-1)
 		day_mode = clampi(int(file.get_value("progress","day_mode",0)),0,DAY_MODES.size()-1)
 		hud_clean = bool(file.get_value("progress","hud_clean",true))
+		quest_active = bool(file.get_value("progress","quest_active",false))
 		tour_day = String(file.get_value("progress","tour_day",""))
 		tour_got = int(file.get_value("progress","tour_got",0)) & ((1 << SKY_STATIONS.size())-1)
 		treasure_got = int(file.get_value("progress","treasure_got",-1))
@@ -4960,7 +5527,10 @@ func _process(delta: float) -> void:
 	_level_fx_tick(delta)
 	_hud_v23_tick()
 	_my_tag_tick()
+	_holo_tick(delta)
+	_sky_traffic_tick(delta)
 	_clean_hud_tick()
+	_quest_offer_tick()
 	if radio_station > 0 and radio_streams.has(radio_station):
 		radio_line_time += delta
 		if radio_line_time > 9.0:
@@ -5317,6 +5887,47 @@ func _smoke_test() -> void:
 	checkpoint_id = saved_checkpoint
 	_refresh_checkpoints()
 	_save_progress()
+	# v0.30.1: quests are offered near you; nothing is tracked until you accept; the arrow then shows the way.
+	var was_q := [legacy_rules,quick_on,quick_idx,quest_active,quick_got,player.position,driving,paused]
+	legacy_rules = false
+	quick_on = true
+	quest_active = false
+	quick_got = 0
+	quest_declined.clear()
+	driving = false
+	if paused:
+		_toggle_menu()
+	player.position = (QUICK[0]["pos"] as Vector3)+Vector3(12,0.75,0)
+	_quest_offer_tick()
+	assert(quest_offer_panel.visible and quest_offer_idx >= 0,"A quest nearby is offered")
+	var offered := quest_offer_idx
+	assert(_guide_target() == null,"No arrow before you accept")
+	_quest_decline()
+	_quest_offer_tick()
+	assert(quest_offer_idx != offered,"A declined quest isn't offered again straight away")
+	quest_declined.clear()
+	quest_offer_idx = -1
+	_quest_offer_tick()
+	_quest_accept()
+	assert(quest_active and quick_idx == offered and not quest_offer_panel.visible,"Accepting starts the quest")
+	_quest_offer_tick()
+	assert(quest_bar.visible and _guide_target() != null and (_guide_target() as Vector3).is_equal_approx(QUICK[offered]["pos"]),"The quest bar shows and the arrow points at the quest")
+	_quest_stop()
+	assert(not quest_active and _guide_target() == null,"Tapping the bar stops the quest")
+	legacy_rules = was_q[0]
+	quick_on = was_q[1]
+	quick_idx = was_q[2]
+	quest_active = was_q[3]
+	quick_got = was_q[4]
+	player.position = was_q[5]
+	driving = was_q[6]
+	quest_declined.clear()
+	quest_offer_idx = -1
+	quest_offer_panel.hide()
+	quest_bar.hide()
+	# v0.30.1: nothing to collect stands in a road (finds, discovery sites, quick-quest items).
+	var on_road := _collectibles_on_road()
+	assert(on_road.is_empty(),"Collectibles in a road: %s" % str(on_road))
 	# v0.29: clean screen: only the QR code, a small minimap and the stick are left; tapping the minimap opens the Menu.
 	hud_force_full = false
 	var saved_clean := hud_clean
@@ -6640,6 +7251,7 @@ func _place(items: Dictionary, name: String, pos: Vector3, yaw: float, scale := 
 		if absf(sin(yaw)) > 0.7:
 			size = Vector3(size.z,size.y,size.x)
 		_collider(self,pos+Vector3(0,size.y/2.0,0),size)
+		neon_boxes.append([pos,size,name,scale,yaw])
 
 func _signal_pole(poles: Array, ns_caps: Array, ew_caps: Array, corner: Vector3, yaw: float, ns: bool, reach := 3.9) -> void:
 	# v0.30: tall mast-arm signals. 4-lane roads get two lights hanging over the lanes, narrow roads one.
@@ -6939,8 +7551,9 @@ func _build_downtown() -> void:
 		ad.text = ADS[i % ADS.size()]
 		ad.font_size = 64
 		ad.pixel_size = 0.02
-		ad.modulate = Color("23262b")
-		ad.outline_size = 0
+		ad.modulate = Color("f2feff")
+		ad.outline_size = 10
+		ad.outline_modulate = Color(0.12,0.05,0.3,0.9)
 		ad.position = (b[0] as Vector3)+Basis(Vector3.UP,float(b[1]))*Vector3(0,7.3,0.32)
 		ad.rotation.y = float(b[1])
 		add_child(ad)
@@ -7089,8 +7702,9 @@ func _build_city_detail() -> void:
 				ad_i += 1
 				ad.font_size = 64
 				ad.pixel_size = 0.015
-				ad.modulate = Color("23262b")
-				ad.outline_size = 0
+				ad.modulate = Color("f2feff")
+				ad.outline_size = 10
+				ad.outline_modulate = Color(0.12,0.05,0.3,0.9)
 				ad.position = Vector3(x,y+7.3*0.75,z+0.25)
 				add_child(ad)
 			count += 1
@@ -8448,6 +9062,8 @@ func _guide_target() -> Variant:
 				return (u["node"] as Node3D).position
 		return null
 	if not marker.visible:
+		return null
+	if quick_on and not _qt() and trial_active < 0 and not (race_car and rec_act > 0):
 		return null
 	return _destination()
 
@@ -10349,11 +10965,11 @@ const CIV_Z1 := 106.0
 const CIV_AVE_GAPS := [[-140.0,77.0,107.0]]
 const CIVIC := [
 	{"name":"Police Station","pos":Vector3(-74,0,39.5),"pay":300},
-	{"name":"Harbor Hospital","pos":Vector3(-114,0,38.5),"pay":300},
+	{"name":"Harbor Hospital","pos":Vector3(-113.5,0,39),"pay":300},
 	{"name":"Grand Hotel","pos":Vector3(-162.5,0,39),"pay":350},
 	{"name":"Harbor High School","pos":Vector3(-207.5,0,39),"pay":350},
 	{"name":"Seaside Hotel","pos":Vector3(-74,0,80),"pay":300},
-	{"name":"Civic Mall","pos":Vector3(-140,0,74.5),"pay":400},
+	{"name":"Civic Mall","pos":Vector3(-139,0,79),"pay":400},
 	{"name":"Civic Park","pos":Vector3(-207.5,0,81),"pay":300},
 	{"name":"Harbor Bank","pos":Vector3(-162.5,0,119.5),"pay":400},
 	{"name":"Fire Station","pos":Vector3(-212,0,119.5),"pay":350},
@@ -12931,10 +13547,10 @@ const QUICK := [
 	{"task":"Pick up a pizza at Sunset Market","pos":Vector3(25.5,0,-22),"item":"pizza"},
 	{"task":"Collect seed packets at East Gardens","pos":Vector3(25.5,0,23),"item":"seeds"},
 	{"task":"Grab a ferry ticket at Ferry Steps","pos":Vector3(6.5,0,44),"item":"ferry ticket"},
-	{"task":"Pick up a toolbox at Port Dispatch","pos":Vector3(-25.5,0,26),"item":"toolbox"},
-	{"task":"Find a lost cat by the Harbor Waterfront","pos":Vector3(14.5,0,27),"item":"cat"},
-	{"task":"Pick up sunglasses in Marina Heights","pos":Vector3(-5.5,0,116),"item":"sunglasses"},
-	{"task":"Collect a trail map at Ridge Trailhead","pos":Vector3(78.5,0,4),"item":"trail map"},
+	{"task":"Pick up a toolbox at Port Dispatch","pos":Vector3(-25.5,0,25.5),"item":"toolbox"},
+	{"task":"Find a lost cat by the Harbor Waterfront","pos":Vector3(14,0,25.5),"item":"cat"},
+	{"task":"Pick up sunglasses in Marina Heights","pos":Vector3(-7,0,116.5),"item":"sunglasses"},
+	{"task":"Collect a trail map at Ridge Trailhead","pos":Vector3(79,0,5.5),"item":"trail map"},
 	{"task":"Grab game tokens at Harbor Dome","pos":Vector3(155.0,0,40.5),"item":"tokens"},
 	{"task":"Pick up a trophy at Harbor Raceway","pos":Vector3(214,0,-168),"item":"trophy"},
 	{"task":"Fetch spare parts from the Industrial Quarter","pos":Vector3(16.5,0,-72),"item":"spare parts"},
@@ -12942,7 +13558,7 @@ const QUICK := [
 	{"task":"Grab a postcard at Harbor Airfield","pos":Vector3(12.5,0,-345),"item":"postcard"},
 	{"task":"Pick up a train ticket at Union Station","pos":Vector3(-240,0,-316),"item":"train ticket"},
 	{"task":"Rescue a kite in Central Park","pos":Vector3(-436,0,-250),"item":"kite"},
-	{"task":"Return library books at Civic Center","pos":Vector3(-145.5,0,23),"item":"books"},
+	{"task":"Return library books at Civic Center","pos":Vector3(-147,0,23.5),"item":"books"},
 	{"task":"Collect seashells at Bay Promenade","pos":Vector3(-95.5,0,9),"item":"seashells"},
 	{"task":"Grab an ice cream at Sunset Pier","pos":Vector3(441,0,336),"item":"ice cream"},
 	{"task":"Rent a surfboard at Sunset Beach","pos":Vector3(362,0,342),"item":"surfboard"},
@@ -13035,7 +13651,11 @@ func _quick_complete() -> void:
 	quick_from = Vector3(1e9,0,0)
 	if nxt >= 0:
 		quick_idx = nxt
-		_show_toast("DONE!  +$%d  +%d XP   (%d/%d today)  Next: %s" % [pay,QUICK_XP,QUICK.size()-_quick_left(),QUICK.size(),QUICK[quick_idx]["task"]])
+		if legacy_rules:
+			_show_toast("DONE!  +$%d  +%d XP   (%d/%d today)  Next: %s" % [pay,QUICK_XP,QUICK.size()-_quick_left(),QUICK.size(),QUICK[quick_idx]["task"]])
+		else:
+			quest_active = false
+			_show_toast("DONE!  +$%d  +%d XP   (%d/%d today). More quests pop up as you explore, or tap QUESTS." % [pay,QUICK_XP,QUICK.size()-_quick_left(),QUICK.size()])
 	else:
 		cash += QUICK_ALL_BONUS
 		quick_on = false
@@ -13308,6 +13928,9 @@ func _smoke_quick() -> void:
 	# 20 levels, early ones quick.
 	assert(LEVEL_XP.size() == 20 and _level_for(0) == 1 and _level_for(100) == 2 and _level_for(10450) == 20 and _level_for(99999) == 20,"Levels 1-20")
 	# Quick quest chain: first stop is a short walk, pay and XP on the spot, then the next one.
+	# (v0.30.1: these checks run with a quest already accepted.)
+	var was_active := quest_active
+	quest_active = true
 	quick_on = true
 	quick_idx = 0
 	quick_done = 0
@@ -13394,6 +14017,7 @@ func _smoke_quick() -> void:
 	driving = was[6]
 	player.position = was[7]
 	car.position = was[8]
+	quest_active = was_active
 	_save_progress()
 
 # ---------- v0.24.1: Quests list (nearby quick quests, pick any one) ----------
@@ -13510,6 +14134,7 @@ func _quest_pick(k: int) -> void:
 	var body: Node3D = car if driving else player
 	quick_on = true
 	quick_idx = int(quest_order[k])
+	quest_active = true
 	quick_from = body.position
 	_save_progress()
 	if paused:
@@ -13577,6 +14202,9 @@ func _my_tag_tick() -> void:
 	var t := "%s  ·  Lv %d" % [_my_name(),_level()]
 	if my_tag.text != t:
 		my_tag.text = t
+	if my_ring != null:
+		var pulse := 1.0+0.08*sin(clock*4.0)
+		my_ring.scale = Vector3(pulse,0.3,pulse)
 
 # ---------- v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online) ----------
 # The 5-minute window comes from the clock, so every player sees the same chest at the same place.
@@ -13666,6 +14294,18 @@ func _tp_cyl(top: float, bottom: float, h: float) -> CylinderMesh:
 	c.radial_segments = 14
 	c.rings = 1
 	return c
+
+func _treasure_prop_side() -> void:
+	# v0.30.1: the big object stands beside the chest on whichever side is off the road.
+	var best := Vector3(2.2,0,0.6)
+	for k in 12:
+		var a := TAU*float(k)/12.0
+		var off := Vector3(cos(a),0,sin(a))*2.4
+		if _offroad_ok(treasure_node.position+off):
+			best = off
+			break
+	for n: Node3D in treasure_props:
+		n.position = best
 
 func _build_treasure_props() -> void:
 	treasure_props.clear()
@@ -13799,6 +14439,7 @@ func _treasure_tick(_delta: float) -> void:
 		var first := treasure_cycle < 0
 		treasure_cycle = cycle
 		treasure_node.position = _treasure_spot(cycle)
+		_treasure_prop_side()
 		if not first and treasure_got != cycle and not race_car:
 			_show_toast("NEW TREASURE HUNT! Read the clue at the top. You have 5 minutes!")
 	var active := treasure_got != cycle and not race_car
@@ -13865,22 +14506,60 @@ func _treasure_claim() -> void:
 
 # ---------- v0.24.1: glowing ring under real players (NPC walkers have none) ----------
 func _player_ring(parent: Node3D, color: Color) -> MeshInstance3D:
+	# v0.30.1: a bright glowing ring with a soft halo, so real players stand out from the people
+	# walking the streets (yours gold, other online players cyan).
 	var ring := MeshInstance3D.new()
 	var torus := TorusMesh.new()
-	torus.inner_radius = 0.42
-	torus.outer_radius = 0.56
+	torus.inner_radius = 0.6
+	torus.outer_radius = 0.78
 	torus.rings = 24
 	torus.ring_segments = 6
 	ring.mesh = torus
-	ring.scale = Vector3(1,0.18,1)
-	ring.position = Vector3(0,0.04,0)
+	ring.scale = Vector3(1,0.3,1)
+	ring.position = Vector3(0,0.12,0)
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = color
+	m.albedo_color = color.lightened(0.2)
 	ring.material_override = m
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(ring)
+	var halo := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(2.6,2.6)
+	halo.mesh = plane
+	halo.position = Vector3(0,-0.05,0)
+	halo.scale = Vector3(1,1.0/0.3,1)
+	halo.material_override = _halo_mat(color)
+	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring.add_child(halo)
 	return ring
+
+var halo_mats := {}
+
+func _halo_mat(color: Color) -> StandardMaterial3D:
+	var key := color.to_html(false)
+	if halo_mats.has(key):
+		return halo_mats[key]
+	var tex := GradientTexture2D.new()
+	var grad := Gradient.new()
+	grad.set_color(0,Color(1,1,1,0.85))
+	grad.set_color(1,Color(1,1,1,0))
+	grad.add_point(0.5,Color(1,1,1,0.35))
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5,0.5)
+	tex.fill_to = Vector2(1.0,0.5)
+	tex.width = 64
+	tex.height = 64
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.albedo_texture = tex
+	m.albedo_color = color
+	m.disable_receive_shadows = true
+	halo_mats[key] = m
+	return m
 
 func _smoke_treasure() -> void:
 	var was := [cash,bonus_xp,treasure_got,treasure_count,player.position,driving,treasure_time_override]
@@ -15670,7 +16349,8 @@ func _daynight_apply(force: bool) -> void:
 		m.emission = Color("ffe2b0")
 		m.emission_energy_multiplier = (1.6 if m.emission_texture != null else 0.9)*night_amt
 	for m: BaseMaterial3D in night_lamps:
-		m.emission = Color("ffe2a0")
+		# v0.31: cool white LED street lamps.
+		m.emission = Color("e3f3ff")
 		m.emission_energy_multiplier = 0.3+3.2*night_amt
 	for m: BaseMaterial3D in night_heads:
 		m.emission = Color("fff4dc")
@@ -15688,7 +16368,8 @@ func _daynight_apply(force: bool) -> void:
 		m.emission_energy_multiplier = 0.3+3.0*night_amt
 	if lamp_pool_mm != null:
 		lamp_pool_mm.visible = night_amt > 0.02
-		lamp_pool_mat.albedo_color = Color(1.0,0.78,0.45,0.6*night_amt)
+		lamp_pool_mat.albedo_color = Color(0.78,0.9,1.0,0.6*night_amt)
+	_future_lights(night_amt)
 	if clock_label != null:
 		var hh := int(h)
 		var mm := int((h-float(hh))*60.0)
@@ -15932,6 +16613,9 @@ func _city_shots() -> void:
 		["nm-airfield",15.5,-1,Vector3(130,24,-300),Vector3(60,0,-395)],
 		["nm-aerial",12.0,-1,Vector3(120,95,-110),Vector3(-10,0,-260)],
 		["nm-night",21.5,-1,Vector3(-4,5,-128),Vector3(0,8,-420)],
+		["future-plaza-night",21.0,-1,Vector3(-300,30,-40),Vector3(-340,20,-98)],
+		["future-skyline-dusk",19.2,-1,Vector3(-100,70,-60),Vector3(-300,30,-260)],
+		["future-sky-traffic",14.0,-1,Vector3(-160,40,-120),Vector3(-380,44,-140)],
 		["airport-terminal",11.0,-1,Vector3(40,30,-420),Vector3(40,4,-500)],
 		["airport-apron",15.0,-1,Vector3(-130,26,-600),Vector3(60,2,-548)],
 		["airport-runway",17.5,-1,Vector3(-330,20,-700),Vector3(0,2,-640)],
@@ -15953,6 +16637,46 @@ func _city_shots() -> void:
 		camera.look_at(sh[4])
 		await _save_shot(String(sh[0]))
 		cam_lock = false
+	# v0.30.1: a quest offered nearby, then the accepted quest with its bar and arrow.
+	day_hour_override = 11.0
+	_daynight_apply(true)
+	quick_on = true
+	quest_active = false
+	quick_got = 0
+	quest_declined.clear()
+	quest_offer_idx = -1
+	player.position = (QUICK[0]["pos"] as Vector3)+Vector3(-14,0.9,6)
+	for f in 10:
+		await get_tree().physics_frame
+	cam_lock = true
+	camera.global_position = player.global_position+Vector3(0,3.4,7.5)
+	camera.look_at(player.global_position+Vector3(0,0.6,-6))
+	_quest_offer_tick()
+	await _save_shot("quest-offer")
+	_quest_accept()
+	player.position = (QUICK[quick_idx]["pos"] as Vector3)+Vector3(-30,0.9,10)
+	for f in 10:
+		await get_tree().physics_frame
+	camera.global_position = player.global_position+Vector3(0,3.4,7.5)
+	camera.look_at(player.global_position+Vector3(0,0.6,-6))
+	_quest_offer_tick()
+	_guidance_tick(0.016)
+	await _save_shot("quest-active")
+	quest_active = false
+	cam_lock = false
+	# v0.30.1: your player with the glowing ring and name, at the North Gate crossing (no slab there now).
+	day_hour_override = 17.0
+	_daynight_apply(true)
+	player.position = Vector3(-30,0.9,-36)
+	player.rotation.y = 0.0
+	for f in 10:
+		await get_tree().physics_frame
+	cam_lock = true
+	camera.global_position = player.global_position+Vector3(1.5,3.2,6.5)
+	camera.look_at(player.global_position+Vector3(0,0.2,-6))
+	_my_tag_tick()
+	await _save_shot("player-ring")
+	cam_lock = false
 	# v0.30: close-ups of the new car and bus models.
 	day_hour_override = 15.0
 	_daynight_apply(true)

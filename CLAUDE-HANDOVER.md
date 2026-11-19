@@ -427,3 +427,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Peer name tags hide when at/behind the camera or within 2.5 m (fixes giant tags across the screen).
 - Release commit 5690045, tag v0.33.4, versionCode 47. APK SHA256 c092e4090d300078a5d90cff830baa67d7f33efa734983fcbd5b74ccf0677dc3 (43273808 bytes), same certificate.
 - Verified: release.json, download page edition, live /play/index.pck hash matches the local build, downloaded APK hash matches.
+
+## v0.33.5 (released 2026-11-19)
+
+- TRACK in the Players panel: `track_id`, `_soc_track`, `_track_pos` (ends when the peer leaves); `_guide_target` returns the tracked peer first; the screen arrow shows "Name · N m".
+- `_auto_collect_tick` (from `_process`, skipped in the smoke test unless forced): FINDS gems collect within 2.6 m on foot in any mode; the active daily quest completes within 3 m (4.5 m driving).
+- Release commit 2c22a96, tag v0.33.5, versionCode 48. APK SHA256 3a9e6bf7f84581b045749953e842360010d46fe80f1c64fa2b462d9488336d06 (43273808 bytes), same certificate.
+- Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.

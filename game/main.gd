@@ -334,7 +334,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.33.4: other players now look just like they dress, and their name tags no longer fill the screen up close.")
+	_show_toast("Harbor City 0.33.5: walk into quest spots and floating gems to collect them, and tap TRACK in PLAYERS to follow anyone online.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -818,6 +818,32 @@ func _build_collectibles() -> void:
 	for x in [42.0,46.0,50.0]:
 		_box(self,Vector3(x,0.6,53),Vector3(0.3,1.2,0.3),Color("a8855b"))
 	_box(self,Vector3(46,1.1,53),Vector3(8,0.2,0.2),Color("ead0a0"))
+
+# v0.33.5: walk into a floating gem and it's yours, and reaching a daily quest spot completes it,
+# whatever mode you're in (no button to find).
+const AUTO_FIND_R := 2.6
+const AUTO_QUEST_R := 3.0
+
+func _auto_collect_tick(force := false) -> void:
+	if not force and "--smoke-test" in OS.get_cmdline_user_args():
+		return
+	if paused or player == null or legacy_rules or race_car or bus_riding or sky_riding or seat_id >= 0:
+		return
+	var body: Node3D = car if driving else player
+	if not driving:
+		for i in FINDS.size():
+			if found_mask & (1 << i):
+				continue
+			var fp: Vector3 = FINDS[i]["pos"]
+			if Vector2(body.position.x-fp.x,body.position.z-fp.z).length() < AUTO_FIND_R:
+				_collect_find(i)
+				_refresh_hud()
+				return
+	if _qt() and trial_active < 0:
+		var qd: Vector3 = QUICK[quick_idx]["pos"]
+		if Vector2(body.position.x-qd.x,body.position.z-qd.z).length() < AUTO_QUEST_R+(1.5 if driving else 0.0):
+			_quick_complete()
+			_refresh_hud()
 
 func _find_count() -> int:
 	var count := 0
@@ -5204,6 +5230,29 @@ func _close_social() -> void:
 	if paused:
 		_toggle_menu()
 
+# ---------- v0.33.5: track a player (the arrow follows them around the city) ----------
+var track_id := ""
+
+func _soc_track(id: String) -> void:
+	if track_id == id:
+		track_id = ""
+		_show_toast("Stopped tracking.")
+	elif online_peers.has(id):
+		track_id = id
+		_show_toast("Tracking %s. Follow the arrow! Tap STOP in Players to end." % String(online_peers[id]["name"]))
+	_refresh_social()
+
+func _track_pos() -> Variant:
+	# Where the tracked player is now, or null (and tracking ends) once they leave.
+	if track_id == "":
+		return null
+	if not online_on or not online_peers.has(track_id):
+		var who := String(online_peers[track_id]["name"]) if online_peers.has(track_id) else "That player"
+		track_id = ""
+		_show_toast("%s went offline. Tracking stopped." % who)
+		return null
+	return (online_peers[track_id]["node"] as Node3D).position
+
 func _social_row_button(row: HBoxContainer, text: String, f: Callable, color := Color("213d4f")) -> void:
 	var b := _button(text,f)
 	b.custom_minimum_size = Vector2(0,46)
@@ -5250,6 +5299,8 @@ func _refresh_social() -> void:
 		_social_row_button(row,"HIGH-FIVE",_soc_high_five.bind(String(id)),Color("8a5a1c"))
 		_social_row_button(row,"GIFT $%d" % GIFT_AMOUNT,_soc_gift.bind(String(id)),Color("6b2f6b"))
 		_social_row_button(row,"INVITE",_soc_invite.bind(String(id)))
+		var tr := track_id == String(id)
+		_social_row_button(row,"STOP" if tr else "TRACK",_soc_track.bind(String(id)),Color("8b2f2f") if tr else Color("1f6f8b"))
 		if fr or _peer_crewmate(peer):
 			_social_row_button(row,"GO",_soc_goto.bind(String(id)),Color("1f6f8b"))
 		elif crew_name != "":
@@ -7620,6 +7671,7 @@ func _process(delta: float) -> void:
 	_sky_traffic_tick(delta)
 	_clean_hud_tick()
 	_quest_offer_tick()
+	_auto_collect_tick()
 	_social_tick(delta)
 	_quiz_tick(delta)
 	_ach_tick(delta)
@@ -8006,6 +8058,23 @@ func _smoke_test() -> void:
 	assert(_quick_is_done(second),"Walking up and tapping completes it")
 	_quest_offer_tick()
 	assert(quest_active and quick_idx != second and not _quick_is_done(quick_idx),"The next quest starts straight away")
+	var third := quick_idx
+	player.position = (QUICK[third]["pos"] as Vector3)+Vector3(2,0.75,0)
+	_auto_collect_tick(true)
+	assert(_quick_is_done(third),"v0.33.5: reaching the quest spot completes it by itself")
+	var was_found := found_mask
+	var gem := -1
+	for gi in FINDS.size():
+		if not (found_mask & (1 << gi)):
+			gem = gi
+			break
+	if gem >= 0:
+		player.position = (FINDS[gem]["pos"] as Vector3)+Vector3(1.5,0.75,0)
+		_auto_collect_tick(true)
+		assert(found_mask & (1 << gem),"v0.33.5: walking into a floating gem collects it in any mode")
+	found_mask = was_found
+	if gem >= 0:
+		find_nodes[gem].visible = true
 	legacy_rules = was_q[0]
 	quick_on = was_q[1]
 	quick_idx = was_q[2]
@@ -8094,6 +8163,21 @@ func _smoke_test() -> void:
 	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":16,"av":[2,1,0]})
 	assert((online_peers["col1"]["person"]["mats"]["Shirt"] as StandardMaterial3D).albedo_color.is_equal_approx(SHIRTS[2]["color"]),"v0.33.4: a new shirt shows straight away")
 	assert(_online_pos_frame()["payload"]["payload"]["av"] == [av_shirt,av_pants,av_hat],"v0.33.4: your look is sent to other players")
+	var was_online := online_on
+	online_on = true
+	_soc_track("col1")
+	assert(track_id == "col1" and (_guide_target() as Vector3).is_equal_approx((online_peers["col1"]["node"] as Node3D).position),"v0.33.5: the arrow points at the tracked player")
+	(online_peers["col1"]["node"] as Node3D).position = Vector3(40,0.9,40)
+	assert((_guide_target() as Vector3).is_equal_approx(Vector3(40,0.9,40)),"v0.33.5: the arrow follows them as they move")
+	_soc_track("col1")
+	assert(track_id == "","v0.33.5: tap again to stop tracking")
+	_soc_track("col1")
+	online_peers["col1"]["seen"] = -100.0
+	_online_update_peers(0.016)
+	_guide_target()
+	assert(not online_peers.has("col1") and track_id == "","v0.33.5: tracking stops when they go offline")
+	online_on = was_online
+	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":16})
 	(online_peers["col1"]["node"] as Node3D).queue_free()
 	online_peers.erase("col1")
 	_ach_msg({"i":"mia9","n":"Mia","a":"lv20"})
@@ -11462,6 +11546,9 @@ func _build_guidance(root: Control) -> void:
 func _guide_target() -> Variant:
 	if bus_riding or sky_riding or online_role != 0 or chase_mode == 1:
 		return null
+	var tp = _track_pos()
+	if tp != null:
+		return tp
 	if chase_mode == 2:
 		for u in chase_units:
 			if not u["cop"]:
@@ -11516,6 +11603,8 @@ func _draw_hud_arrow() -> void:
 	hud_arrow.draw_polyline(pts,Color("5a3410"),2.0,true)
 	var font := ThemeDB.fallback_font
 	var txt := "%d m" % int(d.length())
+	if track_id != "" and online_peers.has(track_id):
+		txt = "%s · %d m" % [String(online_peers[track_id]["name"]),int(d.length())]
 	var w := font.get_string_size(txt,HORIZONTAL_ALIGNMENT_LEFT,-1,20).x
 	hud_arrow.draw_string_outline(font,Vector2(70.0-w/2.0,100),txt,HORIZONTAL_ALIGNMENT_LEFT,-1,20,6,Color("132b3a"))
 	hud_arrow.draw_string(font,Vector2(70.0-w/2.0,100),txt,HORIZONTAL_ALIGNMENT_LEFT,-1,20,Color("ffcf4a"))

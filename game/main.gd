@@ -321,7 +321,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.31.0: Neo Harbor! Neon-lit towers, floating holograms, hover cars and drones overhead, LED streets. Quests now pop up near you to accept.")
+	_show_toast("Harbor City 0.32.0: make friends! Tap PLAYERS (while online) to add friends, high-five, give gifts, invite and start a crew. Dance at Times Plaza, and take group photos from the Menu.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -1594,8 +1594,8 @@ func _online_toggle() -> void:
 			_show_toast("Online play is not set up in this build.")
 			return
 		online_on = true
-		if online_id == "":
-			online_id = "%x%x" % [randi(),randi()]
+		# v0.32: the same id every time, so friends recognise you.
+		online_id = _uid()
 		if online_name == "":
 			online_name = "Driver%d" % (100+randi() % 900)
 		online_retry = 0.0
@@ -1642,7 +1642,7 @@ func _online_pos_frame() -> Dictionary:
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
 		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
-		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0}
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -1702,6 +1702,10 @@ func _online_handle(text: String) -> void:
 			var inner = outer.get("payload",{})
 			if inner is Dictionary:
 				_fm_msg(String(outer.get("event","")),inner)
+		elif outer is Dictionary and String(outer.get("event","")) == "soc":
+			var inner_s = outer.get("payload",{})
+			if inner_s is Dictionary:
+				_social_msg(inner_s)
 		elif outer is Dictionary and (String(outer.get("event","")) == "lfp" or String(outer.get("event","")) == "lfa"):
 			var inner = outer.get("payload",{})
 			if inner is Dictionary:
@@ -1749,6 +1753,8 @@ func _online_peer_update(p: Dictionary) -> void:
 	peer["lvl"] = clampi(int(p.get("l",1)),1,20)
 	var seat := int(p.get("s",-1))
 	peer["seat"] = seat if seat >= 0 and seat < hub_seats.size() else -1
+	peer["id"] = id
+	_social_peer_extras(peer,p)
 	var rc := int(p.get("rc",0)) == 1
 	if rc != bool(peer.get("rc",false)):
 		peer["rc"] = rc
@@ -1793,7 +1799,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	if foot_person.is_empty():
 		_box(foot_node,Vector3(0,0.75,0),Vector3(0.5,1.2,0.35),body_color)
 		_box(foot_node,Vector3(0,1.5,0),Vector3(0.4,0.4,0.4),Color("e8c9a0"))
-	_player_ring(foot_node,Color("4fe3ff"))
+	var peer_ring := _player_ring(foot_node,Color("4fe3ff"))
 	foot_node.hide()
 	var label := Label3D.new()
 	label.text = nm
@@ -1805,7 +1811,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	label.pixel_size = 0.012
 	label.no_depth_test = true
 	node.add_child(label)
-	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true,"role":0,"lvl":1,"shown":0,"red":red_light,"blue":blue_light,"person":foot_person,"seat":-1,"qn":0,"en":0}
+	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true,"role":0,"lvl":1,"shown":0,"red":red_light,"blue":blue_light,"person":foot_person,"seat":-1,"qn":0,"en":0,"ring":peer_ring}
 
 func _online_tint(node: Node, color: Color) -> void:
 	if node is MeshInstance3D:
@@ -1873,12 +1879,12 @@ func _online_update_peers(delta: float) -> void:
 		var flash := int(clock*6.0) % 2 == 0
 		(peer["red"] as Node3D).visible = cop and flash
 		(peer["blue"] as Node3D).visible = cop and not flash
-		var key := role*100+int(peer["lvl"])
-		if key != int(peer["shown"]):
+		var key := "%d|%d|%s" % [role,int(peer["lvl"]),_social_tag(peer)]
+		if key != str(peer["shown"]):
 			peer["shown"] = key
 			var tag := String(peer["name"])
 			var lab: Label3D = peer["label"]
-			lab.text = "%s Lv%d" % [tag,int(peer["lvl"])]+("" if role == 0 else (" · THIEF" if role == 1 else " · POLICE"))
+			lab.text = "%s Lv%d" % [tag,int(peer["lvl"])]+_social_tag(peer)+("" if role == 0 else (" · THIEF" if role == 1 else " · POLICE"))
 			lab.modulate = Color("ffb020") if role == 1 else (Color("9cc4ff") if role == 2 else Color.WHITE)
 	for id in gone:
 		(online_peers[id]["node"] as Node3D).queue_free()
@@ -3879,6 +3885,7 @@ func _build_hud() -> void:
 	_build_qr(root)
 	_build_quest_list(root)
 	_build_quest_offer(root)
+	_build_social(root)
 	_build_treasure(root)
 	_build_feed(root)
 	_build_raceway_ui(root)
@@ -3944,6 +3951,13 @@ func _build_hud() -> void:
 	for b in [menu_view_button,menu_radio_button,menu_online_button]:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row2.add_child(b)
+	var row_soc := HBoxContainer.new()
+	row_soc.add_theme_constant_override("separation",10)
+	items.add_child(row_soc)
+	for e in [["Players & friends",_open_social],["Group photo",_photo]]:
+		var b := _button(String(e[0]),e[1])
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row_soc.add_child(b)
 	var row3 := HBoxContainer.new()
 	row3.add_theme_constant_override("separation",10)
 	items.add_child(row3)
@@ -4203,6 +4217,7 @@ func _holo_material(energy: float) -> ShaderMaterial:
 func _build_future() -> void:
 	_build_neon()
 	_build_holograms()
+	_build_dance_floor()
 	_build_sky_traffic()
 	# A soft bloom so neon, holograms and lit windows glow (skipped in the browser for speed).
 	if world_env_res != null and not (OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()):
@@ -4522,6 +4537,622 @@ func _future_lights(night: float) -> void:
 	for m: StandardMaterial3D in night_lines:
 		m.emission_energy_multiplier = 0.55*night
 
+# ---------- v0.32: social. Friends, invites, crews, gifts, high-fives, dance floor, photos ----------
+# Online play only relays live messages between phones, so friends, your crew and kindness are kept on
+# your own phone, keyed by each player's permanent id; crew boards show the crews that are online now.
+const CREW_COLORS := [Color("ff4f9a"),Color("ffb020"),Color("5cff7a"),Color("b46bff"),Color("4fa3ff"),Color("ff5a3c")]
+const CREW_COLOR_NAMES := ["Pink","Gold","Lime","Violet","Blue","Red"]
+const GIFT_AMOUNT := 100
+const GIFTS_PER_DAY := 10
+const HIGH_FIVE_RANGE := 12.0
+const HANG_RADIUS := 40.0
+const HANG_EVERY := 60.0
+const HANG_XP := 20
+const CREW_NEAR := 80.0
+const DANCE_RADIUS := 8.0
+const DANCE_XP_EVERY := 30.0
+const SOCIAL_COOLDOWN := 8.0
+const DANCE_FLOOR_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled;
+varying vec3 wpos;
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
+void fragment() {
+	vec2 cell = floor(wpos.xz / 2.0);
+	vec2 f = fract(wpos.xz / 2.0);
+	float beat = floor(TIME * 2.0);
+	float h = fract(cell.x * 0.17 + cell.y * 0.31 + beat * 0.13);
+	float on = step(0.35, fract(sin(dot(cell + beat, vec2(12.9898, 78.233))) * 43758.5453));
+	float edge = step(0.06, f.x) * step(0.06, f.y) * step(f.x, 0.94) * step(f.y, 0.94);
+	ALBEDO = mix(vec3(0.04, 0.03, 0.08), hue(h) * (0.35 + 0.65 * on), edge);
+}
+"""
+var player_uid := ""
+var friends := {}
+var crew_name := ""
+var crew_color := 0
+var kindness := 0
+var gifts_day := ""
+var gifts_sent := 0
+var hang_t := 0.0
+var dancing := false
+var dance_t := 0.0
+var dance_xp_t := 0.0
+var npc_dance_t := 0.0
+var social_cool := {}
+var social_panel: PanelContainer
+var social_info: Label
+var social_crew_label: Label
+var social_crew_edit: LineEdit
+var social_crew_row: HBoxContainer
+var social_crew_color_btn: Button
+var social_crew_leave: Button
+var social_list: VBoxContainer
+var social_board: Label
+var social_refresh_t := 0.0
+var players_button: Button
+var photo_flash: ColorRect
+var photo_layer: CanvasLayer
+var photo_busy := false
+
+func _uid() -> String:
+	if player_uid == "":
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		player_uid = "p%08x%08x" % [rng.randi(),rng.randi()]
+		_save_progress()
+	return player_uid
+
+func _crew_col() -> Color:
+	return CREW_COLORS[clampi(crew_color,0,CREW_COLORS.size()-1)]
+
+func _peer_crewmate(peer: Dictionary) -> bool:
+	return crew_name != "" and String(peer.get("crew","")) == crew_name
+
+func _set_ring_color(ring: MeshInstance3D, col: Color) -> void:
+	if ring == null:
+		return
+	var m := ring.material_override as StandardMaterial3D
+	if m != null and m.albedo_color != col.lightened(0.2):
+		m = m.duplicate() as StandardMaterial3D
+		m.albedo_color = col.lightened(0.2)
+		ring.material_override = m
+		if ring.get_child_count() > 0:
+			(ring.get_child(0) as MeshInstance3D).material_override = _halo_mat(col)
+
+func _social_peer_extras(peer: Dictionary, p: Dictionary) -> void:
+	var cr := _clean_nick(String(p.get("cr","")))
+	peer["crew"] = cr
+	peer["cc"] = clampi(int(p.get("cc",0)),0,CREW_COLORS.size()-1)
+	peer["k"] = clampi(int(p.get("k",0)),0,99999)
+	var e := int(p.get("e",-1))
+	if e == 2 and int(p.get("en",0)) != int(peer.get("dance_en",-1)):
+		peer["dance_until"] = clock+4.0
+	peer["dance_en"] = int(p.get("en",0))
+	_set_ring_color(peer.get("ring"),CREW_COLORS[int(peer["cc"])] if cr != "" else Color("4fe3ff"))
+
+func _social_tag(peer: Dictionary) -> String:
+	var t := ""
+	if String(peer.get("crew","")) != "":
+		t += "  [%s]" % String(peer["crew"])
+	if friends.has(String(peer.get("id",""))):
+		t += "  ★"
+	if int(peer.get("k",0)) > 0:
+		t += "  ♥%d" % int(peer["k"])
+	return t
+
+func _my_tag_extra() -> String:
+	var t := ""
+	if crew_name != "":
+		t += "  [%s]" % crew_name
+	if kindness > 0:
+		t += "  ♥%d" % kindness
+	return t
+
+# --- messages ---
+func _soc_send(to: String, t: String, extra := {}) -> bool:
+	if not online_on or online_state != 3:
+		_show_toast("Turn Online on first (Menu > Online), then meet players.")
+		return false
+	var key := to+":"+t
+	if social_cool.has(key) and clock-float(social_cool[key]) < SOCIAL_COOLDOWN:
+		_show_toast("Just sent that. Wait a few seconds.")
+		return false
+	social_cool[key] = clock
+	var p := extra.duplicate()
+	p["to"] = to
+	p["t"] = t
+	_online_event_send("soc",p)
+	return true
+
+func _social_msg(p: Dictionary) -> void:
+	var from := String(p.get("i",""))
+	if from == "" or from == online_id or from.length() > 24 or String(p.get("to","")) != online_id:
+		return
+	var nm := _online_clean_name(String(p.get("n","Player")))
+	match String(p.get("t","")):
+		"fr":
+			if friends.has(from):
+				friends[from] = nm
+				_soc_send(from,"fra")
+			else:
+				_feed_add("%s wants to be friends!" % nm,from,{"soc":"fr"})
+		"fra":
+			friends[from] = nm
+			_save_progress()
+			_show_toast("You and %s are now friends! ★" % nm)
+		"inv":
+			_feed_add("%s invites you to hang out at %s" % [nm,_treasure_district(Vector3(float(p.get("x",0)),0,float(p.get("z",0))))],from,{"soc":"inv","x":float(p.get("x",0)),"z":float(p.get("z",0))})
+		"hf":
+			bonus_xp += 10
+			if not driving:
+				_emote(player_person,1)
+			_bubble(player if not driving else car,"High five! ✋",2.8)
+			_show_toast("%s high-fived you! +10 XP" % nm)
+			_save_progress()
+		"gift":
+			var amt := clampi(int(p.get("a",0)),1,GIFT_AMOUNT)
+			cash += amt
+			_save_progress()
+			_feed_add("%s gave you $%d! 🎁" % [nm,amt],from,{"soc":"ty"})
+		"ty":
+			_show_toast("%s says thank you! ♥" % nm)
+		"cri":
+			var cr := _clean_nick(String(p.get("cr","")))
+			if cr != "" and cr != crew_name:
+				_feed_add("%s invites you to join crew %s" % [nm,cr],from,{"soc":"cri","cr":cr,"cc":clampi(int(p.get("cc",0)),0,CREW_COLORS.size()-1)})
+		"cra":
+			_show_toast("%s joined your crew %s!" % [nm,crew_name])
+
+func _social_accept(from: String, invite: Dictionary) -> void:
+	var nm := String(online_peers[from]["name"]) if online_peers.has(from) else "Your friend"
+	match String(invite.get("soc","")):
+		"fr":
+			friends[from] = nm
+			_save_progress()
+			_soc_send(from,"fra")
+			_show_toast("You and %s are now friends! ★" % nm)
+		"inv":
+			_social_go(Vector3(float(invite["x"]),0,float(invite["z"])),nm)
+		"ty":
+			_soc_send(from,"ty")
+			_show_toast("You said thank you to %s." % nm)
+		"cri":
+			crew_name = String(invite["cr"])
+			crew_color = int(invite["cc"])
+			_save_progress()
+			_soc_send(from,"cra")
+			_show_toast("You joined crew %s!" % crew_name)
+	_refresh_social()
+
+func _social_go(at: Vector3, nm: String) -> void:
+	var why := _travel_block_reason()
+	if why != "" and not why.begins_with("Fast travel is ready"):
+		_show_toast(why)
+		return
+	var spot := _offroad(at+Vector3(3.0,0,3.0))
+	if driving:
+		car.position = spot+Vector3(0,0.8,0)
+		car.velocity = Vector3.ZERO
+		car_speed = 0.0
+	else:
+		player.position = spot+Vector3(0,0.9,0)
+		player.velocity = Vector3.ZERO
+	if paused:
+		_toggle_menu()
+	_follow_camera(1.0)
+	_show_toast("You joined %s!" % nm)
+
+# --- actions from the Players panel ---
+func _soc_friend(id: String) -> void:
+	if friends.has(id):
+		_show_toast("Already friends ★")
+		return
+	if _soc_send(id,"fr"):
+		_show_toast("Friend request sent.")
+
+func _soc_invite(id: String) -> void:
+	var body: Node3D = car if driving else player
+	if _soc_send(id,"inv",{"x":snappedf(body.position.x,0.1),"z":snappedf(body.position.z,0.1)}):
+		_show_toast("Invite sent. They can tap ACCEPT to come to you.")
+
+func _soc_goto(id: String) -> void:
+	if not online_peers.has(id):
+		return
+	if not friends.has(id) and not _peer_crewmate(online_peers[id]):
+		_show_toast("Add them as a friend first (or be in the same crew) to jump to them.")
+		return
+	_social_go((online_peers[id]["node"] as Node3D).position,String(online_peers[id]["name"]))
+
+func _soc_high_five(id: String) -> void:
+	if not online_peers.has(id):
+		return
+	var body: Node3D = car if driving else player
+	if (online_peers[id]["node"] as Node3D).position.distance_to(body.position) > HIGH_FIVE_RANGE:
+		_show_toast("Get closer to high-five (within %d m)." % int(HIGH_FIVE_RANGE))
+		return
+	if _soc_send(id,"hf"):
+		kindness += 1
+		bonus_xp += 10
+		if not driving:
+			my_emote = 1
+			my_emote_n += 1
+			_emote(player_person,1)
+		_bubble(player if not driving else car,"High five! ✋",2.8)
+		_save_progress()
+		_show_toast("High five sent! +10 XP  ♥%d" % kindness)
+	_refresh_social()
+
+func _soc_gift(id: String) -> void:
+	_gift_day_check()
+	if gifts_sent >= GIFTS_PER_DAY:
+		_show_toast("You've sent %d gifts today. More tomorrow!" % GIFTS_PER_DAY)
+		return
+	if cash < GIFT_AMOUNT:
+		_show_toast("A gift costs $%d. You have $%d." % [GIFT_AMOUNT,cash])
+		return
+	if _soc_send(id,"gift",{"a":GIFT_AMOUNT}):
+		cash -= GIFT_AMOUNT
+		gifts_sent += 1
+		kindness += 2
+		_save_progress()
+		_show_toast("You gave $%d! ♥%d  (%d/%d gifts today)" % [GIFT_AMOUNT,kindness,gifts_sent,GIFTS_PER_DAY])
+	_refresh_social()
+
+func _soc_crew_invite(id: String) -> void:
+	if crew_name == "":
+		_show_toast("Create a crew first (top of this panel).")
+		return
+	if _soc_send(id,"cri",{"cr":crew_name,"cc":crew_color}):
+		_show_toast("Crew invite sent.")
+
+func _gift_day_check() -> void:
+	var today := Time.get_date_string_from_system()
+	if gifts_day != today:
+		gifts_day = today
+		gifts_sent = 0
+
+func _crew_create() -> void:
+	var nm := _clean_nick(social_crew_edit.text)
+	if nm == "":
+		_show_toast("Crew names are 3-14 letters or numbers, and nothing rude.")
+		return
+	crew_name = nm
+	_save_progress()
+	_show_toast("Crew %s created! Invite players from the list." % crew_name)
+	_refresh_social()
+
+func _crew_cycle_color() -> void:
+	crew_color = (crew_color+1) % CREW_COLORS.size()
+	_save_progress()
+	_refresh_social()
+
+func _crew_leave() -> void:
+	if crew_name == "":
+		return
+	_show_toast("You left crew %s." % crew_name)
+	crew_name = ""
+	_save_progress()
+	_refresh_social()
+
+func _crew_mate_near(radius: float) -> String:
+	var body: Node3D = car if driving else player
+	for id in online_peers:
+		var peer: Dictionary = online_peers[id]
+		if _peer_crewmate(peer) and (peer["node"] as Node3D).position.distance_to(body.position) < radius:
+			return String(peer["name"])
+	return ""
+
+func _crew_board() -> Array:
+	# Crews online now: [name, members, total levels], best first.
+	var crews := {}
+	if crew_name != "":
+		crews[crew_name] = [crew_name,1,_level()]
+	for id in online_peers:
+		var peer: Dictionary = online_peers[id]
+		var cr := String(peer.get("crew",""))
+		if cr == "":
+			continue
+		if not crews.has(cr):
+			crews[cr] = [cr,0,0]
+		crews[cr][1] += 1
+		crews[cr][2] += int(peer.get("lvl",1))
+	var out: Array = crews.values()
+	out.sort_custom(func(a, b): return int(a[2]) > int(b[2]) or (int(a[2]) == int(b[2]) and int(a[1]) > int(b[1])))
+	return out
+
+# --- the Players panel ---
+func _build_social(root: Control) -> void:
+	social_panel = PanelContainer.new()
+	social_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	social_panel.custom_minimum_size = Vector2(900,0)
+	root.add_child(social_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",10)
+	social_panel.add_child(col)
+	col.add_child(_label("PLAYERS & FRIENDS",26,Color("f0bd62")))
+	social_info = _label("",17,Color("cbd8de"))
+	social_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	social_info.custom_minimum_size.x = 860
+	col.add_child(social_info)
+	social_crew_label = _label("",19,Color("fff5dc"))
+	col.add_child(social_crew_label)
+	social_crew_row = HBoxContainer.new()
+	social_crew_row.add_theme_constant_override("separation",10)
+	col.add_child(social_crew_row)
+	social_crew_edit = LineEdit.new()
+	social_crew_edit.placeholder_text = "Crew name"
+	social_crew_edit.max_length = 14
+	social_crew_edit.custom_minimum_size = Vector2(300,52)
+	social_crew_edit.add_theme_font_size_override("font_size",20)
+	social_crew_row.add_child(social_crew_edit)
+	social_crew_row.add_child(_button("CREATE CREW",_crew_create))
+	social_crew_color_btn = _button("Colour",_crew_cycle_color)
+	col.add_child(social_crew_color_btn)
+	social_crew_leave = _button("Leave crew",_crew_leave)
+	col.add_child(social_crew_leave)
+	social_board = _label("",17,Color("8ddacb"))
+	col.add_child(social_board)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(880,330)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	social_list = VBoxContainer.new()
+	social_list.add_theme_constant_override("separation",8)
+	social_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(social_list)
+	var bottom := HBoxContainer.new()
+	bottom.add_theme_constant_override("separation",10)
+	col.add_child(bottom)
+	for b in [_button("Online on/off",_social_online),_button("Close",_close_social)]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bottom.add_child(b)
+	social_panel.hide()
+	players_button = _button("PLAYERS",_open_social)
+	players_button.custom_minimum_size = Vector2(150,52)
+	players_button.add_theme_font_size_override("font_size",20)
+	var sb := _panel(Color("1f6f8b"),18)
+	players_button.add_theme_stylebox_override("normal",sb)
+	root.add_child(players_button)
+	players_button.hide()
+	photo_layer = CanvasLayer.new()
+	photo_layer.layer = 50
+	add_child(photo_layer)
+	photo_flash = ColorRect.new()
+	photo_flash.color = Color(1,1,1,0)
+	photo_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	photo_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	photo_layer.add_child(photo_flash)
+
+func _social_online() -> void:
+	_online_toggle()
+	_refresh_social()
+
+func _open_social() -> void:
+	if not paused:
+		_toggle_menu()
+	_refresh_social()
+	_open_panel(social_panel)
+
+func _close_social() -> void:
+	if paused:
+		_toggle_menu()
+
+func _social_row_button(row: HBoxContainer, text: String, f: Callable, color := Color("213d4f")) -> void:
+	var b := _button(text,f)
+	b.custom_minimum_size = Vector2(0,46)
+	b.add_theme_font_size_override("font_size",17)
+	b.add_theme_stylebox_override("normal",_panel(color,12))
+	row.add_child(b)
+
+func _refresh_social() -> void:
+	if social_panel == null:
+		return
+	_gift_day_check()
+	var body: Node3D = car if driving else player
+	var on := online_on and online_state == 3
+	social_info.text = ("%d other players online. High-five (+10 XP each), gift $%d (%d left today), invite them over, add friends, and hang out near friends or crewmates for +%d XP a minute. Your kindness: ♥%d" % [online_peers.size(),GIFT_AMOUNT,GIFTS_PER_DAY-gifts_sent,HANG_XP,kindness]) if on else "You're offline. Tap 'Online on/off' to meet other players. Friends and your crew are saved on this phone."
+	social_crew_label.text = ("Your crew: %s (%s)  ·  quests with a crewmate nearby pay x1.5" % [crew_name,CREW_COLOR_NAMES[crew_color]]) if crew_name != "" else "No crew yet. Make one and invite players:"
+	social_crew_row.visible = crew_name == ""
+	social_crew_color_btn.visible = crew_name != ""
+	social_crew_color_btn.text = "Crew colour: %s" % CREW_COLOR_NAMES[crew_color]
+	social_crew_color_btn.add_theme_stylebox_override("normal",_panel(_crew_col().darkened(0.35),18))
+	social_crew_leave.visible = crew_name != ""
+	var board := _crew_board()
+	var lines := []
+	for i in mini(board.size(),5):
+		lines.append("%d. %s  ·  %d online  ·  %d levels" % [i+1,board[i][0],board[i][1],board[i][2]])
+	social_board.text = ("Crews online now:\n"+"\n".join(lines)) if not lines.is_empty() else ""
+	for child in social_list.get_children():
+		for sub in child.get_children():
+			if sub is Button:
+				touch_buttons.erase(sub)
+		child.queue_free()
+	var ids: Array = online_peers.keys()
+	ids.sort_custom(func(a, b): return (online_peers[a]["node"] as Node3D).position.distance_to(body.position) < (online_peers[b]["node"] as Node3D).position.distance_to(body.position))
+	for id in ids:
+		var peer: Dictionary = online_peers[id]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation",6)
+		social_list.add_child(row)
+		var d := int((peer["node"] as Node3D).position.distance_to(body.position))
+		var lab := _label("%s  Lv%d%s\n%d m away" % [String(peer["name"]),int(peer.get("lvl",1)),_social_tag(peer),d],17,Color("fff5dc"))
+		lab.custom_minimum_size.x = 270
+		row.add_child(lab)
+		var fr := friends.has(String(id))
+		_social_row_button(row,"★ FRIEND" if fr else "+ FRIEND",_soc_friend.bind(String(id)),Color("2f6b3a") if fr else Color("213d4f"))
+		_social_row_button(row,"HIGH-FIVE",_soc_high_five.bind(String(id)),Color("8a5a1c"))
+		_social_row_button(row,"GIFT $%d" % GIFT_AMOUNT,_soc_gift.bind(String(id)),Color("6b2f6b"))
+		_social_row_button(row,"INVITE",_soc_invite.bind(String(id)))
+		if fr or _peer_crewmate(peer):
+			_social_row_button(row,"GO",_soc_goto.bind(String(id)),Color("1f6f8b"))
+		elif crew_name != "":
+			_social_row_button(row,"CREW+",_soc_crew_invite.bind(String(id)),_crew_col().darkened(0.4))
+	var offline := []
+	for fid in friends:
+		if not online_peers.has(fid):
+			offline.append(String(friends[fid]))
+	if not offline.is_empty() or friends.is_empty():
+		var row2 := HBoxContainer.new()
+		social_list.add_child(row2)
+		var t := ("Friends offline: "+", ".join(offline)) if not offline.is_empty() else "No friends yet. Tap + FRIEND next to a player."
+		var l2 := _label(t,16,Color("9fb3bd"))
+		l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l2.custom_minimum_size.x = 860
+		row2.add_child(l2)
+	if social_panel.visible:
+		social_panel.reset_size()
+		_layout_panels()
+
+# --- hanging out, dancing, photos ---
+func _on_dance_floor() -> bool:
+	return not driving and seat_id < 0 and not bus_riding and not sky_riding and Vector2(player.position.x-DT_PLAZA.x,player.position.z-DT_PLAZA.z).length() < DANCE_RADIUS
+
+func _toggle_dance() -> void:
+	dancing = not dancing
+	dance_t = 0.0
+	if dancing:
+		_show_toast("Dance! Others on the floor dance with you. Party with friends for bonus XP.")
+	else:
+		_show_toast("Stopped dancing.")
+
+func _build_dance_floor() -> void:
+	var dfloor := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(DANCE_RADIUS*2.0,DANCE_RADIUS*2.0)
+	dfloor.mesh = pm
+	dfloor.position = DT_PLAZA+Vector3(0,0.075,0)
+	var sh := Shader.new()
+	sh.code = DANCE_FLOOR_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	dfloor.material_override = m
+	dfloor.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(dfloor)
+	var speakers := []
+	for sx in [-1.0,1.0]:
+		for sz in [-1.0,1.0]:
+			speakers.append([DT_PLAZA+Vector3(sx*(DANCE_RADIUS+0.8),1.1,sz*(DANCE_RADIUS+0.8)),Vector3(1.0,2.2,1.0),0.0])
+	_box_batch_rot(Color("1b1d22"),speakers)
+	var cones := []
+	for sp in speakers:
+		cones.append([(sp[0] as Vector3)+Vector3(0,0.4,0),Vector3(1.04,0.5,1.04),0.0])
+	var ci := _box_batch_rot(NEON_VIOLET,cones)
+	if ci != null:
+		ci.material_override = _neon_mat(NEON_VIOLET)
+	_sign("DANCE FLOOR",DT_PLAZA+Vector3(0,4.0,DANCE_RADIUS+1.0),Color("ffb3f0"),56)
+
+func _social_tick(delta: float) -> void:
+	if player == null:
+		return
+	# A PLAYERS button under QUESTS while online (it opens friends, crews, gifts and invites).
+	if players_button != null:
+		players_button.visible = online_on and not paused and not race_car
+		if players_button.visible and quests_button != null:
+			players_button.position = Vector2(quests_button.position.x,quests_button.position.y+quests_button.size.y+10.0)
+	if social_panel != null and social_panel.visible:
+		social_refresh_t += delta
+		if social_refresh_t > 1.5:
+			social_refresh_t = 0.0
+			_refresh_social()
+	# Dancing: keep the dance going, earn a little XP, more when others dance with you.
+	if dancing and not _on_dance_floor():
+		dancing = false
+	if dancing:
+		dance_t -= delta
+		if dance_t <= 0.0:
+			dance_t = 3.0
+			my_emote = 2
+			my_emote_n += 1
+			_emote(player_person,2)
+		dance_xp_t += delta
+		if dance_xp_t >= DANCE_XP_EVERY:
+			dance_xp_t = 0.0
+			var crowd := 0
+			for id in online_peers:
+				var peer: Dictionary = online_peers[id]
+				if clock < float(peer.get("dance_until",0.0)) and (peer["node"] as Node3D).position.distance_to(player.position) < DANCE_RADIUS+4.0:
+					crowd += 1
+			var xp := 5+10*mini(crowd,3)
+			bonus_xp += xp
+			_show_toast(("Party with %d players! +%d XP" % [crowd,xp]) if crowd > 0 else "Dancing! +%d XP" % xp)
+	# People standing on the dance floor dance along.
+	npc_dance_t -= delta
+	if npc_dance_t <= 0.0:
+		npc_dance_t = 3.0
+		for ped in peds:
+			if bool(ped.get("idle",false)) and (ped["node"] as Node3D).position.distance_to(DT_PLAZA) < DANCE_RADIUS+0.5:
+				_emote(ped.get("person",{}),2)
+	# Hanging out: friends or crewmates nearby give a little XP every minute.
+	if online_on and online_state == 3:
+		hang_t += delta
+		if hang_t >= HANG_EVERY:
+			hang_t = 0.0
+			var body: Node3D = car if driving else player
+			var names := []
+			for id in online_peers:
+				var peer: Dictionary = online_peers[id]
+				if (friends.has(String(id)) or _peer_crewmate(peer)) and (peer["node"] as Node3D).position.distance_to(body.position) < HANG_RADIUS:
+					names.append(String(peer["name"]))
+			if not names.is_empty():
+				var xp := HANG_XP*mini(names.size(),3)
+				bonus_xp += xp
+				_save_progress()
+				_feed_add("Hanging out with %s: +%d XP" % [", ".join(names.slice(0,3)),xp],"")
+	# Your ring wears your crew colour.
+	if my_ring != null:
+		_set_ring_color(my_ring,_crew_col() if crew_name != "" else Color("ffcf4a"))
+
+func _photo() -> void:
+	# Group selfie: the camera swings in front of you, the screen clears, everyone cheers, click.
+	if photo_busy:
+		return
+	if paused:
+		_toggle_menu()
+	if driving:
+		_show_toast("Get out of the car for a group photo.")
+		return
+	photo_busy = true
+	var was_hud := hud.visible
+	hud.visible = false
+	var fwd := -player.global_basis.z
+	fwd.y = 0
+	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector3(0,0,-1)
+	cam_lock = true
+	camera.global_position = player.global_position+fwd*4.6+Vector3(0,1.3,0)
+	camera.look_at(player.global_position+Vector3(0,0.6,0))
+	my_emote = 3
+	my_emote_n += 1
+	_emote(player_person,3)
+	await get_tree().create_timer(0.9).timeout
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	photo_flash.color = Color(1,1,1,0.9)
+	var tw := create_tween()
+	tw.tween_property(photo_flash,"color",Color(1,1,1,0),0.5)
+	var stamp := Time.get_datetime_string_from_system().replace(":","-").replace("T","_")
+	var fname := "harbor_city_%s.png" % stamp
+	var saved := ""
+	if OS.has_feature("web"):
+		JavaScriptBridge.download_buffer(img.save_png_to_buffer(),fname,"image/png")
+		saved = "downloaded"
+	else:
+		var dirs := []
+		if OS.has_feature("android"):
+			dirs.append(OS.get_system_dir(OS.SYSTEM_DIR_PICTURES)+"/HarborCity")
+		dirs.append(OS.get_user_data_dir()+"/photos")
+		for d in dirs:
+			if DirAccess.make_dir_recursive_absolute(d) == OK or DirAccess.dir_exists_absolute(d):
+				if img.save_png(d+"/"+fname) == OK:
+					saved = d
+					break
+	await get_tree().create_timer(1.6).timeout
+	cam_lock = false
+	hud.visible = was_hud
+	photo_busy = false
+	_show_toast(("Photo saved: %s" % saved) if saved != "" else "Photo taken (couldn't save it here; use your phone's screenshot).")
+
 func _minimap_tap() -> void:
 	# On the clean screen the minimap is the way into the Menu (the full map is the first Menu button).
 	if _clean_on():
@@ -4584,6 +5215,9 @@ func _clean_hud_tick() -> void:
 	for c in [hud_info,hud_pause_button,radio_button,radio_caption,online_button,view_button,chat_button,travel_button,run_button,feed_box,clock_label,treasure_label]:
 		if c != null:
 			(c as CanvasItem).visible = false
+	# v0.32: invites, gifts and crew news still pop up on the clean screen.
+	if feed_box != null:
+		feed_box.visible = not paused and not feed.is_empty()
 	# v0.30.1: your name tag and glowing ring stay on the clean screen, like everyone else online.
 	_online_pill_tick()
 	# v0.29.2: the big button always shows on the clean screen, including CALL CAR.
@@ -4625,7 +5259,7 @@ func _input(event: InputEvent) -> void:
 			# Godot mouse emulation handles only the first finger; dispatch touch UI explicitly.
 			for button: Button in touch_buttons:
 				if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
-					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button)) or (quest_panel != null and quest_panel.is_ancestor_of(button))
+					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button)) or (quest_panel != null and quest_panel.is_ancestor_of(button)) or (social_panel != null and social_panel.is_ancestor_of(button))
 					if not paused and in_overlay:
 						continue
 					if paused and not in_overlay:
@@ -4917,6 +5551,10 @@ func _interact() -> void:
 		_sky_action()
 		_refresh_hud()
 		return
+	if _on_dance_floor() and _sky_near() < 0:
+		_toggle_dance()
+		_refresh_hud()
+		return
 	var sky_i := _sky_near()
 	if sky_i >= 0:
 		_sky_enter(sky_i)
@@ -5071,6 +5709,8 @@ func _refresh_hud() -> void:
 		action_button.text = _seat_label(_nearest_seat())
 	elif _sky_hud():
 		pass
+	elif _on_dance_floor() and not bus_riding:
+		action_button.text = "STOP DANCING" if dancing else "DANCE"
 	elif bus_riding:
 		action_button.text = "GET OFF" if bus_dwell > 0.0 else "RIDING…"
 		action_button.disabled = bus_dwell <= 0.0
@@ -5114,6 +5754,8 @@ func _open_panel(panel: Control) -> void:
 		travel_panel.hide()
 	if quest_panel != null:
 		quest_panel.hide()
+	if social_panel != null:
+		social_panel.hide()
 	panel.show()
 	panel.reset_size()
 	_layout_panels()
@@ -5130,6 +5772,8 @@ func _layout_panels() -> void:
 		travel_panel.position = Vector2((view.x-travel_panel.size.x)/2.0,maxf(8.0,(view.y-travel_panel.size.y)/2.0))
 	if quest_panel != null:
 		quest_panel.position = Vector2((view.x-quest_panel.size.x)/2.0,maxf(8.0,(view.y-quest_panel.size.y)/2.0))
+	if social_panel != null:
+		social_panel.position = Vector2((view.x-social_panel.size.x)/2.0,maxf(8.0,(view.y-social_panel.size.y)/2.0))
 
 func _toggle_menu() -> void:
 	if crate_open:
@@ -5240,6 +5884,13 @@ func _save_progress() -> void:
 	file.set_value("progress","day_mode",day_mode)
 	file.set_value("progress","hud_clean",hud_clean)
 	file.set_value("progress","quest_active",quest_active)
+	file.set_value("social","uid",player_uid)
+	file.set_value("social","friends",friends)
+	file.set_value("social","crew",crew_name)
+	file.set_value("social","crew_color",crew_color)
+	file.set_value("social","kindness",kindness)
+	file.set_value("social","gifts_day",gifts_day)
+	file.set_value("social","gifts_sent",gifts_sent)
 	file.set_value("progress","tour_day",tour_day)
 	file.set_value("progress","tour_got",tour_got)
 	file.set_value("progress","treasure_got",treasure_got)
@@ -5260,6 +5911,14 @@ func _load_progress() -> void:
 		day_mode = clampi(int(file.get_value("progress","day_mode",0)),0,DAY_MODES.size()-1)
 		hud_clean = bool(file.get_value("progress","hud_clean",true))
 		quest_active = bool(file.get_value("progress","quest_active",false))
+		player_uid = String(file.get_value("social","uid",player_uid))
+		var fr = file.get_value("social","friends",{})
+		friends = fr if fr is Dictionary else {}
+		crew_name = String(file.get_value("social","crew",""))
+		crew_color = clampi(int(file.get_value("social","crew_color",0)),0,CREW_COLORS.size()-1)
+		kindness = int(file.get_value("social","kindness",0))
+		gifts_day = String(file.get_value("social","gifts_day",""))
+		gifts_sent = int(file.get_value("social","gifts_sent",0))
 		tour_day = String(file.get_value("progress","tour_day",""))
 		tour_got = int(file.get_value("progress","tour_got",0)) & ((1 << SKY_STATIONS.size())-1)
 		treasure_got = int(file.get_value("progress","treasure_got",-1))
@@ -5531,6 +6190,7 @@ func _process(delta: float) -> void:
 	_sky_traffic_tick(delta)
 	_clean_hud_tick()
 	_quest_offer_tick()
+	_social_tick(delta)
 	if radio_station > 0 and radio_streams.has(radio_station):
 		radio_line_time += delta
 		if radio_line_time > 9.0:
@@ -5925,6 +6585,71 @@ func _smoke_test() -> void:
 	quest_offer_idx = -1
 	quest_offer_panel.hide()
 	quest_bar.hide()
+	# v0.32: social. A simulated player "Mia" joins; friend request, invite, high-five, gift, crew, dancing.
+	var was_s := [online_on,online_state,online_id,cash,bonus_xp,kindness,friends.duplicate(),crew_name,crew_color,gifts_sent,gifts_day,player.position,driving,feed.duplicate()]
+	online_on = true
+	online_state = 3
+	online_id = "me-test"
+	driving = false
+	feed.clear()
+	player.position = DT_PLAZA+Vector3(0,0.9,0)
+	_online_peer_update({"i":"mia1","n":"Mia","x":DT_PLAZA.x+3.0,"y":0.9,"z":DT_PLAZA.z,"r":0.0,"c":0,"d":0,"t":0,"l":6,"s":-1,"q":-1,"qn":0,"e":2,"en":1,"rc":0,"cr":"Sunrise","cc":2,"k":4})
+	assert(online_peers.has("mia1") and String(online_peers["mia1"]["crew"]) == "Sunrise" and int(online_peers["mia1"]["k"]) == 4,"Other players carry their crew and kindness")
+	_online_update_peers(0.016)
+	assert((online_peers["mia1"]["label"] as Label3D).text.contains("[Sunrise]") and (online_peers["mia1"]["label"] as Label3D).text.contains("♥4"),"Name tag shows crew and kindness")
+	_social_msg({"i":"mia1","n":"Mia","to":online_id,"t":"fr"})
+	assert(not feed.is_empty() and (feed[feed.size()-1]["invite"] as Dictionary).get("soc","") == "fr","A friend request pops up")
+	_social_accept("mia1",{"soc":"fr"})
+	assert(friends.has("mia1"),"Accepting makes you friends")
+	_social_msg({"i":"mia1","n":"Mia","to":"someone-else","t":"gift","a":100})
+	var c_before := cash
+	_social_msg({"i":"mia1","n":"Mia","to":online_id,"t":"gift","a":999})
+	assert(cash == c_before+GIFT_AMOUNT,"Gifts only reach their player, capped at $%d" % GIFT_AMOUNT)
+	var k_before := kindness
+	cash = 1000
+	gifts_sent = 0
+	social_cool.clear()
+	_soc_gift("mia1")
+	assert(cash == 1000-GIFT_AMOUNT and kindness == k_before+2,"Giving a gift costs money and earns kindness")
+	_soc_high_five("mia1")
+	assert(kindness == k_before+3,"High-fives earn kindness")
+	_social_msg({"i":"mia1","n":"Mia","to":online_id,"t":"cri","cr":"Sunrise","cc":2})
+	_social_accept("mia1",{"soc":"cri","cr":"Sunrise","cc":2})
+	assert(crew_name == "Sunrise" and _peer_crewmate(online_peers["mia1"]) and _crew_mate_near(CREW_NEAR) == "Mia","Joining a crew; crewmates nearby count")
+	var board := _crew_board()
+	assert(board.size() == 1 and int(board[0][1]) == 2,"Crew board counts online members")
+	_social_msg({"i":"mia1","n":"Mia","to":online_id,"t":"inv","x":-220.0,"z":-316.0})
+	_social_accept("mia1",{"soc":"inv","x":-220.0,"z":-316.0})
+	assert(player.position.distance_to(Vector3(-220,0.9,-316)) < 12.0,"Accepting an invite takes you to them")
+	player.position = DT_PLAZA+Vector3(0,0.9,0)
+	_refresh_hud()
+	assert(_on_dance_floor() and action_button.text == "DANCE","DANCE on the dance floor")
+	_interact()
+	assert(dancing,"Dancing starts")
+	_social_tick(0.1)
+	assert(my_emote == 2,"Your dance is shared online")
+	_open_social()
+	assert(paused and social_panel.visible and social_list.get_child_count() >= 1,"Players panel lists who's online")
+	_close_social()
+	dancing = false
+	online_peers["mia1"]["node"].queue_free()
+	online_peers.erase("mia1")
+	online_on = was_s[0]
+	online_state = was_s[1]
+	online_id = was_s[2]
+	cash = was_s[3]
+	bonus_xp = was_s[4]
+	kindness = was_s[5]
+	friends = was_s[6]
+	crew_name = was_s[7]
+	crew_color = was_s[8]
+	gifts_sent = was_s[9]
+	gifts_day = was_s[10]
+	player.position = was_s[11]
+	driving = was_s[12]
+	feed = was_s[13]
+	_feed_render()
+	_save_progress()
 	# v0.30.1: nothing to collect stands in a road (finds, discovery sites, quick-quest items).
 	var on_road := _collectibles_on_road()
 	assert(on_road.is_empty(),"Collectibles in a road: %s" % str(on_road))
@@ -9658,6 +10383,10 @@ func _hub_people_tick(delta: float) -> void:
 	for i in range(hub_emotes.size()-1,-1,-1):
 		var e: Dictionary = hub_emotes[i]
 		var person: Dictionary = e["person"]
+		# v0.32: the person may be gone (an online player who left mid-dance).
+		if not is_instance_valid(person.get("root")):
+			hub_emotes.remove_at(i)
+			continue
 		var limbs: Dictionary = person["limbs"]
 		var root: Node3D = person["root"]
 		if clock > float(e["until"]):
@@ -10681,6 +11410,9 @@ func _accept_invite(from: String) -> void:
 			feed.remove_at(i)
 	_feed_render()
 	if invite.is_empty():
+		return
+	if invite.has("soc"):
+		_social_accept(from,invite)
 		return
 	if invite.has("race"):
 		_join_race(from,invite)
@@ -13643,6 +14375,11 @@ func _quick_complete() -> void:
 	var pay := _quick_pay(quick_idx)
 	var at: Vector3 = QUICK[quick_idx]["pos"]
 	cash += pay
+	# v0.32: with a crewmate nearby, quests pay half again as much.
+	var mate := _crew_mate_near(CREW_NEAR)
+	if mate != "":
+		cash += pay/2
+		_feed_add("Crew bonus with %s: +$%d" % [mate,pay/2],"")
 	bonus_xp += QUICK_XP
 	quick_done += 1
 	quick_got |= 1 << quick_idx
@@ -14199,7 +14936,7 @@ func _my_tag_tick() -> void:
 		return
 	var lift := 1.7 if driving else (1.18 if seat_id < 0 else 0.9)
 	my_tag.position = body.position+Vector3(0,lift,0)
-	var t := "%s  ·  Lv %d" % [_my_name(),_level()]
+	var t := "%s  ·  Lv %d%s" % [_my_name(),_level(),_my_tag_extra()]
 	if my_tag.text != t:
 		my_tag.text = t
 	if my_ring != null:
@@ -16637,6 +17374,48 @@ func _city_shots() -> void:
 		camera.look_at(sh[4])
 		await _save_shot(String(sh[0]))
 		cam_lock = false
+	# v0.32: the dance floor at night with a simulated friend, then the Players panel.
+	day_hour_override = 22.0
+	_daynight_apply(true)
+	online_on = true
+	online_state = 3
+	online_retry = 1e9
+	online_id = "me-shot"
+	crew_name = "Neon Riders"
+	crew_color = 3
+	kindness = 7
+	friends["mia1"] = "Mia"
+	_online_peer_update({"i":"mia1","n":"Mia","x":DT_PLAZA.x+2.5,"y":0.9,"z":DT_PLAZA.z-1.5,"r":2.4,"c":0,"d":0,"t":0,"l":9,"s":-1,"q":-1,"qn":0,"e":2,"en":1,"rc":0,"cr":"Neon Riders","cc":3,"k":12})
+	_online_peer_update({"i":"leo2","n":"Leo","x":DT_PLAZA.x-30.0,"y":0.9,"z":DT_PLAZA.z+20.0,"r":0.0,"c":2,"d":0,"t":0,"l":4,"s":-1,"q":-1,"qn":0,"e":-1,"en":0,"rc":0,"cr":"","cc":0,"k":1})
+	player.position = DT_PLAZA+Vector3(-1.5,0.9,1.0)
+	player.rotation.y = 0.6
+	for f in 20:
+		await get_tree().physics_frame
+		_online_update_peers(0.05)
+	dancing = true
+	_social_tick(0.1)
+	_emote((online_peers["mia1"] as Dictionary)["person"],2)
+	for f in 10:
+		await get_tree().physics_frame
+	cam_lock = true
+	camera.global_position = DT_PLAZA+Vector3(-9,6.5,12)
+	camera.look_at(DT_PLAZA+Vector3(0,1.0,0))
+	await _save_shot("dance-floor")
+	cam_lock = false
+	dancing = false
+	_open_social()
+	for f in 4:
+		await get_tree().process_frame
+	await _save_shot("players-panel")
+	_close_social()
+	for id in online_peers.keys():
+		(online_peers[id]["node"] as Node3D).queue_free()
+	online_peers.clear()
+	online_on = false
+	online_state = 0
+	crew_name = ""
+	kindness = 0
+	friends.clear()
 	# v0.30.1: a quest offered nearby, then the accepted quest with its bar and arrow.
 	day_hour_override = 11.0
 	_daynight_apply(true)

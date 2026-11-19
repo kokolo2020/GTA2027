@@ -363,3 +363,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Bench: 73 fps, 85 with --web-lite. Shots in docs/shots-0.29.0 (incl. menu.png).
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.29.0 (source commit 1f1cb81). APK SHA256 ef8c2c5e4cd5cd00de653c757737e539bde9a50332ed1e4d52319d0de03bc453, 31730362 bytes, code 37. Pages run succeeded; live release.json, page and /play show 0.29.0; downloaded APK hash matches.
 - Not tried on the Fold5 or a real browser. Still old size: Old City, Civic Center, Westside, Marina, Sunset Beach.
+
+## v0.29.1 (2026-11-19): Quests button and Call Car on the clean screen
+
+- QUESTS button kept on the clean screen under the QR code (_clean_hud_tick positions it; text "QUESTS" on the clean screen). The big action button always shows on the clean screen again, including CALL CAR (commit 140e515 from another session).
+- Not included: the "bigger heads" people change (bf5c480, script only, people models not regenerated, so hats would float). It is kept unpushed on local branch people-bigger-heads, rebased onto this release. The character-redesign branch (new player.glb) is also unmerged and unpushed.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.29.1 (source commit 6f3550e). APK SHA256 0ac21504365ef0d1fc8b4e9ff21ae118a0419ce6f6085ddcb8aeabc2fe673def, 31730362 bytes, code 38. Pages run succeeded; live release.json, page and /play show 0.29.1; downloaded APK hash matches.
+- Not tried on the Fold5 or a real browser.

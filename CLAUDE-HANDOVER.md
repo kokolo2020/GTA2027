@@ -443,3 +443,15 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Dev hook: HC_CAM="name;x,y,z;lx,ly,lz;hour" with --city-shots saves one frame.
 - Release commit 8e35bea, tag v0.33.6, versionCode 49. APK SHA256 8f1e45ed7f4cdd605a50c58c3a3b4a4b655ddd2d08d622626d224c193828ad43 (43290192 bytes), same certificate.
 - Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.
+
+## v0.34.0 (released 2026-11-19; includes unreleased 0.33.7)
+
+- 0.33.7: own name tag hidden (`my_tag.visible = false`); peer tags short ("Name · lvl", ★ friend) at pixel_size 0.00075; crew/♥/◆ only in PLAYERS (`_social_tag`).
+- Hover cars: blender-src/make_real.py builds car_0..4 with hover jets (material "Jet", emissive) instead of wheels, lifted HOVER_LIFT 0.28. Regenerate cars only with `HARBOR_CARS_ONLY=1 Blender --background --factory-startup --python blender-src/make_real.py`, then `--import`.
+- Hoverboard: `board_on` (saved under [market]), BOARD button beside the action button, BOARD_SPEED 15, `_board_tick` raises the person 0.18 and the hat holder to 0.47.
+- Neon Market on the east lawn (16,-8.6), replacing the east shop row: MARKET kiosks (Neon Outfitters, Pet Palace), GEAR (7) and PETS (5, level 20). `_build_gear`/`_build_pet` primitives, saved gear_own/gear_on/pet_own/pet_on under [market]; broadcast in `av` [shirt,pants,hat,gear,pet].
+- Money pill under the minimap (`_cash_pill_tick`, `_money`) opens the leaderboard.
+- Leaderboard: Supabase table public.leaderboard (SQL in docs/leaderboard.sql, created by Koko 2026-11-19). anon can select/insert/update (no delete). `_lb_upload` every 90 s for players with a nickname (upsert on uid), `_lb_fetch` top 30 per tab. Tested live from the Mac; test rows were deleted by Koko.
+- Dev hooks with --city-shots: HC_CAM="name;x,y,z;lx,ly,lz;hour", HC_PEERS=1, HC_SHOWOFF=<gear index>.
+- Release commit 22b739d, tag v0.34.0, versionCode 50. APK SHA256 9e38c3ff89450452c0e8fd0d99da229a6de08f919b046f3f17ae8aa7b9b1ab68 (43314768 bytes), same certificate. Bench about 51 fps.
+- Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.

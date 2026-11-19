@@ -484,3 +484,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Parked car goes home after CAR_PARK_TIME 120 s idle (`_car_park_tick`, `car_gone`, hidden and collision off); `_call_car` calls `_car_back`.
 - Release commit fe70a03, tag v0.34.5, versionCode 55. APK SHA256 d6f4d40a6f159993ecae945391f398b7c8653bf341a9106d5274c3a4de9cec1a (43335248 bytes), same certificate. Bench about 52 fps.
 - Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.
+
+## v0.34.7 (released 2026-11-19; includes unreleased 0.34.6)
+
+- Old-city blocks (not FC/DS) are `_future_tower(base, idx)` (4 styles, `tower_glass` via `_real_glass`, `tower_pearl`), with a 11x18x10 collider; old rooftop billboards removed (only FC and DS keep theirs).
+- Bridge: avenue x=0 continues z 35.5..58.5 at y 0.12 plus a deck slab z 50.5..58.5; MARINA "Bridge Gate" moved to (8.5,0,50). Smoke checks walking z 36..62.
+- Bus stops: `_bus_shelter` (glass shelter, totem with two Label3D screens), `_bus_displays_tick` from `_bus_tick` with `_bus_eta`.
+- City Loop buses: traffic loops with >=4 cars use bus.glb for k==0 (and k==3 if >=6 cars), `_bus_skin` recolours BusBlue, traffic dict "half" (5.7 bus, 1.8 car) used for gaps and stop lines; red-light smoke test accounts for half.
+- Release commit 42cf5e8, tag v0.34.7, versionCode 57. APK SHA256 acc32f05f744bef44fe3a12256bc00c90eef923de5f1f6c8ae917c77bcf4cd6f (43339344 bytes), same certificate. Bench about 52 fps.
+- Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.

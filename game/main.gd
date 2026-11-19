@@ -321,7 +321,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.33.0: 91 achievements! Your ring colour shows your level, your name and glow show your best achievement. Plus a Harbor Dome game centre and LED traffic signals.")
+	_show_toast("Harbor City 0.33.1: see how many players are online under the minimap, and tap it to join them!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -369,6 +369,12 @@ func _ready() -> void:
 		for row in _collectibles_on_road():
 			print("ONROAD ",row[0]," ",row[1]," -> ",_offroad(row[1]))
 		print("ROADCHECK DONE")
+		get_tree().quit()
+	elif "--watch-check" in OS.get_cmdline_user_args():
+		# Developer check: stay offline and report how many players the lobby watcher sees.
+		await get_tree().create_timer(14.0).timeout
+		_online_pill_tick()
+		print("WATCH_COUNT ",_watch_count()," PILL ",online_pill.text if online_pill != null else "none")
 		get_tree().quit()
 	elif "--city-shots" in OS.get_cmdline_user_args():
 		await _city_shots()
@@ -4011,26 +4017,97 @@ var menu_online_button: Button
 var menu_run_button: Button
 var menu_screen_button: Button
 
-var online_pill: Label
+var online_pill: Button
+# v0.33.1: while you're offline the game quietly listens to the online lobby (it never shows you),
+# so everyone can see how many players are on and tap to join them.
+var watch_ws: WebSocketPeer
+var watch_state := 0
+var watch_seen := {}
+var watch_retry := 0.0
+
+func _watch_tick(delta: float) -> void:
+	var want := not online_on and not ("--smoke-test" in OS.get_cmdline_user_args()) and not ("--bake-map" in OS.get_cmdline_user_args()) and _online_load_config()
+	if not want:
+		if watch_ws != null:
+			watch_ws.close()
+			watch_ws = null
+			watch_state = 0
+		return
+	if watch_ws == null:
+		watch_retry -= delta
+		if watch_retry > 0.0:
+			return
+		var host := String(online_config["url"]).replace("https://","").replace("/","")
+		watch_ws = WebSocketPeer.new()
+		watch_state = 1 if watch_ws.connect_to_url("wss://%s/realtime/v1/websocket?apikey=%s&vsn=1.0.0" % [host,String(online_config["anon"])]) == OK else 0
+		online_hb = 0.0
+		return
+	watch_ws.poll()
+	var st := watch_ws.get_ready_state()
+	if st == WebSocketPeer.STATE_OPEN:
+		if watch_state == 1:
+			watch_ws.send_text(JSON.stringify(_online_join_frame()))
+			watch_state = 2
+		while watch_ws.get_available_packet_count() > 0:
+			var m = JSON.parse_string(watch_ws.get_packet().get_string_from_utf8())
+			if m is Dictionary and String(m.get("event","")) == "broadcast":
+				var o = m.get("payload",{})
+				if o is Dictionary and String(o.get("event","")) == "pos":
+					var pl = o.get("payload",{})
+					if pl is Dictionary:
+						var id := String(pl.get("i",""))
+						if id != "" and id.length() <= 24 and id != online_id:
+							watch_seen[id] = Time.get_ticks_msec()/1000.0
+		watch_retry += delta
+		if watch_retry > 20.0:
+			watch_retry = 0.0
+			watch_ws.send_text(JSON.stringify({"topic":"phoenix","event":"heartbeat","payload":{},"ref":"hb"}))
+	elif st == WebSocketPeer.STATE_CLOSED:
+		watch_ws = null
+		watch_state = 0
+		watch_retry = 10.0
+
+func _watch_count() -> int:
+	var now := Time.get_ticks_msec()/1000.0
+	for id in watch_seen.keys():
+		if now-float(watch_seen[id]) > ONLINE_TIMEOUT:
+			watch_seen.erase(id)
+	return watch_seen.size()
+
+func _online_pill_tap() -> void:
+	if online_on:
+		_open_social()
+	else:
+		_online_toggle()
 
 func _online_pill_tick() -> void:
-	# A small "N ONLINE" tag under the minimap while online play is on (tap the minimap > Online to switch).
+	# "N ONLINE" under the minimap on the clean screen. Offline: how many are on, tap to join.
 	if minimap == null:
 		return
 	if online_pill == null:
-		online_pill = Label.new()
-		online_pill.add_theme_font_size_override("font_size",17)
+		online_pill = _button("",_online_pill_tap)
+		online_pill.custom_minimum_size = Vector2(MINI_SIZE*CLEAN_MINI_SCALE+40.0,34)
+		online_pill.add_theme_font_size_override("font_size",16)
 		online_pill.add_theme_color_override("font_color",Color("6fe8ff"))
-		online_pill.add_theme_color_override("font_outline_color",Color(0,0,0,0.85))
-		online_pill.add_theme_constant_override("outline_size",6)
-		online_pill.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		online_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		online_pill.add_theme_stylebox_override("normal",_panel(Color(0.04,0.1,0.14,0.75),14))
+		online_pill.add_theme_stylebox_override("hover",_panel(Color(0.06,0.16,0.22,0.85),14))
 		minimap.get_parent().add_child(online_pill)
-	online_pill.visible = online_on and _clean_on() and not paused
-	if online_pill.visible:
-		online_pill.text = "● %d ONLINE" % (online_peers.size()+1) if online_state >= 3 else "● CONNECTING…"
-		online_pill.size = Vector2(MINI_SIZE*CLEAN_MINI_SCALE,24)
-		online_pill.position = minimap.position+Vector2(0,MINI_SIZE*CLEAN_MINI_SCALE+4)
+	online_pill.visible = _clean_on() and not paused and online_config_ok()
+	if not online_pill.visible:
+		return
+	if online_on:
+		online_pill.text = ("● %d ONLINE" % (online_peers.size()+1)) if online_state >= 3 else "● CONNECTING…"
+		online_pill.add_theme_color_override("font_color",Color("6fe8ff"))
+	else:
+		var n := _watch_count()
+		online_pill.text = ("● %d ONLINE · JOIN" % n) if n > 0 else "○ GO ONLINE"
+		online_pill.add_theme_color_override("font_color",Color("ffd86a") if n > 0 else Color("b9c6cc"))
+	online_pill.size = Vector2(0,0)
+	var w := online_pill.get_combined_minimum_size().x
+	online_pill.position = minimap.position+Vector2(MINI_SIZE*CLEAN_MINI_SCALE-w,MINI_SIZE*CLEAN_MINI_SCALE+6)
+
+func online_config_ok() -> bool:
+	return _online_load_config()
 
 # ---------- v0.30.1: nothing to collect stands in a road ----------
 const OFFROAD_MARGIN := 1.6
@@ -7434,6 +7511,7 @@ func _process(delta: float) -> void:
 	_social_tick(delta)
 	_quiz_tick(delta)
 	_ach_tick(delta)
+	_watch_tick(delta)
 	if radio_station > 0 and radio_streams.has(radio_station):
 		radio_line_time += delta
 		if radio_line_time > 9.0:
@@ -7828,6 +7906,32 @@ func _smoke_test() -> void:
 	quest_offer_idx = -1
 	quest_offer_panel.hide()
 	quest_bar.hide()
+	# v0.33.1: the ONLINE count under the minimap, offline and online.
+	var was_on := [online_on,online_state,hud_clean,paused]
+	online_on = false
+	hud_clean = true
+	hud_force_full = false
+	if paused:
+		_toggle_menu()
+	watch_seen.clear()
+	_online_pill_tick()
+	if online_config_ok():
+		assert(online_pill.visible and online_pill.text == "○ GO ONLINE","With nobody online it invites you to go online")
+		watch_seen["a1"] = Time.get_ticks_msec()/1000.0
+		watch_seen["b2"] = Time.get_ticks_msec()/1000.0
+		_online_pill_tick()
+		assert(online_pill.text == "● 2 ONLINE · JOIN","Offline players see how many are online")
+		watch_seen["old"] = Time.get_ticks_msec()/1000.0-30.0
+		assert(_watch_count() == 2,"Players who left drop off the count")
+		online_on = true
+		online_state = 3
+		_online_pill_tick()
+		assert(online_pill.text == "● %d ONLINE" % (online_peers.size()+1),"Online it counts you too")
+	watch_seen.clear()
+	online_on = was_on[0]
+	online_state = was_on[1]
+	hud_force_full = true
+	_relayout_hud()
 	# v0.34: achievements; and the Players panel closes properly (it used to stay on screen).
 	_open_social()
 	_close_social()
@@ -18918,6 +19022,18 @@ func _city_shots() -> void:
 		camera.look_at(sh[4])
 		await _save_shot(String(sh[0]))
 		cam_lock = false
+	# v0.33.1: offline, the minimap shows how many players are online and invites you to join.
+	day_hour_override = 11.0
+	_daynight_apply(true)
+	online_on = false
+	player.position = DT_PLAZA+Vector3(0,0.9,30)
+	for f in 6:
+		await get_tree().physics_frame
+	var nowt := Time.get_ticks_msec()/1000.0
+	watch_seen = {"a":nowt,"b":nowt,"c":nowt,"d":nowt}
+	_online_pill_tick()
+	await _save_shot("online-count")
+	watch_seen.clear()
 	# v0.33: four players showing level ring colours and achievement tiers.
 	day_hour_override = 18.4
 	_daynight_apply(true)

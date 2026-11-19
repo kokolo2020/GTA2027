@@ -337,7 +337,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.34.5: the city 100 years from now! Glowing roads, sleek buildings, slim sky-train columns, and a parked car goes home after 2 minutes.")
+	_show_toast("Harbor City 0.34.7: futuristic towers, a road onto the Marina bridge, glass bus shelters with live countdowns, and City Loop buses all over town!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -466,6 +466,79 @@ func _surface_material(color: Color, kind: String) -> StandardMaterial3D:
 	mat.roughness = 0.95
 	surf_mats[key] = mat
 	return mat
+
+# ---------- v0.34.6: futuristic towers for the old city ----------
+var tower_glass: StandardMaterial3D
+var tower_pearl: StandardMaterial3D
+
+func _future_tower(base: Vector3, idx: int) -> void:
+	if tower_glass == null:
+		tower_glass = StandardMaterial3D.new()
+		tower_glass.resource_name = "GlassBlue"
+		tower_glass.albedo_color = Color("6aa9d8")
+		_real_glass(tower_glass,true)
+		tower_pearl = StandardMaterial3D.new()
+		tower_pearl.albedo_color = Color("eef2f5")
+		tower_pearl.metallic = 0.3
+		tower_pearl.roughness = 0.22
+	var root := Node3D.new()
+	root.position = base
+	add_child(root)
+	var neon: Color = [NEON_CYAN,NEON_VIOLET,Color("ff5fd2"),Color("6fe39b")][idx % 4]
+	var nm := _neon_mat(neon)
+	# Pearl podium.
+	_fc_part(root,BoxMesh.new(),Vector3(0,0.9,0),tower_pearl,Vector3(12.5,1.8,11.5))
+	_fc_part(root,BoxMesh.new(),Vector3(0,1.85,0),nm,Vector3(12.6,0.08,11.6))
+	match idx % 4:
+		0:
+			# Round glass tower with neon rings and a halo on top.
+			var h := 30.0+float(idx % 3)*6.0
+			var c := _fc_part(root,_fc_cone(4.6,4.9,h),Vector3(0,1.8+h/2.0,0),tower_glass)
+			c.mesh.set("radial_segments",24)
+			var y := 6.0
+			while y < h:
+				_fc_part(root,_fc_torus(4.75,5.0),Vector3(0,1.8+y,0),nm)
+				y += 6.0
+			_fc_part(root,_fc_cone(4.0,4.9,0.6),Vector3(0,1.8+h+0.3,0),tower_pearl)
+			_fc_part(root,_fc_torus(2.6,2.85),Vector3(0,1.8+h+2.2,0),nm)
+		1:
+			# Three stepped glass tiers with pearl edges.
+			var y0 := 1.8
+			var w := Vector2(10.0,9.0)
+			for t in 3:
+				var th := [12.0,10.0,9.0][t] as float
+				_fc_part(root,BoxMesh.new(),Vector3(0,y0+th/2.0,0),tower_glass,Vector3(w.x,th,w.y))
+				_fc_part(root,BoxMesh.new(),Vector3(0,y0+th+0.15,0),tower_pearl,Vector3(w.x+0.5,0.3,w.y+0.5))
+				_fc_part(root,BoxMesh.new(),Vector3(0,y0+th+0.34,0),nm,Vector3(w.x+0.55,0.06,w.y+0.55))
+				y0 += th+0.3
+				w *= 0.74
+			_fc_part(root,_fc_cone(0.05,0.3,6.0),Vector3(0,y0+3.0,0),tower_pearl)
+		2:
+			# Twisting tower: glass slabs turning a little at every floor.
+			var floors := 11+idx % 3
+			for f in floors:
+				var slab := _fc_part(root,BoxMesh.new(),Vector3(0,1.8+1.4+float(f)*2.8,0),tower_glass,Vector3(8.6,2.6,8.6))
+				slab.rotation.y = float(f)*0.085
+				var band := _fc_part(root,BoxMesh.new(),Vector3(0,1.8+2.75+float(f)*2.8,0),tower_pearl if f % 3 else nm,Vector3(8.9,0.18,8.9))
+				band.rotation.y = float(f)*0.085
+		_:
+			# Slim tower with a floating sky garden and a spire.
+			var h := 34.0
+			_fc_part(root,BoxMesh.new(),Vector3(0,1.8+h/2.0,0),tower_glass,Vector3(7.0,h,7.0))
+			for sx in [-1.0,1.0]:
+				for sz in [-1.0,1.0]:
+					_fc_part(root,BoxMesh.new(),Vector3(sx*3.55,1.8+h/2.0,sz*3.55),tower_pearl,Vector3(0.35,h,0.35))
+			_fc_part(root,_fc_cone(6.0,5.0,1.0),Vector3(0,1.8+h*0.62,0),tower_pearl)
+			_fc_part(root,_fc_torus(5.7,6.1),Vector3(0,1.8+h*0.62+0.5,0),nm)
+			for k in 6:
+				var a := TAU*float(k)/6.0
+				var tree := _fc_part(root,_fc_sphere(0.8),Vector3(sin(a)*4.6,1.8+h*0.62+1.3,cos(a)*4.6),_fc_glow(Color("3fbf6a")))
+				tree.scale = Vector3(1,0.8,1)
+			_fc_part(root,_fc_cone(0.04,0.35,8.0),Vector3(0,1.8+h+4.0,0),tower_pearl)
+			_fc_part(root,_fc_sphere(0.3),Vector3(0,1.8+h+8.1,0),nm)
+	for c in root.get_children():
+		if c is GeometryInstance3D:
+			(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 # ---------- v0.34.4: "100 years from now" skins for walls, roofs and pavements ----------
 var skin_mats: Array = []
@@ -923,13 +996,9 @@ func _build_world() -> void:
 				count += 1
 				continue
 			_box(self, Vector3(x,0.12,z), Vector3(15,0.25,15), Color("ccd0c3"))
-			vis.append(_box(self, Vector3(x,height/2.0,z), Vector3(11,height,10), palette[count % 4], true))
-			neon_boxes.append([Vector3(x,0.12,z),Vector3(11,height+0.35,10)])
-			vis.append(_box(self, Vector3(x,height+0.15,z), Vector3(11.5,0.35,10.5), Color("f2e6d2")))
-			for floor_index in range(1,int(height/2.0)+1):
-				for column in [-3.2,0.0,3.2]:
-					vis.append(_box(self, Vector3(x+column,float(floor_index)*1.7,z+5.02), Vector3(1.2,0.95,0.06), Color("345361")))
-			_landmark("res://models/building_%d.glb" % (count % 4),Vector3(x,0.12,z),vis)
+			# v0.34.6: futuristic towers instead of the old brick-and-block buildings.
+			_future_tower(Vector3(x,0.25,z),count)
+			_collider(self,Vector3(x,9.0,z),Vector3(11,18.0,10))
 			count += 1
 	# Waterfront kiosks and trees.
 	var tree_vis: Array = []
@@ -2198,7 +2267,7 @@ const BASE_TRIALS := 7
 const PAINT_PRICE := 150
 const MARINA_GATE := Vector3(0,0,58)
 const MARINA := [
-	{"name":"Bridge Gate","pos":Vector3(0,0,56),"pay":500},
+	{"name":"Bridge Gate","pos":Vector3(8.5,0,50),"pay":500},
 	{"name":"Fountain Plaza","pos":Vector3(-35,0,166.5),"pay":600},
 	{"name":"Yacht Club","pos":Vector3(-62,0,216),"pay":700},
 	{"name":"Sunset Boardwalk","pos":Vector3(70,0,222),"pay":700},
@@ -2378,10 +2447,7 @@ func _build_bus() -> void:
 		var parts: Array = []
 		# v0.29: north of the Old City the highway is 20 m wide, so the shelters stand on its pavement.
 		var sx := _bus_side(z)
-		parts.append(_box(self,Vector3(sx,1.7,z),Vector3(0.3,3.4,0.3),Color("2f7fb8")))
-		parts.append(_box(self,Vector3(sx,3.5,z),Vector3(1.6,0.9,0.2),Color("f4f7fa")))
-		parts.append(_box(self,Vector3(sx+1.0,0.15,z),Vector3(2.6,0.1,4.2),Color("8fa0aa")))
-		parts.append(_sign("BUS STOP\n"+String(BUS_STOPS[i]["name"]),Vector3(sx,5.2,z),Color("bfe4ff"),40))
+		parts.append(_bus_shelter(Vector3(sx,0,z),i))
 		if i == 0:
 			bus_stop_nodes = parts
 	bus = Node3D.new()
@@ -2411,6 +2477,19 @@ func _bus_boxes() -> void:
 		for wz in [-3.0,3.0]:
 			_box(bus,Vector3(wx,0.45,wz),Vector3(0.45,0.9,1.1),Color("20262b"))
 	_box(bus,Vector3(0,1.3,-4.82),Vector3(2.3,0.5,0.1),Color("ffe9a8"))
+
+func _bus_skin(model: Node, stripe: Color) -> void:
+	# City Loop buses: the Airport Line bus model with a coloured stripe so you can tell them apart.
+	var stack: Array[Node] = [model]
+	while stack.size() > 0:
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			for si in mi.mesh.get_surface_count():
+				var m := mi.mesh.surface_get_material(si)
+				if m != null and m.resource_name.begins_with("BusBlue"):
+					mi.set_surface_override_material(si,_paint_mat(stripe))
 
 func _bus_side(z: float) -> float:
 	return 6.6 if z > NM_Z0 else 12.6
@@ -2464,6 +2543,7 @@ func _bus_tick(delta: float) -> void:
 	bus.position.z = bus_z
 	bus.rotation.y = lerp_angle(bus.rotation.y,0.0 if bus_fwd else PI,minf(delta*3.0,1.0))
 	bus_label.text = _bus_text()
+	_bus_displays_tick(delta)
 	if bus_riding:
 		player.position = bus.position+Vector3(0,1.3,0)
 		player.velocity = Vector3.ZERO
@@ -2513,6 +2593,12 @@ func _build_marina() -> void:
 	var line := Color("e7d9a4")
 	var wall := Color("c9ccc4")
 	_box(self,Vector3(0,-0.65,185),Vector3(430,0.3,180),Color("248caa"))
+	# v0.34.6: the avenue carries straight on over the promenade and beach onto the bridge
+	# (there was a strip of water and no road between them, so you couldn't walk across).
+	_slab(Vector3(0,-0.35,54.5),Vector3(14,0.6,8),0,Color("8d9498"))
+	_box(self,Vector3(0,0.12,47),Vector3(9,0.06,23),asphalt)
+	for z in range(38,58,8):
+		_box(self,Vector3(0,0.16,float(z)),Vector3(0.15,0.02,3),line)
 	# Bridge from the Ferry Steps beach to the island.
 	_slab(Vector3(0,-0.35,84),Vector3(12,0.6,52),0,Color("8d9498"))
 	_box(self,Vector3(0,0.01,84),Vector3(9,0.08,52),asphalt)
@@ -8450,6 +8536,15 @@ func _smoke_test() -> void:
 	_ds_render_news()
 	assert(ds_news.text.contains("online") and ds_news.text.contains("Richest: Amy"),"v0.34.2: the news screen shows city news")
 	assert(get_node_or_null("HarborLive") != null,"v0.34.2: Harbor Live plaza is built")
+	for wz in range(36,64,2):
+		assert(not _blocked_at(Vector3(0,1.0,float(wz)),0.4) and _on_road(Vector3(0,0,float(wz))),"v0.34.6: you can walk and drive from the city onto the bridge (z=%d)" % wz)
+	_bus_displays_tick(1.0)
+	assert(bus_displays.size() == BUS_STOPS.size() and String((bus_displays[1][0][0] as Label3D).text).begins_with("AIRPORT LINE"),"v0.34.7: every bus stop has a live display")
+	var city_buses := 0
+	for tv in traffic:
+		if float(tv.get("half",1.8)) > 3.0:
+			city_buses += 1
+	assert(city_buses >= 5,"v0.34.7: City Loop buses drive in traffic (%d)" % city_buses)
 	var was_drv := driving
 	driving = false
 	car_idle = 0.0
@@ -10480,6 +10575,10 @@ func _build_city_detail() -> void:
 					# Standing on its own posts behind the food stands.
 					y = 0.25
 					bz = FC_BLOCK.z-6.2
+				elif not (x == DS_BLOCK.x and z == DS_BLOCK.z):
+					# v0.34.6: the old rooftops are towers now; their ads moved to the tower glass.
+					count += 1
+					continue
 				boards.append([Vector3(x,y,bz),0.0,0.75])
 				var ad := Label3D.new()
 				ad.text = ADS[ad_i % ADS.size()]
@@ -10543,12 +10642,28 @@ func _build_traffic() -> void:
 			add_child(node)
 			var shape := CollisionShape3D.new()
 			var box := BoxShape3D.new()
-			box.size = Vector3(1.8,1.3,3.6)
+			# v0.34.7: the first vehicle on every bigger loop is a City Loop bus.
+			var is_bus := int(loop["cars"]) >= 4 and (k == 0 or (k == 3 and int(loop["cars"]) >= 6))
+			box.size = Vector3(2.6,2.8,11.2) if is_bus else Vector3(1.8,1.3,3.6)
 			shape.shape = box
-			shape.position.y = 0.8
+			shape.position.y = 1.5 if is_bus else 0.8
 			node.add_child(shape)
-			var model := _try_model("res://models/car_%d.glb" % (rng.randi() % 5))
-			if model != null:
+			var model := _try_model("res://models/bus.glb" if is_bus else "res://models/car_%d.glb" % (rng.randi() % 5))
+			if model != null and is_bus:
+				node.add_child(model)
+				_bus_skin(model,[Color("c254ff"),Color("1fb5c9"),Color("ff5f8a")][li % 3])
+				_cull_person(model,170.0,true)
+				var tag := Label3D.new()
+				tag.text = "CITY LOOP"
+				tag.font_size = 40
+				tag.pixel_size = 0.012
+				tag.modulate = Color("d8f0ff")
+				tag.outline_size = 8
+				tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+				tag.position = Vector3(0,4.2,0)
+				tag.visibility_range_end = 90.0
+				node.add_child(tag)
+			elif model != null:
 				model.position.y = 0.8
 				node.add_child(model)
 				_online_tint(model,TRAFFIC_COLORS[rng.randi() % TRAFFIC_COLORS.size()])
@@ -10557,7 +10672,7 @@ func _build_traffic() -> void:
 				_box(node,Vector3(0,0.8,0),Vector3(1.8,0.9,3.6),TRAFFIC_COLORS[rng.randi() % TRAFFIC_COLORS.size()])
 			var path: Dictionary = traffic_paths[li]
 			var s := float(path["total"])*float(k)/float(loop["cars"])+rng.randf_range(0.0,4.0)
-			traffic.append({"node":node,"path":li,"s":s,"v":0.0,"pos":Vector2.ZERO,"dir":Vector2(0,-1)})
+			traffic.append({"node":node,"path":li,"s":s,"v":0.0,"pos":Vector2.ZERO,"dir":Vector2(0,-1),"half":5.7 if is_bus else 1.8})
 	for t in traffic:
 		_traffic_place(t,1.0)
 
@@ -10634,10 +10749,11 @@ func _traffic_tick(delta: float) -> void:
 		var pos: Vector2 = t["pos"]
 		var dir: Vector2 = t["dir"]
 		var target := float(path["speed"])
+		var my_half := float(t.get("half",1.8))
 		for o in others:
 			var d := _traffic_blocked_by(pos,dir,o)
 			if d < INF:
-				target = minf(target,maxf(0.0,(d-5.0)*1.6))
+				target = minf(target,maxf(0.0,(d-5.0-(my_half-1.8))*1.6))
 		# Wait for people crossing; if someone stays in the lane, edge past after a few seconds.
 		if float(t.get("ped_skip",0.0)) > 0.0:
 			t["ped_skip"] = float(t["ped_skip"])-delta
@@ -10668,13 +10784,13 @@ func _traffic_tick(delta: float) -> void:
 			# Mutual blocking (crossing paths): the lower index goes first.
 			if _traffic_blocked_by(o["pos"],o["dir"],pos) < INF and i < j:
 				continue
-			target = minf(target,maxf(0.0,(d-5.5)*1.6))
+			target = minf(target,maxf(0.0,(d-1.9-my_half-float(o.get("half",1.8)))*1.6))
 		var total := float(path["total"])
 		for stop in path["stops"]:
 			if _light_green(int(stop[1])):
 				continue
 			var dist := fposmod(float(stop[0])-float(t["s"]),total)
-			var to_line := dist-float(path["stopline"])
+			var to_line := dist-float(path["stopline"])-(my_half-1.8)
 			if to_line > -0.4 and to_line < 16.0:
 				target = minf(target,maxf(0.0,to_line*1.3))
 		var v := float(t["v"])
@@ -10774,7 +10890,8 @@ func _smoke_downtown() -> void:
 			traffic[k]["s"] = fposmod(float(stop[0])+60.0+float(k)*12.0,float(path0["total"]))
 	for i in 150:
 		_traffic_tick(1.0/30.0)
-	var left := fposmod(float(stop[0])-float(t0["s"]),float(path0["total"]))-float(path0["stopline"])
+	# v0.34.7: a bus (longer) stops its centre further back so its nose stays behind the line.
+	var left := fposmod(float(stop[0])-float(t0["s"]),float(path0["total"]))-float(path0["stopline"])-(float(t0.get("half",1.8))-1.8)
 	assert(left > -0.6 and left < 3.0 and float(t0["v"]) < 0.5,"Car did not stop at the red light (%.2f m, %.2f m/s)" % [left,float(t0["v"])])
 	clock = 3.0 if int(stop[1]) == 0 else 12.0
 	for i in 60:
@@ -18458,6 +18575,103 @@ func _car_park_tick(delta: float) -> void:
 		_show_toast("Your car went home so it won't block the street. Tap CALL CAR any time.")
 		_refresh_hud()
 
+# ---------- v0.34.7: modern bus shelters with live displays, and city buses in traffic ----------
+var bus_displays: Array = []
+var bus_disp_t := 0.0
+
+func _bus_shelter(at: Vector3, i: int) -> Node3D:
+	# Glass shelter on the pavement (the road is on the -x side), a bench, a neon roof edge and a
+	# digital totem that counts down to the next Airport Line bus.
+	var root := Node3D.new()
+	root.position = at
+	add_child(root)
+	_fc_part(root,BoxMesh.new(),Vector3(1.0,0.15,0),_fc_pearl(),Vector3(2.6,0.1,4.6))
+	_fc_part(root,BoxMesh.new(),Vector3(-0.28,0.21,0),_fc_glow(NEON_CYAN),Vector3(0.05,0.03,4.6))
+	for zz in [-2.1,2.1]:
+		_fc_part(root,BoxMesh.new(),Vector3(2.15,1.45,zz),_fc_pearl(),Vector3(0.12,2.7,0.12))
+	_fc_part(root,BoxMesh.new(),Vector3(2.18,1.45,0),_fc_glass(),Vector3(0.05,2.5,4.1))
+	for zz in [-2.1,2.1]:
+		_fc_part(root,BoxMesh.new(),Vector3(1.1,1.45,zz),_fc_glass(),Vector3(2.1,2.5,0.05))
+	var roof := _fc_part(root,BoxMesh.new(),Vector3(1.0,2.9,0),_fc_pearl(),Vector3(3.0,0.14,4.9))
+	roof.rotation.z = -0.06
+	_fc_part(root,BoxMesh.new(),Vector3(-0.5,2.82,0),_fc_glow(NEON_CYAN),Vector3(0.07,0.05,4.9))
+	_fc_part(root,BoxMesh.new(),Vector3(1.75,0.55,0),_fc_pearl(),Vector3(0.55,0.08,3.2))
+	_fc_part(root,BoxMesh.new(),Vector3(1.95,0.3,0),_fc_chrome(),Vector3(0.1,0.45,2.6))
+	# Digital totem at the front corner, screen facing the road and the pavement.
+	var totem := Node3D.new()
+	totem.position = Vector3(0.2,0,3.0)
+	root.add_child(totem)
+	_fc_part(totem,BoxMesh.new(),Vector3(0,1.55,0),_fc_chrome(),Vector3(0.22,3.1,1.25))
+	var sh := Shader.new()
+	sh.code = DS_SCREEN_SHADER
+	var sm := ShaderMaterial.new()
+	sm.shader = sh
+	sm.set_shader_parameter("edge",NEON_CYAN)
+	var labs: Array = []
+	for face in [-1.0,1.0]:
+		var q := QuadMesh.new()
+		q.size = Vector2(1.1,1.9)
+		var scr := _fc_part(totem,q,Vector3(face*0.12,1.9,0),sm)
+		scr.rotation.y = -PI/2.0 if face < 0.0 else PI/2.0
+		var lab := Label3D.new()
+		lab.font_size = 32
+		lab.pixel_size = 0.005
+		lab.modulate = Color("e9fbff")
+		lab.outline_size = 4
+		lab.outline_modulate = Color(0.02,0.05,0.1,0.9)
+		lab.shaded = false
+		lab.width = 190.0
+		lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lab.position = Vector3(face*0.13,1.9,0)
+		lab.rotation.y = -PI/2.0 if face < 0.0 else PI/2.0
+		totem.add_child(lab)
+		labs.append(lab)
+	_fc_part(totem,_fc_torus(0.32,0.4),Vector3(0,0.05,0),_fc_glow(NEON_VIOLET))
+	bus_displays.append([labs,i])
+	var name_sign := _sign("BUS STOP\n"+String(BUS_STOPS[i]["name"]),at+Vector3(1.0,3.7,0),Color("bfe4ff"),34)
+	name_sign.reparent(root)
+	_cull_person(root,140.0)
+	return root
+
+func _bus_eta(i: int) -> float:
+	# Seconds until the Airport Line bus reaches stop i (rough: driving time plus stops on the way).
+	var z := float(BUS_STOPS[i]["z"])
+	if bus_dwell > 0.0 and bus_idx == i:
+		return 0.0
+	var first_z := float(BUS_STOPS[_bus_first()]["z"])
+	var last_z := float(BUS_STOPS[_bus_last()]["z"])
+	var dist := 0.0
+	var ahead := (z < bus_z) if bus_fwd else (z > bus_z)
+	if ahead:
+		dist = absf(bus_z-z)
+	else:
+		var end_z := last_z if bus_fwd else first_z
+		dist = absf(bus_z-end_z)+absf(end_z-z)
+	return dist/BUS_SPEED+dist/60.0*BUS_DWELL+maxf(bus_dwell,0.0)
+
+func _bus_displays_tick(delta: float) -> void:
+	bus_disp_t -= delta
+	if bus_disp_t > 0.0 or player == null:
+		return
+	bus_disp_t = 0.5
+	var last := _bus_last()
+	for d in bus_displays:
+		var i := int(d[1])
+		var labs: Array = d[0]
+		var t := ""
+		if i > last or (i == 0 and not _marina_open()):
+			t = "AIRPORT LINE\nNOT IN\nSERVICE YET"
+		else:
+			var eta := _bus_eta(i)
+			var dest := String(BUS_STOPS[_bus_last() if bus_fwd else _bus_first()]["name"])
+			if eta <= 0.0:
+				t = "AIRPORT LINE\n● BUS HERE\nBoard now\n$%d" % BUS_FARE
+			else:
+				t = "AIRPORT LINE\nNext bus\n%d:%02d\nto %s" % [int(eta)/60,int(eta) % 60,dest]
+		for l in labs:
+			if (l as Label3D).text != t:
+				(l as Label3D).text = t
+
 # ---------- v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online) ----------
 # The 5-minute window comes from the clock, so every player sees the same chest at the same place.
 # Reach it before the timer runs out; if nobody gets there in time it vanishes and a new one appears.
@@ -20922,6 +21136,13 @@ func _city_shots() -> void:
 		cam_lock = true
 		camera.global_position = Vector3(cp[0],cp[1],cp[2])
 		camera.look_at(Vector3(lk[0],lk[1],lk[2]))
+		if OS.get_environment("HC_BUSCAM") != "":
+			for tv in traffic:
+				if float(tv.get("half",1.8)) > 3.0:
+					var bn: Node3D = tv["node"]
+					camera.global_position = bn.global_position+bn.global_basis*Vector3(7,4,-12)
+					camera.look_at(bn.global_position+Vector3(0,1.5,0))
+					break
 		await _save_shot(parts[0])
 		get_tree().quit()
 		return

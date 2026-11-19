@@ -386,3 +386,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Bench: 56 fps (was 66), 77 with --web-lite.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.31.0 (source commit ef54514). APK SHA256 88bd34249ea86bc50a5d68744d983ece6bcb8970dda52f8881f5e439d5e8ee4b, 42548583 bytes, code 41. Pages run succeeded; live release.json, page and /play show 0.31.0; downloaded APK hash matches.
 - Not tried on the Fold5, a real browser, or with phones online together.
+
+## v0.32.0 (2026-11-19): play together (friends, invites, crews, gifts, high-fives, dance floor, photos)
+
+- Social section (before _minimap_tap): permanent player_uid (_uid(), used as online_id), friends {uid:name}, crew_name/crew_color (CREW_COLORS), kindness, gifts_day/gifts_sent; all saved under [social]. Pos frame carries cr/cc/k; _social_peer_extras sets peer crew/kindness/ring colour; peer tags show [crew] ★ ♥k. New broadcast event "soc" {to,t}: fr/fra, inv, hf, gift (capped GIFT_AMOUNT 100, GIFTS_PER_DAY 10), ty, cri/cra; offers go through the feed (invite {"soc":..}) and _accept_invite routes them to _social_accept. Feed shows on the clean screen when not empty. PLAYERS button under QUESTS while online; social_panel (added to in_overlay touch list, _open_panel, _layout_panels). Crew bonus: quest pay x1.5 with a crewmate within CREW_NEAR 80 m; together bonus HANG_XP 20/min per friend/crewmate within 40 m (max 3). Dance floor at DT_PLAZA (shader tiles, DANCE action, idle peds dance, XP every 30 s, more with peers dancing). Group photo (_photo) saves to Pictures/HarborCity on Android (unverified on device), download on web, else user://photos. _hub_people_tick skips emotes of freed people (crash when a peer left mid-emote).
+- Bench: 63 fps desktop.
+- Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.32.0 (source commit 6725114). Code 42. Pages run succeeded; live release.json, page and /play show 0.32.0; downloaded APK hash matches.
+- Not tried with real phones online together.

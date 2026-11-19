@@ -337,7 +337,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.34.2: Harbor Live opens by West Arcade with giant leaderboard and news screens, and you can wear all your gear at once!")
+	_show_toast("Harbor City 0.34.3: going live? Menu > Streamer mode gives a clean screen with a join code for your viewers.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -4028,6 +4028,7 @@ func _build_hud() -> void:
 	_build_social(root)
 	_build_lb(root)
 	_build_market_panel(root)
+	_build_streamer(root)
 	_build_ach(root)
 	_build_quiz(root)
 	_build_treasure(root)
@@ -4098,7 +4099,7 @@ func _build_hud() -> void:
 	var row_soc := HBoxContainer.new()
 	row_soc.add_theme_constant_override("separation",10)
 	items.add_child(row_soc)
-	for e in [["Players & friends",_open_social],["Achievements",_open_ach],["Leaderboard",_open_lb],["Group photo",_photo]]:
+	for e in [["Players & friends",_open_social],["Achievements",_open_ach],["Leaderboard",_open_lb],["Streamer mode",_toggle_streamer],["Group photo",_photo]]:
 		var b := _button(String(e[0]),e[1])
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row_soc.add_child(b)
@@ -7745,6 +7746,7 @@ func _process(delta: float) -> void:
 	_board_tick(delta)
 	_display_tick(delta)
 	_social_tick(delta)
+	_streamer_tick(delta)
 	_quiz_tick(delta)
 	_ach_tick(delta)
 	_watch_tick(delta)
@@ -8289,6 +8291,12 @@ func _smoke_test() -> void:
 	_ds_render_news()
 	assert(ds_news.text.contains("online") and ds_news.text.contains("Richest: Amy"),"v0.34.2: the news screen shows city news")
 	assert(get_node_or_null("HarborLive") != null,"v0.34.2: Harbor Live plaza is built")
+	_toggle_streamer()
+	_streamer_tick(0.016)
+	assert(streamer_on and st_root.visible and not cash_pill.visible and st_badge.text.contains("LIVE") and st_top.text.contains("Top: Zed"),"v0.34.3: streamer mode shows the LIVE badge, join code and leaders")
+	_toggle_streamer()
+	_streamer_tick(0.016)
+	assert(not streamer_on and not st_root.visible and is_equal_approx(joystick.modulate.a,1.0),"v0.34.3: streamer mode turns off cleanly")
 	ds_rows = []
 	ds_tab = 0
 	for opener in [_open_market.bind(1),_open_market.bind(0),_open_lb]:
@@ -18135,6 +18143,137 @@ func _display_tick(delta: float) -> void:
 		ds_fetch_t = 45.0
 		ds_get.request(_lb_url("leaderboard?select=name,level,xp,cash,ach,kind&order=level.desc,xp.desc&limit=50"),_lb_headers())
 
+# ---------- v0.34.3: streamer mode (a clean, viewer-friendly screen for livestreams) ----------
+var streamer_on := false
+var st_root: Control
+var st_badge: Button
+var st_qr: PanelContainer
+var st_top: Label
+var st_fetch_t := 0.0
+var st_dim: Array = []
+
+func _build_streamer(root: Control) -> void:
+	st_root = Control.new()
+	st_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	st_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(st_root)
+	# LIVE badge (tap it for the Menu).
+	st_badge = _button("● LIVE",_streamer_badge_tap)
+	st_badge.custom_minimum_size = Vector2(0,48)
+	st_badge.add_theme_font_size_override("font_size",20)
+	st_badge.add_theme_color_override("font_color",Color.WHITE)
+	st_badge.add_theme_stylebox_override("normal",_panel(Color("d4223f"),14))
+	st_badge.add_theme_stylebox_override("hover",_panel(Color("e8344f"),14))
+	st_root.add_child(st_badge)
+	# A big join card for viewers.
+	st_qr = PanelContainer.new()
+	st_qr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := _panel(Color(0.04,0.08,0.14,0.82),18)
+	sb.border_color = Color("4fe3ff")
+	sb.set_border_width_all(2)
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	st_qr.add_theme_stylebox_override("panel",sb)
+	st_root.add_child(st_qr)
+	var col := VBoxContainer.new()
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_theme_constant_override("separation",6)
+	st_qr.add_child(col)
+	var head := _label("PLAY WITH ME!",20,Color("ffe36b"))
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(head)
+	if ResourceLoader.exists("res://map/join_qr.png"):
+		var card := PanelContainer.new()
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var wsb := _panel(Color("fbfbf7"),10)
+		wsb.set_content_margin_all(6)
+		card.add_theme_stylebox_override("panel",wsb)
+		col.add_child(card)
+		var img := TextureRect.new()
+		img.texture = load("res://map/join_qr.png")
+		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		img.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		img.custom_minimum_size = Vector2(150,150)
+		card.add_child(img)
+	var url := _label("Scan, or open\nkokolo2020.github.io\n/GTA2027/play",14,Color("cfefff"))
+	url.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(url)
+	# Top of the screen: who's leading right now.
+	st_top = _label("",19,Color("fff5dc"))
+	st_top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	st_top.add_theme_color_override("font_outline_color",Color("0b1a26"))
+	st_top.add_theme_constant_override("outline_size",8)
+	st_top.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	st_root.add_child(st_top)
+	st_root.hide()
+
+func _toggle_streamer() -> void:
+	streamer_on = not streamer_on
+	if paused:
+		_toggle_menu()
+	if not streamer_on:
+		for c in st_dim:
+			if is_instance_valid(c):
+				(c as CanvasItem).modulate.a = 1.0
+		# Bring back what the rest of the HUD doesn't re-show every frame.
+		for c in [qr_small,quests_button]:
+			if c != null:
+				(c as CanvasItem).visible = true
+	st_fetch_t = 0.0
+	_show_toast("Streamer mode ON: a clean screen with a join code for your viewers. Tap ● LIVE for the Menu." if streamer_on else "Streamer mode off.")
+
+func _streamer_badge_tap() -> void:
+	if not paused:
+		_toggle_menu()
+
+func _streamer_tick(delta: float) -> void:
+	if st_root == null:
+		return
+	st_root.visible = streamer_on and not paused
+	if not streamer_on:
+		return
+	# Hide the clutter; keep the stick and big buttons faint so you can still play.
+	for c in [qr_small,qr_big,quests_button,players_button,cash_pill,online_pill,feed_box]:
+		if c != null:
+			(c as CanvasItem).visible = false
+	st_dim = [joystick,action_button,board_button,quest_bar]
+	for c in st_dim:
+		if c != null:
+			(c as CanvasItem).modulate.a = 0.4
+	if paused:
+		return
+	var view := get_viewport().get_visible_rect().size
+	var n := (online_peers.size()+1) if online_on else maxi(_watch_count(),1)
+	var t := "● LIVE  ·  %d ONLINE" % n
+	if st_badge.text != t:
+		st_badge.text = t
+	st_badge.size = Vector2(0,0)
+	st_badge.position = Vector2(18,18)
+	st_badge.modulate.a = 0.75+0.25*sin(clock*3.0)
+	st_qr.reset_size()
+	st_qr.position = Vector2(18,18+st_badge.size.y+12.0)
+	var rows := _ds_sorted(0)
+	var line := "HARBOR CITY"
+	if not rows.is_empty():
+		var top: Dictionary = rows[0]
+		line += "   ★ Top: %s Lv %d" % [_online_clean_name(String(top.get("name",""))).substr(0,12),int(top.get("level",1))]
+		var rich: Dictionary = _ds_sorted(1)[0]
+		line += "   ·   Richest: %s %s" % [_online_clean_name(String(rich.get("name",""))).substr(0,12),_money(int(rich.get("cash",0)))]
+	st_top.text = line
+	st_top.size = Vector2(0,0)
+	st_top.position = Vector2((view.x-st_top.get_combined_minimum_size().x)/2.0,104.0)
+	# Keep the leaderboard fresh while streaming, wherever you are.
+	if "--smoke-test" in OS.get_cmdline_user_args() or ds_get == null:
+		return
+	st_fetch_t -= delta
+	if st_fetch_t <= 0.0 and ds_get.get_http_client_status() == HTTPClient.STATUS_DISCONNECTED and _online_load_config():
+		st_fetch_t = 45.0
+		ds_get.request(_lb_url("leaderboard?select=name,level,xp,cash,ach,kind&order=level.desc,xp.desc&limit=50"),_lb_headers())
+
 # ---------- v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online) ----------
 # The 5-minute window comes from the clock, so every player sees the same chest at the same place.
 # Reach it before the timer runs out; if nobody gets there in time it vanishes and a new one appears.
@@ -20554,6 +20693,9 @@ func _city_shots() -> void:
 			pet_on = 3
 			for i in 40:
 				await get_tree().physics_frame
+		if OS.get_environment("HC_STREAM") != "":
+			streamer_on = true
+			ds_rows = [{"name":"MasterKolo","level":20,"xp":9,"cash":47564,"ach":30,"kind":2},{"name":"NeonPanda30","level":9,"xp":5,"cash":12000,"ach":13,"kind":0}]
 		for i in 4:
 			await get_tree().physics_frame
 		cam_lock = true

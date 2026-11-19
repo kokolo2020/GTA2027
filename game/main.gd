@@ -321,7 +321,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.32.0: make friends! Tap PLAYERS (while online) to add friends, high-five, give gifts, invite and start a crew. Dance at Times Plaza, and take group photos from the Menu.")
+	_show_toast("Harbor City 0.33.0: 91 achievements! Your ring colour shows your level, your name and glow show your best achievement. Plus a Harbor Dome game centre and LED traffic signals.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -1642,7 +1642,7 @@ func _online_pos_frame() -> Dictionary:
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
 		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
-		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness}
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size()}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -1702,6 +1702,14 @@ func _online_handle(text: String) -> void:
 			var inner = outer.get("payload",{})
 			if inner is Dictionary:
 				_fm_msg(String(outer.get("event","")),inner)
+		elif outer is Dictionary and String(outer.get("event","")) == "ach":
+			var inner_a = outer.get("payload",{})
+			if inner_a is Dictionary:
+				_ach_msg(inner_a)
+		elif outer is Dictionary and String(outer.get("event","")) == "qz":
+			var inner_q = outer.get("payload",{})
+			if inner_q is Dictionary:
+				_quiz_msg(inner_q)
 		elif outer is Dictionary and String(outer.get("event","")) == "soc":
 			var inner_s = outer.get("payload",{})
 			if inner_s is Dictionary:
@@ -1737,7 +1745,8 @@ func _online_peer_update(p: Dictionary) -> void:
 	if id == "" or id == online_id or id.length() > 24:
 		return
 	var pos := Vector3(float(p.get("x",0.0)),float(p.get("y",0.0)),float(p.get("z",0.0)))
-	if absf(pos.x) > 600.0 or absf(pos.z) > 600.0 or absf(pos.y) > 60.0:
+	# v0.33: the city reaches about 790 m from the centre now (airport, Westside, Sunset Beach).
+	if absf(pos.x) > 950.0 or absf(pos.z) > 950.0 or absf(pos.y) > 60.0:
 		return
 	if not online_peers.has(id):
 		if online_peers.size() >= ONLINE_MAX_PEERS:
@@ -1879,13 +1888,13 @@ func _online_update_peers(delta: float) -> void:
 		var flash := int(clock*6.0) % 2 == 0
 		(peer["red"] as Node3D).visible = cop and flash
 		(peer["blue"] as Node3D).visible = cop and not flash
-		var key := "%d|%d|%s" % [role,int(peer["lvl"]),_social_tag(peer)]
+		var key := "%d|%d|%s|%d" % [role,int(peer["lvl"]),_social_tag(peer),int(peer.get("at",-1))]
 		if key != str(peer["shown"]):
 			peer["shown"] = key
 			var tag := String(peer["name"])
 			var lab: Label3D = peer["label"]
 			lab.text = "%s Lv%d" % [tag,int(peer["lvl"])]+_social_tag(peer)+("" if role == 0 else (" · THIEF" if role == 1 else " · POLICE"))
-			lab.modulate = Color("ffb020") if role == 1 else (Color("9cc4ff") if role == 2 else Color.WHITE)
+			lab.modulate = Color("ffb020") if role == 1 else (Color("9cc4ff") if role == 2 else _tier_color(int(peer.get("at",-1))))
 	for id in gone:
 		(online_peers[id]["node"] as Node3D).queue_free()
 		online_peers.erase(id)
@@ -2204,6 +2213,7 @@ func _bus_board() -> void:
 	cash -= BUS_FARE
 	_save_progress()
 	bus_riding = true
+	_stat_add("bus_rides")
 	player.hide()
 	player.get_child(0).set_deferred("disabled",true)
 	_show_toast("Fare paid -$%d  ·  next stop: %s" % [BUS_FARE,BUS_STOPS[bus_next if bus_dwell <= 0.0 else clampi(bus_idx+(1 if bus_fwd else -1),_bus_first(),BUS_STOPS.size()-1)]["name"]])
@@ -3886,6 +3896,8 @@ func _build_hud() -> void:
 	_build_quest_list(root)
 	_build_quest_offer(root)
 	_build_social(root)
+	_build_ach(root)
+	_build_quiz(root)
 	_build_treasure(root)
 	_build_feed(root)
 	_build_raceway_ui(root)
@@ -3954,7 +3966,7 @@ func _build_hud() -> void:
 	var row_soc := HBoxContainer.new()
 	row_soc.add_theme_constant_override("separation",10)
 	items.add_child(row_soc)
-	for e in [["Players & friends",_open_social],["Group photo",_photo]]:
+	for e in [["Players & friends",_open_social],["Achievements",_open_ach],["Group photo",_photo]]:
 		var b := _button(String(e[0]),e[1])
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row_soc.add_child(b)
@@ -4109,7 +4121,7 @@ func _quest_offer_tick() -> void:
 		return
 	var view := get_viewport().get_visible_rect().size
 	var body: Node3D = car if driving else player
-	var busy := paused or legacy_rules or race_car or trial_active >= 0 or chase_mode != 0 or online_role != 0 or bus_riding or sky_riding or crate_open or seat_id >= 0
+	var busy := paused or _in_quiz() or legacy_rules or race_car or trial_active >= 0 or chase_mode != 0 or online_role != 0 or bus_riding or sky_riding or crate_open or seat_id >= 0
 	# The quest you are doing: a small bar at the top (tap it to stop) and the arrow shows the way.
 	var doing := _qt() and not legacy_rules and trial_active < 0 and not paused and not race_car
 	quest_bar.visible = doing
@@ -4621,6 +4633,63 @@ func _set_ring_color(ring: MeshInstance3D, col: Color) -> void:
 		if ring.get_child_count() > 0:
 			(ring.get_child(0) as MeshInstance3D).material_override = _halo_mat(col)
 
+# v0.33: the ring shows your level (its colour), the glow under it your best achievement tier,
+# a thin inner ring your crew, and your name tag takes the achievement colour.
+const LEVEL_BANDS := [[1,Color("5ce67a"),"Green"],[5,Color("3df0ff"),"Cyan"],[10,Color("4f8bff"),"Blue"],[15,Color("ff8a2a"),"Orange"],[20,Color("ffffff"),"Rainbow"]]
+const TIER_KEYS := ["b","s","g","l"]
+const TAG_NO_TIER := Color("f4f1e8")
+
+func _level_color(lv: int) -> Color:
+	if lv >= 20:
+		return Color.from_hsv(fposmod(clock*0.15,1.0),0.75,1.0)
+	var col: Color = LEVEL_BANDS[0][1]
+	for band in LEVEL_BANDS:
+		if lv >= int(band[0]):
+			col = band[1]
+	return col
+
+func _tier_color(t: int) -> Color:
+	return TAG_NO_TIER if t < 0 else (ACH_TIERS[TIER_KEYS[clampi(t,0,3)]]["col"] as Color)
+
+func _my_ach_tier() -> int:
+	var best := -1
+	for a in ACH:
+		if ach_got.has(String(a[0])):
+			best = maxi(best,TIER_KEYS.find(String(a[5])))
+	return best
+
+func _style_ring(ring: MeshInstance3D, lv: int, tier: int, crew_col: Variant) -> void:
+	if ring == null:
+		return
+	if not ring.has_meta("own_mat"):
+		ring.material_override = (ring.material_override as StandardMaterial3D).duplicate()
+		ring.set_meta("own_mat",true)
+	(ring.material_override as StandardMaterial3D).albedo_color = _level_color(lv).lightened(0.15)
+	var halo := ring.get_child(0) as MeshInstance3D
+	var hcol := _tier_color(tier) if tier >= 0 else _level_color(mini(lv,19))
+	if halo != null and ring.get_meta("halo_col",Color.BLACK) != hcol:
+		ring.set_meta("halo_col",hcol)
+		halo.material_override = _halo_mat(hcol)
+	var inner: MeshInstance3D = ring.get_child(1) if ring.get_child_count() > 1 else null
+	if crew_col is Color:
+		if inner == null:
+			inner = MeshInstance3D.new()
+			var tm := TorusMesh.new()
+			tm.inner_radius = 0.38
+			tm.outer_radius = 0.48
+			tm.rings = 24
+			tm.ring_segments = 4
+			inner.mesh = tm
+			var m := StandardMaterial3D.new()
+			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			inner.material_override = m
+			inner.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			ring.add_child(inner)
+		(inner.material_override as StandardMaterial3D).albedo_color = crew_col
+		inner.visible = true
+	elif inner != null:
+		inner.visible = false
+
 func _social_peer_extras(peer: Dictionary, p: Dictionary) -> void:
 	var cr := _clean_nick(String(p.get("cr","")))
 	peer["crew"] = cr
@@ -4630,7 +4699,9 @@ func _social_peer_extras(peer: Dictionary, p: Dictionary) -> void:
 	if e == 2 and int(p.get("en",0)) != int(peer.get("dance_en",-1)):
 		peer["dance_until"] = clock+4.0
 	peer["dance_en"] = int(p.get("en",0))
-	_set_ring_color(peer.get("ring"),CREW_COLORS[int(peer["cc"])] if cr != "" else Color("4fe3ff"))
+	peer["at"] = clampi(int(p.get("at",-1)),-1,3)
+	peer["ac"] = clampi(int(p.get("ac",0)),0,ACH.size())
+	_style_ring(peer.get("ring"),int(peer.get("lvl",1)),int(peer["at"]),CREW_COLORS[int(peer["cc"])] if cr != "" else null)
 
 func _social_tag(peer: Dictionary) -> String:
 	var t := ""
@@ -4640,6 +4711,8 @@ func _social_tag(peer: Dictionary) -> String:
 		t += "  ★"
 	if int(peer.get("k",0)) > 0:
 		t += "  ♥%d" % int(peer["k"])
+	if int(peer.get("ac",0)) > 0:
+		t += "  ◆%d" % int(peer["ac"])
 	return t
 
 func _my_tag_extra() -> String:
@@ -4648,6 +4721,8 @@ func _my_tag_extra() -> String:
 		t += "  [%s]" % crew_name
 	if kindness > 0:
 		t += "  ♥%d" % kindness
+	if not ach_got.is_empty():
+		t += "  ◆%d" % ach_got.size()
 	return t
 
 # --- messages ---
@@ -4775,6 +4850,7 @@ func _soc_high_five(id: String) -> void:
 	if _soc_send(id,"hf"):
 		kindness += 1
 		bonus_xp += 10
+		_stat_add("highfives")
 		if not driving:
 			my_emote = 1
 			my_emote_n += 1
@@ -4795,6 +4871,7 @@ func _soc_gift(id: String) -> void:
 	if _soc_send(id,"gift",{"a":GIFT_AMOUNT}):
 		cash -= GIFT_AMOUNT
 		gifts_sent += 1
+		_stat_add("gifts")
 		kindness += 2
 		_save_progress()
 		_show_toast("You gave $%d! ♥%d  (%d/%d gifts today)" % [GIFT_AMOUNT,kindness,gifts_sent,GIFTS_PER_DAY])
@@ -5069,6 +5146,7 @@ func _social_tick(delta: float) -> void:
 		dance_xp_t += delta
 		if dance_xp_t >= DANCE_XP_EVERY:
 			dance_xp_t = 0.0
+			_stat_add("dance_s",DANCE_XP_EVERY)
 			var crowd := 0
 			for id in online_peers:
 				var peer: Dictionary = online_peers[id]
@@ -5097,12 +5175,20 @@ func _social_tick(delta: float) -> void:
 					names.append(String(peer["name"]))
 			if not names.is_empty():
 				var xp := HANG_XP*mini(names.size(),3)
+				_stat_add("hangouts")
 				bonus_xp += xp
 				_save_progress()
 				_feed_add("Hanging out with %s: +%d XP" % [", ".join(names.slice(0,3)),xp],"")
-	# Your ring wears your crew colour.
+	# Your ring: level colour, achievement glow, crew inner ring. Level 20 rings cycle through the rainbow.
+	var my_tier := _my_ach_tier()
 	if my_ring != null:
-		_set_ring_color(my_ring,_crew_col() if crew_name != "" else Color("ffcf4a"))
+		_style_ring(my_ring,_level(),my_tier,_crew_col() if crew_name != "" else null)
+	if my_tag != null:
+		my_tag.modulate = _tier_color(my_tier) if my_tier >= 0 else Color("ffd86a")
+	for id in online_peers:
+		var peer: Dictionary = online_peers[id]
+		if int(peer.get("lvl",1)) >= 20 and peer.has("ring"):
+			_style_ring(peer["ring"],20,int(peer.get("at",-1)),CREW_COLORS[int(peer.get("cc",0))] if String(peer.get("crew","")) != "" else null)
 
 func _photo() -> void:
 	# Group selfie: the camera swings in front of you, the screen clears, everyone cheers, click.
@@ -5129,6 +5215,7 @@ func _photo() -> void:
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	photo_flash.color = Color(1,1,1,0.9)
+	_stat_add("photos")
 	var tw := create_tween()
 	tw.tween_property(photo_flash,"color",Color(1,1,1,0),0.5)
 	var stamp := Time.get_datetime_string_from_system().replace(":","-").replace("T","_")
@@ -5152,6 +5239,1146 @@ func _photo() -> void:
 	hud.visible = was_hud
 	photo_busy = false
 	_show_toast(("Photo saved: %s" % saved) if saved != "" else "Photo taken (couldn't save it here; use your phone's screenshot).")
+
+# ---------- v0.33: Harbor Dome arcade (Connect Four, Reaction Duel, Memory Match) and party quiz ----------
+const C4_TABLES := [Vector3(226,0,4),Vector3(237,0,4),Vector3(226,0,14),Vector3(237,0,14)]
+const RX_CABS := [Vector3(214,0,-4),Vector3(222,0,-6)]
+const MEM_CABS := [Vector3(230,0,-5),Vector3(237,0,-2)]
+const C4_PRICE := 10
+const RX_PRICE := 5
+const MEM_PRICE := 5
+const MEM_FAST := 35.0
+const MEM_BONUS := 20
+const MEM_COLORS := [Color("e8453c"),Color("f2a33a"),Color("f2d046"),Color("52c79a"),Color("3d9be0"),Color("7b5bd6"),Color("e8559a"),Color("eef1f2")]
+var c4: Array = []
+var rx: Array = []
+var mem := {"cards":[],"open":[],"done":[],"t0":0.0,"busy":0.0,"playing":false,"best":0.0}
+var mem_best_board := {}
+var c4_cells: Array = []
+var c4_drop: Array = []
+var c4_box: VBoxContainer
+var rx_button: Button
+var mem_grid: GridContainer
+var mem_buttons: Array = []
+var mem_play: Button
+
+func _robot_table(kind: String, t: int) -> bool:
+	match kind:
+		"ttt","rps","c4":
+			return t < 2
+		"rx":
+			return t < 1
+	return false
+
+func _game_state(kind: String, t: int) -> Dictionary:
+	match kind:
+		"ttt":
+			return ttt[t]
+		"rps":
+			return rps[t]
+		"c4":
+			return c4[t]
+		"rx":
+			return rx[t]
+	return {}
+
+func _build_arcade() -> void:
+	var tables := []
+	var chairs := []
+	for t in C4_TABLES.size():
+		var tp: Vector3 = C4_TABLES[t]
+		tables.append([tp,0.0])
+		_collider(self,tp+Vector3(0,0.45,0),Vector3(1.9,0.9,1.9))
+		chairs.append([tp+Vector3(-1.5,0,0),PI/2.0])
+		chairs.append([tp+Vector3(1.5,0,0),-PI/2.0])
+		_hub_seat(tp+Vector3(-1.45,0,0),-PI/2.0,"c4",t,0,0.46)
+		var b := _hub_seat(tp+Vector3(1.45,0,0),PI/2.0,"c4",t,1,0.46)
+		if _robot_table("c4",t):
+			hub_seats[b]["bot"] = true
+		c4.append({"b":_c4_empty(),"turn":1,"over":false,"paid":false,"bot":_robot_table("c4",t),"reset":0.0,"botwait":0.0,"msg":""})
+		# A little upright Connect Four board on the table.
+		_box(self,tp+Vector3(0,1.25,0),Vector3(0.12,0.75,0.95),Color("2f5fd0"))
+		var tag := _sign("VS ROBOT" if _robot_table("c4",t) else "PLAYER VS PLAYER",tp+Vector3(0,2.6,0),Color("cfe2ff") if _robot_table("c4",t) else Color("ffe9b8"),30)
+		tag.pixel_size = 0.012
+	_model_batch("res://models/game_table.glb",tables)
+	_model_batch("res://models/chair.glb",chairs)
+	# Arcade cabinets: a stool in front of each; Reaction Duel cabinets are side by side for two players.
+	var cabs := []
+	var screens := []
+	var stools := []
+	for kind in ["rx","mem"]:
+		var spots: Array = RX_CABS if kind == "rx" else MEM_CABS
+		for t in spots.size():
+			var cp: Vector3 = spots[t]
+			for side in 2 if kind == "rx" else 1:
+				var off := Vector3(-1.1 if side == 0 else 1.1,0,0) if kind == "rx" else Vector3.ZERO
+				cabs.append([cp+off+Vector3(0,1.1,0),Vector3(1.4,2.2,0.9),0.0])
+				screens.append([cp+off+Vector3(0,1.55,0.47),Vector3(1.1,0.8,0.04),0.0])
+				_collider(self,cp+off+Vector3(0,1.1,0),Vector3(1.4,2.2,0.9))
+				var s := _hub_seat(cp+off+Vector3(0,0,1.6),0.0,kind,t,side,0.5)
+				stools.append([cp+off+Vector3(0,0.25,1.6),Vector3(0.5,0.5,0.5),0.0])
+				if kind == "rx" and side == 1 and _robot_table("rx",t):
+					hub_seats[s]["bot"] = true
+			if kind == "rx":
+				rx.append({"bot":_robot_table("rx",t),"state":"idle","go_at":0.0,"wait":0.0,"me":-1.0,"them":-1.0,"round":0,"paid":false,"msg":"","reset":0.0})
+			var nm := ("REACTION DUEL" if kind == "rx" else "MEMORY MATCH")+("\nVS ROBOT" if kind == "rx" and _robot_table("rx",t) else ("\nPLAYER VS PLAYER" if kind == "rx" else ""))
+			var tag := _sign(nm,cp+Vector3(0,3.2,0),Color("ffb3f0") if kind == "rx" else Color("b3fff0"),32)
+			tag.pixel_size = 0.012
+	_box_batch_rot(Color("2a1f3d"),cabs)
+	_box_batch_rot(Color("3a3f48"),stools)
+	var si := _box_batch_rot(NEON_CYAN,screens)
+	if si != null:
+		si.material_override = _neon_mat(NEON_CYAN)
+	_sign("ARCADE",Vector3(228,6.0,4),Color("ffe9b8"),64)
+	_sign("CONNECT FOUR  $%d" % C4_PRICE,Vector3(231,4.4,9),Color("bfd8ff"),42)
+
+# --- Connect Four (7 columns x 6 rows, cell index = row*7+col, row 0 at the bottom) ---
+func _c4_empty() -> Array:
+	var b := []
+	b.resize(42)
+	b.fill(0)
+	return b
+
+func _c4_drop_row(b: Array, col: int) -> int:
+	for r in 6:
+		if int(b[r*7+col]) == 0:
+			return r
+	return -1
+
+func _c4_winner(b: Array) -> int:
+	for r in 6:
+		for c in 7:
+			var v := int(b[r*7+c])
+			if v == 0:
+				continue
+			for d in [[0,1],[1,0],[1,1],[1,-1]]:
+				var ok := true
+				for k in range(1,4):
+					var rr: int = r+int(d[0])*k
+					var cc: int = c+int(d[1])*k
+					if rr < 0 or rr >= 6 or cc < 0 or cc >= 7 or int(b[rr*7+cc]) != v:
+						ok = false
+						break
+				if ok:
+					return v
+	for v in b:
+		if int(v) == 0:
+			return 0
+	return 3
+
+func _c4_bot_move(b: Array, me: int) -> int:
+	var them := 3-me
+	var free := []
+	for c in 7:
+		if _c4_drop_row(b,c) >= 0:
+			free.append(c)
+	if free.is_empty():
+		return -1
+	if randf() < 0.18:
+		return free[randi() % free.size()]
+	for who in [me,them]:
+		for c in free:
+			var test := b.duplicate()
+			test[_c4_drop_row(test,c)*7+c] = who
+			if _c4_winner(test) == who:
+				return c
+	for c in [3,2,4,1,5,0,6]:
+		if c in free:
+			var test := b.duplicate()
+			var r := _c4_drop_row(test,c)
+			test[r*7+c] = me
+			# Don't hand the other side a win right above.
+			if r+1 < 6:
+				test[(r+1)*7+c] = them
+				if _c4_winner(test) == them and free.size() > 1:
+					continue
+			return c
+	return free[0]
+
+func _c4_code(b: Array) -> String:
+	var out := ""
+	for v in b:
+		out += str(int(v))
+	return out
+
+func _c4_ready(t: int) -> bool:
+	return bool(c4[t]["bot"]) or _peer_at("c4",t,1-int(hub_seats[seat_id]["side"])) != ""
+
+func _c4_tap(col: int) -> void:
+	if seat_id < 0 or String(hub_seats[seat_id]["kind"]) != "c4":
+		return
+	var t := int(hub_seats[seat_id]["table"])
+	var g: Dictionary = c4[t]
+	var mine := int(hub_seats[seat_id]["side"])+1
+	var r := _c4_drop_row(g["b"],col)
+	if bool(g["over"]) or int(g["turn"]) != mine or r < 0 or not _c4_ready(t):
+		return
+	if not g["paid"]:
+		if not _pay(C4_PRICE):
+			return
+		g["paid"] = true
+	g["b"][r*7+col] = mine
+	g["turn"] = 3-mine
+	g["botwait"] = 0.8
+	if not g["bot"]:
+		_online_game_send({"k":"c","tb":t,"b":_c4_code(g["b"]),"n":int(g["turn"])})
+	_c4_check(t)
+	_refresh_game_panel()
+
+func _c4_check(t: int) -> void:
+	var g: Dictionary = c4[t]
+	var w := _c4_winner(g["b"])
+	if w == 0:
+		return
+	var mine := int(hub_seats[seat_id]["side"])+1
+	g["over"] = true
+	g["reset"] = 4.0
+	if w == 3:
+		if g["paid"]:
+			cash += C4_PRICE
+		g["msg"] = "Board full: a draw! Your $%d is back." % C4_PRICE
+	elif w == mine:
+		if g["paid"]:
+			cash += C4_PRICE*2
+		bonus_xp += 15
+		g["msg"] = "Four in a row! You win +$%d" % (C4_PRICE*2)
+		_stat_add("c4_wins")
+		_emote(player_person,3)
+	else:
+		g["msg"] = "%s connected four. Try again!" % _opponent_name(t,"c4").capitalize()
+	g["paid"] = false
+	_save_progress()
+
+func _c4_tick(t: int, delta: float) -> void:
+	var g: Dictionary = c4[t]
+	var mine := int(hub_seats[seat_id]["side"])+1
+	if bool(g["over"]):
+		g["reset"] = float(g["reset"])-delta
+		if float(g["reset"]) <= 0.0:
+			g["b"] = _c4_empty()
+			g["turn"] = 1
+			g["over"] = false
+			g["msg"] = ""
+			_refresh_game_panel()
+		return
+	if g["bot"] and int(g["turn"]) != mine:
+		g["botwait"] = float(g["botwait"])-delta
+		if float(g["botwait"]) <= 0.0:
+			if not g["paid"] and _c4_code(g["b"]) == _c4_code(_c4_empty()):
+				if not _pay(C4_PRICE):
+					return
+				g["paid"] = true
+			var c := _c4_bot_move(g["b"],3-mine)
+			if c >= 0:
+				g["b"][_c4_drop_row(g["b"],c)*7+c] = 3-mine
+				g["turn"] = mine
+				_c4_check(t)
+			_refresh_game_panel()
+
+# --- Reaction Duel: wait for GREEN, first tap wins; tapping early loses the round ---
+func _rx_ready(t: int) -> bool:
+	return bool(rx[t]["bot"]) or _peer_at("rx",t,1-int(hub_seats[seat_id]["side"])) != ""
+
+func _rx_start(t: int) -> void:
+	var g: Dictionary = rx[t]
+	if not _pay(RX_PRICE):
+		g["state"] = "idle"
+		return
+	g["paid"] = true
+	g["state"] = "wait"
+	g["wait"] = randf_range(1.6,4.0)
+	g["me"] = -1.0
+	g["them"] = -1.0
+	g["msg"] = ""
+	if not g["bot"] and int(hub_seats[seat_id]["side"]) == 0:
+		_online_game_send({"k":"x","tb":t,"s":"go","d":snappedf(float(g["wait"]),0.01),"rd":int(g["round"])})
+
+func _rx_tap() -> void:
+	if seat_id < 0 or String(hub_seats[seat_id]["kind"]) != "rx":
+		return
+	var t := int(hub_seats[seat_id]["table"])
+	var g: Dictionary = rx[t]
+	if not _rx_ready(t):
+		return
+	match String(g["state"]):
+		"idle","done":
+			if g["bot"] or int(hub_seats[seat_id]["side"]) == 0:
+				_rx_start(t)
+			else:
+				g["msg"] = "%s starts the round. Get ready!" % _opponent_name(t,"rx").capitalize()
+		"wait":
+			g["me"] = 9.99
+			g["msg"] = "Too early! Wait for GREEN."
+			_rx_send_time(t)
+			_rx_resolve(t)
+		"go":
+			if float(g["me"]) < 0.0:
+				g["me"] = snappedf(clock-float(g["go_at"]),0.001)
+				_rx_send_time(t)
+				_rx_resolve(t)
+	_refresh_game_panel()
+
+func _rx_send_time(t: int) -> void:
+	var g: Dictionary = rx[t]
+	if g["bot"]:
+		g["them"] = randf_range(0.22,0.46)
+	else:
+		_online_game_send({"k":"x","tb":t,"s":"t","ms":float(g["me"]),"rd":int(g["round"])})
+
+func _rx_resolve(t: int) -> void:
+	var g: Dictionary = rx[t]
+	var me := float(g["me"])
+	var them := float(g["them"])
+	if me < 0.0 or them < 0.0:
+		return
+	var who := _opponent_name(t,"rx").capitalize()
+	var paid := bool(g["paid"])
+	if me < them:
+		if paid:
+			cash += RX_PRICE*2
+		bonus_xp += 5
+		_stat_add("rx_wins")
+		g["msg"] = ("You: %d ms · %s: %s · You win! +$%d" % [int(me*1000.0),who,("false start" if them > 9.0 else "%d ms" % int(them*1000.0)),RX_PRICE*2])
+		_emote(player_person,3)
+	elif me > them:
+		g["msg"] = ("You: %s · %s: %d ms · %s wins." % [("false start" if me > 9.0 else "%d ms" % int(me*1000.0)),who,int(them*1000.0),who])
+	else:
+		if paid:
+			cash += RX_PRICE
+		g["msg"] = "Exactly the same time! Your $%d is back." % RX_PRICE
+	g["paid"] = false
+	g["state"] = "done"
+	g["round"] = int(g["round"])+1
+	_save_progress()
+
+func _rx_tick(t: int, delta: float) -> void:
+	var g: Dictionary = rx[t]
+	if String(g["state"]) == "wait":
+		g["wait"] = float(g["wait"])-delta
+		if float(g["wait"]) <= 0.0:
+			g["state"] = "go"
+			g["go_at"] = clock
+			_refresh_game_panel()
+	elif String(g["state"]) == "go" and float(g["me"]) < 0.0 and clock-float(g["go_at"]) > 3.0:
+		g["me"] = 3.0
+		_rx_send_time(t)
+		_rx_resolve(t)
+		_refresh_game_panel()
+
+# --- Memory Match (solo, against the clock; best times show on the dome board) ---
+func _mem_start() -> void:
+	if not _pay(MEM_PRICE):
+		return
+	var cards := []
+	for k in 8:
+		cards.append(k)
+		cards.append(k)
+	cards.shuffle()
+	mem["cards"] = cards
+	mem["open"] = []
+	mem["done"] = []
+	mem["t0"] = clock
+	mem["busy"] = 0.0
+	mem["playing"] = true
+	_refresh_game_panel()
+
+func _mem_tap(i: int) -> void:
+	if not bool(mem["playing"]) or float(mem["busy"]) > 0.0 or i in (mem["done"] as Array) or i in (mem["open"] as Array):
+		return
+	(mem["open"] as Array).append(i)
+	var op: Array = mem["open"]
+	if op.size() == 2:
+		if int(mem["cards"][op[0]]) == int(mem["cards"][op[1]]):
+			(mem["done"] as Array).append_array(op)
+			mem["open"] = []
+			if (mem["done"] as Array).size() == 16:
+				_mem_finish()
+		else:
+			mem["busy"] = 0.8
+	_refresh_game_panel()
+
+func _mem_finish() -> void:
+	var secs := snappedf(clock-float(mem["t0"]),0.1)
+	mem["playing"] = false
+	_stat_add("mem_games")
+	if secs <= MEM_FAST:
+		_stat_add("mem_fast")
+	var pay := MEM_PRICE+(MEM_BONUS if secs <= MEM_FAST else 0)
+	cash += pay
+	bonus_xp += 10
+	if float(mem["best"]) <= 0.0 or secs < float(mem["best"]):
+		mem["best"] = secs
+	mem_best_board[_my_name()] = float(mem["best"])
+	_online_game_send({"k":"m","tm":float(mem["best"]),"n":_my_name()})
+	_show_toast("All pairs in %.1f s! +$%d%s" % [secs,pay,"  (fast bonus!)" if secs <= MEM_FAST else ""])
+	_save_progress()
+
+func _mem_tick(delta: float) -> void:
+	if float(mem["busy"]) > 0.0:
+		mem["busy"] = float(mem["busy"])-delta
+		if float(mem["busy"]) <= 0.0:
+			mem["open"] = []
+			_refresh_game_panel()
+
+func _mem_board_text() -> String:
+	var rows := []
+	for nm in mem_best_board:
+		rows.append([String(nm),float(mem_best_board[nm])])
+	rows.sort_custom(func(a, b): return float(a[1]) < float(b[1]))
+	var lines := []
+	for i in mini(rows.size(),5):
+		lines.append("%d. %s  %.1f s" % [i+1,rows[i][0],rows[i][1]])
+	return "Best times: "+(", ".join(lines) if not lines.is_empty() else "none yet")
+
+# --- panel controls for the three arcade games ---
+func _build_arcade_panel(col: VBoxContainer) -> void:
+	c4_box = VBoxContainer.new()
+	c4_box.add_theme_constant_override("separation",4)
+	col.add_child(c4_box)
+	var drops := HBoxContainer.new()
+	drops.add_theme_constant_override("separation",4)
+	c4_box.add_child(drops)
+	for c in 7:
+		var b := _button("▼",_c4_tap.bind(c))
+		b.custom_minimum_size = Vector2(48,44)
+		b.add_theme_font_size_override("font_size",20)
+		drops.add_child(b)
+		c4_drop.append(b)
+	var grid := GridContainer.new()
+	grid.columns = 7
+	grid.add_theme_constant_override("h_separation",4)
+	grid.add_theme_constant_override("v_separation",4)
+	c4_box.add_child(grid)
+	for k in 42:
+		var cell := Panel.new()
+		cell.custom_minimum_size = Vector2(48,40)
+		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		grid.add_child(cell)
+		c4_cells.append(cell)
+	rx_button = _button("TAP TO START",_rx_tap)
+	rx_button.custom_minimum_size = Vector2(360,130)
+	rx_button.add_theme_font_size_override("font_size",30)
+	col.add_child(rx_button)
+	mem_grid = GridContainer.new()
+	mem_grid.columns = 4
+	mem_grid.add_theme_constant_override("h_separation",6)
+	mem_grid.add_theme_constant_override("v_separation",6)
+	col.add_child(mem_grid)
+	mem_play = _button("PLAY MEMORY  $%d" % MEM_PRICE,_mem_start)
+	mem_play.custom_minimum_size = Vector2(360,58)
+	col.add_child(mem_play)
+	for i in 16:
+		var b := _button("?",_mem_tap.bind(i))
+		b.custom_minimum_size = Vector2(84,62)
+		b.add_theme_font_size_override("font_size",24)
+		mem_grid.add_child(b)
+		mem_buttons.append(b)
+
+func _refresh_arcade_panel(kind: String, t: int) -> void:
+	c4_box.visible = kind == "c4"
+	rx_button.visible = kind == "rx"
+	mem_grid.visible = kind == "mem"
+	mem_play.visible = kind == "mem"
+	if kind == "c4":
+		var g: Dictionary = c4[t]
+		var mine := int(hub_seats[seat_id]["side"])+1
+		for k in 42:
+			var row := 5-int(k/7)
+			var v := int(g["b"][row*7+k % 7])
+			var sb := _panel([Color("1d2b3a"),Color("e8453c"),Color("f2d046")][v],20)
+			(c4_cells[k] as Panel).add_theme_stylebox_override("panel",sb)
+		for c in 7:
+			(c4_drop[c] as Button).disabled = bool(g["over"]) or int(g["turn"]) != mine or _c4_drop_row(g["b"],c) < 0 or not _c4_ready(t)
+		c4_box.visible = _c4_ready(t)
+		if not _c4_ready(t):
+			game_status.text = "Waiting for another player to sit opposite you…"
+			game_robot_button.visible = true
+			game_invite_button.visible = true
+		elif String(g["msg"]) != "":
+			game_status.text = g["msg"]
+		else:
+			game_status.text = ("Your turn: drop a %s disc (tap ▼)." % ["","RED","YELLOW"][mine]) if int(g["turn"]) == mine else "%s is thinking…" % _opponent_name(t,"c4")
+	elif kind == "rx":
+		var g: Dictionary = rx[t]
+		var st := String(g["state"])
+		var col := Color("213d4f")
+		if not _rx_ready(t):
+			game_status.text = "Waiting for another player at the other screen…"
+			game_robot_button.visible = true
+			game_invite_button.visible = true
+			rx_button.text = "WAITING…"
+		elif st == "wait":
+			rx_button.text = "WAIT…"
+			col = Color("8a2a24")
+			game_status.text = "Wait for GREEN, then tap as fast as you can!"
+		elif st == "go":
+			rx_button.text = "TAP!"
+			col = Color("1f9a3a")
+			game_status.text = "GO GO GO!"
+		else:
+			rx_button.text = "NEXT ROUND  $%d" % RX_PRICE if st == "done" else "START  $%d" % RX_PRICE
+			game_status.text = String(g["msg"]) if String(g["msg"]) != "" else "First to tap after GREEN wins $%d. Tapping early loses." % (RX_PRICE*2)
+		rx_button.add_theme_stylebox_override("normal",_panel(col,24))
+		rx_button.add_theme_stylebox_override("hover",_panel(col,24))
+	elif kind == "mem":
+		var playing := bool(mem["playing"])
+		for i in 16:
+			var b: Button = mem_buttons[i]
+			var shown := playing and (i in (mem["done"] as Array) or i in (mem["open"] as Array))
+			b.text = "" if shown else "?"
+			var c: Color = MEM_COLORS[int(mem["cards"][i])] if shown and (mem["cards"] as Array).size() == 16 else Color("213d4f")
+			if playing and i in (mem["done"] as Array):
+				c = c.darkened(0.25)
+			b.add_theme_stylebox_override("normal",_panel(c,14))
+			b.add_theme_stylebox_override("hover",_panel(c,14))
+			b.disabled = not playing
+		mem_grid.visible = playing
+		game_status.text = ("Find the 8 pairs! %.0f s" % (clock-float(mem["t0"]))) if playing else "Match all 8 colour pairs. $%d to play, $%d back plus a $%d bonus under %d s.\n%s" % [MEM_PRICE,MEM_PRICE,MEM_BONUS,int(MEM_FAST),_mem_board_text()]
+		mem_play.visible = not playing
+
+# ---------- Party Quiz: everyone in the quiz zone gets the same question at the same time ----------
+const QUIZ_C := Vector3(234,0,54)
+const QUIZ_R := 9.0
+const QUIZ_Q_TIME := 20
+const QUIZ_ANSWER_TIME := 12.0
+const QUIZ_ROUND := 8
+const QUIZ_PRIZE := 300
+const QUIZ_BOTS := ["Robo Rita","Bolt"]
+const QUIZ := [
+	["Which colour do you get by mixing blue and yellow?","Green","Purple","Orange","Brown"],
+	["How many wheels does a normal car have?","4","3","6","5"],
+	["What is the largest planet in our solar system?","Jupiter","Mars","Earth","Venus"],
+	["How many minutes are in an hour?","60","100","30","90"],
+	["Which animal is known as the king of the jungle?","Lion","Elephant","Tiger","Giraffe"],
+	["What do bees make?","Honey","Milk","Silk","Wax paper"],
+	["How many continents are there?","7","5","6","9"],
+	["Which is the fastest land animal?","Cheetah","Horse","Lion","Rabbit"],
+	["What is frozen water called?","Ice","Steam","Fog","Sand"],
+	["How many sides does a hexagon have?","6","5","8","7"],
+	["Which ocean is the biggest?","Pacific","Atlantic","Indian","Arctic"],
+	["What gas do plants take in from the air?","Carbon dioxide","Helium","Neon","Hydrogen"],
+	["How many days are in a leap year?","366","365","364","360"],
+	["Which bird is famous for copying human speech?","Parrot","Owl","Eagle","Penguin"],
+	["What is 9 x 7?","63","56","72","81"],
+	["Which shape has three sides?","Triangle","Square","Circle","Pentagon"],
+	["What is the closest star to Earth?","The Sun","Polaris","Sirius","The Moon"],
+	["Which instrument has 88 keys?","Piano","Guitar","Violin","Drum"],
+	["What colour are a ripe banana's skins?","Yellow","Blue","Red","Purple"],
+	["How many legs does a spider have?","8","6","10","4"],
+	["What do you call a baby cat?","Kitten","Puppy","Calf","Cub"],
+	["Which season comes after spring?","Summer","Winter","Autumn","Monsoon"],
+	["What is the capital of Japan?","Tokyo","Seoul","Bangkok","Beijing"],
+	["Which planet is known as the Red Planet?","Mars","Saturn","Neptune","Mercury"],
+	["How many strings does a standard guitar have?","6","4","5","8"],
+	["What is 100 divided by 4?","25","20","40","50"],
+	["Which metal is liquid at room temperature?","Mercury","Iron","Gold","Copper"],
+	["In Harbor City, what is the sky train loop called?","Harbor Loop","Neon Line","City Ring","Sky Circle"],
+	["In Harbor City, which district has the 165 m tower?","Skyline District","Sunset Beach","Westside","Marina Heights"],
+	["In Harbor City, what floats over Times Plaza at night?","A NEO HARBOR hologram","A blimp","Fireworks","A rainbow"],
+	["In Harbor City, how many daily quests are there?","26","10","5","100"],
+	["In Harbor City, where is the dance floor?","Times Plaza","The airport","The lighthouse","Ridge Pass"],
+	["Which is the tallest animal?","Giraffe","Elephant","Horse","Camel"],
+	["How many hours are in a day?","24","12","36","20"],
+	["Which of these is a mammal?","Dolphin","Shark","Tuna","Octopus"],
+	["What do caterpillars turn into?","Butterflies","Bees","Frogs","Snails"],
+	["What is the opposite of 'north'?","South","East","West","Up"],
+	["How many players are on a football (soccer) team on the field?","11","9","7","15"],
+	["Which fruit is famous for keeping the doctor away?","Apple","Lemon","Mango","Grape"],
+	["What is the main colour of a fire truck?","Red","Green","White","Black"],
+]
+var quiz_panel: PanelContainer
+var quiz_q_label: Label
+var quiz_status: Label
+var quiz_buttons: Array = []
+var quiz_board_3d: Label3D
+var quiz_round := -1
+var quiz_score := 0
+var quiz_answered := -1
+var quiz_answer_q := -1
+var quiz_scores := {}
+var quiz_paid_round := -1
+var quiz_time_override := -1.0
+
+func _quiz_now() -> float:
+	return quiz_time_override if quiz_time_override >= 0.0 else Time.get_unix_time_from_system()
+
+func _quiz_slot() -> Dictionary:
+	# The question everyone sees right now: [round, number in round 0..QUIZ_ROUND (QUIZ_ROUND = results), seconds left, phase].
+	var now := _quiz_now()
+	var per_round := QUIZ_Q_TIME*(QUIZ_ROUND+1)
+	var rnd := int(floor(now/float(per_round)))
+	var into := fmod(now,float(per_round))
+	var q := int(into/float(QUIZ_Q_TIME))
+	var t := fmod(into,float(QUIZ_Q_TIME))
+	return {"round":rnd,"q":q,"t":t,"answering":q < QUIZ_ROUND and t < QUIZ_ANSWER_TIME,"results":q >= QUIZ_ROUND}
+
+func _quiz_question(rnd: int, q: int) -> Dictionary:
+	# Same question and answer order on every phone for the same round and number.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(rnd*131+q*7+17)
+	var idx := (rng.randi() % QUIZ.size())
+	var picked := {}
+	for k in q:
+		var r2 := RandomNumberGenerator.new()
+		r2.seed = hash(rnd*131+k*7+17)
+		picked[r2.randi() % QUIZ.size()] = true
+	var tries := 0
+	while picked.has(idx) and tries < QUIZ.size():
+		idx = (idx+1) % QUIZ.size()
+		tries += 1
+	var row: Array = QUIZ[idx]
+	var order := [0,1,2,3]
+	for i in range(3,0,-1):
+		var j := rng.randi() % (i+1)
+		var tmp = order[i]
+		order[i] = order[j]
+		order[j] = tmp
+	var answers := []
+	var correct := 0
+	for k in 4:
+		answers.append(String(row[1+int(order[k])]))
+		if int(order[k]) == 0:
+			correct = k
+	return {"text":String(row[0]),"answers":answers,"correct":correct}
+
+func _quiz_bot_score(rnd: int, upto: int, bot: int) -> int:
+	var s := 0
+	for q in upto:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash(rnd*977+q*31+bot*5)
+		if rng.randf() < 0.55:
+			s += 100+rng.randi_range(0,60)
+	return s
+
+func _in_quiz() -> bool:
+	return not driving and seat_id < 0 and Vector2(player.position.x-QUIZ_C.x,player.position.z-QUIZ_C.z).length() < QUIZ_R
+
+func _build_quiz(root: Control) -> void:
+	# The stage: a big screen, four podiums and a glowing ring marking the zone.
+	_box_batch(Color("2a1f3d"),[[QUIZ_C+Vector3(9.5,3.5,0),Vector3(0.5,7.0,11.0)]])
+	_collider(self,QUIZ_C+Vector3(9.5,3.5,0),Vector3(0.5,7.0,11.0))
+	var scr := _box_batch(NEON_VIOLET,[[QUIZ_C+Vector3(9.2,3.8,0),Vector3(0.1,5.6,10.0)]])
+	if scr != null:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color("140c28")
+		m.emission_enabled = true
+		m.emission = Color("2a1458")
+		m.emission_energy_multiplier = 0.8
+		scr.material_override = m
+	var pods := []
+	for k in 4:
+		pods.append([QUIZ_C+Vector3(3.0,0.55,-4.5+3.0*float(k)),Vector3(1.2,1.1,1.2),0.0])
+	var pi := _box_batch_rot(NEON_CYAN,pods)
+	if pi != null:
+		pi.material_override = _neon_mat([NEON_CYAN,NEON_VIOLET][0])
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = QUIZ_R-0.25
+	tm.outer_radius = QUIZ_R
+	tm.rings = 48
+	tm.ring_segments = 4
+	ring.mesh = tm
+	ring.scale = Vector3(1,0.05,1)
+	ring.position = QUIZ_C+Vector3(0,0.05,0)
+	ring.material_override = _neon_mat(NEON_VIOLET)
+	add_child(ring)
+	quiz_board_3d = Label3D.new()
+	quiz_board_3d.font_size = 64
+	quiz_board_3d.pixel_size = 0.012
+	quiz_board_3d.width = 1300.0
+	quiz_board_3d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	quiz_board_3d.modulate = Color("f2feff")
+	quiz_board_3d.outline_size = 10
+	quiz_board_3d.outline_modulate = Color(0.12,0.05,0.3,0.9)
+	quiz_board_3d.position = QUIZ_C+Vector3(9.0,4.0,0)
+	quiz_board_3d.rotation.y = -PI/2.0
+	add_child(quiz_board_3d)
+	_sign("PARTY QUIZ",QUIZ_C+Vector3(9.0,8.0,0),Color("ffb3f0"),80)
+	# The answer card on screen (top centre) while you stand in the zone.
+	quiz_panel = PanelContainer.new()
+	quiz_panel.add_theme_stylebox_override("panel",_panel(Color(0.08,0.05,0.18,0.94),20))
+	quiz_panel.custom_minimum_size = Vector2(640,0)
+	root.add_child(quiz_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",8)
+	quiz_panel.add_child(col)
+	quiz_q_label = _label("",22,Color("fff5dc"))
+	quiz_q_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	quiz_q_label.custom_minimum_size.x = 600
+	col.add_child(quiz_q_label)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation",8)
+	grid.add_theme_constant_override("v_separation",8)
+	col.add_child(grid)
+	for k in 4:
+		var b := _button("",_quiz_answer.bind(k))
+		b.custom_minimum_size = Vector2(296,56)
+		b.add_theme_font_size_override("font_size",20)
+		grid.add_child(b)
+		quiz_buttons.append(b)
+	quiz_status = _label("",17,Color("cbd8de"))
+	quiz_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	quiz_status.custom_minimum_size.x = 600
+	col.add_child(quiz_status)
+	quiz_panel.hide()
+
+func _quiz_answer(k: int) -> void:
+	var sl := _quiz_slot()
+	if not bool(sl["answering"]) or quiz_answer_q == int(sl["q"]) or not _in_quiz():
+		return
+	quiz_answer_q = int(sl["q"])
+	quiz_answered = k
+	var qq := _quiz_question(int(sl["round"]),int(sl["q"]))
+	if k == int(qq["correct"]):
+		var pts := 100+int(100.0*clampf(1.0-float(sl["t"])/QUIZ_ANSWER_TIME,0.0,1.0))
+		quiz_score += pts
+	_online_event_send("qz",{"r":int(sl["round"]),"s":quiz_score})
+	_quiz_refresh(true)
+
+func _quiz_msg(p: Dictionary) -> void:
+	var from := String(p.get("i",""))
+	if from == "" or from == online_id:
+		return
+	if int(p.get("r",-1)) != quiz_round:
+		return
+	quiz_scores[from] = [_online_clean_name(String(p.get("n","Player"))),clampi(int(p.get("s",0)),0,QUIZ_ROUND*200)]
+
+func _quiz_board(sl: Dictionary) -> Array:
+	var upto := mini(int(sl["q"])+(0 if bool(sl["answering"]) else 1),QUIZ_ROUND)
+	var rows := [[_my_name(),quiz_score]]
+	for b in QUIZ_BOTS.size():
+		rows.append([QUIZ_BOTS[b],_quiz_bot_score(int(sl["round"]),upto,b)])
+	for id in quiz_scores:
+		rows.append(quiz_scores[id])
+	rows.sort_custom(func(a, b): return int(a[1]) > int(b[1]))
+	return rows
+
+func _quiz_tick(_delta: float) -> void:
+	if quiz_panel == null or player == null:
+		return
+	var sl := _quiz_slot()
+	if int(sl["round"]) != quiz_round:
+		quiz_round = int(sl["round"])
+		quiz_score = 0
+		quiz_scores.clear()
+		quiz_answer_q = -1
+	# The 3D screen: always running, so passers-by see the quiz and join in.
+	var board := _quiz_board(sl)
+	var lines := []
+	for i in mini(board.size(),5):
+		lines.append("%d. %s  %d" % [i+1,board[i][0],board[i][1]])
+	if bool(sl["results"]):
+		quiz_board_3d.text = "RESULTS\n"+"\n".join(lines)+"\nNext quiz in %d s" % int(float(QUIZ_Q_TIME)-float(sl["t"]))
+	else:
+		var qq := _quiz_question(int(sl["round"]),int(sl["q"]))
+		quiz_board_3d.text = "Q%d/%d  %s\n%s" % [int(sl["q"])+1,QUIZ_ROUND,qq["text"],"  ·  ".join(lines.slice(0,3))]
+	var inside := _in_quiz() and not paused
+	quiz_panel.visible = inside
+	if inside:
+		_quiz_refresh(false)
+		var view := get_viewport().get_visible_rect().size
+		quiz_panel.size = Vector2(0,0)
+		quiz_panel.position = Vector2((view.x-quiz_panel.get_combined_minimum_size().x)/2.0,18)
+	# Prize for the round's winner (paid once, only if you took part).
+	if bool(sl["results"]) and quiz_paid_round != quiz_round and quiz_score > 0:
+		quiz_paid_round = quiz_round
+		_stat_add("quiz_points",float(quiz_score))
+		var top: Array = board[0]
+		if String(top[0]) == _my_name() and int(top[1]) == quiz_score:
+			cash += QUIZ_PRIZE
+			_stat_add("quiz_wins")
+			bonus_xp += 50
+			_show_toast("YOU WON THE PARTY QUIZ! +$%d +50 XP" % QUIZ_PRIZE)
+			_emote(player_person,3)
+		else:
+			cash += quiz_score/20
+			_show_toast("Quiz over: %d points, +$%d. %s won!" % [quiz_score,quiz_score/20,String(top[0])])
+		_save_progress()
+
+func _quiz_refresh(_force: bool) -> void:
+	var sl := _quiz_slot()
+	if bool(sl["results"]):
+		quiz_q_label.text = "PARTY QUIZ RESULTS"
+		for b: Button in quiz_buttons:
+			b.visible = false
+		var board := _quiz_board(sl)
+		var lines := []
+		for i in mini(board.size(),5):
+			lines.append("%d. %s  %d" % [i+1,board[i][0],board[i][1]])
+		quiz_status.text = "\n".join(lines)+"\nWinner gets $%d. Next quiz in %d s." % [QUIZ_PRIZE,int(float(QUIZ_Q_TIME)-float(sl["t"]))]
+		return
+	var qq := _quiz_question(int(sl["round"]),int(sl["q"]))
+	var answering := bool(sl["answering"])
+	quiz_q_label.text = "Q%d/%d  ·  %s" % [int(sl["q"])+1,QUIZ_ROUND,qq["text"]]
+	var mine := quiz_answered if quiz_answer_q == int(sl["q"]) else -1
+	for k in 4:
+		var b: Button = quiz_buttons[k]
+		b.visible = true
+		b.text = "%s  %s" % [["A","B","C","D"][k],qq["answers"][k]]
+		b.disabled = not answering or mine >= 0
+		var c := Color("2a2550")
+		if not answering:
+			c = Color("1f9a3a") if k == int(qq["correct"]) else (Color("8a2a24") if k == mine else Color("2a2550"))
+		elif k == mine:
+			c = Color("6b4fd6")
+		b.add_theme_stylebox_override("normal",_panel(c,14))
+		b.add_theme_stylebox_override("disabled",_panel(c,14))
+	if answering:
+		quiz_status.text = ("%d s left  ·  your score %d  ·  answer fast for more points" % [int(QUIZ_ANSWER_TIME-float(sl["t"])),quiz_score]) if mine < 0 else "Answer locked in! %d s left  ·  your score %d" % [int(QUIZ_ANSWER_TIME-float(sl["t"])),quiz_score]
+	else:
+		var right := mine == int(qq["correct"])
+		quiz_status.text = ("Correct!" if right else ("Wrong" if mine >= 0 else "Too slow")) + " The answer: %s.  Your score %d  ·  next question in %d s" % [qq["answers"][int(qq["correct"])],quiz_score,int(float(QUIZ_Q_TIME)-float(sl["t"]))]
+
+# ---------- v0.34: achievements (75 of them in four tiers; Gold and Legend are announced to everyone online) ----------
+const ACH_TIERS := {
+	"b":{"name":"BRONZE","col":Color("d08a4c"),"cash":100,"xp":25},
+	"s":{"name":"SILVER","col":Color("c9d4dd"),"cash":250,"xp":75},
+	"g":{"name":"GOLD","col":Color("ffcf4a"),"cash":750,"xp":200},
+	"l":{"name":"LEGEND","col":Color("c78bff"),"cash":2000,"xp":500},
+}
+# [id, name, what to do, value it tracks, goal, tier]
+const ACH := [
+	["lv2","First Steps","Reach level 2","level",2,"b"],
+	["lv5","Getting Around","Reach level 5","level",5,"b"],
+	["lv10","City Regular","Reach level 10","level",10,"s"],
+	["lv15","Local Hero","Reach level 15","level",15,"g"],
+	["lv20","Legend of Harbor City","Reach level 20","level",20,"l"],
+	["cash1","Pocket Money","Have $1,000","cash",1000,"b"],
+	["cash10","Comfortable","Have $10,000","cash",10000,"s"],
+	["cash50","High Roller","Have $50,000","cash",50000,"g"],
+	["cash250","Harbor Tycoon","Have $250,000","cash",250000,"l"],
+	["job1","Special Delivery","Finish a delivery job","deliveries",1,"b"],
+	["job10","Courier","Finish 10 delivery jobs","deliveries",10,"b"],
+	["job50","Express Pro","Finish 50 delivery jobs","deliveries",50,"s"],
+	["job200","Logistics King","Finish 200 delivery jobs","deliveries",200,"g"],
+	["q1","Helping Hand","Finish a daily quest","quests",1,"b"],
+	["q25","Errand Runner","Finish 25 daily quests","quests",25,"b"],
+	["q100","Quest Master","Finish 100 daily quests","quests",100,"s"],
+	["q500","City Fixer","Finish 500 daily quests","quests",500,"g"],
+	["find1","Sharp Eyes","Collect a blue token","finds",1,"b"],
+	["find8","Token Hunter","Collect all 8 blue tokens","finds",8,"s"],
+	["site10","Sightseer","Discover 10 sites","sites",10,"b"],
+	["site30","Explorer","Discover 30 sites","sites",30,"s"],
+	["siteall","Cartographer","Discover every site","sites_all",1,"g"],
+	["tr1","X Marks the Spot","Find a treasure chest","treasure",1,"b"],
+	["tr10","Treasure Seeker","Find 10 treasure chests","treasure",10,"s"],
+	["tr50","Pirate King","Find 50 treasure chests","treasure",50,"g"],
+	["trial1","On the Clock","Beat a time trial","trials",1,"b"],
+	["trial5","Speed Demon","Beat 5 time trials","trials",5,"s"],
+	["trialall","Every Record","Beat every time trial","trials_all",1,"g"],
+	["car2","Second Car","Own 2 cars","cars",2,"b"],
+	["car5","Collector","Own 5 cars","cars",5,"s"],
+	["carall","Showroom Owner","Own every car","cars_all",1,"g"],
+	["chase1","Great Escape","Win a chase","chase",1,"b"],
+	["chase10","Most Wanted","Win 10 chases","chase",10,"s"],
+	["chase50","Untouchable","Win 50 chases","chase",50,"g"],
+	["km1","Out for a Drive","Drive 1 km","drive_km",1,"b"],
+	["km25","Road Trip","Drive 25 km","drive_km",25,"b"],
+	["km100","Road Warrior","Drive 100 km","drive_km",100,"s"],
+	["km500","Road King","Drive 500 km","drive_km",500,"g"],
+	["km2000","Million Miles Club","Drive 2,000 km","drive_km",2000,"l"],
+	["walk1","Stretch Your Legs","Walk or run 1 km","walk_km",1,"b"],
+	["walk10","City Walker","Walk or run 10 km","walk_km",10,"s"],
+	["walk50","Marathon Legs","Walk or run 50 km","walk_km",50,"g"],
+	["night10","Night Rider","Drive 10 km at night","night_km",10,"s"],
+	["sky1","Sky High","Ride the Harbor Loop","sky_rides",1,"b"],
+	["sky25","Commuter","Ride the Harbor Loop 25 times","sky_rides",25,"s"],
+	["tour1","City Tour","Complete a City Tour","tours",1,"s"],
+	["tour10","Tour Guide","Complete 10 City Tours","tours",10,"g"],
+	["bus1","All Aboard","Ride the Airport Line bus","bus_rides",1,"b"],
+	["bus20","Bus Buddy","Ride the bus 20 times","bus_rides",20,"s"],
+	["ttt1","X Marks Win","Win tic-tac-toe","ttt_wins",1,"b"],
+	["ttt25","Grid Master","Win 25 games of tic-tac-toe","ttt_wins",25,"s"],
+	["rps1","Rock Solid","Win rock paper scissors","rps_wins",1,"b"],
+	["rps25","Mind Reader","Win 25 rock paper scissors rounds","rps_wins",25,"s"],
+	["c4w1","Four in a Row","Win Connect Four","c4_wins",1,"b"],
+	["c4w25","Connect Champion","Win 25 games of Connect Four","c4_wins",25,"s"],
+	["rx1","Quick Draw","Win a Reaction Duel","rx_wins",1,"b"],
+	["rx25","Lightning Hands","Win 25 Reaction Duels","rx_wins",25,"s"],
+	["mem1","Good Memory","Finish Memory Match","mem_games",1,"b"],
+	["memfast","Photographic","Finish Memory Match under 35 s","mem_fast",1,"s"],
+	["memfast10","Total Recall","Finish Memory Match under 35 s ten times","mem_fast",10,"g"],
+	["joke1","Good Sport","Watch a comedy show","jokes",1,"b"],
+	["qp1k","Quiz Kid","Score 1,000 quiz points","quiz_points",1000,"b"],
+	["qp10k","Brainbox","Score 10,000 quiz points","quiz_points",10000,"s"],
+	["qw1","Quiz Champ","Win a Party Quiz","quiz_wins",1,"s"],
+	["qw10","Quiz Master","Win 10 Party Quizzes","quiz_wins",10,"g"],
+	["qw50","Genius of the Dome","Win 50 Party Quizzes","quiz_wins",50,"l"],
+	["gp1","Lights Out","Race a Grand Prix","gp_races",1,"b"],
+	["gpw1","Podium Top","Win a Grand Prix","gp_wins",1,"s"],
+	["gpw10","Racing Legend","Win 10 Grand Prix","gp_wins",10,"g"],
+	["gpw50","World Champion","Win 50 Grand Prix","gp_wins",50,"l"],
+	["fr1","New Friend","Make a friend","friends",1,"b"],
+	["fr10","Popular","Have 10 friends","friends",10,"s"],
+	["fr25","Life of the Party","Have 25 friends","friends",25,"g"],
+	["hf1","Up Top!","Give a high-five","highfives",1,"b"],
+	["hf50","High-Five Machine","Give 50 high-fives","highfives",50,"s"],
+	["hf250","Hands of Gold","Give 250 high-fives","highfives",250,"g"],
+	["gift1","Generous","Give a gift","gifts",1,"b"],
+	["gift25","Philanthropist","Give 25 gifts","gifts",25,"s"],
+	["gift100","Heart of Harbor City","Give 100 gifts","gifts",100,"g"],
+	["kind50","Kind Soul","Reach 50 kindness","kindness",50,"s"],
+	["kind250","Saint of the Streets","Reach 250 kindness","kindness",250,"g"],
+	["crew","Crew Up","Join or start a crew","crew",1,"b"],
+	["hang10","Squad Goals","Hang out with friends 10 times","hangouts",10,"s"],
+	["dance5","Dance Floor Debut","Dance for 5 minutes","dance_min",5,"b"],
+	["dance60","Disco Fever","Dance for 60 minutes","dance_min",60,"s"],
+	["photo1","Say Cheese","Take a group photo","photos",1,"b"],
+	["photo25","Photographer","Take 25 group photos","photos",25,"s"],
+	["fm1","Found You!","Find a FIND ME hider","fm_finds",1,"b"],
+	["fm10","Seeker Supreme","Find 10 FIND ME hiders","fm_finds",10,"s"],
+	["ach25","Achiever","Unlock 25 achievements","achievements",25,"g"],
+	["ach60","Completionist","Unlock 60 achievements","achievements",60,"l"],
+]
+var stats := {}
+var ach_got := {}
+var ach_ready := false
+var ach_check_t := 0.0
+var ach_queue: Array = []
+var ach_banner: PanelContainer
+var ach_banner_label: Label
+var ach_banner_t := 0.0
+var ach_panel: PanelContainer
+var ach_list: VBoxContainer
+var ach_info: Label
+
+func _stat_add(key: String, n := 1.0) -> void:
+	stats[key] = float(stats.get(key,0.0))+n
+
+func _sites_found() -> int:
+	return _civic_count()+_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count()
+
+func _sites_total() -> int:
+	return CIVIC.size()+RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size()+DOWNTOWN.size()
+
+func _bits(mask: int) -> int:
+	var n := 0
+	while mask != 0:
+		n += mask & 1
+		mask >>= 1
+	return n
+
+func _ach_value(key: String) -> float:
+	match key:
+		"level":
+			return float(_level())
+		"cash":
+			return float(cash)
+		"deliveries":
+			return float(deliveries)
+		"quests":
+			return float(quick_done)
+		"finds":
+			return float(_find_count())
+		"sites":
+			return float(_sites_found())
+		"sites_all":
+			return 1.0 if _sites_found() >= _sites_total() else 0.0
+		"treasure":
+			return float(treasure_count)
+		"trials":
+			return float(_bits(trial_done))
+		"trials_all":
+			return 1.0 if _bits(trial_done) >= TRIALS.size() else 0.0
+		"cars":
+			return float(_owned_count())
+		"cars_all":
+			return 1.0 if _owned_count() >= CARS.size() else 0.0
+		"chase":
+			return float(chase_wins)
+		"friends":
+			return float(friends.size())
+		"kindness":
+			return float(kindness)
+		"crew":
+			return 1.0 if crew_name != "" else 0.0
+		"drive_km":
+			return float(stats.get("drive_m",0.0))/1000.0
+		"walk_km":
+			return float(stats.get("walk_m",0.0))/1000.0
+		"night_km":
+			return float(stats.get("night_m",0.0))/1000.0
+		"dance_min":
+			return float(stats.get("dance_s",0.0))/60.0
+		"achievements":
+			return float(ach_got.size())
+	return float(stats.get(key,0.0))
+
+func _ach_tick(delta: float) -> void:
+	# Distance travelled (by speed, so teleports and fast travel don't count).
+	if player != null and not paused:
+		if driving:
+			var v := Vector2(car.velocity.x,car.velocity.z).length()
+			if v < 80.0:
+				_stat_add("drive_m",v*delta)
+				if night_amt > 0.5:
+					_stat_add("night_m",v*delta)
+		elif not bus_riding and not sky_riding and seat_id < 0:
+			var w := Vector2(player.velocity.x,player.velocity.z).length()
+			if w < 20.0:
+				_stat_add("walk_m",w*delta)
+	if ach_banner != null and ach_banner_t > 0.0:
+		ach_banner_t -= delta
+		if ach_banner_t <= 0.0:
+			ach_banner.hide()
+	if ach_banner != null and ach_banner_t <= 0.0 and not ach_queue.is_empty():
+		_ach_show(ach_queue.pop_front())
+	ach_check_t -= delta
+	if ach_check_t > 0.0 or player == null or legacy_rules or "--smoke-test" in OS.get_cmdline_user_args():
+		return
+	ach_check_t = 1.0
+	_ach_check()
+
+func _ach_check() -> void:
+	# The first check after loading quietly awards everything you had already earned (one summary).
+	var silent := not ach_ready
+	var new_ones := []
+	for pass_i in 2:
+		for a in ACH:
+			var id := String(a[0])
+			if ach_got.has(id):
+				continue
+			if _ach_value(String(a[3])) >= float(a[4]):
+				ach_got[id] = Time.get_date_string_from_system()
+				new_ones.append(a)
+	if new_ones.is_empty():
+		ach_ready = true
+		return
+	var money := 0
+	var xp := 0
+	for a in new_ones:
+		var tier: Dictionary = ACH_TIERS[String(a[5])]
+		money += int(tier["cash"])
+		xp += int(tier["xp"])
+	cash += money
+	bonus_xp += xp
+	if silent:
+		_show_toast("ACHIEVEMENTS: you've already earned %d! +$%d +%d XP. See Menu > Achievements." % [new_ones.size(),money,xp])
+	else:
+		for a in new_ones:
+			ach_queue.append(a)
+			if String(a[5]) == "g" or String(a[5]) == "l":
+				_online_event_send("ach",{"a":String(a[0])})
+				_feed_add("★ You unlocked %s: %s!" % [ACH_TIERS[String(a[5])]["name"],String(a[1])],"")
+		if not ("--smoke-test" in OS.get_cmdline_user_args()):
+			_play_coin()
+	ach_ready = true
+	_save_progress()
+
+func _ach_by_id(id: String) -> Array:
+	for a in ACH:
+		if String(a[0]) == id:
+			return a
+	return []
+
+func _ach_msg(p: Dictionary) -> void:
+	# Someone online unlocked a big one: everyone sees it in the feed.
+	var from := String(p.get("i",""))
+	if from == "" or from == online_id:
+		return
+	var a := _ach_by_id(String(p.get("a","")))
+	if a.is_empty() or not (String(a[5]) == "g" or String(a[5]) == "l"):
+		return
+	var nm := _online_clean_name(String(p.get("n","Player")))
+	_feed_add("★ %s unlocked %s: %s!" % [nm,ACH_TIERS[String(a[5])]["name"],String(a[1])],"")
+	if online_peers.has(from):
+		_emote(online_peers[from].get("person",{}),3)
+
+func _build_ach(root: Control) -> void:
+	ach_banner = PanelContainer.new()
+	root.add_child(ach_banner)
+	ach_banner_label = _label("",22,Color("fff5dc"))
+	ach_banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ach_banner.add_child(ach_banner_label)
+	ach_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ach_banner.hide()
+	ach_panel = PanelContainer.new()
+	ach_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	ach_panel.custom_minimum_size = Vector2(860,0)
+	root.add_child(ach_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",10)
+	ach_panel.add_child(col)
+	col.add_child(_label("ACHIEVEMENTS",26,Color("f0bd62")))
+	ach_info = _label("",17,Color("cbd8de"))
+	ach_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ach_info.custom_minimum_size.x = 820
+	col.add_child(ach_info)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(840,460)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	ach_list = VBoxContainer.new()
+	ach_list.add_theme_constant_override("separation",4)
+	ach_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(ach_list)
+	col.add_child(_button("Close",_close_ach))
+	ach_panel.hide()
+
+func _ach_show(a: Array) -> void:
+	var tier: Dictionary = ACH_TIERS[String(a[5])]
+	var sb := _panel(Color(0.06,0.1,0.16,0.95),18)
+	sb.border_color = tier["col"]
+	sb.set_border_width_all(4)
+	sb.content_margin_left = 22
+	sb.content_margin_right = 22
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	ach_banner.add_theme_stylebox_override("panel",sb)
+	ach_banner_label.text = "★ %s ACHIEVEMENT ★\n%s\n%s  ·  +$%d  +%d XP" % [tier["name"],String(a[1]),String(a[2]),int(tier["cash"]),int(tier["xp"])]
+	ach_banner_label.add_theme_color_override("font_color",(tier["col"] as Color).lightened(0.35))
+	ach_banner.show()
+	ach_banner.size = Vector2(0,0)
+	var view := get_viewport().get_visible_rect().size
+	ach_banner.position = Vector2((view.x-ach_banner.get_combined_minimum_size().x)/2.0,view.y*0.52)
+	ach_banner_t = 4.0
+	if String(a[5]) == "g" or String(a[5]) == "l":
+		_emote(player_person,3)
+
+func _open_ach() -> void:
+	if not paused:
+		_toggle_menu()
+	_refresh_ach()
+	_open_panel(ach_panel)
+
+func _close_ach() -> void:
+	if paused:
+		_toggle_menu()
+
+func _refresh_ach() -> void:
+	ach_info.text = "%d of %d unlocked. Gold and Legend achievements are announced to everyone online. Rewards: Bronze $100, Silver $250, Gold $750, Legend $2,000.\nYour ring's colour shows your level (green 1-4, cyan 5-9, blue 10-14, orange 15-19, rainbow at 20). The glow under it and your name tag show your best achievement: bronze, silver, gold or purple for Legend." % [ach_got.size(),ACH.size()]
+	for child in ach_list.get_children():
+		child.queue_free()
+	# Unlocked first (newest tiers first), then the closest ones to go.
+	var rows := []
+	for a in ACH:
+		var got := ach_got.has(String(a[0]))
+		var prog := clampf(_ach_value(String(a[3]))/float(a[4]),0.0,1.0)
+		rows.append([a,got,prog])
+	rows.sort_custom(func(x, y): return (1 if x[1] else 0) > (1 if y[1] else 0) or (x[1] == y[1] and float(x[2]) > float(y[2])))
+	for r in rows:
+		var a: Array = r[0]
+		var tier: Dictionary = ACH_TIERS[String(a[5])]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation",10)
+		ach_list.add_child(row)
+		var badge := _label(("★ " if r[1] else "☆ ")+String(tier["name"]),16,(tier["col"] as Color) if r[1] else Color("6f7f88"))
+		badge.custom_minimum_size.x = 120
+		row.add_child(badge)
+		var cur := _ach_value(String(a[3]))
+		var goal := float(a[4])
+		var prog_txt := "DONE" if r[1] else ("%s / %s" % [_ach_num(minf(cur,goal)),_ach_num(goal)])
+		var lab := _label("%s  —  %s   (%s)" % [String(a[1]),String(a[2]),prog_txt],17,Color("fff5dc") if r[1] else Color("9fb3bd"))
+		lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lab.custom_minimum_size.x = 700
+		row.add_child(lab)
+	if ach_panel.visible:
+		ach_panel.reset_size()
+		_layout_panels()
+
+func _ach_num(v: float) -> String:
+	return str(int(v)) if v >= 10.0 or is_equal_approx(v,round(v)) else "%.1f" % v
 
 func _minimap_tap() -> void:
 	# On the clean screen the minimap is the way into the Menu (the full map is the first Menu button).
@@ -5259,7 +6486,7 @@ func _input(event: InputEvent) -> void:
 			# Godot mouse emulation handles only the first finger; dispatch touch UI explicitly.
 			for button: Button in touch_buttons:
 				if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
-					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button)) or (quest_panel != null and quest_panel.is_ancestor_of(button)) or (social_panel != null and social_panel.is_ancestor_of(button))
+					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button)) or (quest_panel != null and quest_panel.is_ancestor_of(button)) or (social_panel != null and social_panel.is_ancestor_of(button)) or (ach_panel != null and ach_panel.is_ancestor_of(button))
 					if not paused and in_overlay:
 						continue
 					if paused and not in_overlay:
@@ -5756,6 +6983,8 @@ func _open_panel(panel: Control) -> void:
 		quest_panel.hide()
 	if social_panel != null:
 		social_panel.hide()
+	if ach_panel != null:
+		ach_panel.hide()
 	panel.show()
 	panel.reset_size()
 	_layout_panels()
@@ -5774,6 +7003,8 @@ func _layout_panels() -> void:
 		quest_panel.position = Vector2((view.x-quest_panel.size.x)/2.0,maxf(8.0,(view.y-quest_panel.size.y)/2.0))
 	if social_panel != null:
 		social_panel.position = Vector2((view.x-social_panel.size.x)/2.0,maxf(8.0,(view.y-social_panel.size.y)/2.0))
+	if ach_panel != null:
+		ach_panel.position = Vector2((view.x-ach_panel.size.x)/2.0,maxf(8.0,(view.y-ach_panel.size.y)/2.0))
 
 func _toggle_menu() -> void:
 	if crate_open:
@@ -5797,6 +7028,10 @@ func _toggle_menu() -> void:
 		travel_panel.hide()
 	if quest_panel != null:
 		quest_panel.hide()
+	if social_panel != null:
+		social_panel.hide()
+	if ach_panel != null:
+		ach_panel.hide()
 	if paused:
 		_open_panel(menu)
 	else:
@@ -5891,6 +7126,8 @@ func _save_progress() -> void:
 	file.set_value("social","kindness",kindness)
 	file.set_value("social","gifts_day",gifts_day)
 	file.set_value("social","gifts_sent",gifts_sent)
+	file.set_value("ach","stats",stats)
+	file.set_value("ach","got",ach_got)
 	file.set_value("progress","tour_day",tour_day)
 	file.set_value("progress","tour_got",tour_got)
 	file.set_value("progress","treasure_got",treasure_got)
@@ -5919,6 +7156,10 @@ func _load_progress() -> void:
 		kindness = int(file.get_value("social","kindness",0))
 		gifts_day = String(file.get_value("social","gifts_day",""))
 		gifts_sent = int(file.get_value("social","gifts_sent",0))
+		var st = file.get_value("ach","stats",{})
+		stats = st if st is Dictionary else {}
+		var ag = file.get_value("ach","got",{})
+		ach_got = ag if ag is Dictionary else {}
 		tour_day = String(file.get_value("progress","tour_day",""))
 		tour_got = int(file.get_value("progress","tour_got",0)) & ((1 << SKY_STATIONS.size())-1)
 		treasure_got = int(file.get_value("progress","treasure_got",-1))
@@ -6191,6 +7432,8 @@ func _process(delta: float) -> void:
 	_clean_hud_tick()
 	_quest_offer_tick()
 	_social_tick(delta)
+	_quiz_tick(delta)
+	_ach_tick(delta)
 	if radio_station > 0 and radio_streams.has(radio_station):
 		radio_line_time += delta
 		if radio_line_time > 9.0:
@@ -6585,6 +7828,145 @@ func _smoke_test() -> void:
 	quest_offer_idx = -1
 	quest_offer_panel.hide()
 	quest_bar.hide()
+	# v0.34: achievements; and the Players panel closes properly (it used to stay on screen).
+	_open_social()
+	_close_social()
+	assert(not social_panel.visible and not paused,"Closing Players & friends hides it")
+	var was_ach := [stats.duplicate(),ach_got.duplicate(),ach_ready,cash,bonus_xp,feed.duplicate(),ach_queue.duplicate()]
+	assert(ACH.size() >= 75,"Plenty of achievements (%d)" % ACH.size())
+	var ids := {}
+	for a in ACH:
+		assert(not ids.has(String(a[0])) and ACH_TIERS.has(String(a[5])),"Achievement ids are unique and tiers known: %s" % String(a[0]))
+		ids[String(a[0])] = true
+	stats.clear()
+	ach_got.clear()
+	ach_ready = false
+	ach_queue.clear()
+	var c_ach := cash
+	_ach_check()
+	assert(ach_ready and ach_queue.is_empty() and (ach_got.is_empty() or cash > c_ach),"Already-earned ones are awarded quietly in one go")
+	stats["c4_wins"] = 1.0
+	_ach_check()
+	assert(ach_got.has("c4w1") and not ach_queue.is_empty(),"Winning Connect Four unlocks an achievement with a banner")
+	feed.clear()
+	stats["drive_m"] = 500000.0
+	_ach_check()
+	assert(ach_got.has("km500") and ach_got.has("km100") and not ach_got.has("km2000"),"Driving 500 km unlocks the road achievements up to Road King")
+	var announced := false
+	for it in feed:
+		if String(it["text"]).contains("GOLD") and String(it["text"]).contains("Road King"):
+			announced = true
+	assert(announced,"Gold achievements are announced in the chat feed")
+	# Highlights: ring colour by level, glow and name colour by best achievement tier.
+	assert(_level_color(3) != _level_color(7) and _level_color(12) != _level_color(17),"Each level band has its own ring colour")
+	assert(_my_ach_tier() == 2,"Best tier so far is Gold (Road King)")
+	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":16,"s":-1,"q":-1,"qn":0,"e":-1,"en":0,"rc":0,"cr":"","cc":0,"k":0,"at":3,"ac":40})
+	var pr: MeshInstance3D = online_peers["col1"]["ring"]
+	assert((pr.material_override as StandardMaterial3D).albedo_color.is_equal_approx(_level_color(16).lightened(0.15)),"Another player's ring shows their level colour")
+	_online_update_peers(0.016)
+	var plab: Label3D = online_peers["col1"]["label"]
+	assert(plab.modulate.is_equal_approx(_tier_color(3)) and plab.text.contains("◆40"),"Their name tag shows their Legend colour and achievement count")
+	(online_peers["col1"]["node"] as Node3D).queue_free()
+	online_peers.erase("col1")
+	_ach_msg({"i":"mia9","n":"Mia","a":"lv20"})
+	assert(String(feed[feed.size()-1]["text"]).contains("Mia unlocked LEGEND"),"Other players' big achievements are announced to you")
+	_ach_msg({"i":"mia9","n":"Mia","a":"job1"})
+	assert(not String(feed[feed.size()-1]["text"]).contains("Special Delivery"),"Small ones aren't announced")
+	_ach_tick(0.0)
+	assert(ach_banner.visible,"The unlock banner shows")
+	_open_ach()
+	assert(paused and ach_panel.visible and ach_list.get_child_count() == ACH.size(),"Achievements list shows them all")
+	_close_ach()
+	assert(not ach_panel.visible and not paused,"Achievements list closes")
+	stats = was_ach[0]
+	ach_got = was_ach[1]
+	ach_ready = was_ach[2]
+	cash = was_ach[3]
+	bonus_xp = was_ach[4]
+	feed = was_ach[5]
+	ach_queue = was_ach[6]
+	ach_banner.hide()
+	ach_banner_t = 0.0
+	_feed_render()
+	# v0.33: Harbor Dome arcade and party quiz.
+	var was_a := [cash,bonus_xp,player.position,driving,quick_on]
+	driving = false
+	cash = 1000
+	var b4 := _c4_empty()
+	for r in 4:
+		b4[r*7+2] = 1
+	assert(_c4_winner(b4) == 1,"Connect Four: four in a column wins")
+	var b5 := _c4_empty()
+	for c in 3:
+		b5[c] = 2
+	assert(_c4_bot_move(b5,1) == 3 or _c4_bot_move(b5,1) == 3,"The robot blocks three in a row")
+	_sit(_seat_of("c4",0,0))
+	assert(seat_id >= 0 and game_panel.visible and c4_box.visible,"Connect Four table opens its board")
+	_c4_tap(3)
+	assert(cash == 1000-C4_PRICE and int(c4[0]["b"][3]) == 1,"Dropping a disc pays and lands at the bottom")
+	for i in 40:
+		_seated_tick(0.05)
+	assert(int(c4[0]["turn"]) == 1,"The robot answers")
+	_stand_up()
+	_sit(_seat_of("rx",0,0))
+	assert(rx_button.visible,"Reaction Duel shows its big button")
+	var c_rx := cash
+	_rx_tap()
+	assert(String(rx[0]["state"]) == "wait" and cash == c_rx-RX_PRICE,"Reaction round starts and pays")
+	rx[0]["wait"] = 0.0
+	_seated_tick(0.016)
+	assert(String(rx[0]["state"]) == "go","GREEN after the wait")
+	rx[0]["go_at"] = clock-0.15
+	_rx_tap()
+	assert(String(rx[0]["state"]) == "done" and String(rx[0]["msg"]) != "","Round settles against the robot")
+	_stand_up()
+	_sit(_seat_of("mem",0,0))
+	var c_mem := cash
+	_mem_start()
+	assert(bool(mem["playing"]) and cash == c_mem-MEM_PRICE,"Memory Match starts")
+	for k in 8:
+		var pair := []
+		for i in 16:
+			if int(mem["cards"][i]) == k:
+				pair.append(i)
+		_mem_tap(pair[0])
+		_mem_tap(pair[1])
+	assert(not bool(mem["playing"]) and cash >= c_mem and mem_best_board.has(_my_name()),"Clearing all pairs pays and posts a best time")
+	_stand_up()
+	# Party quiz: same question for everyone at the same time; points for right answers; prize for the winner.
+	var per := float(QUIZ_Q_TIME*(QUIZ_ROUND+1))
+	quiz_time_override = per*5000.0+1.0
+	player.position = QUIZ_C+Vector3(0,0.9,0)
+	_quiz_tick(0.016)
+	assert(_in_quiz() and quiz_panel.visible and quiz_buttons[0].visible,"Standing in the quiz zone shows the question")
+	var qa := _quiz_question(5000,0)
+	assert(qa["answers"].size() == 4 and _quiz_question(5000,0)["text"] == qa["text"],"Every phone gets the same question")
+	assert(_quiz_question(5000,1)["text"] != qa["text"],"No repeat inside a round")
+	_quiz_answer(int(qa["correct"]))
+	assert(quiz_score >= 100,"A right answer scores")
+	var score := quiz_score
+	_quiz_answer((int(qa["correct"])+1) % 4)
+	assert(quiz_score == score,"Only one answer per question")
+	quiz_score = 5000
+	var c_q := cash
+	quiz_time_override = per*5000.0+float(QUIZ_Q_TIME*QUIZ_ROUND)+1.0
+	_quiz_tick(0.016)
+	assert(cash == c_q+QUIZ_PRIZE,"Top score wins the quiz prize")
+	quiz_time_override = -1.0
+	player.position = Vector3(10,0.9,10)
+	_quiz_tick(0.016)
+	assert(not quiz_panel.visible,"Quiz card hides outside the zone")
+	_online_peer_update({"i":"far1","n":"Far","x":-650.0,"y":0.9,"z":-700.0,"r":0.0,"c":0,"d":0,"t":0,"l":3,"s":-1,"q":-1,"qn":0,"e":-1,"en":0,"rc":0})
+	assert(online_peers.has("far1"),"Players at the airport and Westside edges are seen online")
+	(online_peers["far1"]["node"] as Node3D).queue_free()
+	online_peers.erase("far1")
+	cash = was_a[0]
+	bonus_xp = was_a[1]
+	player.position = was_a[2]
+	driving = was_a[3]
+	quick_on = was_a[4]
+	mem_best_board.clear()
+	mem["best"] = 0.0
 	# v0.32: social. A simulated player "Mia" joins; friend request, invite, high-five, gift, crew, dancing.
 	var was_s := [online_on,online_state,online_id,cash,bonus_xp,kindness,friends.duplicate(),crew_name,crew_color,gifts_sent,gifts_day,player.position,driving,feed.duplicate()]
 	online_on = true
@@ -7981,17 +9363,18 @@ func _place(items: Dictionary, name: String, pos: Vector3, yaw: float, scale := 
 func _signal_pole(poles: Array, ns_caps: Array, ew_caps: Array, corner: Vector3, yaw: float, ns: bool, reach := 3.9) -> void:
 	# v0.30: tall mast-arm signals. 4-lane roads get two lights hanging over the lanes, narrow roads one.
 	var heads: Array = [5.1,10.1] if reach > 3.8 else [reach+0.3]
-	poles.append([corner,yaw,heads])
+	poles.append([corner,yaw,heads,ns])
 	var b := Basis(Vector3.UP,yaw)
-	var size := Vector3(0.06,0.36,0.36) if absf(sin(yaw)) > 0.7 else Vector3(0.36,0.36,0.06)
+	# v0.33: a glowing LED bar along the arm (both faces) instead of three round lamps.
+	var size := Vector3(0.05,0.16,1.5) if absf(sin(yaw)) > 0.7 else Vector3(1.5,0.16,0.05)
 	for r in heads:
 		var h := corner+b*Vector3(float(r),0,0)+Vector3(0,SIG_HEAD_Y,0)
 		for f in [-1.0,1.0]:
-			(ns_caps if ns else ew_caps).append([h+b*Vector3(0,0,f*0.23),size])
+			(ns_caps if ns else ew_caps).append([h+b*Vector3(0,0,f*0.13),size])
 
 const SIG_POLE_H := 7.4
 const SIG_ARM_Y := 7.1
-const SIG_HEAD_Y := 6.0
+const SIG_HEAD_Y := 6.75
 const LAMP_H := 8.8
 const LAMP_ARM := 3.2
 
@@ -8020,40 +9403,100 @@ func _cyl_batch(color: Color, items: Array, top := 0.8) -> MultiMeshInstance3D:
 	return inst
 
 func _city_signals(items: Array) -> void:
-	# items: [corner, yaw, head distances along the arm]. A slim grey pole, a long arm over the road,
-	# dark light housings (the lit middle lamp is drawn from the signal caps), and a walk signal.
+	# v0.33 futuristic signals. items: [corner, yaw, head distances along the arm, ns axis].
+	# A slim white pole, a thin arm with a cyan light line underneath, a sleek dark bar under the arm
+	# whose LED faces (the signal caps) glow green, amber or red, a neon ring at the foot that matches
+	# the light, and a glass walk panel.
 	var poles := []
 	var bases := []
 	var arms := []
-	var housings := []
-	var hangers := []
-	var reds := []
-	var greens := []
+	var arm_lines := []
+	var bars := []
+	var tips := []
 	var walks := []
+	var rings_ns := []
+	var rings_ew := []
 	for it in items:
 		var c: Vector3 = it[0]
-		var b := Basis(Vector3.UP,float(it[1]))
+		var yaw := float(it[1])
+		var b := Basis(Vector3.UP,yaw)
 		var heads: Array = it[2]
+		var ns := bool(it[3]) if it.size() > 3 else true
 		var far := float(heads.max())
-		poles.append([c+Vector3(0,SIG_POLE_H/2.0,0),0.15,SIG_POLE_H])
-		bases.append([c+Vector3(0,0.3,0),0.3,0.6])
-		arms.append([c+b*Vector3((far+0.5)/2.0,0,0)+Vector3(0,SIG_ARM_Y,0),Vector3(far+0.5,0.18,0.18),float(it[1])])
-		walks.append([c+b*Vector3(0,0,0.32)+Vector3(0,3.0,0),Vector3(0.38,0.55,0.3),float(it[1])])
+		poles.append([c+Vector3(0,SIG_POLE_H/2.0,0),0.1,SIG_POLE_H])
+		bases.append([c+Vector3(0,0.15,0),0.24,0.3])
+		arms.append([c+b*Vector3((far+0.9)/2.0,0,0)+Vector3(0,SIG_ARM_Y,0),Vector3(far+0.9,0.12,0.14),yaw])
+		arm_lines.append([c+b*Vector3((far+0.9)/2.0,0,0)+Vector3(0,SIG_ARM_Y-0.08,0),Vector3(far+0.9,0.04,0.06),yaw])
+		tips.append([c+Vector3(0,SIG_POLE_H+0.05,0),Vector3(0.24,0.1,0.24),yaw])
+		walks.append([c+b*Vector3(0,0,0.2)+Vector3(0,3.0,0),Vector3(0.34,0.6,0.08),yaw])
+		(rings_ns if ns else rings_ew).append([c+Vector3(0,0.04,0),Vector3(1.1,0.04,1.1),yaw])
 		for r in heads:
 			var h := c+b*Vector3(float(r),0,0)+Vector3(0,SIG_HEAD_Y,0)
-			housings.append([h,Vector3(0.5,1.45,0.4),float(it[1])])
-			hangers.append([h+Vector3(0,0.9,0),Vector3(0.08,0.5,0.08),float(it[1])])
-			for f in [-1.0,1.0]:
-				reds.append([h+b*Vector3(0,0.46,f*0.215),Vector3(0.3,0.3,0.04),float(it[1])])
-				greens.append([h+b*Vector3(0,-0.46,f*0.215),Vector3(0.3,0.3,0.04),float(it[1])])
-	_cyl_batch(Color("5b6066"),poles,0.75)
-	_cyl_batch(Color("4a4f55"),bases,0.8)
-	_box_batch_rot(Color("5b6066"),arms)
-	_box_batch_rot(Color("5b6066"),hangers)
-	_box_batch_rot(Color("1d2023"),housings)
-	_box_batch_rot(Color("1d2023"),walks)
-	_box_batch_rot(Color("4a1712"),reds)
-	_box_batch_rot(Color("123a1f"),greens)
+			bars.append([h,Vector3(1.7,0.28,0.2),yaw])
+	var white := StandardMaterial3D.new()
+	white.albedo_color = Color("e9edf0")
+	white.metallic = 0.35
+	white.roughness = 0.3
+	var pi := _cyl_batch(Color("e9edf0"),poles,0.8)
+	if pi != null:
+		pi.material_override = white
+	var bi := _cyl_batch(Color("2a2f36"),bases,0.9)
+	var ai := _box_batch_rot(Color("e9edf0"),arms)
+	if ai != null:
+		ai.material_override = white
+	var li := _box_batch_rot(NEON_CYAN,arm_lines)
+	if li != null:
+		li.material_override = _neon_mat(NEON_CYAN)
+	var ti := _box_batch_rot(NEON_CYAN,tips)
+	if ti != null:
+		ti.material_override = _neon_mat(NEON_CYAN)
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color("15181d")
+	dark.metallic = 0.5
+	dark.roughness = 0.25
+	var ri := _box_batch_rot(Color("15181d"),bars)
+	if ri != null:
+		ri.material_override = dark
+	var wi := _box_batch_rot(Color("1b2a33"),walks)
+	if wi != null:
+		var wm := StandardMaterial3D.new()
+		wm.albedo_color = Color("1b2a33")
+		wm.emission_enabled = true
+		wm.emission = Color("ffffff")
+		wm.emission_energy_multiplier = 0.6
+		wi.material_override = wm
+	# Foot rings take the same live colour as the light bars (set up in _ensure_light_mats).
+	_ensure_light_mats()
+	for pair in [[rings_ns,light_ns_mat],[rings_ew,light_ew_mat]]:
+		var torus_items := []
+		for it2 in pair[0]:
+			torus_items.append(it2[0])
+		if torus_items.is_empty():
+			continue
+		var tm := TorusMesh.new()
+		tm.inner_radius = 0.42
+		tm.outer_radius = 0.55
+		tm.rings = 20
+		tm.ring_segments = 4
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = tm
+		mm.instance_count = torus_items.size()
+		for k in torus_items.size():
+			mm.set_instance_transform(k,Transform3D(Basis.from_scale(Vector3(1,0.25,1)),torus_items[k]))
+		var inst := MultiMeshInstance3D.new()
+		inst.multimesh = mm
+		inst.material_override = pair[1]
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(inst)
+
+func _ensure_light_mats() -> void:
+	if light_ns_mat == null:
+		light_ns_mat = _material(Color("4fd36a"))
+		light_ew_mat = _material(Color("e04a3a"))
+	for m in [light_ns_mat,light_ew_mat]:
+		m.emission_enabled = true
+		m.emission_energy_multiplier = 2.4
 
 var lamp_glow_mat: StandardMaterial3D
 
@@ -8512,6 +9955,14 @@ func _path_sample(path: Dictionary, s: float) -> Array:
 			return [a.lerp(b,t),(b-a).normalized()]
 	return [way[0],((way[1] as Vector2)-(way[0] as Vector2)).normalized()]
 
+func _light_look(axis: int) -> int:
+	# 0 red, 1 green, 2 amber (green, about to change). Cars still go on amber, like before.
+	if not _light_green(axis):
+		return 0
+	var t := fposmod(clock,LIGHT_CYCLE)
+	var end := 9.0 if axis == 0 else 19.0
+	return 2 if end-t < 1.6 else 1
+
 func _light_green(axis: int) -> bool:
 	var t := fposmod(clock,LIGHT_CYCLE)
 	return t < 9.0 if axis == 0 else (t >= 10.0 and t < 19.0)
@@ -8538,12 +9989,14 @@ func _traffic_blocked_by(pos: Vector2, dir: Vector2, other: Vector2) -> float:
 const TRAFFIC_PED_PATIENCE := 4.0
 
 func _traffic_tick(delta: float) -> void:
-	var state := (1 if _light_green(0) else 0)+(2 if _light_green(1) else 0)
+	var state := _light_look(0)+3*_light_look(1)
 	if state != light_state and light_ns_mat != null:
 		light_state = state
-		light_ns_mat.albedo_color = Color("4fd36a") if _light_green(0) else Color("e04a3a")
+		# v0.33: LED colours, with amber for the last moments of green.
+		var cols := [Color("ff3b4a"),Color("3dff8a"),Color("ffb020")]
+		light_ns_mat.albedo_color = cols[_light_look(0)]
 		light_ns_mat.emission = light_ns_mat.albedo_color
-		light_ew_mat.albedo_color = Color("4fd36a") if _light_green(1) else Color("e04a3a")
+		light_ew_mat.albedo_color = cols[_light_look(1)]
 		light_ew_mat.emission = light_ew_mat.albedo_color
 	if not traffic_on:
 		return
@@ -10269,6 +11722,7 @@ func _build_hub() -> void:
 			continue
 		palms.append([HUB_C+Vector3(cos(a),0,sin(a))*41.0,a,0.9])
 	_model_batch("res://models/palm.glb",palms)
+	_build_arcade()
 	_build_hub_bots()
 
 func _hub_glass(node: Node) -> void:
@@ -10464,6 +11918,12 @@ func _seat_label(i: int) -> String:
 			return "SIT · ROCK PAPER SCISSORS"
 		"show":
 			return "SIT · COMEDY SHOW"
+		"c4":
+			return "SIT · CONNECT FOUR"
+		"rx":
+			return "PLAY · REACTION DUEL"
+		"mem":
+			return "PLAY · MEMORY MATCH"
 	return "SIT DOWN"
 
 func _sit(i: int) -> void:
@@ -10492,6 +11952,22 @@ func _sit(i: int) -> void:
 		g["them"] = -1
 		g["bot"] = t < 2
 		g["msg"] = ""
+	elif kind == "c4":
+		var g: Dictionary = c4[t]
+		g["b"] = _c4_empty()
+		g["turn"] = 1
+		g["over"] = false
+		g["paid"] = false
+		g["bot"] = _robot_table("c4",t)
+		g["msg"] = ""
+	elif kind == "rx":
+		var g: Dictionary = rx[t]
+		g["bot"] = _robot_table("rx",t)
+		g["state"] = "idle"
+		g["paid"] = false
+		g["msg"] = ""
+	elif kind == "mem":
+		mem["playing"] = false
 	_open_game_panel()
 
 func _stand_up() -> void:
@@ -10521,6 +11997,14 @@ func _seated_tick(delta: float) -> void:
 		_rps_tick(int(seat["table"]),delta)
 	elif kind == "show":
 		_joke_tick(delta)
+	elif kind == "c4":
+		_c4_tick(int(seat["table"]),delta)
+	elif kind == "rx":
+		_rx_tick(int(seat["table"]),delta)
+	elif kind == "mem":
+		_mem_tick(delta)
+		if bool(mem["playing"]) and int(clock*2.0) != int((clock-delta)*2.0):
+			_refresh_game_panel()
 
 # ---------- game panel ----------
 func _build_game_panel(root: Control) -> void:
@@ -10563,6 +12047,7 @@ func _build_game_panel(root: Control) -> void:
 	var start := _button("START SHOW  $%d" % HUB_JOKE_PRICE,_joke_start)
 	start.custom_minimum_size = Vector2(360,58)
 	show_row.add_child(start)
+	_build_arcade_panel(col)
 	game_invite_button = _button("LOOKING FOR PLAYERS",_send_lfp)
 	game_invite_button.custom_minimum_size = Vector2(360,52)
 	game_invite_button.add_theme_font_size_override("font_size",18)
@@ -10584,10 +12069,14 @@ func _open_game_panel() -> void:
 		game_panel.hide()
 		_show_toast("Relaxing in the lounge. Tap Chat to say hi, or STAND UP to leave.")
 		return
-	game_title.text = {"ttt":"TIC-TAC-TOE  ·  $%d to play, win $%d" % [TTT_PRICE,TTT_PRICE*2],"rps":"ROCK PAPER SCISSORS  ·  $%d a round, win $%d" % [RPS_PRICE,RPS_PRICE*2],"show":"COMEDY SHOW  ·  $%d for %d jokes" % [HUB_JOKE_PRICE,HUB_JOKE_SET]}[kind]
+	game_title.text = {"ttt":"TIC-TAC-TOE  ·  $%d to play, win $%d" % [TTT_PRICE,TTT_PRICE*2],"rps":"ROCK PAPER SCISSORS  ·  $%d a round, win $%d" % [RPS_PRICE,RPS_PRICE*2],"show":"COMEDY SHOW  ·  $%d for %d jokes" % [HUB_JOKE_PRICE,HUB_JOKE_SET],"c4":"CONNECT FOUR  ·  $%d to play, win $%d" % [C4_PRICE,C4_PRICE*2],"rx":"REACTION DUEL  ·  $%d a round, win $%d" % [RX_PRICE,RX_PRICE*2],"mem":"MEMORY MATCH"}[kind]
 	ttt_grid.visible = kind == "ttt"
 	rps_row.visible = kind == "rps"
 	show_row.visible = kind == "show"
+	c4_box.visible = kind == "c4"
+	rx_button.visible = kind == "rx"
+	mem_grid.visible = kind == "mem"
+	mem_play.visible = kind == "mem"
 	game_panel.show()
 	game_panel.reset_size()
 	_refresh_game_panel()
@@ -10629,6 +12118,8 @@ func _refresh_game_panel() -> void:
 			game_status.text = g["msg"]
 		else:
 			game_status.text = "Pick one! ($%d)" % RPS_PRICE if int(g["me"]) < 0 else "You picked %s. Waiting for %s…" % [RPS_NAMES[int(g["me"])],_opponent_name(t,"rps")]
+	elif kind == "c4" or kind == "rx" or kind == "mem":
+		_refresh_arcade_panel(kind,t)
 	elif kind == "show":
 		game_status.text = ("Show in progress: %d jokes to go." % joke_left) if joke_left > 0 else "Sit back and enjoy the robot comedian."
 		for b in show_row.get_children():
@@ -10643,6 +12134,10 @@ func _play_robot() -> void:
 		ttt[int(seat["table"])]["bot"] = true
 	elif String(seat["kind"]) == "rps":
 		rps[int(seat["table"])]["bot"] = true
+	elif String(seat["kind"]) == "c4":
+		c4[int(seat["table"])]["bot"] = true
+	elif String(seat["kind"]) == "rx":
+		rx[int(seat["table"])]["bot"] = true
 	_refresh_game_panel()
 
 func _peer_at(kind: String, table: int, side: int) -> String:
@@ -10653,8 +12148,8 @@ func _peer_at(kind: String, table: int, side: int) -> String:
 	return ""
 
 func _opponent_name(t: int, kind: String) -> String:
-	var g: Dictionary = ttt[t] if kind == "ttt" else rps[t]
-	if g["bot"]:
+	var g: Dictionary = _game_state(kind,t)
+	if g.is_empty() or g["bot"]:
 		return "the robot"
 	var side := 1-int(hub_seats[seat_id]["side"])
 	var id := _peer_at(kind,t,side)
@@ -10755,6 +12250,7 @@ func _ttt_check(t: int) -> void:
 		if g["paid"]:
 			cash += TTT_PRICE*2
 		g["msg"] = "You win! +$%d" % (TTT_PRICE*2)
+		_stat_add("ttt_wins")
 		_emote(player_person,3)
 	else:
 		g["msg"] = "%s wins this one. Try again!" % _opponent_name(t,"ttt").capitalize()
@@ -10827,6 +12323,7 @@ func _rps_resolve(t: int) -> void:
 	elif res == 1:
 		cash += RPS_PRICE*2
 		g["msg"] = "You: %s · %s: %s · You win! +$%d" % [RPS_NAMES[me],who.capitalize(),RPS_NAMES[them],RPS_PRICE*2]
+		_stat_add("rps_wins")
 		_emote(player_person,3)
 	else:
 		g["msg"] = "You: %s · %s: %s · %s wins." % [RPS_NAMES[me],who.capitalize(),RPS_NAMES[them],who.capitalize()]
@@ -10848,7 +12345,13 @@ func _online_game_send(payload: Dictionary) -> void:
 
 func _hub_game_msg(p: Dictionary) -> void:
 	var from := String(p.get("i",""))
-	if from == "" or from == online_id or not online_peers.has(from) or seat_id < 0:
+	if from == "" or from == online_id:
+		return
+	if String(p.get("k","")) == "m":
+		# A Memory Match best time from someone online.
+		mem_best_board[_online_clean_name(String(p.get("n","Player")))] = clampf(float(p.get("tm",999.0)),1.0,999.0)
+		return
+	if not online_peers.has(from) or seat_id < 0:
 		return
 	var seat: Dictionary = hub_seats[seat_id]
 	var t := int(p.get("tb",-1))
@@ -10874,6 +12377,40 @@ func _hub_game_msg(p: Dictionary) -> void:
 		g["turn"] = clampi(int(p.get("n",1)),1,2)
 		_ttt_check(t)
 		_refresh_game_panel()
+	elif String(p.get("k","")) == "c" and String(seat["kind"]) == "c4" and _peer_at("c4",t,side) == from:
+		var code := String(p.get("b",""))
+		if code.length() != 42:
+			return
+		var g: Dictionary = c4[t]
+		if g["bot"]:
+			return
+		if not g["paid"] and _c4_code(g["b"]) == _c4_code(_c4_empty()):
+			if not _pay(C4_PRICE):
+				return
+			g["paid"] = true
+		var b: Array = []
+		for ch in code:
+			b.append(clampi(int(ch),0,2))
+		g["b"] = b
+		g["turn"] = clampi(int(p.get("n",1)),1,2)
+		_c4_check(t)
+		_refresh_game_panel()
+	elif String(p.get("k","")) == "x" and String(seat["kind"]) == "rx" and _peer_at("rx",t,side) == from:
+		var g: Dictionary = rx[t]
+		if g["bot"]:
+			return
+		if String(p.get("s","")) == "go" and String(g["state"]) != "wait" and String(g["state"]) != "go":
+			g["paid"] = _pay(RX_PRICE)
+			g["state"] = "wait"
+			g["wait"] = clampf(float(p.get("d",2.0)),0.5,6.0)
+			g["me"] = -1.0
+			g["them"] = -1.0
+			g["msg"] = ""
+			g["round"] = int(p.get("rd",g["round"]))
+		elif String(p.get("s","")) == "t" and int(p.get("rd",-1)) == int(g["round"]):
+			g["them"] = clampf(float(p.get("ms",3.0)),0.0,9.99)
+			_rx_resolve(t)
+		_refresh_game_panel()
 	elif String(p.get("k","")) == "r" and String(seat["kind"]) == "rps" and _peer_at("rps",t,side) == from:
 		var g: Dictionary = rps[t]
 		if g["bot"]:
@@ -10889,6 +12426,7 @@ func _joke_start() -> void:
 	if not _pay(HUB_JOKE_PRICE):
 		return
 	joke_left = HUB_JOKE_SET
+	_stat_add("jokes")
 	joke_idx = randi() % HubJokes.JOKES.size()
 	joke_phase = 0
 	joke_timer = 0.3
@@ -11354,10 +12892,10 @@ func _at_pvp_table() -> bool:
 		return false
 	var seat: Dictionary = hub_seats[seat_id]
 	var kind := String(seat["kind"])
-	return (kind == "ttt" or kind == "rps") and int(seat["table"]) >= 2
+	return kind in ["ttt","rps","c4","rx"] and not _robot_table(kind,int(seat["table"]))
 
 func _game_name(kind: String) -> String:
-	return "tic-tac-toe" if kind == "ttt" else "rock paper scissors"
+	return {"ttt":"tic-tac-toe","rps":"rock paper scissors","c4":"Connect Four","rx":"Reaction Duel"}.get(kind,"a game")
 
 func _send_lfp() -> void:
 	chat_panel.hide()
@@ -11384,7 +12922,7 @@ func _lfp_msg(event: String, p: Dictionary) -> void:
 	if event == "lfp":
 		var kind := String(p.get("k",""))
 		var seat := int(p.get("s",-1))
-		if (kind != "ttt" and kind != "rps") or seat < 0 or seat >= hub_seats.size() or String(hub_seats[seat]["kind"]) != kind:
+		if not (kind in ["ttt","rps","c4","rx"]) or seat < 0 or seat >= hub_seats.size() or String(hub_seats[seat]["kind"]) != kind:
 			return
 		var invite := {"k":kind,"tb":int(hub_seats[seat]["table"]),"s":seat}
 		for item in feed:
@@ -12792,6 +14330,9 @@ func _rw_finish() -> void:
 				if float(a["done"]) > 0.0 and float(a["done"]) < t:
 					pos += 1
 		var prize: int = GP_PRIZES[mini(pos-1,GP_PRIZES.size()-1)]
+		_stat_add("gp_races")
+		if pos == 1:
+			_stat_add("gp_wins")
 		cash += prize
 		if rw_best_gp <= 0.0 or t < rw_best_gp:
 			rw_best_gp = t
@@ -15526,6 +17067,7 @@ func _fm_check_paid(f: String, pl) -> void:
 		if row is Array and row.size() >= 3 and String(row[0]) == online_id:
 			var amount := clampi(int(row[2]),0,int(FM_PRIZES[k]))
 			fm_paid[f] = [k,amount]
+			_stat_add("fm_finds")
 			cash += amount
 			bonus_xp += 60
 			_save_progress()
@@ -16658,6 +18200,7 @@ func _sky_leave_platform() -> void:
 func _sky_board(k: int, at: int) -> void:
 	sky_wait = -1
 	sky_riding = true
+	_stat_add("sky_rides")
 	sky_train = k
 	sky_last_at = at
 	sky_was_dwell = true
@@ -16768,6 +18311,7 @@ func _tour_stamp(i: int) -> bool:
 	if got >= SKY_STATIONS.size():
 		cash += TOUR_BONUS
 		bonus_xp += TOUR_XP
+		_stat_add("tours")
 		_show_toast("CITY TOUR COMPLETE!  +$%d  +%d XP. A new tour starts tomorrow." % [TOUR_BONUS,TOUR_XP])
 		if not ("--smoke-test" in OS.get_cmdline_user_args()):
 			_play_coin()
@@ -17374,6 +18918,101 @@ func _city_shots() -> void:
 		camera.look_at(sh[4])
 		await _save_shot(String(sh[0]))
 		cam_lock = false
+	# v0.33: four players showing level ring colours and achievement tiers.
+	day_hour_override = 18.4
+	_daynight_apply(true)
+	online_on = true
+	online_state = 3
+	online_retry = 1e9
+	online_id = "me-shot2"
+	var lineup := [["Leo",3,-1,0],["Ava",8,0,0],["Kai",13,1,0],["Mia",17,2,0],["Zed",20,3,0]]
+	for k in lineup.size():
+		var e: Array = lineup[k]
+		_online_peer_update({"i":"ln%d" % k,"n":e[0],"x":DT_PLAZA.x-16.0+8.0*float(k),"y":0.9,"z":DT_PLAZA.z-14.0+2.0*float(k % 2),"r":0.0,"c":0,"d":0,"t":0,"l":e[1],"s":-1,"q":-1,"qn":0,"e":-1,"en":0,"rc":0,"cr":"Neon Riders" if k == 3 else "","cc":3,"k":0,"at":e[2],"ac":[0,6,22,41,88][k]})
+	player.position = DT_PLAZA+Vector3(0,0.9,-4)
+	player.rotation.y = PI
+	treasure_time_override = 1.0
+	for f in 20:
+		await get_tree().physics_frame
+		_online_update_peers(0.05)
+		_social_tick(0.05)
+	if treasure_node != null:
+		treasure_node.visible = false
+	cam_lock = true
+	camera.global_position = DT_PLAZA+Vector3(0,6.5,4)
+	camera.look_at(DT_PLAZA+Vector3(0,0.5,-13))
+	await _save_shot("player-highlights")
+	cam_lock = false
+	treasure_time_override = -1.0
+	for id in online_peers.keys():
+		(online_peers[id]["node"] as Node3D).queue_free()
+	online_peers.clear()
+	online_on = false
+	online_state = 0
+	# v0.34: an achievement banner, a big one in the feed, and the Achievements list.
+	day_hour_override = 16.0
+	_daynight_apply(true)
+	player.position = DT_PLAZA+Vector3(0,0.9,12)
+	for f in 8:
+		await get_tree().physics_frame
+	stats["drive_m"] = 120000.0
+	stats["c4_wins"] = 3.0
+	stats["quiz_points"] = 4200.0
+	ach_ready = true
+	_ach_check()
+	_feed_add("★ Mia unlocked LEGEND: Legend of Harbor City!","")
+	_ach_tick(0.0)
+	for f in 4:
+		await get_tree().process_frame
+	await _save_shot("ach-banner")
+	_open_ach()
+	for f in 4:
+		await get_tree().process_frame
+	await _save_shot("ach-list")
+	_close_ach()
+	ach_banner.hide()
+	feed.clear()
+	_feed_render()
+	# v0.33: the dome game centre: quiz stage, arcade, a Connect Four game and Memory Match.
+	day_hour_override = 13.0
+	_daynight_apply(true)
+	player.position = QUIZ_C+Vector3(-3,0.9,1)
+	player.rotation.y = -PI/2.0
+	quiz_time_override = float(QUIZ_Q_TIME*(QUIZ_ROUND+1))*5000.0+3.0
+	for f in 10:
+		await get_tree().physics_frame
+	_quiz_tick(0.016)
+	cam_lock = true
+	camera.global_position = QUIZ_C+Vector3(-12,5,6)
+	camera.look_at(QUIZ_C+Vector3(8,3.5,0))
+	await _save_shot("dome-quiz")
+	camera.global_position = Vector3(222,9,-14)
+	camera.look_at(Vector3(230,1,6))
+	player.position = Vector3(220,0.9,-12)
+	for f in 6:
+		await get_tree().physics_frame
+	await _save_shot("dome-arcade")
+	cam_lock = false
+	quiz_time_override = -1.0
+	_sit(_seat_of("c4",0,0))
+	cash = maxi(cash,500)
+	for c in [3,3,4]:
+		_c4_tap(c)
+		for i in 30:
+			_seated_tick(0.05)
+	for f in 6:
+		await get_tree().process_frame
+	await _save_shot("dome-connect4")
+	_stand_up()
+	_sit(_seat_of("mem",0,0))
+	_mem_start()
+	_mem_tap(0)
+	_mem_tap(5)
+	for f in 4:
+		await get_tree().process_frame
+	await _save_shot("dome-memory")
+	mem["playing"] = false
+	_stand_up()
 	# v0.32: the dance floor at night with a simulated friend, then the Players panel.
 	day_hour_override = 22.0
 	_daynight_apply(true)

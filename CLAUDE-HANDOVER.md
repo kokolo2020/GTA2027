@@ -461,3 +461,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Fix: `_toggle_menu` now also hides `extra_panels` (leaderboard and market), so Close works on them. Smoke test opens and closes all three.
 - Release commit 5384372, tag v0.34.1, versionCode 51. APK SHA256 e9aeb082171ccbd8ffe152b1f99cbfc53033182dc693213d394643536ae96e32 (43314768 bytes), same certificate.
 - Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.
+
+## v0.34.2 (released 2026-11-19)
+
+- Gear is now a worn mask (`gear_on`, bit i = GEAR[i]); saved as [market] gear_worn (old gear_on index migrated). Broadcast `av[3]` = mask | 128; peers on 0.34.0/0.34.1 sent an index and are still read. `_build_gear(holder, mask)` builds each piece via `_gear_piece`.
+- Harbor Live on old-city block DS_BLOCK (-46,0,17) (building removed): two V screens (DS_SCREEN_SHADER), leaderboard rotating 4 tabs every 7 s from a 45 s Supabase fetch (`ds_get`, top 50 sorted locally), City News (online, treasure countdown, quiz, richest, big achievements from feed), ticker DS_ADS, hologram trophy, watchers.
+- Release commit 39270c3, tag v0.34.2, versionCode 52. APK SHA256 2f7bb244c55e6c042ebc0b126fdc54c3975a78f8284c5ccb2dc0c86f4f43357e (43327056 bytes), same certificate. Bench about 52 fps.
+- Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.

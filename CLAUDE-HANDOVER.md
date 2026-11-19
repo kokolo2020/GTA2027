@@ -468,3 +468,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Harbor Live on old-city block DS_BLOCK (-46,0,17) (building removed): two V screens (DS_SCREEN_SHADER), leaderboard rotating 4 tabs every 7 s from a 45 s Supabase fetch (`ds_get`, top 50 sorted locally), City News (online, treasure countdown, quiz, richest, big achievements from feed), ticker DS_ADS, hologram trophy, watchers.
 - Release commit 39270c3, tag v0.34.2, versionCode 52. APK SHA256 2f7bb244c55e6c042ebc0b126fdc54c3975a78f8284c5ccb2dc0c86f4f43357e (43327056 bytes), same certificate. Bench about 52 fps.
 - Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.
+
+## v0.34.3 (released 2026-11-19)
+
+- Streamer mode (Menu > Streamer mode, `streamer_on`, not saved): `_build_streamer`/`_streamer_tick` (runs after `_social_tick`) hide QR, QUESTS, PLAYERS, pills and feed, fade joystick/action/BOARD/quest bar to 0.4, show a pulsing LIVE badge (opens Menu), a "Play with me" QR card and a leaders line at y 104; fetches the board every 45 s via `ds_get`. Turning off restores qr_small and quests_button visibility.
+- Release commit 4f33485, tag v0.34.3, versionCode 53. APK SHA256 1133e507472c9093bab1bfcd7bf39e9a1b357aeeb1cf193c48b6963b0ee5b99b (43327056 bytes), same certificate.
+- Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.

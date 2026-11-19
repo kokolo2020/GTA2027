@@ -311,6 +311,7 @@ func _ready() -> void:
 	_build_traffic()
 	_build_future()
 	_build_food_court()
+	_build_market()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
 	radio_player = AudioStreamPlayer.new()
 	radio_player.volume_db = -6.0
@@ -335,7 +336,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.33.6: the futuristic Harbor Food Court is open in the old city: hover stands for orange juice, hot dogs and smoothies!")
+	_show_toast("Harbor City 0.34: hover cars, a hoverboard (tap BOARD), the Neon Market for gear and pets, your money on screen and a leaderboard (tap ★ TOP)!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -1693,7 +1694,7 @@ func _online_pos_frame() -> Dictionary:
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
 		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
-		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat]}
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on,pet_on]}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -1871,7 +1872,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	label.outline_size = 12
 	label.font_size = 44
 	label.fixed_size = true
-	label.pixel_size = 0.0011
+	label.pixel_size = 0.00075
 	label.no_depth_test = true
 	label.render_priority = 9
 	node.add_child(label)
@@ -1885,7 +1886,9 @@ func _peer_look(peer: Dictionary, av: Variant) -> void:
 	var sh := clampi(int(av[0]),0,SHIRTS.size()-1)
 	var pa := clampi(int(av[1]),0,PANTS.size()-1)
 	var ht := clampi(int(av[2]),0,HATS.size()-1)
-	var key := "%d|%d|%d" % [sh,pa,ht]
+	var ge := clampi(int(av[3]),0,GEAR.size()-1) if (av as Array).size() >= 5 else 0
+	var pt := clampi(int(av[4]),0,PETS.size()-1) if (av as Array).size() >= 5 else 0
+	var key := "%d|%d|%d|%d|%d" % [sh,pa,ht,ge,pt]
 	if String(peer.get("look","")) == key:
 		return
 	var foot: Node3D = peer["foot"]
@@ -1907,6 +1910,21 @@ func _peer_look(peer: Dictionary, av: Variant) -> void:
 		(pm["Pants"] as StandardMaterial3D).albedo_color = PANTS[pa]["color"]
 	peer["look"] = key
 	_build_hat(peer["hat"],ht,false)
+	if not peer.has("gear"):
+		var gh := Node3D.new()
+		gh.position.y = 0.99
+		foot.add_child(gh)
+		peer["gear"] = gh
+	_build_gear(peer["gear"],ge)
+	if peer.has("pet") and is_instance_valid(peer["pet"]):
+		(peer["pet"] as Node).queue_free()
+	peer.erase("pet")
+	if pt > 0:
+		var pn := Node3D.new()
+		pn.position = Vector3(0.95,0,0.8)
+		foot.add_child(pn)
+		_build_pet(pn,pt)
+		peer["pet"] = pn
 
 func _online_tint(node: Node, color: Color) -> void:
 	if node is MeshInstance3D:
@@ -1986,7 +2004,8 @@ func _online_update_peers(delta: float) -> void:
 			peer["shown"] = key
 			var tag := String(peer["name"])
 			var lab: Label3D = peer["label"]
-			lab.text = "%s Lv%d" % [tag,int(peer["lvl"])]+_social_tag(peer)+("" if role == 0 else (" · THIEF" if role == 1 else " · POLICE"))
+			# v0.33.7: short tags (name and level, ★ for friends); crew, hearts and diamonds are in PLAYERS.
+			lab.text = "%s · %d" % [tag,int(peer["lvl"])]+(" ★" if friends.has(String(peer.get("id",""))) else "")+("" if role == 0 else (" · THIEF" if role == 1 else " · POLICE"))
 			lab.modulate = Color("ffb020") if role == 1 else (Color("9cc4ff") if role == 2 else _tier_color(int(peer.get("at",-1))))
 	for id in gone:
 		(online_peers[id]["node"] as Node3D).queue_free()
@@ -3997,6 +4016,8 @@ func _build_hud() -> void:
 	_build_quest_list(root)
 	_build_quest_offer(root)
 	_build_social(root)
+	_build_lb(root)
+	_build_market_panel(root)
 	_build_ach(root)
 	_build_quiz(root)
 	_build_treasure(root)
@@ -4067,7 +4088,7 @@ func _build_hud() -> void:
 	var row_soc := HBoxContainer.new()
 	row_soc.add_theme_constant_override("separation",10)
 	items.add_child(row_soc)
-	for e in [["Players & friends",_open_social],["Achievements",_open_ach],["Group photo",_photo]]:
+	for e in [["Players & friends",_open_social],["Achievements",_open_ach],["Leaderboard",_open_lb],["Group photo",_photo]]:
 		var b := _button(String(e[0]),e[1])
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row_soc.add_child(b)
@@ -6676,8 +6697,6 @@ func _clean_hud_tick() -> void:
 			for c in [hud_info,hud_pause_button,radio_button,online_button,view_button,chat_button,clock_label]:
 				if c != null:
 					(c as CanvasItem).visible = true
-			if my_tag != null:
-				my_tag.visible = true
 			action_button.visible = true
 			if quests_button != null:
 				quests_button.text = "Quests"
@@ -6865,7 +6884,11 @@ func _physics_process(delta: float) -> void:
 		var walking := Vector2(player.velocity.x,player.velocity.z).length() > 0.4
 		player_walk = move_toward(player_walk,1.0 if walking else 0.0,delta*6.0)
 		player_phase += delta*(12.5 if run_on else 9.0)*player_walk
-		_pose_person(player_person,player_phase,player_walk*(1.35 if run_on else 1.0))
+		if board_on:
+			# Riding the hoverboard: stand still on the deck instead of running.
+			_pose_person(player_person,0.0,0.0)
+		else:
+			_pose_person(player_person,player_phase,player_walk*(1.35 if run_on else 1.0))
 		if follow_view:
 			# The camera slowly swings in behind you as you walk (not when you walk back towards it,
 			# and not right after you dragged to look around).
@@ -7019,6 +7042,10 @@ func _interact() -> void:
 	var shop := _nearest_shop()
 	if shop >= 0:
 		_shop_open(shop)
+		return
+	var mk := _market_near()
+	if mk >= 0:
+		_open_market(int(MARKET[mk]["kind"]))
 		return
 	if sky_riding or sky_wait >= 0:
 		_sky_action()
@@ -7193,6 +7220,8 @@ func _refresh_hud() -> void:
 		action_button.text = "NEXT JOB"
 	elif _nearest_shop() >= 0:
 		action_button.text = "OPEN " + String(SHOPS[_nearest_shop()]["verb"])
+	elif _market_near() >= 0:
+		action_button.text = "OPEN " + String(MARKET[_market_near()]["name"])
 	elif _qt() and trial_active < 0 and distance < (6 if driving else 5):
 		action_button.text = "PICK UP  +$%d" % _quick_pay(quick_idx)
 	elif exploring and not quick_on and index >= 0 and distance < 5 and not driving:
@@ -7231,6 +7260,8 @@ func _open_panel(panel: Control) -> void:
 		social_panel.hide()
 	if ach_panel != null:
 		ach_panel.hide()
+	for xp_panel in extra_panels:
+		(xp_panel as Control).hide()
 	panel.show()
 	panel.reset_size()
 	_layout_panels()
@@ -7251,6 +7282,9 @@ func _layout_panels() -> void:
 		social_panel.position = Vector2((view.x-social_panel.size.x)/2.0,maxf(8.0,(view.y-social_panel.size.y)/2.0))
 	if ach_panel != null:
 		ach_panel.position = Vector2((view.x-ach_panel.size.x)/2.0,maxf(8.0,(view.y-ach_panel.size.y)/2.0))
+	for xp_panel in extra_panels:
+		var xc := xp_panel as Control
+		xc.position = Vector2((view.x-xc.size.x)/2.0,maxf(8.0,(view.y-xc.size.y)/2.0))
 
 func _toggle_menu() -> void:
 	if crate_open:
@@ -7374,6 +7408,11 @@ func _save_progress() -> void:
 	file.set_value("social","gifts_sent",gifts_sent)
 	file.set_value("ach","stats",stats)
 	file.set_value("ach","got",ach_got)
+	file.set_value("market","gear_own",gear_own)
+	file.set_value("market","gear_on",gear_on)
+	file.set_value("market","pet_own",pet_own)
+	file.set_value("market","pet_on",pet_on)
+	file.set_value("market","board_on",board_on)
 	file.set_value("progress","tour_day",tour_day)
 	file.set_value("progress","tour_got",tour_got)
 	file.set_value("progress","treasure_got",treasure_got)
@@ -7406,6 +7445,15 @@ func _load_progress() -> void:
 		stats = st if st is Dictionary else {}
 		var ag = file.get_value("ach","got",{})
 		ach_got = ag if ag is Dictionary else {}
+		gear_own = (int(file.get_value("market","gear_own",1)) & ((1 << GEAR.size())-1)) | 1
+		pet_own = (int(file.get_value("market","pet_own",1)) & ((1 << PETS.size())-1)) | 1
+		gear_on = clampi(int(file.get_value("market","gear_on",0)),0,GEAR.size()-1)
+		pet_on = clampi(int(file.get_value("market","pet_on",0)),0,PETS.size()-1)
+		if not (gear_own & (1 << gear_on)):
+			gear_on = 0
+		if not (pet_own & (1 << pet_on)):
+			pet_on = 0
+		board_on = bool(file.get_value("market","board_on",false))
 		tour_day = String(file.get_value("progress","tour_day",""))
 		tour_got = int(file.get_value("progress","tour_got",0)) & ((1 << SKY_STATIONS.size())-1)
 		treasure_got = int(file.get_value("progress","treasure_got",-1))
@@ -7679,6 +7727,10 @@ func _process(delta: float) -> void:
 	_quest_offer_tick()
 	_auto_collect_tick()
 	_food_court_tick(delta)
+	_cash_pill_tick()
+	_lb_tick(delta)
+	_market_tick(delta)
+	_board_tick(delta)
 	_social_tick(delta)
 	_quiz_tick(delta)
 	_ach_tick(delta)
@@ -8005,7 +8057,7 @@ func _smoke_test() -> void:
 	_smoke_findme()
 	await _smoke_v27()
 	_my_tag_tick()
-	assert(my_tag != null and my_tag.text.contains("Lv ") and my_tag.text.begins_with(_my_name()),"Your name tag shows name and level")
+	assert(my_tag != null and not my_tag.visible,"v0.33.7: you don't see your own name tag")
 	cash = original_cash
 	deliveries = original_deliveries
 	found_mask = original_mask
@@ -8163,14 +8215,54 @@ func _smoke_test() -> void:
 	assert((pr.material_override as StandardMaterial3D).albedo_color.is_equal_approx(_level_color(16).lightened(0.15)),"Another player's ring shows their level colour")
 	_online_update_peers(0.016)
 	var plab: Label3D = online_peers["col1"]["label"]
-	assert(plab.modulate.is_equal_approx(_tier_color(3)) and plab.text.contains("◆40"),"Their name tag shows their Legend colour and achievement count")
+	assert(plab.modulate.is_equal_approx(_tier_color(3)) and plab.text == "Ava · 16" and _social_tag(online_peers["col1"]).contains("◆40"),"v0.33.7: their short tag shows their Legend colour; the count is in PLAYERS")
 	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":16,"av":[1,1,2]})
 	var avp: Dictionary = online_peers["col1"]["person"]
 	assert((avp["mats"]["Shirt"] as StandardMaterial3D).albedo_color.is_equal_approx(SHIRTS[1]["color"]) and (avp["mats"]["Pants"] as StandardMaterial3D).albedo_color.is_equal_approx(PANTS[1]["color"]),"v0.33.4: other players wear their own shirt and pants")
 	assert((online_peers["col1"]["hat"] as Node3D).get_child_count() > 0,"v0.33.4: other players wear their own hat")
 	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":16,"av":[2,1,0]})
 	assert((online_peers["col1"]["person"]["mats"]["Shirt"] as StandardMaterial3D).albedo_color.is_equal_approx(SHIRTS[2]["color"]),"v0.33.4: a new shirt shows straight away")
-	assert(_online_pos_frame()["payload"]["payload"]["av"] == [av_shirt,av_pants,av_hat],"v0.33.4: your look is sent to other players")
+	assert(_online_pos_frame()["payload"]["payload"]["av"] == [av_shirt,av_pants,av_hat,gear_on,pet_on],"v0.33.4: your look (now with gear and pet) is sent to other players")
+	# v0.34: Neon Market, pets from level 20, the hoverboard, the money pill and the leaderboard.
+	var was_m := [cash,gear_own,gear_on,pet_own,pet_on,bonus_xp,board_on]
+	cash = 5000
+	market_kind = 0
+	_market_pick(1)
+	assert(gear_on == 1 and (gear_own & 2) != 0 and cash == 3500,"v0.34: buying gear takes the price and you wear it")
+	_market_pick(6)
+	assert(gear_on == 1 and cash == 3500,"v0.34: no crown without the money and the level")
+	market_kind = 1
+	cash = 300000
+	if _level() < PET_LEVEL:
+		_market_pick(1)
+		assert(pet_on == 0 and cash == 300000,"v0.34: pets unlock at level 20")
+	bonus_xp += 10000000
+	_market_pick(3)
+	assert(pet_on == 3 and cash == 150000,"v0.34: at level 20 you can buy a Mini Dragon")
+	_market_apply()
+	assert(pet_node != null and pet_node.get_child_count() > 0 and gear_holder.get_child_count() > 0,"v0.34: your pet follows you and your gear shows")
+	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":20,"av":[1,1,0,4,1]})
+	assert(online_peers["col1"].has("pet") and (online_peers["col1"]["gear"] as Node3D).get_child_count() > 0,"v0.34: other players' gear and pets show")
+	board_on = true
+	assert(_walk_speed() == BOARD_SPEED,"v0.34: the hoverboard is faster than running")
+	board_on = false
+	_cash_pill_tick()
+	assert(cash_pill != null and cash_pill.text.begins_with(_money(cash)),"v0.34: your money shows on the screen")
+	assert(_money(1234567) == "$1,234,567" and _money(50) == "$50","v0.34: money has commas")
+	lb_state = 1
+	_lb_got(0,200,PackedStringArray(),JSON.stringify([{"uid":"x1","name":"Zed","level":20,"xp":9,"cash":900000,"ach":50,"kind":3},{"uid":player_uid,"name":"Me","level":5,"xp":1,"cash":10,"ach":2,"kind":0}]).to_utf8_buffer())
+	assert(lb_rows.size() == 2 and lb_list.get_child_count() == 2,"v0.34: the leaderboard lists the players")
+	_lb_got(0,404,PackedStringArray(),PackedByteArray())
+	assert(lb_state == 0 and lb_status.text.contains("isn't switched on"),"v0.34: a missing table shows a clear message")
+	lb_state = -1
+	cash = was_m[0]
+	gear_own = was_m[1]
+	gear_on = was_m[2]
+	pet_own = was_m[3]
+	pet_on = was_m[4]
+	bonus_xp = was_m[5]
+	board_on = was_m[6]
+	_market_apply()
 	var was_online := online_on
 	online_on = true
 	_soc_track("col1")
@@ -8298,7 +8390,7 @@ func _smoke_test() -> void:
 	_online_peer_update({"i":"mia1","n":"Mia","x":DT_PLAZA.x+3.0,"y":0.9,"z":DT_PLAZA.z,"r":0.0,"c":0,"d":0,"t":0,"l":6,"s":-1,"q":-1,"qn":0,"e":2,"en":1,"rc":0,"cr":"Sunrise","cc":2,"k":4})
 	assert(online_peers.has("mia1") and String(online_peers["mia1"]["crew"]) == "Sunrise" and int(online_peers["mia1"]["k"]) == 4,"Other players carry their crew and kindness")
 	_online_update_peers(0.016)
-	assert((online_peers["mia1"]["label"] as Label3D).text.contains("[Sunrise]") and (online_peers["mia1"]["label"] as Label3D).text.contains("♥4"),"Name tag shows crew and kindness")
+	assert(_social_tag(online_peers["mia1"]).contains("[Sunrise]") and _social_tag(online_peers["mia1"]).contains("♥4") and not (online_peers["mia1"]["label"] as Label3D).text.contains("♥"),"v0.33.7: crew and kindness show in PLAYERS, not on the short tag")
 	_social_msg({"i":"mia1","n":"Mia","to":online_id,"t":"fr"})
 	assert(not feed.is_empty() and (feed[feed.size()-1]["invite"] as Dictionary).get("soc","") == "fr","A friend request pops up")
 	_social_accept("mia1",{"soc":"fr"})
@@ -10151,9 +10243,8 @@ func _build_city_detail() -> void:
 		ew_inst.material_override = light_ew_mat
 	# Shop rows in the two big lawns north of the main street, plus furniture and planters.
 	var items := {}
-	for sx in [1.0]:
-		# v0.33.6: the west shop row (the old Mint Cruiser block) made way for the Harbor Food Court.
-		_place(items,"shops_%d" % (0 if sx < 0 else 1),Vector3(sx*16.0,0,-8.6),0.0,0.55)
+	# v0.33.6: the west shop row made way for the Harbor Food Court, and in v0.34 the east one
+	# for the Neon Market (gear and pets).
 	for key in items:
 		_model_batch("res://models/%s.glb" % key,items[key],{})
 	var benches := []
@@ -15368,6 +15459,8 @@ var travel_buttons: Array = []
 var travel_ready_at := 0.0
 
 func _walk_speed() -> float:
+	if board_on and not driving:
+		return BOARD_SPEED
 	return RUN_SPEED if run_on else WALK_SPEED
 
 func _build_travel(root: Control) -> void:
@@ -16808,9 +16901,8 @@ func _my_tag_tick() -> void:
 		my_tag.render_priority = 10
 		add_child(my_tag)
 	var body: Node3D = car if driving else player
-	my_tag.visible = booted and not eye_view and not in_car_view and not crate_open and not (bus_riding and not driving) and not sky_riding
-	if not my_tag.visible:
-		return
+	# v0.33.7: you don't see your own name tag any more (your ring marks you); others still see it.
+	my_tag.visible = false
 	var lift := 1.7 if driving else (1.18 if seat_id < 0 else 0.9)
 	my_tag.position = body.position+Vector3(0,lift,0)
 	var t := "%s  ·  Lv %d%s" % [_my_name(),_level(),_my_tag_extra()]
@@ -17130,6 +17222,619 @@ func _food_court_tick(delta: float) -> void:
 	if player != null and player.position.distance_to(FC_BLOCK) > 70.0:
 		return
 	_emote(fc_people[randi() % fc_people.size()],[0,1,3][randi() % 3])
+
+# ---------- v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard") ----------
+var extra_panels: Array = []
+var cash_pill: Button
+
+func _money(n: int) -> String:
+	var t := str(absi(n))
+	var out := ""
+	while t.length() > 3:
+		out = ","+t.substr(t.length()-3)+out
+		t = t.substr(0,t.length()-3)
+	return ("-" if n < 0 else "")+"$"+t+out
+
+func _cash_pill_tick() -> void:
+	# Your cash under the minimap on the clean screen; tap it for the leaderboard.
+	if minimap == null:
+		return
+	if cash_pill == null:
+		cash_pill = _button("",_open_lb)
+		cash_pill.custom_minimum_size = Vector2(MINI_SIZE*CLEAN_MINI_SCALE+40.0,34)
+		cash_pill.add_theme_font_size_override("font_size",17)
+		cash_pill.add_theme_color_override("font_color",Color("ffe08a"))
+		cash_pill.add_theme_stylebox_override("normal",_panel(Color(0.04,0.1,0.14,0.75),14))
+		cash_pill.add_theme_stylebox_override("hover",_panel(Color(0.06,0.16,0.22,0.85),14))
+		minimap.get_parent().add_child(cash_pill)
+	var t := "%s  ·  ★ TOP" % _money(cash)
+	if cash_pill.text != t:
+		cash_pill.text = t
+	cash_pill.visible = _clean_on() and not paused
+	if not cash_pill.visible:
+		return
+	cash_pill.size = Vector2(0,0)
+	var w := cash_pill.get_combined_minimum_size().x
+	var y := minimap.position.y+MINI_SIZE*CLEAN_MINI_SCALE+6.0
+	if online_pill != null and online_pill.visible:
+		y = online_pill.position.y+online_pill.size.y+6.0
+	cash_pill.position = Vector2(minimap.position.x+MINI_SIZE*CLEAN_MINI_SCALE-w,y)
+
+const LB_TABS := [["LEVEL","level.desc,xp.desc"],["MONEY","cash.desc"],["ACHIEVEMENTS","ach.desc,level.desc"],["KINDNESS","kind.desc,level.desc"]]
+const LB_UPLOAD_EVERY := 90.0
+var lb_panel: PanelContainer
+var lb_list: VBoxContainer
+var lb_status: Label
+var lb_tab_buttons: Array = []
+var lb_tab := 0
+var lb_get: HTTPRequest
+var lb_put: HTTPRequest
+var lb_put_t := 15.0
+var lb_rows: Array = []
+var lb_state := -1   # -1 not asked yet, 0 table missing, 1 working, 2 network error
+
+func _build_lb(root: Control) -> void:
+	lb_panel = PanelContainer.new()
+	lb_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	lb_panel.custom_minimum_size = Vector2(760,0)
+	root.add_child(lb_panel)
+	extra_panels.append(lb_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",10)
+	lb_panel.add_child(col)
+	col.add_child(_label("★ LEADERBOARD",26,Color("f0bd62")))
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation",8)
+	col.add_child(tabs)
+	for i in LB_TABS.size():
+		var b := _button(String(LB_TABS[i][0]),_lb_pick.bind(i))
+		b.custom_minimum_size = Vector2(0,48)
+		b.add_theme_font_size_override("font_size",17)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tabs.add_child(b)
+		lb_tab_buttons.append(b)
+	lb_status = _label("",17,Color("cbd8de"))
+	lb_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lb_status.custom_minimum_size.x = 720
+	col.add_child(lb_status)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(740,380)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	lb_list = VBoxContainer.new()
+	lb_list.add_theme_constant_override("separation",4)
+	lb_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(lb_list)
+	var close := _button("Close",_close_lb)
+	col.add_child(close)
+	lb_panel.hide()
+	lb_get = HTTPRequest.new()
+	lb_get.timeout = 12.0
+	add_child(lb_get)
+	lb_get.request_completed.connect(_lb_got)
+	lb_put = HTTPRequest.new()
+	lb_put.timeout = 12.0
+	add_child(lb_put)
+
+func _open_lb() -> void:
+	if not paused:
+		_toggle_menu()
+	_lb_upload()
+	_lb_fetch()
+	_lb_refresh_ui()
+	_open_panel(lb_panel)
+
+func _close_lb() -> void:
+	if paused:
+		_toggle_menu()
+
+func _lb_pick(i: int) -> void:
+	lb_tab = i
+	_lb_fetch()
+	_lb_refresh_ui()
+
+func _lb_headers() -> PackedStringArray:
+	var k := String(online_config.get("anon",""))
+	return PackedStringArray(["apikey: "+k,"Authorization: Bearer "+k,"Content-Type: application/json"])
+
+func _lb_url(path: String) -> String:
+	return String(online_config.get("url","")).trim_suffix("/")+"/rest/v1/"+path
+
+func _lb_me() -> Dictionary:
+	return {"uid":player_uid,"name":_online_clean_name(_my_name()),"level":_level(),"xp":_xp(),"cash":maxi(cash,0),"ach":ach_got.size(),"kind":kindness}
+
+func _lb_tick(delta: float) -> void:
+	if "--smoke-test" in OS.get_cmdline_user_args() or lb_put == null:
+		return
+	lb_put_t -= delta
+	if lb_put_t <= 0.0:
+		lb_put_t = LB_UPLOAD_EVERY
+		_lb_upload()
+
+func _lb_upload() -> void:
+	# Players with a nickname post their scores (one row each, updated in place).
+	if lb_put == null or player_uid == "" or online_name == "" or not _online_load_config():
+		return
+	if lb_put.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED or lb_state == 0:
+		return
+	var h := _lb_headers()
+	h.append("Prefer: resolution=merge-duplicates,return=minimal")
+	lb_put.request(_lb_url("leaderboard?on_conflict=uid"),h,HTTPClient.METHOD_POST,JSON.stringify(_lb_me()))
+
+func _lb_fetch() -> void:
+	if lb_get == null or not _online_load_config():
+		lb_state = 2
+		return
+	if lb_get.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		lb_get.cancel_request()
+	lb_get.request(_lb_url("leaderboard?select=uid,name,level,xp,cash,ach,kind&order=%s&limit=30" % String(LB_TABS[lb_tab][1])),_lb_headers())
+
+func _lb_got(_result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if code == 200:
+		var data = JSON.parse_string(body.get_string_from_utf8())
+		lb_rows = data if data is Array else []
+		lb_state = 1
+	elif code == 404:
+		lb_state = 0
+	else:
+		lb_state = 2
+	_lb_refresh_ui()
+
+func _lb_value(row: Dictionary) -> String:
+	match lb_tab:
+		0:
+			return "Lv %d" % int(row.get("level",1))
+		1:
+			return _money(int(row.get("cash",0)))
+		2:
+			return "◆ %d" % int(row.get("ach",0))
+		_:
+			return "♥ %d" % int(row.get("kind",0))
+
+func _lb_refresh_ui() -> void:
+	if lb_panel == null:
+		return
+	for i in lb_tab_buttons.size():
+		(lb_tab_buttons[i] as Button).add_theme_stylebox_override("normal",_panel(Color("8a5a1c") if i == lb_tab else Color("213d4f"),12))
+	for child in lb_list.get_children():
+		child.queue_free()
+	var me := _lb_me()
+	if online_name == "":
+		lb_status.text = "Pick a nickname (Menu > Online) to get on the board. You: %s · Lv %d · ◆ %d" % [_money(cash),_level(),ach_got.size()]
+	else:
+		lb_status.text = "You: %s · Lv %d · ◆ %d · ♥ %d. Scores update every minute or two." % [_money(cash),_level(),ach_got.size(),kindness]
+	if lb_state == 0:
+		lb_status.text = "The leaderboard isn't switched on yet. " + lb_status.text
+		return
+	if lb_state == 2:
+		lb_status.text = "Couldn't reach the leaderboard. Check your connection. " + lb_status.text
+		return
+	if lb_state == -1 or lb_rows.is_empty():
+		var wait := _label("Loading…" if lb_state == -1 else "Nobody here yet. Be the first!",18,Color("9fb3bd"))
+		lb_list.add_child(wait)
+		return
+	var rank := 0
+	for r in lb_rows:
+		if not (r is Dictionary):
+			continue
+		rank += 1
+		var row: Dictionary = r
+		var mine := String(row.get("uid","")) == String(me["uid"])
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation",12)
+		lb_list.add_child(line)
+		var medal: String = "★" if rank <= 3 else ""
+		var rc: Color = [Color("ffd75e"),Color("d9e4ec"),Color("e0a46a")][rank-1] if rank <= 3 else Color("9fb3bd")
+		var a := _label("%s%d" % [medal,rank],20,rc)
+		a.custom_minimum_size.x = 70
+		line.add_child(a)
+		var n := _label(_online_clean_name(String(row.get("name","Player")))+("  (you)" if mine else ""),20,Color("ffd86a") if mine else Color("fff5dc"))
+		n.custom_minimum_size.x = 330
+		line.add_child(n)
+		var v := _label(_lb_value(row),20,Color("8ddacb"))
+		v.custom_minimum_size.x = 220
+		line.add_child(v)
+	if lb_panel.visible:
+		lb_panel.reset_size()
+		_layout_panels()
+
+# ---------- v0.34: Neon Market (gear for your avatar, pets from level 20) and the hoverboard ----------
+# [name, price, level needed]
+const GEAR := [["Nothing",0,1],["Neon Visor",1500,1],["Glow Headphones",2500,1],["Golden Halo",6000,10],["Jetpack",12000,12],["Angel Wings",20000,15],["Royal Crown",40000,18]]
+const PETS := [["No pet",0,20],["Robo Pup",50000,20],["Hover Cat",75000,20],["Mini Dragon",150000,20],["Star Fox",250000,20]]
+const PET_LEVEL := 20
+const MARKET := [
+	{"name":"NEON OUTFITTERS","pos":Vector3(11.5,0,-9.6),"kind":0,"col":Color("4fe3ff"),"trim":Color("ff5fd2"),"menu":"VISORS · HALOS\nJETPACKS · WINGS"},
+	{"name":"PET PALACE","pos":Vector3(20.5,0,-9.6),"kind":1,"col":Color("ffd23f"),"trim":Color("6fe39b"),"menu":"ROBOTIC PETS\nUNLOCK AT LEVEL 20"},
+]
+var gear_own := 1
+var gear_on := 0
+var pet_own := 1
+var pet_on := 0
+var gear_holder: Node3D
+var pet_node: Node3D
+var pet_shown := -1
+var gear_shown := -1
+var market_panel: PanelContainer
+var market_title: Label
+var market_info: Label
+var market_list: VBoxContainer
+var market_kind := 0
+var market_spin: Array = []
+
+func _build_market() -> void:
+	var root := Node3D.new()
+	root.name = "NeonMarket"
+	add_child(root)
+	_box(root,Vector3(16,0.06,-8.6),Vector3(15,0.12,6.4),Color("e3d6bf"))
+	for m in MARKET:
+		var base: Vector3 = m["pos"]
+		var col: Color = m["col"]
+		var trim: Color = m["trim"]
+		_fc_part(root,_fc_cone(1.7,1.75,0.05),base+Vector3(0,0.15,0),_fc_pearl())
+		_fc_part(root,_fc_torus(1.6,1.72),base+Vector3(0,0.19,0),_fc_glow(col))
+		var pod := Node3D.new()
+		pod.position = base
+		root.add_child(pod)
+		fc_pods.append(pod)
+		_fc_part(pod,_fc_sphere(1.0),Vector3(0,1.1,0),_fc_pearl(),Vector3(1.55,0.62,0.82))
+		_fc_part(pod,_fc_torus(0.98,1.06),Vector3(0,1.1,0),_fc_glow(col),Vector3(1.55,1.0,0.82))
+		_fc_part(pod,_fc_torus(0.55,0.68),Vector3(0,0.5,0),_fc_glow(col))
+		_fc_part(pod,BoxMesh.new(),Vector3(0,1.67,0.42),_fc_glass(),Vector3(2.5,0.05,0.75))
+		_fc_part(pod,QuadMesh.new(),Vector3(0,2.2,-0.15),_fc_holo(col,trim,0.55),Vector3(1.9,0.75,1))
+		var ml := Label3D.new()
+		ml.text = String(m["menu"])
+		ml.font_size = 28
+		ml.pixel_size = 0.01
+		ml.outline_size = 6
+		ml.outline_modulate = col.darkened(0.6)
+		ml.position = Vector3(0,2.2,-0.12)
+		pod.add_child(ml)
+		_fc_part(root,_fc_cone(0.07,0.09,3.0),base+Vector3(0,1.6,-0.95),_fc_chrome())
+		_fc_part(root,_fc_cone(1.9,1.9,0.07),base+Vector3(0,3.1,-0.05),_fc_pearl())
+		_fc_part(root,_fc_torus(1.86,1.98),base+Vector3(0,3.1,-0.05),_fc_glow(col))
+		var lab := Label3D.new()
+		lab.text = String(m["name"])
+		lab.font_size = 40
+		lab.pixel_size = 0.011
+		lab.modulate = col.lerp(Color.WHITE,0.4)
+		lab.outline_size = 14
+		lab.outline_modulate = col.darkened(0.55)
+		lab.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		lab.position = base+Vector3(0,3.45,0)
+		root.add_child(lab)
+		# A spinning display above the stand: a crown at the outfitters, a dragon at the pet shop.
+		var show := Node3D.new()
+		show.position = base+Vector3(0,4.4,0)
+		root.add_child(show)
+		market_spin.append(show)
+		if int(m["kind"]) == 0:
+			var g := Node3D.new()
+			g.position.y = -0.7
+			g.scale = Vector3.ONE*2.6
+			show.add_child(g)
+			_build_gear(g,6)
+		else:
+			var d := Node3D.new()
+			d.position.y = -0.5
+			d.scale = Vector3.ONE*1.6
+			show.add_child(d)
+			_build_pet(d,3)
+		var bot := Node3D.new()
+		bot.position = base+Vector3(0,0.12,-1.25)
+		root.add_child(bot)
+		_fc_part(bot,_fc_capsule(0.3,1.15),Vector3(0,0.95,0),_fc_pearl())
+		_fc_part(bot,_fc_sphere(0.26),Vector3(0,1.78,0),_fc_pearl())
+		_fc_part(bot,BoxMesh.new(),Vector3(0,1.8,0.2),_fc_glow(col),Vector3(0.36,0.09,0.1))
+		_collider(root,base+Vector3(0,0.8,0),Vector3(3.1,1.6,1.7))
+	# Pets on show beside the pet shop.
+	for k in range(1,PETS.size()):
+		var spot := Vector3(23.4,0.12,-11.4+float(k-1)*1.25)
+		_fc_part(root,_fc_cone(0.4,0.45,0.3),spot+Vector3(0,0.15,0),_fc_pearl())
+		_fc_part(root,_fc_torus(0.38,0.44),spot+Vector3(0,0.3,0),_fc_glow(Color("ffd23f")))
+		var pn := Node3D.new()
+		pn.position = spot+Vector3(0,0.3,0)
+		pn.rotation.y = PI/2.0
+		root.add_child(pn)
+		_build_pet(pn,k)
+	_cull_person(root,110.0)
+
+func _market_near() -> int:
+	if driving or player == null or paused:
+		return -1
+	for i in MARKET.size():
+		var p: Vector3 = (MARKET[i]["pos"] as Vector3)+Vector3(0,0,1.6)
+		if Vector2(player.position.x-p.x,player.position.z-p.z).length() < 2.6:
+			return i
+	return -1
+
+# Gear is built in the hat holder's frame: head centre at (0,0.555,0), face towards -Z, back towards +Z.
+func _build_gear(holder: Node3D, idx: int) -> void:
+	for c in holder.get_children():
+		c.queue_free()
+	match idx:
+		1:
+			_fc_part(holder,BoxMesh.new(),Vector3(0,0.575,-0.125),_fc_glow(Color("4fe3ff")),Vector3(0.27,0.055,0.05))
+			_fc_part(holder,BoxMesh.new(),Vector3(0,0.575,-0.1),_fc_chrome(),Vector3(0.29,0.03,0.06))
+		2:
+			var band := _fc_part(holder,_fc_torus(0.135,0.16),Vector3(0,0.58,0),_fc_chrome())
+			band.rotation.z = PI/2.0
+			band.scale = Vector3(1,1,0.35)
+			for sx in [-1.0,1.0]:
+				var cup := _fc_part(holder,_fc_cone(0.06,0.06,0.05),Vector3(sx*0.14,0.54,0),_fc_glow(Color("ff5fd2")))
+				cup.rotation.z = PI/2.0
+		3:
+			_fc_part(holder,_fc_torus(0.1,0.13),Vector3(0,0.8,0),_fc_glow(Color("ffd75e")))
+		4:
+			_fc_part(holder,BoxMesh.new(),Vector3(0,0.12,0.2),_fc_chrome(),Vector3(0.3,0.36,0.14))
+			for sx in [-1.0,1.0]:
+				_fc_part(holder,_fc_cone(0.055,0.065,0.32),Vector3(sx*0.1,0.02,0.29),_fc_pearl())
+				_fc_part(holder,_fc_cone(0.04,0.0,0.16),Vector3(sx*0.1,-0.22,0.29),_fc_glow(Color("ff8a1c"))).rotation.x = PI
+		5:
+			for sx in [-1.0,1.0]:
+				var w := _fc_part(holder,_fc_sphere(0.5),Vector3(sx*0.3,0.22,0.22),_fc_pearl(),Vector3(0.6,0.75,0.05))
+				w.rotation.z = -sx*0.55
+				w.rotation.y = sx*0.35
+				_fc_part(holder,_fc_sphere(0.5),Vector3(sx*0.31,0.22,0.235),_fc_ghost(Color("bff8ff")),Vector3(0.5,0.62,0.03)).rotation.z = -sx*0.55
+		6:
+			_fc_part(holder,_fc_cone(0.12,0.11,0.09),Vector3(0,0.7,0),_fc_glow(Color("ffd23f")))
+			for k in 5:
+				var a := TAU*float(k)/5.0
+				_fc_part(holder,_fc_cone(0.0,0.03,0.09),Vector3(sin(a)*0.11,0.78,cos(a)*0.11),_fc_glow(Color("ffd23f")))
+				_fc_part(holder,_fc_sphere(0.018),Vector3(sin(a)*0.118,0.7,cos(a)*0.118),_fc_glow([Color("ff3b5c"),Color("4fe3ff"),Color("6fe39b")][k % 3]))
+
+# Pets stand on the ground at the node, facing -Z.
+func _build_pet(node: Node3D, idx: int) -> void:
+	for c in node.get_children():
+		c.queue_free()
+	match idx:
+		1:
+			_fc_part(node,_fc_capsule(0.14,0.5),Vector3(0,0.32,0),_fc_pearl()).rotation.x = PI/2.0
+			_fc_part(node,_fc_sphere(0.13),Vector3(0,0.48,-0.24),_fc_pearl())
+			_fc_part(node,BoxMesh.new(),Vector3(0,0.5,-0.36),_fc_glow(Color("4fe3ff")),Vector3(0.16,0.04,0.02))
+			for sx in [-1.0,1.0]:
+				_fc_part(node,BoxMesh.new(),Vector3(sx*0.07,0.62,-0.22),_fc_chrome(),Vector3(0.05,0.12,0.04))
+				for sz in [-0.14,0.14]:
+					_fc_part(node,_fc_cone(0.035,0.03,0.2),Vector3(sx*0.08,0.1,sz),_fc_chrome())
+			_fc_part(node,_fc_cone(0.015,0.03,0.22),Vector3(0,0.42,0.3),_fc_glow(Color("4fe3ff"))).rotation.x = -0.8
+		2:
+			_fc_part(node,_fc_sphere(0.18),Vector3(0,0.42,0),_fc_pearl(),Vector3(1,0.85,1.3))
+			_fc_part(node,_fc_sphere(0.13),Vector3(0,0.58,-0.2),_fc_pearl())
+			for sx in [-1.0,1.0]:
+				_fc_part(node,_fc_cone(0.0,0.05,0.1),Vector3(sx*0.07,0.72,-0.2),_fc_pearl())
+				_fc_part(node,_fc_sphere(0.022),Vector3(sx*0.05,0.6,-0.32),_fc_glow(Color("c254ff")))
+			_fc_part(node,_fc_torus(0.14,0.19),Vector3(0,0.18,0),_fc_glow(Color("c254ff")))
+		3:
+			_fc_part(node,_fc_sphere(0.2),Vector3(0,0.38,0),_fc_glow(Color("3fbf6a")),Vector3(1,0.9,1.4))
+			_fc_part(node,_fc_sphere(0.14),Vector3(0,0.6,-0.28),_fc_glow(Color("4fd17a")))
+			_fc_part(node,_fc_cone(0.0,0.03,0.12),Vector3(0.05,0.75,-0.25),_fc_glow(Color("ffd23f")))
+			_fc_part(node,_fc_cone(0.0,0.03,0.12),Vector3(-0.05,0.75,-0.25),_fc_glow(Color("ffd23f")))
+			for sx in [-1.0,1.0]:
+				var wing := _fc_part(node,_fc_sphere(0.25),Vector3(sx*0.25,0.55,0.02),_fc_ghost(Color("ff8a1c")),Vector3(1.2,0.12,0.7))
+				wing.rotation.z = sx*0.45
+			_fc_part(node,_fc_cone(0.02,0.07,0.35),Vector3(0,0.32,0.32),_fc_glow(Color("3fbf6a"))).rotation.x = 1.2
+			_fc_part(node,_fc_sphere(0.05),Vector3(0,0.56,-0.42),_fc_glow(Color("ff3b5c")))
+		4:
+			_fc_part(node,_fc_capsule(0.13,0.48),Vector3(0,0.32,0),_fc_glow(Color("ff8a1c"))).rotation.x = PI/2.0
+			_fc_part(node,_fc_sphere(0.13),Vector3(0,0.46,-0.24),_fc_glow(Color("ff9a3c")))
+			_fc_part(node,_fc_cone(0.0,0.05,0.14),Vector3(0,0.42,-0.38),_fc_pearl()).rotation.x = -PI/2.0
+			for sx in [-1.0,1.0]:
+				_fc_part(node,_fc_cone(0.0,0.05,0.14),Vector3(sx*0.07,0.62,-0.22),_fc_glow(Color("ff8a1c")))
+				for sz in [-0.13,0.13]:
+					_fc_part(node,_fc_cone(0.03,0.025,0.2),Vector3(sx*0.07,0.1,sz),_fc_glow(Color("ff8a1c")))
+			var tail := _fc_part(node,_fc_capsule(0.08,0.4),Vector3(0,0.4,0.36),_fc_ghost(Color("ffe36b")))
+			tail.rotation.x = 0.9
+			_fc_part(node,_fc_sphere(0.05),Vector3(0,0.55,0.5),_fc_glow(Color("ffffff")))
+
+func _market_apply() -> void:
+	# Wear the gear and bring the pet (rebuilt only when they change).
+	if player == null:
+		return
+	if gear_holder == null:
+		gear_holder = Node3D.new()
+		player.add_child(gear_holder)
+	if hat_holder != null:
+		gear_holder.position = hat_holder.position
+	if gear_shown != gear_on:
+		gear_shown = gear_on
+		_build_gear(gear_holder,gear_on)
+	if pet_shown != pet_on:
+		pet_shown = pet_on
+		if pet_node != null:
+			pet_node.queue_free()
+			pet_node = null
+		if pet_on > 0:
+			pet_node = Node3D.new()
+			add_child(pet_node)
+			pet_node.position = player.position+Vector3(1,-0.8,1)
+			_build_pet(pet_node,pet_on)
+
+func _market_tick(delta: float) -> void:
+	_market_apply()
+	if gear_holder != null:
+		gear_holder.visible = not eye_view and not driving
+	for i in market_spin.size():
+		(market_spin[i] as Node3D).rotation.y += delta*0.9
+	if pet_node != null:
+		# The pet trots after you, a little behind and to the side, and hops while it moves.
+		var body: Node3D = car if driving else player
+		var want := body.position+body.global_basis*Vector3(1.0,0,1.3)
+		want.y = body.position.y-(0.4 if driving else 0.8)+(0.35 if driving else 0.0)
+		var d := Vector2(want.x-pet_node.position.x,want.z-pet_node.position.z)
+		var far := d.length()
+		if far > 30.0:
+			pet_node.position = want
+		else:
+			pet_node.position = pet_node.position.lerp(want,minf(1.0,delta*(3.0+far*0.3)))
+		if far > 0.15:
+			pet_node.rotation.y = lerp_angle(pet_node.rotation.y,atan2(-d.x,-d.y),minf(1.0,delta*8.0))
+		pet_node.position.y = want.y+absf(sin(clock*9.0))*0.08*clampf(far,0.0,1.0)+(sin(clock*2.0)*0.05 if pet_on == 2 or pet_on == 3 else 0.0)+(0.25 if pet_on == 3 else 0.0)
+		pet_node.visible = not eye_view
+
+func _build_market_panel(root: Control) -> void:
+	market_panel = PanelContainer.new()
+	market_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	market_panel.custom_minimum_size = Vector2(820,0)
+	root.add_child(market_panel)
+	extra_panels.append(market_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",10)
+	market_panel.add_child(col)
+	market_title = _label("",26,Color("f0bd62"))
+	col.add_child(market_title)
+	market_info = _label("",17,Color("cbd8de"))
+	market_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	market_info.custom_minimum_size.x = 780
+	col.add_child(market_info)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(800,380)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	market_list = VBoxContainer.new()
+	market_list.add_theme_constant_override("separation",8)
+	market_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(market_list)
+	col.add_child(_button("Close",_close_market))
+	market_panel.hide()
+
+func _open_market(kind: int) -> void:
+	market_kind = kind
+	if not paused:
+		_toggle_menu()
+	_refresh_market()
+	_open_panel(market_panel)
+
+func _close_market() -> void:
+	if paused:
+		_toggle_menu()
+
+func _refresh_market() -> void:
+	if market_panel == null:
+		return
+	var pets := market_kind == 1
+	market_title.text = "PET PALACE" if pets else "NEON OUTFITTERS"
+	var lv := _level()
+	if pets:
+		market_info.text = "Robotic pets follow you everywhere, and everyone online sees them. Pets unlock at level %d. You have %s, level %d." % [PET_LEVEL,_money(cash),lv]
+	else:
+		market_info.text = "Cool gear for your avatar, seen by everyone online. Wear one at a time with your hat. You have %s, level %d." % [_money(cash),lv]
+	for child in market_list.get_children():
+		for sub in child.get_children():
+			if sub is Button:
+				touch_buttons.erase(sub)
+		child.queue_free()
+	var list: Array = PETS if pets else GEAR
+	for i in list.size():
+		var e: Array = list[i]
+		var owned := ((pet_own if pets else gear_own) & (1 << i)) != 0
+		var on := (pet_on if pets else gear_on) == i
+		var need := int(e[2])
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation",10)
+		market_list.add_child(row)
+		var price := "free" if int(e[1]) == 0 else _money(int(e[1]))
+		var lab := _label("%s\n%s%s" % [String(e[0]),price,"" if lv >= need or i == 0 else "  ·  needs level %d" % need],18,Color("ffd86a") if on else Color("fff5dc"))
+		lab.custom_minimum_size.x = 420
+		row.add_child(lab)
+		var txt := ""
+		var c := Color("213d4f")
+		if on:
+			txt = "WEARING" if not pets else "WITH YOU"
+			c = Color("2f6b3a")
+		elif owned:
+			txt = "WEAR" if not pets else "BRING"
+			c = Color("1f6f8b")
+		elif lv < need:
+			txt = "LOCKED"
+		else:
+			txt = "BUY " + _money(int(e[1]))
+			c = Color("8a5a1c") if cash >= int(e[1]) else Color("3a2a2a")
+		var b := _button(txt,_market_pick.bind(i))
+		b.custom_minimum_size = Vector2(260,48)
+		b.add_theme_font_size_override("font_size",18)
+		b.add_theme_stylebox_override("normal",_panel(c,12))
+		row.add_child(b)
+	if market_panel.visible:
+		market_panel.reset_size()
+		_layout_panels()
+
+func _market_pick(i: int) -> void:
+	var pets := market_kind == 1
+	var list: Array = PETS if pets else GEAR
+	var e: Array = list[i]
+	var owned := ((pet_own if pets else gear_own) & (1 << i)) != 0
+	if not owned:
+		if _level() < int(e[2]):
+			_show_toast("%s unlocks at level %d." % [String(e[0]),int(e[2])])
+			return
+		if cash < int(e[1]):
+			_show_toast("You need %s for %s (you have %s)." % [_money(int(e[1])),String(e[0]),_money(cash)])
+			return
+		cash -= int(e[1])
+		if pets:
+			pet_own |= 1 << i
+		else:
+			gear_own |= 1 << i
+		_show_toast("Bought %s!" % String(e[0]))
+		_stat_add("market_buys")
+	if pets:
+		pet_on = i
+	else:
+		gear_on = i
+	_market_apply()
+	_save_progress()
+	_refresh_market()
+	_refresh_hud()
+
+# Hoverboard: on foot, tap BOARD to ride (faster than running); your car stays where you left it.
+const BOARD_SPEED := 15.0
+var board_on := false
+var board_node: Node3D
+var board_button: Button
+
+func _toggle_board() -> void:
+	if driving:
+		return
+	board_on = not board_on
+	_show_toast("Hoverboard on. Zoom!" if board_on else "Hoverboard off.")
+	_save_progress()
+
+func _board_tick(delta: float) -> void:
+	if player == null:
+		return
+	if board_node == null:
+		board_node = Node3D.new()
+		player.add_child(board_node)
+		board_node.position.y = -0.62
+		_fc_part(board_node,BoxMesh.new(),Vector3(0,0,0),_fc_pearl(),Vector3(0.52,0.07,1.35))
+		for sz in [-0.66,0.66]:
+			_fc_part(board_node,_fc_cone(0.26,0.26,0.07),Vector3(0,0,sz),_fc_pearl())
+		_fc_part(board_node,BoxMesh.new(),Vector3(0,0.04,0),_fc_glow(Color("4fe3ff")),Vector3(0.08,0.02,1.2))
+		for sz in [-0.45,0.45]:
+			_fc_part(board_node,_fc_cone(0.16,0.1,0.06),Vector3(0,-0.07,sz),_fc_glow(Color("ff5fd2")))
+	var riding := board_on and not driving and not eye_view and seat_id < 0
+	board_node.visible = riding
+	if not player_person.is_empty() and hat_holder != null:
+		hat_holder.position.y = 0.47 if riding else 0.29
+	if not player_person.is_empty():
+		var root := player_person["root"] as Node3D
+		player_person["base_y"] = -0.52 if riding else -0.7
+		if riding:
+			root.position.y = -0.52+sin(clock*3.0)*0.03
+	if riding:
+		board_node.position.y = -0.62+sin(clock*3.0)*0.03
+		var speed := Vector2(player.velocity.x,player.velocity.z).length()
+		board_node.rotation.x = lerpf(board_node.rotation.x,-0.06*clampf(speed/BOARD_SPEED,0.0,1.0),minf(1.0,delta*6.0))
+	if board_button == null and action_button != null:
+		board_button = _button("BOARD",_toggle_board)
+		board_button.custom_minimum_size = Vector2(118,58)
+		board_button.add_theme_font_size_override("font_size",19)
+		action_button.get_parent().add_child(board_button)
+	if board_button != null:
+		board_button.visible = not driving and not paused and not race_car and not bus_riding and not sky_riding and seat_id < 0
+		board_button.add_theme_stylebox_override("normal",_panel(Color("c254ff") if board_on else Color("213d4f"),18))
+		board_button.text = "BOARD ✓" if board_on else "BOARD"
+		board_button.position = action_button.position+Vector2(-board_button.size.x-14.0,action_button.size.y-board_button.size.y)
 
 # ---------- v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online) ----------
 # The 5-minute window comes from the clock, so every player sees the same chest at the same place.
@@ -19531,6 +20236,26 @@ func _city_shots() -> void:
 		_daynight_apply(true)
 		player.position = Vector3(cp[0],0.9,cp[2]+2.0)
 		for i in 90:
+			await get_tree().physics_frame
+		if OS.get_environment("HC_PEERS") != "":
+			# Two pretend players beside you, to check name tags.
+			_online_peer_update({"i":"shotp1","n":"NeonPanda30","x":cp[0]-2.5,"y":0.9,"z":cp[2]-3.0,"r":0.0,"d":0,"l":9,"k":2,"ac":13,"av":[3,0,0]})
+			_online_peer_update({"i":"shotp2","n":"Sokolo","x":cp[0]+3.0,"y":0.9,"z":cp[2]-6.0,"r":0.0,"d":0,"l":5,"ac":7,"av":[2,1,1]})
+		if OS.get_environment("HC_SHOWOFF") != "":
+			# Preview: your car beside you, riding the hoverboard with a jetpack and a pet.
+			driving = false
+			car.position = Vector3(cp[0]+3.2,0.8,cp[2]-5.0)
+			car.rotation.y = 0.4
+			player.position = Vector3(cp[0]-0.6,0.9,cp[2]-4.0)
+			player.rotation.y = 2.5
+			board_on = true
+			gear_own = 127
+			gear_on = int(OS.get_environment("HC_SHOWOFF"))
+			pet_own = 31
+			pet_on = 3
+			for i in 40:
+				await get_tree().physics_frame
+		for i in 4:
 			await get_tree().physics_frame
 		cam_lock = true
 		camera.global_position = Vector3(cp[0],cp[1],cp[2])

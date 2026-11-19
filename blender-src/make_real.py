@@ -191,6 +191,8 @@ TYRE = DARK
 CHROME = mat("Chrome", "c9d1d8", 0.25, 0.9)
 LIGHT = mat("Light", "fff0b8", 0.3, 0.0, 2.5)
 TAIL = mat("Tail", "e96963", 0.4, 0.0, 1.5)
+JET = mat("Jet", "5ff3ff", 0.3, 0.0, 3.0)
+HOVER_LIFT = 0.28
 
 # belt = top of the lower body, roof = top of the glass, hood/deck = how far the glass reaches.
 CARS = [
@@ -238,15 +240,16 @@ def build_car(p):
     block((0.75, 0.04, 0.14), (0, hl + 0.01, zb + 0.24), DARK, 0.02)
     block((W * 0.92, 0.1, 0.12), (0, hl - 0.02, zb + 0.08), DARK, 0.04)
     block((W * 0.92, 0.1, 0.12), (0, -hl + 0.02, zb + 0.08), DARK, 0.04)
-    # Wheels: tyre, rim and hub, sitting in the body like the old ones did.
-    wr = p["wheel"]
+    # v0.34 hover cars: no wheels. Four glowing hover jets under the body and a neon skirt strip;
+    # the whole car is lifted (HOVER_LIFT) so it floats above the road.
     for sx in (-1, 1):
         for sy in (-1, 1):
-            x = sx * (W / 2 - 0.13)
-            y = sy * 1.12
-            cyl(wr, 0.26, (x, y, -0.22), TYRE, rot=(0, math.pi / 2, 0), verts=18)
-            cyl(wr * 0.62, 0.27, (x + sx * 0.005, y, -0.22), CHROME, rot=(0, math.pi / 2, 0), verts=12)
-            cyl(wr * 0.2, 0.29, (x + sx * 0.01, y, -0.22), DARK, rot=(0, math.pi / 2, 0), verts=8)
+            x = sx * (W / 2 - 0.3)
+            y = sy * 1.05
+            cyl(0.3, 0.12, (x, y, zb - 0.02), DARK, verts=18)
+            cyl(0.24, 0.05, (x, y, zb - 0.09), JET, verts=18)
+    for sx in (-1, 1):
+        block((0.025, L * 0.78, 0.04), (sx * (W / 2 + 0.005), 0, zb + 0.1), JET)
     if p["kind"] == "suv":
         for sx in (-1, 1):
             block((0.05, abs(p["front"] - p["back"]) * 0.9, 0.05), (sx * 0.55, mid, p["roof"] + 0.12), DARK)
@@ -260,6 +263,8 @@ def build_car(p):
             block((0.06, 0.1, 0.28), (sx * 0.6, -hl + 0.3, belt + 0.12), DARK)
         block((W * 0.98, 0.42, 0.06), (0, -hl + 0.3, belt + 0.28), DARK, 0.02)
         block((0.32, L * 0.8, 0.012), (0, 0, belt + 0.002), DARK)
+    for o in CUR:
+        o.location.z += HOVER_LIFT
     export(p["name"])
 
 # ---------------------------------------------------------------- bus and sky train
@@ -321,10 +326,13 @@ def sky_car(end):
 try:
     for o in list(bpy.data.objects):
         bpy.data.objects.remove(o, do_unlink=True)
-    round_tree(); pine_tree(); palm_tree()
+    only_cars = os.environ.get("HARBOR_CARS_ONLY", "") != ""
+    if not only_cars:
+        round_tree(); pine_tree(); palm_tree()
     for p in CARS:
         build_car(p)
-    build_bus(); sky_car(False); sky_car(True)
+    if not only_cars:
+        build_bus(); sky_car(False); sky_car(True)
     print("HARBOR_REAL DONE")
 except Exception:
     import traceback

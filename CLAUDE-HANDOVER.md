@@ -455,3 +455,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Dev hooks with --city-shots: HC_CAM="name;x,y,z;lx,ly,lz;hour", HC_PEERS=1, HC_SHOWOFF=<gear index>.
 - Release commit 22b739d, tag v0.34.0, versionCode 50. APK SHA256 9e38c3ff89450452c0e8fd0d99da229a6de08f919b046f3f17ae8aa7b9b1ab68 (43314768 bytes), same certificate. Bench about 51 fps.
 - Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.
+
+## v0.34.1 (released 2026-11-19)
+
+- Fix: `_toggle_menu` now also hides `extra_panels` (leaderboard and market), so Close works on them. Smoke test opens and closes all three.
+- Release commit 5384372, tag v0.34.1, versionCode 51. APK SHA256 e9aeb082171ccbd8ffe152b1f99cbfc53033182dc693213d394643536ae96e32 (43314768 bytes), same certificate.
+- Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.

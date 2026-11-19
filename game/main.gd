@@ -268,7 +268,20 @@ var touch_buttons: Array[Button] = []
 var compass: Label
 var speed_label: Label
 
+func _symbol_font() -> void:
+	# v0.33.2: the browser version can't use the device's fonts, so symbols like ● ◆ ▶ ✕ ★ ♥ come
+	# from a bundled font (Noto Sans Symbols 2, SIL Open Font License; see credits.txt).
+	if not ResourceLoader.exists("res://fonts/NotoSansSymbols2-Regular.ttf"):
+		return
+	var sym: Font = load("res://fonts/NotoSansSymbols2-Regular.ttf")
+	var base := ThemeDB.fallback_font
+	if base != null and not base.fallbacks.has(sym):
+		var fb := base.fallbacks.duplicate()
+		fb.append(sym)
+		base.fallbacks = fb
+
 func _ready() -> void:
+	_symbol_font()
 	Input.emulate_mouse_from_touch = false
 	tunes.resize(CARS.size()*UPGRADES.size())
 	tunes.fill(0)
@@ -321,7 +334,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.33.1: see how many players are online under the minimap, and tap it to join them!")
+	_show_toast("Harbor City 0.33.2: symbols now show on every device, level 20 rings are a fixed rainbow, and other players' names sit right above them.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -1820,11 +1833,14 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	label.text = nm
 	label.font_size = 40
 	label.modulate = Color("ffffff")
-	label.position = Vector3(0,3.2,0)
+	label.position = Vector3(0,2.2,0)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.outline_size = 10
-	label.pixel_size = 0.012
+	label.outline_size = 12
+	label.font_size = 44
+	label.fixed_size = true
+	label.pixel_size = 0.0011
 	label.no_depth_test = true
+	label.render_priority = 9
 	node.add_child(label)
 	return {"node":node,"car":car_node,"foot":foot_node,"label":label,"name":nm,"target":Vector3.ZERO,"yaw":0.0,"seen":Time.get_ticks_msec()/1000.0,"driving":true,"role":0,"lvl":1,"shown":0,"red":red_light,"blue":blue_light,"person":foot_person,"seat":-1,"qn":0,"en":0,"ring":peer_ring}
 
@@ -1889,6 +1905,7 @@ func _online_update_peers(delta: float) -> void:
 		node.rotation.y = lerp_angle(node.rotation.y,float(peer["yaw"]),minf(1.0,delta*8.0))
 		(peer["car"] as Node3D).visible = peer["driving"]
 		(peer["foot"] as Node3D).visible = not peer["driving"]
+		(peer["label"] as Label3D).position.y = 2.8 if peer["driving"] else 1.2
 		var role := int(peer["role"])
 		var cop := role == 2
 		var flash := int(clock*6.0) % 2 == 0
@@ -2721,7 +2738,7 @@ func _orole_tick(delta: float) -> void:
 	var screen_forward := -camera.global_basis.z
 	screen_forward.y = 0
 	var angle := atan2(offset.dot(screen_right),offset.dot(screen_forward.normalized()))
-	var arrows := ["↑","↗","→","↘","↓","↙","←","↖"]
+	var arrows := ["⬆","⬈","➡","⬊","⬇","⬋","⬅","⬉"]
 	var arrow: String = arrows[posmod(int(round(angle/(PI/4.0))),8)]
 	if online_role == 1:
 		if count == 0:
@@ -3030,7 +3047,7 @@ func _chase_tick(delta: float) -> void:
 	var screen_forward := -camera.global_basis.z
 	screen_forward.y = 0
 	var angle := atan2(offset.dot(screen_right),offset.dot(screen_forward.normalized()))
-	var arrows := ["↑","↗","→","↘","↓","↙","←","↖"]
+	var arrows := ["⬆","⬈","➡","⬊","⬇","⬋","⬅","⬉"]
 	var arrow: String = arrows[posmod(int(round(angle/(PI/4.0))),8)]
 	if chase_mode == 1:
 		chase_label.text = "WANTED  ·  escape in %ds\nNearest cop %dm %s   Busted %s%s" % [int(ceil(left)),int(nearest),arrow,_bar(chase_bust,2.5),"   HELI ON YOU!" if heli_on else ""]
@@ -4716,9 +4733,19 @@ const LEVEL_BANDS := [[1,Color("5ce67a"),"Green"],[5,Color("3df0ff"),"Cyan"],[10
 const TIER_KEYS := ["b","s","g","l"]
 const TAG_NO_TIER := Color("f4f1e8")
 
+const RAINBOW_SHADER := """
+shader_type spatial;
+render_mode unshaded, shadows_disabled;
+varying vec3 lp;
+void vertex() { lp = VERTEX; }
+vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
+void fragment() { ALBEDO = mix(hue(atan(lp.z, lp.x) / 6.28318 + 0.5), vec3(1.0), 0.15); }
+"""
+var rainbow_mat: ShaderMaterial
+
 func _level_color(lv: int) -> Color:
 	if lv >= 20:
-		return Color.from_hsv(fposmod(clock*0.15,1.0),0.75,1.0)
+		return Color("ffe066")
 	var col: Color = LEVEL_BANDS[0][1]
 	for band in LEVEL_BANDS:
 		if lv >= int(band[0]):
@@ -4741,7 +4768,20 @@ func _style_ring(ring: MeshInstance3D, lv: int, tier: int, crew_col: Variant) ->
 	if not ring.has_meta("own_mat"):
 		ring.material_override = (ring.material_override as StandardMaterial3D).duplicate()
 		ring.set_meta("own_mat",true)
-	(ring.material_override as StandardMaterial3D).albedo_color = _level_color(lv).lightened(0.15)
+	if lv >= 20:
+		# Level 20: a rainbow all the way round the ring, the same on every device.
+		if rainbow_mat == null:
+			var sh := Shader.new()
+			sh.code = RAINBOW_SHADER
+			rainbow_mat = ShaderMaterial.new()
+			rainbow_mat.shader = sh
+		if not ring.has_meta("std_mat"):
+			ring.set_meta("std_mat",ring.material_override)
+		ring.material_override = rainbow_mat
+	else:
+		if ring.has_meta("std_mat"):
+			ring.material_override = ring.get_meta("std_mat")
+		(ring.material_override as StandardMaterial3D).albedo_color = _level_color(lv).lightened(0.15)
 	var halo := ring.get_child(0) as MeshInstance3D
 	var hcol := _tier_color(tier) if tier >= 0 else _level_color(mini(lv,19))
 	if halo != null and ring.get_meta("halo_col",Color.BLACK) != hcol:
@@ -4847,7 +4887,7 @@ func _social_msg(p: Dictionary) -> void:
 			var amt := clampi(int(p.get("a",0)),1,GIFT_AMOUNT)
 			cash += amt
 			_save_progress()
-			_feed_add("%s gave you $%d! 🎁" % [nm,amt],from,{"soc":"ty"})
+			_feed_add("%s gave you $%d!" % [nm,amt],from,{"soc":"ty"})
 		"ty":
 			_show_toast("%s says thank you! ♥" % nm)
 		"cri":
@@ -5264,8 +5304,9 @@ func _social_tick(delta: float) -> void:
 		my_tag.modulate = _tier_color(my_tier) if my_tier >= 0 else Color("ffd86a")
 	for id in online_peers:
 		var peer: Dictionary = online_peers[id]
-		if int(peer.get("lvl",1)) >= 20 and peer.has("ring"):
-			_style_ring(peer["ring"],20,int(peer.get("at",-1)),CREW_COLORS[int(peer.get("cc",0))] if String(peer.get("crew","")) != "" else null)
+		if peer.has("ring") and int(peer.get("ring_lv",-1)) != int(peer.get("lvl",1)):
+			peer["ring_lv"] = int(peer.get("lvl",1))
+			_style_ring(peer["ring"],int(peer["lvl"]),int(peer.get("at",-1)),CREW_COLORS[int(peer.get("cc",0))] if String(peer.get("crew","")) != "" else null)
 
 func _photo() -> void:
 	# Group selfie: the camera swings in front of you, the screen clears, everyone cheers, click.
@@ -6885,7 +6926,7 @@ func _interact() -> void:
 	if not exploring and not quick_on and next_job_pending:
 		next_job_pending = false
 		_save_progress()
-		_show_toast("Next job: %s → %s  •  $%d" % [ROUTES[route_index]["from"],ROUTES[route_index]["to"],ROUTES[route_index]["pay"]])
+		_show_toast("Next job: %s ➡ %s  •  $%d" % [ROUTES[route_index]["from"],ROUTES[route_index]["to"],ROUTES[route_index]["pay"]])
 		_refresh_hud()
 		return
 	var destination := _destination()
@@ -6985,7 +7026,7 @@ func _refresh_hud() -> void:
 	var screen_forward := -camera.global_basis.z
 	screen_forward.y = 0
 	var compass_angle := atan2(offset.dot(screen_right),offset.dot(screen_forward.normalized()))
-	var arrows := ["↑","↗","→","↘","↓","↙","←","↖"]
+	var arrows := ["⬆","⬈","➡","⬊","⬇","⬋","⬅","⬉"]
 	var arrow_index := posmod(int(round(compass_angle/(PI/4.0))),8)
 	compass.text = "%s  %s" % [arrows[arrow_index],"Destination is here" if distance < 5 else "Follow the golden ring"]
 	if exploring and index < 0 and _nearest_civic() < 0 and _ridge_open() and _nearest_ridge() < 0 and _nearest_bay() < 0 and not (_north_open() and _nearest_north() >= 0) and not (_downtown_open() and _nearest_downtown() >= 0) and not (_marina_open() and _nearest_marina() >= 0):
@@ -7906,6 +7947,12 @@ func _smoke_test() -> void:
 	quest_offer_idx = -1
 	quest_offer_panel.hide()
 	quest_bar.hide()
+	# v0.33.2: symbols come from the bundled font on every device (the browser has no system fonts).
+	for ch in "●○◆▶✕★♥⬆➡⬇⬅":
+		var ok := ThemeDB.fallback_font.has_char(ch.unicode_at(0))
+		for fb in ThemeDB.fallback_font.fallbacks:
+			ok = ok or (fb as Font).has_char(ch.unicode_at(0))
+		assert(ok,"Symbol %s has a font" % ch)
 	# v0.33.1: the ONLINE count under the minimap, offline and online.
 	var was_on := [online_on,online_state,hud_clean,paused]
 	online_on = false
@@ -11653,7 +11700,7 @@ func _build_hub() -> void:
 			lamps.append([Vector3(float(x),0,32+6.4),PI/2.0])
 		lamps.append([Vector3(float(x)+8.0,0,32-6.4),-PI/2.0])
 	_model_batch("res://models/lamp.glb",lamps)
-	_sign("HARBOR DOME  →",Vector3(62,6.5,32),Color("e6d9ff"),56)
+	_sign("HARBOR DOME  ➡",Vector3(62,6.5,32),Color("e6d9ff"),56)
 	# The dome is for people only: bollards that stop cars (collision layer 2) but not people, and parking.
 	var barrier := StaticBody3D.new()
 	barrier.collision_layer = HUB_CAR_LAYER
@@ -13838,7 +13885,7 @@ func _build_raceway() -> void:
 	for x in range(116,200,8):
 		road_dash.append([Vector3(float(x),0.06,-150),Vector3(3,0.02,0.18)])
 	_box_batch(Color("e7d9a4"),road_dash)
-	_sign("HARBOR RACEWAY  →\nparking inside",Vector3(118,6.5,-150),Color("ffd8a8"),56)
+	_sign("HARBOR RACEWAY  ▶\nparking inside",Vector3(118,6.5,-150),Color("ffd8a8"),56)
 	# Venue ground and walls (entrance gap on the west wall at z -157..-143).
 	var cx := (RW_X0+RW_X1)/2.0
 	var cz := (RW_Z0+RW_Z1)/2.0
@@ -16808,7 +16855,7 @@ func _treasure_dir_char(to: Vector3) -> String:
 	var f := Vector2(-camera.global_basis.z.x,-camera.global_basis.z.z).normalized()
 	var r := Vector2(camera.global_basis.x.x,camera.global_basis.x.z).normalized()
 	var a := atan2(d.dot(r),d.dot(f))
-	var arrows := ["↑","↗","→","↘","↓","↙","←","↖"]
+	var arrows := ["⬆","⬈","➡","⬊","⬇","⬋","⬅","⬉"]
 	return arrows[posmod(int(round(a/(PI/4.0))),8)]
 
 func _treasure_tick(_delta: float) -> void:
@@ -17504,7 +17551,7 @@ func _build_expansion() -> void:
 		lamps.append([Vector3(136.4,0,float(z)),0.0])
 	for x in range(150,268,16):
 		lamps.append([Vector3(float(x),0,156.4),PI/2.0])
-	_sign("SUNSET BEACH  ↓",Vector3(130,6.5,46),Color("ffd8a8"),56)
+	_sign("SUNSET BEACH  ⬇",Vector3(130,6.5,46),Color("ffd8a8"),56)
 	_sign("SUNSET BEACH",Vector3(SB_X0+8.0,9,150),Color("ffd8a8"),80)
 	# v0.27: no edge walls; the north side joins the new coast road land, the rest is open seafront.
 	_ex_grid(SB_X0,SB_X1,SB_Z0+5.0,SB_BEACH_ROAD,SB_AVES,SB_STREETS)
@@ -17569,7 +17616,7 @@ func _build_expansion() -> void:
 	_ex_grid(WS_X0+6.0,WS_X1,WS_Z0+5.0,WS_Z1-5.0,WS_AVES,WS_STREETS)
 	_ex_lamps(lamps,WS_X0,WS_X1,WS_Z0,WS_Z1,WS_AVES,WS_STREETS)
 	_sign("WESTSIDE",Vector3(WS_X1-6.0,8,72),Color("cfe8ff"),72)
-	_sign("WESTSIDE  ←",Vector3(-232,6.5,64),Color("cfe8ff"),48)
+	_sign("WESTSIDE  ⬅",Vector3(-232,6.5,64),Color("cfe8ff"),48)
 	_ex_yards([WS_X0,-420.0,-360.0,-300.0,WS_X1],[WS_Z0,0.0,72.0,150.0,230.0,300.0,WS_Z1],[true,true],[true,true],[[2,2],[0,4],[0,5]])
 	# Market square with stalls and a fountain.
 	var m := WS_MARKET
@@ -17785,7 +17832,7 @@ func _build_connect() -> void:
 			trees.append([q,rng.randf()*TAU,rng.randf_range(0.8,1.2)])
 	_model_batch("res://models/tree_round.glb",trees)
 	_sign("COAST ROAD",Vector3(214,6.0,-28),Color("ffe0b8"),48)
-	_sign("RACEWAY ROAD  ↑",Vector3(197,6.0,-40),Color("ffd8a8"),44)
+	_sign("RACEWAY ROAD  ⬆",Vector3(197,6.0,-40),Color("ffd8a8"),44)
 	_sign("WESTSIDE BOULEVARD",Vector3(-290,6.0,-56),Color("cfe8ff"),48)
 
 func _v27_near_cross(p: Vector2, n: Vector2, w: float) -> bool:
@@ -18244,7 +18291,7 @@ func _sky_build_station(i: int) -> Dictionary:
 	var walk_len := maxf(off-5.75,0.5)
 	_box(self,walk_c+Vector3(0,SKY_Y-0.05,0),Vector3(2.4,0.4,walk_len) if along_x else Vector3(walk_len,0.4,2.4),Color("d8d4c8"))
 	_sign("HARBOR LOOP\n%s" % SKY_STATIONS[i]["name"],plat+Vector3(0,SKY_Y+6.6,0),Color("bff3ff"),46)
-	_sign("SKY TRAIN ↑",lift+Vector3(0,4.2,0)-nrm*side*1.8,Color("bff3ff"),40)
+	_sign("SKY TRAIN ⬆",lift+Vector3(0,4.2,0)-nrm*side*1.8,Color("bff3ff"),40)
 	var ring := MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 2.0

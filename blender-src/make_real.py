@@ -323,9 +323,140 @@ def sky_car(end):
             block((0.04, 1.4, 2.0), (sx * 1.47, y, 1.6), win)
     export("sky_car_end" if end else "sky_car")
 
+# ---------------------------------------------------------------- v0.34.9 futuristic airliner
+# Same frame as the old airplane.glb (nose towards -Y, fuselage centre about 2.6 m up, about 15 m
+# long before the game scales it x3), so the airport code places it unchanged.
+def loft(sections, m, verts=24):
+    # sections: [(y, radius_x, radius_z, z_centre)], a smooth closed tube with capped ends.
+    me = bpy.data.meshes.new("loft")
+    bm = bmesh.new()
+    rings = []
+    for (y, rx, rz, zc) in sections:
+        ring = []
+        for k in range(verts):
+            a = 2 * math.pi * k / verts
+            ring.append(bm.verts.new((math.cos(a) * rx, y, zc + math.sin(a) * rz)))
+        rings.append(ring)
+    for i in range(len(rings) - 1):
+        for k in range(verts):
+            a, b = rings[i][k], rings[i][(k + 1) % verts]
+            c, d = rings[i + 1][(k + 1) % verts], rings[i + 1][k]
+            bm.faces.new((a, b, c, d))
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+    bm.normal_update()
+    bm.to_mesh(me)
+    bm.free()
+    o = bpy.data.objects.new("loft", me)
+    bpy.context.collection.objects.link(o)
+    return finish(o, m)
+
+def slab(root, tip, m, sign=1.0):
+    # A swept, tapering wing panel. root/tip: (x, y_front, y_back, z, thickness)
+    me = bpy.data.meshes.new("slab")
+    bm = bmesh.new()
+    pts = []
+    for (x, yf, yb, z, t) in (root, tip):
+        pts.append([bm.verts.new((x * sign, yf, z - t / 2)), bm.verts.new((x * sign, yb, z - t / 2)),
+                    bm.verts.new((x * sign, yb, z + t / 2)), bm.verts.new((x * sign, yf + (yb - yf) * 0.25, z + t / 2 + t * 0.4))])
+    r, tp = pts
+    for k in range(4):
+        bm.faces.new((r[k], r[(k + 1) % 4], tp[(k + 1) % 4], tp[k]))
+    bm.faces.new(list(reversed(r)))
+    bm.faces.new(tp)
+    bm.normal_update()
+    bm.to_mesh(me)
+    bm.free()
+    o = bpy.data.objects.new("slab", me)
+    bpy.context.collection.objects.link(o)
+    return finish(o, m)
+
+def build_jet():
+    body = mat("PlaneBody", "f4f7fa", 0.25, 0.25)
+    livery = mat("PlaneAccent", "1b8fd6", 0.3, 0.3)
+    glass = mat("PlaneGlass", "142433", 0.08, 0.6)
+    nacelle = mat("PlaneNacelle", "c9d1d8", 0.25, 0.8)
+    jet = mat("Jet", "5ff3ff", 0.3, 0.0, 3.0)
+    dark = mat("Dark", "1b232b", 0.8)
+    zc = 2.7
+    # Fuselage: rounded nose, long cabin, tail sweeping up to a slim cone.
+    loft([(-7.6, 0.05, 0.05, zc - 0.25), (-7.4, 0.42, 0.38, zc - 0.2), (-7.0, 0.78, 0.72, zc - 0.12),
+          (-6.3, 1.02, 0.98, zc - 0.04), (-5.4, 1.15, 1.12, zc), (4.2, 1.15, 1.12, zc),
+          (5.6, 1.0, 0.92, zc + 0.18), (6.9, 0.7, 0.58, zc + 0.45), (8.0, 0.32, 0.26, zc + 0.72),
+          (8.5, 0.06, 0.06, zc + 0.82)], body, verts=28)
+    # Wraparound cockpit glass and a dark window band on each side.
+    loft([(-7.15, 0.62, 0.3, zc + 0.42), (-6.75, 0.9, 0.4, zc + 0.5), (-6.35, 0.96, 0.3, zc + 0.56)], glass, verts=20)
+    for sx in (-1, 1):
+        block((0.04, 9.4, 0.26), (sx * 1.13, -0.6, zc + 0.32), glass)
+        # Livery: a sweeping stripe low on the fuselage.
+        block((0.04, 11.0, 0.16), (sx * 1.12, 0.4, zc - 0.32), livery)
+    # Swept wings with upturned winglets.
+    for sg in (-1.0, 1.0):
+        slab((1.0, -1.6, 2.6, zc - 0.55, 0.36), (8.6, 2.4, 3.7, zc - 0.05, 0.12), body, sg)
+        slab((8.5, 2.45, 3.7, zc - 0.05, 0.1), (8.95, 3.2, 3.9, zc + 1.0, 0.06), livery, sg)
+        # Horizontal stabilisers.
+        slab((0.4, 6.4, 7.8, zc + 0.6, 0.18), (3.4, 7.9, 8.6, zc + 0.75, 0.08), body, sg)
+        # Engine nacelle under each wing: pylon, smooth pod, glowing intake and exhaust.
+        x = sg * 3.4
+        block((0.18, 1.6, 0.6), (x, 0.4, zc - 0.85), body)
+        loft([(-1.1, 0.5, 0.5, zc - 1.35), (-0.9, 0.66, 0.66, zc - 1.35), (0.6, 0.66, 0.66, zc - 1.35),
+              (1.4, 0.48, 0.48, zc - 1.35), (1.7, 0.3, 0.3, zc - 1.35)], nacelle, verts=20)
+        for k in range(1):
+            pass
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.56, minor_radius=0.07, location=(x, -1.12, zc - 1.35), rotation=(math.pi / 2, 0, 0))
+        finish(bpy.context.active_object, jet)
+        cyl(0.3, 0.06, (x, 1.72, zc - 1.35), jet, rot=(math.pi / 2, 0, 0), verts=14)
+        CUR[-3].location.x = x
+        CUR[-4].location.x = x
+    # Swept fin with a livery tip.
+    slab((0.0, 5.4, 8.2, zc + 1.0, 0.22), (0.0, 7.6, 8.8, zc + 3.6, 0.1), body)
+    CUR[-1].rotation_euler = (0, math.pi / 2, 0)
+    # (the fin slab is built flat, then stood up)
+    fin = CUR[-1]
+    for v in fin.data.vertices:
+        v.co.x, v.co.z = v.co.z - (zc + 1.0), v.co.x
+    fin.rotation_euler = (0, 0, 0)
+    for v in fin.data.vertices:
+        x0 = v.co.x
+        v.co.x = 0.0 + (v.co.z if False else 0.0) + (x0 * 0.0)
+    # Simpler: rebuild the fin as a swept block stack.
+    bpy.data.objects.remove(fin, do_unlink=True)
+    CUR.pop()
+    me = bpy.data.meshes.new("fin")
+    bm = bmesh.new()
+    t0, t1 = 0.14, 0.06
+    rb = [(5.4, zc + 0.9), (8.3, zc + 0.9)]
+    tp = [(7.5, zc + 4.0), (8.9, zc + 4.0)]
+    vs = []
+    for (y, z), t in ((rb[0], t0), (rb[1], t0), (tp[1], t1), (tp[0], t1)):
+        vs.append((bm.verts.new((-t, y, z)), bm.verts.new((t, y, z))))
+    L = [v[0] for v in vs]
+    R = [v[1] for v in vs]
+    bm.faces.new(L)
+    bm.faces.new(list(reversed(R)))
+    for k in range(4):
+        bm.faces.new((L[k], L[(k + 1) % 4], R[(k + 1) % 4], R[k]))
+    bm.normal_update()
+    bm.to_mesh(me)
+    bm.free()
+    o = bpy.data.objects.new("fin", me)
+    bpy.context.collection.objects.link(o)
+    finish(o, body)
+    block((0.3, 1.4, 0.5), (0, 8.25, zc + 3.85), livery, 0.05)
+    # Slim landing gear.
+    for (x, y) in ((0.0, -5.6), (-1.4, 0.9), (1.4, 0.9)):
+        block((0.14, 0.14, 1.9), (x, y, 1.15), nacelle)
+        for dx in (-0.22, 0.22):
+            cyl(0.34, 0.2, (x + dx, y, 0.36), dark, rot=(0, math.pi / 2, 0), verts=14)
+    export("airplane")
+
 try:
     for o in list(bpy.data.objects):
         bpy.data.objects.remove(o, do_unlink=True)
+    if os.environ.get("HARBOR_JET_ONLY", "") != "":
+        build_jet()
+        print("HARBOR_REAL DONE")
+        raise SystemExit
     only_cars = os.environ.get("HARBOR_CARS_ONLY", "") != ""
     if not only_cars:
         round_tree(); pine_tree(); palm_tree()

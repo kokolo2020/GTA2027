@@ -310,6 +310,7 @@ func _ready() -> void:
 	_build_peds()
 	_build_traffic()
 	_build_future()
+	_build_food_court()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
 	radio_player = AudioStreamPlayer.new()
 	radio_player.volume_db = -6.0
@@ -334,7 +335,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.33.5: walk into quest spots and floating gems to collect them, and tap TRACK in PLAYERS to follow anyone online.")
+	_show_toast("Harbor City 0.33.6: the futuristic Harbor Food Court is open in the old city: hover stands for orange juice, hot dogs and smoothies!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -755,6 +756,11 @@ func _build_world() -> void:
 		for z in [-46.0,-17.0,17.0]:
 			var height := 4.0 + float(count % 4) * 2.2
 			var vis: Array = []
+			if x == FC_BLOCK.x and z == FC_BLOCK.z:
+				# v0.33.6: the old Mint Cruiser building is now the open-air Harbor Food Court.
+				_box(self, Vector3(x,0.12,z), Vector3(15,0.25,15), Color("e3d6bf"))
+				count += 1
+				continue
 			_box(self, Vector3(x,0.12,z), Vector3(15,0.25,15), Color("ccd0c3"))
 			vis.append(_box(self, Vector3(x,height/2.0,z), Vector3(11,height,10), palette[count % 4], true))
 			neon_boxes.append([Vector3(x,0.12,z),Vector3(11,height+0.35,10)])
@@ -7672,6 +7678,7 @@ func _process(delta: float) -> void:
 	_clean_hud_tick()
 	_quest_offer_tick()
 	_auto_collect_tick()
+	_food_court_tick(delta)
 	_social_tick(delta)
 	_quiz_tick(delta)
 	_ach_tick(delta)
@@ -8058,6 +8065,7 @@ func _smoke_test() -> void:
 	assert(_quick_is_done(second),"Walking up and tapping completes it")
 	_quest_offer_tick()
 	assert(quest_active and quick_idx != second and not _quick_is_done(quick_idx),"The next quest starts straight away")
+	assert(get_node_or_null("FoodCourt") != null and fc_people.size() >= 12,"v0.33.6: the Harbor Food Court has its stands and crowds")
 	var third := quick_idx
 	player.position = (QUICK[third]["pos"] as Vector3)+Vector3(2,0.75,0)
 	_auto_collect_tick(true)
@@ -10143,7 +10151,8 @@ func _build_city_detail() -> void:
 		ew_inst.material_override = light_ew_mat
 	# Shop rows in the two big lawns north of the main street, plus furniture and planters.
 	var items := {}
-	for sx in [-1.0,1.0]:
+	for sx in [1.0]:
+		# v0.33.6: the west shop row (the old Mint Cruiser block) made way for the Harbor Food Court.
 		_place(items,"shops_%d" % (0 if sx < 0 else 1),Vector3(sx*16.0,0,-8.6),0.0,0.55)
 	for key in items:
 		_model_batch("res://models/%s.glb" % key,items[key],{})
@@ -10176,16 +10185,26 @@ func _build_city_detail() -> void:
 		for z in [-46.0,-17.0,17.0]:
 			if count % 3 == 1:
 				var y := float(heights[count % 4])+0.35
-				boards.append([Vector3(x,y,z),0.0,0.75])
+				var fc_board: bool = x == FC_BLOCK.x and z == FC_BLOCK.z
+				var bz: float = z
+				if fc_board:
+					# Standing on its own posts behind the food stands.
+					y = 0.25
+					bz = FC_BLOCK.z-6.2
+				boards.append([Vector3(x,y,bz),0.0,0.75])
 				var ad := Label3D.new()
 				ad.text = ADS[ad_i % ADS.size()]
 				ad_i += 1
 				ad.font_size = 64
+				if fc_board:
+					# v0.33.6: the billboard now advertises the food court.
+					ad.text = "HARBOR FOOD COURT\nJuice · Hot dogs · Smoothies"
+					ad.font_size = 50
 				ad.pixel_size = 0.015
 				ad.modulate = Color("f2feff")
 				ad.outline_size = 10
 				ad.outline_modulate = Color(0.12,0.05,0.3,0.9)
-				ad.position = Vector3(x,y+7.3*0.75,z+0.25)
+				ad.position = Vector3(x,y+7.3*0.75,bz+0.25)
 				add_child(ad)
 			count += 1
 	_model_batch("res://models/billboard.glb",boards)
@@ -16801,6 +16820,317 @@ func _my_tag_tick() -> void:
 		var pulse := 1.0+0.08*sin(clock*4.0)
 		my_ring.scale = Vector3(pulse,0.3,pulse)
 
+# ---------- v0.33.6: Harbor Food Court (three street stands with crowds, old city) ----------
+# On the wide pavement in front of the old Mint Cruiser building (block -17,-17), facing the street.
+const FC_BLOCK := Vector3(-17,0,-17)
+const FC_Z := -20.0
+const FC_STANDS := [
+	{"name":"FRESH ORANGE JUICE","x":-22.5,"col":Color("ff8a1c"),"trim":Color("ffe36b"),"kind":"oj","menu":"FRESH OJ   $4\nBIG SQUEEZE   $6"},
+	{"name":"HOT DOGS","x":-17.0,"col":Color("ff3b5c"),"trim":Color("ffd23f"),"kind":"dog","menu":"CLASSIC DOG   $5\nNEON CHILI DOG   $7"},
+	{"name":"SMOOTHIES","x":-11.5,"col":Color("c254ff"),"trim":Color("4fe3ff"),"kind":"smoothie","menu":"BERRY BLAST   $5\nGALAXY SWIRL   $7"},
+]
+var fc_people: Array = []
+var fc_mats := {}
+var fc_pods: Array = []
+var fc_spin: Array = []
+
+func _fc_part(parent: Node3D, mesh: Mesh, pos: Vector3, mat: Material, scale_v := Vector3.ONE) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.position = pos
+	mi.scale = scale_v
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	return mi
+
+func _fc_torus(inner: float, outer: float) -> TorusMesh:
+	var t := TorusMesh.new()
+	t.inner_radius = inner
+	t.outer_radius = outer
+	t.rings = 32
+	t.ring_segments = 6
+	return t
+
+func _fc_pearl() -> StandardMaterial3D:
+	if not fc_mats.has("pearl"):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color("f3f6fb")
+		m.metallic = 0.25
+		m.roughness = 0.18
+		m.metallic_specular = 0.8
+		fc_mats["pearl"] = m
+	return fc_mats["pearl"]
+
+func _fc_chrome() -> StandardMaterial3D:
+	if not fc_mats.has("chrome"):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color("c9d3dc")
+		m.metallic = 0.9
+		m.roughness = 0.15
+		fc_mats["chrome"] = m
+	return fc_mats["chrome"]
+
+func _fc_glass() -> StandardMaterial3D:
+	if not fc_mats.has("glass"):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(0.6,0.95,1.0,0.35)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.metallic = 0.3
+		m.roughness = 0.05
+		fc_mats["glass"] = m
+	return fc_mats["glass"]
+
+func _fc_glow(color: Color) -> StandardMaterial3D:
+	var key := "glow"+color.to_html(false)
+	if not fc_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = color.lightened(0.15)
+		fc_mats[key] = m
+	return fc_mats[key]
+
+func _fc_ghost(color: Color) -> StandardMaterial3D:
+	# Hologram treats: see-through glowing colour that still reads in bright daylight.
+	var key := "ghost"+color.to_html(false)
+	if not fc_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.albedo_color = Color(color.r,color.g,color.b,0.72)
+		m.rim_enabled = false
+		fc_mats[key] = m
+	return fc_mats[key]
+
+func _fc_holo(a: Color, b: Color, energy: float) -> ShaderMaterial:
+	var key := "holo%s%s%.2f" % [a.to_html(false),b.to_html(false),energy]
+	if not fc_mats.has(key):
+		var m := _holo_material(energy)
+		m.set_shader_parameter("col_a",a.lightened(0.2))
+		m.set_shader_parameter("col_b",b)
+		fc_mats[key] = m
+	return fc_mats[key]
+var fc_emote_t := 2.0
+
+func _fc_mesh(parent: Node3D, mesh: Mesh, pos: Vector3, color: Color, scale_v := Vector3.ONE, glow := false) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.position = pos
+	mi.scale = scale_v
+	var key := color.to_html(false)+("g" if glow else "")
+	if not fc_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = color
+		m.roughness = 0.6
+		if glow:
+			m.emission_enabled = true
+			m.emission = color
+			m.emission_energy_multiplier = 0.35
+		fc_mats[key] = m
+	mi.material_override = fc_mats[key]
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	return mi
+
+func _fc_sphere(r: float) -> SphereMesh:
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r*2.0
+	sm.radial_segments = 16
+	sm.rings = 8
+	return sm
+
+func _fc_capsule(r: float, h: float) -> CapsuleMesh:
+	var cm := CapsuleMesh.new()
+	cm.radius = r
+	cm.height = h
+	cm.radial_segments = 14
+	cm.rings = 4
+	return cm
+
+func _fc_cone(top: float, bottom: float, h: float) -> CylinderMesh:
+	var c := CylinderMesh.new()
+	c.top_radius = top
+	c.bottom_radius = bottom
+	c.height = h
+	c.radial_segments = 16
+	c.rings = 1
+	return c
+
+func _build_food_court() -> void:
+	var root := Node3D.new()
+	root.name = "FoodCourt"
+	add_child(root)
+	for st in FC_STANDS:
+		var sx := float(st["x"])
+		var col: Color = st["col"]
+		var trim: Color = st["trim"]
+		var base := Vector3(sx,0,FC_Z)
+		# v0.33.6: futuristic hover kiosk. A glowing pad on the ground...
+		_fc_mesh(root,_fc_cone(1.7,1.75,0.05),base+Vector3(0,0.03,0),Color("e9eef5"))
+		_fc_part(root,_fc_torus(1.6,1.72),base+Vector3(0,0.07,0),_fc_glow(col))
+		# ...a pearl-white pod floating over it, with a neon band, a glass counter and a soft beam under it.
+		var pod := Node3D.new()
+		pod.position = base
+		root.add_child(pod)
+		fc_pods.append(pod)
+		_fc_part(pod,_fc_sphere(1.0),Vector3(0,1.05,0),_fc_pearl(),Vector3(1.55,0.62,0.82))
+		_fc_part(pod,_fc_torus(0.98,1.06),Vector3(0,1.05,0),_fc_glow(col),Vector3(1.55,1.0,0.82))
+		_fc_part(pod,_fc_torus(0.55,0.68),Vector3(0,0.45,0),_fc_glow(col))
+		var beam := _fc_part(pod,_fc_cone(0.75,0.4,0.42),Vector3(0,0.24,0),_fc_holo(col,trim,0.35))
+		beam.mesh.set("cap_top",false)
+		_fc_part(pod,BoxMesh.new(),Vector3(0,1.62,0.42),_fc_glass(),Vector3(2.5,0.05,0.75))
+		_fc_part(pod,BoxMesh.new(),Vector3(0,1.6,0.8),_fc_glow(trim),Vector3(2.5,0.04,0.04))
+		# Small glowing cups or snacks on the counter.
+		for cx in [-0.8,-0.27,0.27,0.8]:
+			_fc_part(pod,_fc_cone(0.08,0.06,0.22),Vector3(cx,1.76,0.45),_fc_glow(col.lerp(trim,0.3+0.2*cx)))
+		# Hologram menu behind the counter.
+		var menu := _fc_part(pod,QuadMesh.new(),Vector3(0,2.15,-0.15),_fc_holo(col,trim,0.55),Vector3(1.9,0.75,1))
+		menu.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var ml := Label3D.new()
+		ml.text = String(st["menu"])
+		ml.font_size = 30
+		ml.pixel_size = 0.01
+		ml.modulate = Color("f4fdff")
+		ml.outline_size = 6
+		ml.outline_modulate = col.darkened(0.6)
+		ml.position = Vector3(0,2.15,-0.12)
+		pod.add_child(ml)
+		# Chrome mast and a floating halo canopy with a neon rim.
+		_fc_part(root,_fc_cone(0.07,0.09,3.0),base+Vector3(0,1.5,-0.95),_fc_chrome())
+		_fc_part(root,_fc_cone(1.9,1.9,0.07),base+Vector3(0,3.0,-0.05),_fc_pearl())
+		_fc_part(root,_fc_torus(1.86,1.98),base+Vector3(0,3.0,-0.05),_fc_glow(col))
+		var lab := Label3D.new()
+		lab.text = String(st["name"])
+		lab.font_size = 40
+		lab.pixel_size = 0.011
+		lab.modulate = trim.lerp(Color.WHITE,0.5)
+		lab.outline_size = 14
+		lab.outline_modulate = col.darkened(0.25)
+		lab.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		lab.position = base+Vector3(0,3.35,0)
+		root.add_child(lab)
+		# A spinning hologram of the treat above the canopy.
+		var holo := Node3D.new()
+		holo.position = base+Vector3(0,4.45,0)
+		root.add_child(holo)
+		fc_spin.append(holo)
+		var hm := _fc_ghost(col.lerp(trim,0.25))
+		match String(st["kind"]):
+			"oj":
+				_fc_part(holo,_fc_sphere(0.55),Vector3.ZERO,hm)
+				_fc_part(holo,_fc_sphere(0.18),Vector3(0.16,0.6,0),hm,Vector3(1.4,0.35,0.7))
+			"dog":
+				var bun := _fc_part(holo,_fc_capsule(0.3,1.8),Vector3(0,-0.1,0),hm,Vector3(1,1,1.25))
+				bun.rotation.z = PI/2.0
+				var sausage := _fc_part(holo,_fc_capsule(0.17,2.1),Vector3(0,0.15,0),hm)
+				sausage.rotation.z = PI/2.0
+			"smoothie":
+				_fc_part(holo,_fc_cone(0.45,0.32,0.95),Vector3.ZERO,hm)
+				_fc_part(holo,_fc_sphere(0.46),Vector3(0,0.48,0),hm,Vector3(1,0.45,1))
+				var straw := _fc_part(holo,_fc_cone(0.04,0.04,0.8),Vector3(0.14,0.95,0),hm)
+				straw.rotation.z = -0.25
+		_fc_part(holo,_fc_torus(0.82,0.88),Vector3(0,-0.1,0),_fc_glow(trim)).rotation.x = 0.35
+		# Robot vendor behind the counter (white shell, glowing visor).
+		var bot := Node3D.new()
+		bot.position = base+Vector3(0,0,-1.25)
+		root.add_child(bot)
+		_fc_part(bot,_fc_capsule(0.3,1.15),Vector3(0,0.95,0),_fc_pearl())
+		_fc_part(bot,_fc_sphere(0.26),Vector3(0,1.78,0),_fc_pearl())
+		_fc_part(bot,BoxMesh.new(),Vector3(0,1.8,0.2),_fc_glow(col),Vector3(0.36,0.09,0.1))
+		_fc_part(bot,_fc_cone(0.015,0.015,0.3),Vector3(0.1,2.12,0),_fc_chrome())
+		_fc_part(bot,_fc_sphere(0.045),Vector3(0.1,2.28,0),_fc_glow(trim))
+		_collider(root,base+Vector3(0,0.8,0),Vector3(3.1,1.6,1.7))
+	# Hungry crowds: queues at each counter and groups chatting in between.
+	var shirts := [Color("e04a3a"),Color("3f8fd2"),Color("5fbf7f"),Color("f2b24a"),Color("9b6bd6"),Color("f27fb2"),Color("2fb5a8"),Color("f2f2f2"),Color("2d2d36")]
+	var pants := [Color("263d54"),Color("38302a"),Color("4a4f57"),Color("23324a"),Color("7a6a55")]
+	var skins := [Color("f0c9a4"),Color("c68a60"),Color("8d5a3b"),Color("e2b48e"),Color("5c3a26")]
+	var hairs := [Color("2b1d14"),Color("1a1a1a"),Color("7a4a26"),Color("d9b26a"),Color("8a8a8a")]
+	var spots: Array = []
+	for st in FC_STANDS:
+		var sx := float(st["x"])
+		# A queue in front of the counter, then a few people waiting off to the side.
+		for q in 3:
+			spots.append([Vector3(sx+0.15*float(q % 2),0,FC_Z+1.75+0.85*float(q)),0.0])
+		spots.append([Vector3(sx-1.25,0,FC_Z+2.0),0.5])
+		spots.append([Vector3(sx+1.3,0,FC_Z+2.3),-0.6])
+	if web_lite:
+		var keep: Array = []
+		for i in spots.size():
+			if i % 7 < 4:
+				keep.append(spots[i])
+		spots = keep
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	for sp in spots:
+		var n := Node3D.new()
+		n.position = (sp[0] as Vector3)+Vector3(rng.randf_range(-0.12,0.12),0,rng.randf_range(-0.12,0.12))
+		n.rotation.y = float(sp[1])+rng.randf_range(-0.25,0.25)
+		root.add_child(n)
+		var pp := _make_person(n,rng.randi() % 4,{"Shirt":shirts[rng.randi() % shirts.size()],"Pants":pants[rng.randi() % pants.size()],"Skin":skins[rng.randi() % skins.size()],"Hair":hairs[rng.randi() % hairs.size()],"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
+		if not pp.is_empty():
+			fc_people.append(pp)
+	# Entrance arch on the street side.
+	for ax in [-6.8,6.8]:
+		_box(root,FC_BLOCK+Vector3(ax,2.1,11.4),Vector3(0.45,4.2,0.45),Color("f4efe6"),true)
+		_fc_part(root,BoxMesh.new(),FC_BLOCK+Vector3(ax,2.1,11.64),_fc_glow(Color("4fe3ff")),Vector3(0.08,4.0,0.04))
+	_box(root,FC_BLOCK+Vector3(0,4.35,11.4),Vector3(14.1,0.7,0.5),Color("1b2440"))
+	for ey in [4.0,4.7]:
+		_fc_part(root,BoxMesh.new(),FC_BLOCK+Vector3(0,ey,11.66),_fc_glow(Color("ff5fd2") if ey > 4.3 else Color("4fe3ff")),Vector3(14.1,0.05,0.04))
+	var arch := _sign("HARBOR FOOD COURT",FC_BLOCK+Vector3(0,4.35,11.68),Color("bff8ff"),40)
+	# Paving from the street up to the court.
+	_box(root,FC_BLOCK+Vector3(0,0.06,9.2),Vector3(15,0.12,5.6),Color("e3d6bf"))
+	arch.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	arch.pixel_size = 0.012
+	# Tables with umbrellas, and people eating at them.
+	var tables := [Vector3(-4.6,0,1.2),Vector3(0,0,2.6),Vector3(4.6,0,1.2),Vector3(-3.2,0,5.0),Vector3(3.2,0,5.0),Vector3(-5.0,0,8.4),Vector3(0,0,7.6),Vector3(5.0,0,8.4)]
+	var ucols := [Color("ff8a1c"),Color("d8392b"),Color("c254c9"),Color("2fb5a8"),Color("ffd23f"),Color("43c6db"),Color("ff6fb5"),Color("5fbf7f")]
+	for ti in tables.size():
+		var tp: Vector3 = FC_BLOCK+(tables[ti] as Vector3)+Vector3(0,0.25,0)
+		# Pearl table on a chrome stem with a neon rim, and a floating ring of light above it.
+		_fc_part(root,_fc_cone(0.58,0.58,0.06),tp+Vector3(0,0.76,0),_fc_pearl())
+		_fc_part(root,_fc_torus(0.55,0.62),tp+Vector3(0,0.76,0),_fc_glow(ucols[ti]))
+		_fc_part(root,_fc_cone(0.05,0.2,0.76),tp+Vector3(0,0.38,0),_fc_chrome())
+		_fc_part(root,_fc_torus(0.32,0.4),tp+Vector3(0,-0.2,0),_fc_glow(ucols[ti]))
+		_collider(root,tp+Vector3(0,0.4,0),Vector3(1.1,0.8,1.1))
+		_fc_mesh(root,_fc_cone(0.09,0.07,0.24),tp+Vector3(0.18,0.91,0.1),ucols[(ti+2) % ucols.size()])
+		for side in 2:
+			if side == 1 and (web_lite or ti % 2 == 1 or ti >= 5):
+				continue
+			var n := Node3D.new()
+			var off := Vector3(-0.95 if side == 0 else 0.95,0,0.15*float(ti % 2))
+			n.position = tp+off-Vector3(0,0.25,0)
+			n.rotation.y = -PI/2.0 if side == 0 else PI/2.0
+			root.add_child(n)
+			var pp := _make_person(n,(ti+side*2) % 4,{"Shirt":shirts[(ti*3+side) % shirts.size()],"Pants":pants[(ti+side) % pants.size()],"Skin":skins[(ti*2+side) % skins.size()],"Hair":hairs[(ti+side*3) % hairs.size()],"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
+			if not pp.is_empty():
+				fc_people.append(pp)
+	# Keep it cheap: the crowd casts no shadows and shows within 45 m; the stands show within 90 m.
+	_cull_person(root,90.0)
+	for pp in fc_people:
+		_cull_person(pp["root"],45.0)
+
+func _food_court_tick(delta: float) -> void:
+	if paused:
+		return
+	if player != null and player.position.distance_to(FC_BLOCK) < 120.0:
+		for i in fc_spin.size():
+			var h: Node3D = fc_spin[i]
+			h.rotation.y += delta*1.1
+			h.position.y = 4.45+sin(clock*1.6+float(i))*0.12
+		for i in fc_pods.size():
+			(fc_pods[i] as Node3D).position.y = sin(clock*1.3+float(i)*2.0)*0.06
+	# Someone in the crowd waves, claps or cheers every couple of seconds.
+	if fc_people.is_empty():
+		return
+	fc_emote_t -= delta
+	if fc_emote_t > 0.0:
+		return
+	fc_emote_t = randf_range(1.2,2.8)
+	if player != null and player.position.distance_to(FC_BLOCK) > 70.0:
+		return
+	_emote(fc_people[randi() % fc_people.size()],[0,1,3][randi() % 3])
+
 # ---------- v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online) ----------
 # The 5-minute window comes from the clock, so every player sees the same chest at the same place.
 # Reach it before the timer runs out; if nobody gets there in time it vanishes and a new one appears.
@@ -19191,6 +19521,23 @@ func _city_shots() -> void:
 	player.show()
 	walk_view = 1
 	_apply_view()
+	var one := OS.get_environment("HC_CAM")
+	if one != "":
+		# Developer-only: HC_CAM="name;x,y,z;lx,ly,lz;hour" saves one frame from that camera.
+		var parts := one.split(";")
+		var cp := parts[1].split_floats(",")
+		var lk := parts[2].split_floats(",")
+		day_hour_override = float(parts[3]) if parts.size() > 3 else 13.0
+		_daynight_apply(true)
+		player.position = Vector3(cp[0],0.9,cp[2]+2.0)
+		for i in 90:
+			await get_tree().physics_frame
+		cam_lock = true
+		camera.global_position = Vector3(cp[0],cp[1],cp[2])
+		camera.look_at(Vector3(lk[0],lk[1],lk[2]))
+		await _save_shot(parts[0])
+		get_tree().quit()
+		return
 	# [name, hour, train time station or -1, camera position, look at]
 	var shots := [
 		["loop-waterfront",13.0,0,Vector3(-30,26,70),Vector3(0,14,32)],

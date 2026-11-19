@@ -474,3 +474,13 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Streamer mode (Menu > Streamer mode, `streamer_on`, not saved): `_build_streamer`/`_streamer_tick` (runs after `_social_tick`) hide QR, QUESTS, PLAYERS, pills and feed, fade joystick/action/BOARD/quest bar to 0.4, show a pulsing LIVE badge (opens Menu), a "Play with me" QR card and a leaders line at y 104; fetches the board every 45 s via `ds_get`. Turning off restores qr_small and quests_button visibility.
 - Release commit 4f33485, tag v0.34.3, versionCode 53. APK SHA256 1133e507472c9093bab1bfcd7bf39e9a1b357aeeb1cf193c48b6963b0ee5b99b (43327056 bytes), same certificate.
 - Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.
+
+## v0.34.5 (released 2026-11-19; includes unreleased 0.34.4)
+
+- Roads: `_surface_material` asphalt → `_future_road` (generated panel texture, glow seams via emission_texture with black emission colour, in `road_mats`, brightened by `_future_lights`). Pavements → `_future_pave`.
+- Walls/roofs: `_realify` sends REAL_WALLS kinds (not bark) to `_future_wall` (pearl panels, glowing floor bands, `skin_mats`) and roofs to `_future_roof` (solar glass).
+- Signals: `_signal_pole` now adds in-road strips at y 0.075 (4.2 m x 0.32 m) per head; `_city_signals` builds only corner bollards and foot rings. Lamps (`_city_lamps`): 5.6 m light-blade pillars with a disc head.
+- Sky train: slim cylinder columns (radius 0.32) with seam and collars, thinner pearl beam with a glow strip, glass lift tube at stations (collider 2 m).
+- Parked car goes home after CAR_PARK_TIME 120 s idle (`_car_park_tick`, `car_gone`, hidden and collision off); `_call_car` calls `_car_back`.
+- Release commit fe70a03, tag v0.34.5, versionCode 55. APK SHA256 d6f4d40a6f159993ecae945391f398b7c8653bf341a9106d5274c3a4de9cec1a (43335248 bytes), same certificate. Bench about 52 fps.
+- Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.

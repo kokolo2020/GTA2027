@@ -320,7 +320,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.29.0: clean screen (tap the minimap for the Menu), running by default, the North Highway rebuilt big, and tall new traffic lights and street lamps.")
+	_show_toast("Harbor City 0.29.1: tap QUESTS (under the QR code) for your daily quests. Tap the minimap for the Menu.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -3803,11 +3803,13 @@ func _clean_hud_tick() -> void:
 			if my_tag != null:
 				my_tag.visible = true
 			action_button.visible = true
+			if quests_button != null:
+				quests_button.text = "Quests"
 		if minimap != null and minimap.scale != Vector2.ONE:
 			_relayout_hud()
 		return
 	hud_clean_applied = true
-	for c in [hud_info,hud_pause_button,radio_button,radio_caption,online_button,view_button,chat_button,travel_button,run_button,quests_button,feed_box,hud_arrow,clock_label,treasure_label]:
+	for c in [hud_info,hud_pause_button,radio_button,radio_caption,online_button,view_button,chat_button,travel_button,run_button,feed_box,hud_arrow,clock_label,treasure_label]:
 		if c != null:
 			(c as CanvasItem).visible = false
 	if my_tag != null:
@@ -3816,6 +3818,13 @@ func _clean_hud_tick() -> void:
 	action_button.visible = action_button.text != "CALL CAR"
 	if qr_small != null:
 		qr_small.position = Vector2(18,18)
+	# v0.29.1: the one button kept on the clean screen: Quests, under the QR code.
+	if quests_button != null:
+		var qy := 18.0
+		if qr_small != null and qr_small.visible:
+			qy = qr_small.position.y+qr_small.size.y+10.0
+		quests_button.position = Vector2(18,qy)
+		quests_button.text = "QUESTS"
 	if minimap != null and minimap.scale.x != CLEAN_MINI_SCALE:
 		_relayout_hud()
 
@@ -5107,7 +5116,8 @@ func _smoke_test() -> void:
 	hud_clean = true
 	_relayout_hud()
 	_clean_hud_tick()
-	assert(not hud_info.visible and not hud_pause_button.visible and not radio_button.visible and not online_button.visible and not view_button.visible and not chat_button.visible and not travel_button.visible and not run_button.visible and not quests_button.visible and not treasure_label.visible,"Clean screen hides the panels and buttons")
+	assert(not hud_info.visible and not hud_pause_button.visible and not radio_button.visible and not online_button.visible and not view_button.visible and not chat_button.visible and not travel_button.visible and not run_button.visible and not treasure_label.visible,"Clean screen hides the panels and buttons")
+	assert(quests_button.visible and quests_button.position.x < 30.0,"Quests button stays on the clean screen, under the QR code")
 	assert(minimap.visible and is_equal_approx(minimap.scale.x,CLEAN_MINI_SCALE) and minimap.position.y < 30.0,"Small minimap in the top right")
 	assert(qr_small == null or is_equal_approx(qr_small.position.x,18.0),"QR code in the top left")
 	if not paused:

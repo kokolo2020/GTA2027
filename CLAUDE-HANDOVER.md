@@ -414,3 +414,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Level 20 ring: RAINBOW_SHADER (hue by angle, static) instead of a time-cycling colour that differed per device. Peers restyle when their level changes (ring_lv).
 - Peer name tags: fixed_size like your own, at 1.2 m above the body on foot (2.8 driving), so they don't go off screen up close.
 - Published: https://github.com/kokolo2020/GTA2027/releases/tag/v0.33.2 (source commit c33da72). Code 45. Pages run succeeded; live release.json, page and /play show 0.33.2; downloaded APK hash matches.
+
+## v0.33.3 (released 2026-11-19)
+
+- Quests start by themselves: `_quest_offer_tick` auto-picks the nearest open, un-skipped quest (`_quest_auto_pick`), the offer card is disabled, ✕ skips (5 min cooldown), and finishing chains to the next.
+- Release commit c7c64d2, tag v0.33.3, versionCode 46. APK SHA256 95c0f7d9b1705fbc6d513116b19460d88d5c8fb19c304013985bb8f6c8e6d153 (43269712 bytes), same certificate.
+- Verified: release.json, download page edition, live /play/index.pck hash matches the local build, and the downloaded APK hash matches.

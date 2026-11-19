@@ -500,3 +500,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - `_travel_to` on foot calls `_car_away` (car stays home, CALL CAR brings it); driving still brings the car.
 - Release commit 79bfa83, tag v0.34.8, versionCode 58. APK SHA256 d0463f48ab49fcfa771cec281a84a79d755bc7e0f2ab8f7ea0f4b9595ec24a50 (43339344 bytes), same certificate.
 - Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.
+
+## v0.34.9 (released 2026-11-20)
+
+- New airplane.glb from blender-src/make_real.py `build_jet()` (run with HARBOR_JET_ONLY=1): lofted fuselage, wraparound cockpit, swept wings with winglets, glowing nacelles, swept fin. Same frame as the old model, so `_ap_plane` and the North airfield are unchanged.
+- Release commit 3273f2a, tag v0.34.9, versionCode 59. APK SHA256 fdf6204aa5f64b1a75d2e4784ef877578de4c574f21d57cb83d210e22de5aeb6 (43421264 bytes), same certificate. Bench about 51 fps.
+- Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.

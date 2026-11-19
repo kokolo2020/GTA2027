@@ -334,7 +334,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.33.2: symbols now show on every device, level 20 rings are a fixed rainbow, and other players' names sit right above them.")
+	_show_toast("Harbor City 0.33.3: quests start by themselves. Just follow the arrow! Tap ✕ on the quest bar to skip one.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -4225,9 +4225,19 @@ func _quest_offer_tick() -> void:
 		quest_bar.text = "▶  %s  ·  %d m    ✕" % [QUICK[quick_idx]["task"],int(d)]
 		quest_bar.size = Vector2(0,0)
 		quest_bar.position = Vector2((view.x-quest_bar.get_combined_minimum_size().x)/2.0,18)
-	# Offers: the nearest quest not done today, within reach, that you haven't just turned down.
-	var offer := -1
+	# v0.33.3: no accepting needed. The nearest quest not done today (and not just skipped) starts
+	# on its own, wherever it is; the next one starts as soon as you finish.
 	if not busy and quick_on and not quest_active:
+		var nxt := _quest_auto_pick(body.position)
+		if nxt >= 0:
+			quick_idx = nxt
+			quest_active = true
+			quick_from = body.position
+			_save_progress()
+			_refresh_hud()
+			_show_toast("New quest: %s  ·  +$%d. Follow the arrow!" % [QUICK[quick_idx]["task"],_quick_pay(quick_idx)])
+	var offer := -1
+	if false:
 		var bd := QUEST_OFFER_RADIUS
 		for i in QUICK.size():
 			if _quick_is_done(i):
@@ -4249,6 +4259,21 @@ func _quest_offer_tick() -> void:
 	if quest_offer_panel.visible:
 		quest_offer_panel.size = Vector2(0,0)
 		quest_offer_panel.position = Vector2((view.x-quest_offer_panel.get_combined_minimum_size().x)/2.0,18)
+
+func _quest_auto_pick(from: Vector3) -> int:
+	var best := -1
+	var bd := INF
+	for i in QUICK.size():
+		if _quick_is_done(i):
+			continue
+		if quest_declined.has(i) and clock-float(quest_declined[i]) < QUEST_DECLINE_TIME:
+			continue
+		var p: Vector3 = QUICK[i]["pos"]
+		var d := Vector2(p.x-from.x,p.z-from.z).length()
+		if d < bd:
+			bd = d
+			best = i
+	return best
 
 func _quest_accept() -> void:
 	if quest_offer_idx < 0:
@@ -4277,7 +4302,7 @@ func _quest_stop() -> void:
 	quest_declined[quick_idx] = clock
 	_save_progress()
 	_refresh_hud()
-	_show_toast("Quest stopped. Others pop up as you explore, or tap QUESTS.")
+	_show_toast("Quest skipped. Here's the next one!")
 
 # ---------- v0.31: a futuristic Harbor City (neon strips, holograms, flying traffic, glowing streets) ----------
 const NEON_CYAN := Color("3df0ff")
@@ -7921,21 +7946,20 @@ func _smoke_test() -> void:
 		_toggle_menu()
 	player.position = (QUICK[0]["pos"] as Vector3)+Vector3(12,0.75,0)
 	_quest_offer_tick()
-	assert(quest_offer_panel.visible and quest_offer_idx >= 0,"A quest nearby is offered")
-	var offered := quest_offer_idx
-	assert(_guide_target() == null,"No arrow before you accept")
-	_quest_decline()
 	_quest_offer_tick()
-	assert(quest_offer_idx != offered,"A declined quest isn't offered again straight away")
-	quest_declined.clear()
-	quest_offer_idx = -1
-	_quest_offer_tick()
-	_quest_accept()
-	assert(quest_active and quick_idx == offered and not quest_offer_panel.visible,"Accepting starts the quest")
-	_quest_offer_tick()
-	assert(quest_bar.visible and _guide_target() != null and (_guide_target() as Vector3).is_equal_approx(QUICK[offered]["pos"]),"The quest bar shows and the arrow points at the quest")
+	var first := quick_idx
+	assert(quest_active and not quest_offer_panel.visible,"v0.33.3: the nearest quest starts by itself, no accepting")
+	assert(first == _quest_auto_pick(player.position) or _quick_is_done(first) == false,"It's the nearest open quest")
+	assert(quest_bar.visible and _guide_target() != null and (_guide_target() as Vector3).is_equal_approx(QUICK[first]["pos"]),"The quest bar shows and the arrow points at it")
 	_quest_stop()
-	assert(not quest_active and _guide_target() == null,"Tapping the bar stops the quest")
+	_quest_offer_tick()
+	assert(quest_active and quick_idx != first,"Skipping with the bar starts the next quest")
+	var second := quick_idx
+	player.position = (QUICK[second]["pos"] as Vector3)+Vector3(1,0.75,0)
+	_interact()
+	assert(_quick_is_done(second),"Walking up and tapping completes it")
+	_quest_offer_tick()
+	assert(quest_active and quick_idx != second and not _quick_is_done(quick_idx),"The next quest starts straight away")
 	legacy_rules = was_q[0]
 	quick_on = was_q[1]
 	quick_idx = was_q[2]
@@ -16084,7 +16108,7 @@ func _quick_complete() -> void:
 			_show_toast("DONE!  +$%d  +%d XP   (%d/%d today)  Next: %s" % [pay,QUICK_XP,QUICK.size()-_quick_left(),QUICK.size(),QUICK[quick_idx]["task"]])
 		else:
 			quest_active = false
-			_show_toast("DONE!  +$%d  +%d XP   (%d/%d today). More quests pop up as you explore, or tap QUESTS." % [pay,QUICK_XP,QUICK.size()-_quick_left(),QUICK.size()])
+			_show_toast("DONE!  +$%d  +%d XP   (%d/%d today). Next quest coming up!" % [pay,QUICK_XP,QUICK.size()-_quick_left(),QUICK.size()])
 	else:
 		cash += QUICK_ALL_BONUS
 		quick_on = false

@@ -18,3 +18,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Photo textures (v0.30): Poly Haven (https://polyhaven.com), CC0 public domain.
+  asphalt_02, concrete_pavement, leafy_grass, brick_wall_001, white_stucco, concrete,
+  clay_roof_tiles_02, corrugated_iron, bark_brown_02, rectangular_facade_tiles (1K, in game/textures).

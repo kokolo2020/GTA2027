@@ -320,7 +320,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.29.1: tap QUESTS (under the QR code) for your daily quests. Tap the minimap for the Menu.")
+	_show_toast("Harbor City 0.30.0: real-looking city. Photo textures on roads, walls and roofs, glass towers lit window by window at night, leafy trees, rounded glossy cars, a real bus and a sleek sky train.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -374,8 +374,8 @@ func _ready() -> void:
 const HAZE := Color("c6e1ea")
 # v0.24: big flat surfaces (roads, grass, pavements) get a subtle world-space texture.
 const SURF_ASPHALT := ["354653","4a5560","394552","33383e"]
-const SURF_GRASS := ["91ab82","6f945c","78a06b","6aa35a"]
-const SURF_PAVE := ["8f8d86","9c9a92","b9b6ad","a9a69e","8f8c85","e8d5ad"]
+const SURF_GRASS := ["91ab82","6f945c","78a06b","6aa35a","7fae68","74b062","5f984f","9cc085"]
+const SURF_PAVE := ["8f8d86","9c9a92","b9b6ad","a9a69e","8f8c85","e8d5ad","a19c90","9d9a92","8f9396"]
 var surf_mats := {}
 var surf_tex := {}
 
@@ -406,17 +406,201 @@ func _surface_material(color: Color, kind: String) -> StandardMaterial3D:
 	if surf_mats.has(key):
 		return surf_mats[key]
 	var mat := StandardMaterial3D.new()
-	var lift := {"asphalt":1.1,"grass":1.12,"pave":1.07}[kind] as float
-	mat.albedo_color = Color(color.r*lift,color.g*lift,color.b*lift)
-	mat.albedo_texture = _surf_texture(kind)
-	mat.uv1_triplanar = true
-	mat.uv1_world_triplanar = true
-	var sc := {"asphalt":0.22,"grass":0.05,"pave":0.4}[kind] as float
-	mat.uv1_scale = Vector3(sc,sc,sc)
-	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	# v0.30: photo textures (CC0, Poly Haven) instead of flat noise. The tint keeps each surface's hue.
+	var photo := {"asphalt":"asphalt","grass":"grass","pave":"pavement"}[kind] as String
+	var sc := {"asphalt":0.3,"grass":0.22,"pave":0.45}[kind] as float
+	if _real_tex(photo+"_diff") != null:
+		var tint := Color.WHITE.lerp(color,{"asphalt":0.25,"grass":0.35,"pave":0.45}[kind] as float)
+		if kind == "pave" and color.r-color.b < 0.12:
+			# Grey pavements: cool the warm photo down to plain concrete.
+			tint = Color(0.86,0.9,0.97)*(0.75+0.35*color.v)
+		_real_setup(mat,photo,tint*({"asphalt":0.92,"grass":1.05,"pave":1.12}[kind] as float),sc)
+	else:
+		var lift := {"asphalt":1.1,"grass":1.12,"pave":1.07}[kind] as float
+		mat.albedo_color = Color(color.r*lift,color.g*lift,color.b*lift)
+		mat.albedo_texture = _surf_texture(kind)
+		mat.uv1_triplanar = true
+		mat.uv1_world_triplanar = true
+		sc = {"asphalt":0.22,"grass":0.05,"pave":0.4}[kind] as float
+		mat.uv1_scale = Vector3(sc,sc,sc)
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	mat.roughness = 0.95
 	surf_mats[key] = mat
 	return mat
+
+# ---------- v0.30: real-looking materials (CC0 photo textures from Poly Haven, see credits.txt) ----------
+const REAL_WALLS := {
+	"brick":["SchoolBrick","Wall0","Terracotta"],
+	"plaster":["Wall1","Wall2","Wall3","HWall0","HWall1","HotelWall","HospitalWall","ShopWall0","ShopWall1","Wall","BankMarble","LibraryTeal","FireRed"],
+	"facade":["Stone","StoneGrey","TwrBase"],
+	"concrete":["Concrete"],
+	"metal":["WhWall","HangarShell","Cont0","Cont1","Cont2"],
+	"roof":["HRoof0","HRoof1","Roof"],
+	"bark":["Bark","PalmTrunk"],
+}
+# Metres of wall one copy of each photo covers.
+const REAL_SIZE := {"brick":2.4,"plaster":3.0,"facade":4.0,"concrete":3.0,"metal":2.5,"roof":2.5,"bark":1.2,"asphalt":3.3,"grass":4.5,"pavement":2.2}
+# How much of the model's own colour tints the photo (brick and roof photos already have their colour).
+const REAL_TINT := {"brick":0.25,"plaster":0.85,"facade":0.6,"concrete":0.5,"metal":0.8,"roof":0.3,"bark":0.3}
+const GLASS_NAMES := ["GlassBlue","GlassDark","GlassTeal","GlassLobby","WinGlass"]
+const FOLIAGE_NAMES := ["Leaf","Leaf2","Pine","PalmLeaf","Bush"]
+var foliage_tex: NoiseTexture2D
+var foliage_nor: NoiseTexture2D
+
+func _real_foliage(bm: BaseMaterial3D) -> void:
+	# Leafy clumps: cellular noise gives clusters of leaves with dark gaps; a matching bump map.
+	if foliage_tex == null:
+		var noise := FastNoiseLite.new()
+		noise.noise_type = FastNoiseLite.TYPE_CELLULAR
+		noise.frequency = 0.09
+		noise.cellular_return_type = FastNoiseLite.RETURN_DISTANCE2_SUB
+		noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+		noise.fractal_octaves = 2
+		noise.seed = 404
+		foliage_tex = NoiseTexture2D.new()
+		foliage_tex.width = 256
+		foliage_tex.height = 256
+		foliage_tex.seamless = true
+		foliage_tex.generate_mipmaps = true
+		foliage_tex.noise = noise
+		var ramp := Gradient.new()
+		ramp.set_color(0,Color(0.32,0.4,0.28))
+		ramp.set_color(1,Color(1.15,1.2,1.0))
+		ramp.add_point(0.55,Color(0.85,0.95,0.8))
+		foliage_tex.color_ramp = ramp
+		foliage_nor = NoiseTexture2D.new()
+		foliage_nor.width = 256
+		foliage_nor.height = 256
+		foliage_nor.seamless = true
+		foliage_nor.generate_mipmaps = true
+		foliage_nor.as_normal_map = true
+		foliage_nor.bump_strength = 6.0
+		foliage_nor.noise = noise
+	# Cheap on purpose (trees overlap a lot on screen): one texture lookup on the model's own UVs, no bump map.
+	bm.albedo_texture = foliage_tex
+	bm.uv1_scale = Vector3(3,3,3)
+	bm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	bm.roughness = 0.85
+	real_mats.append(bm)
+var real_tex := {}
+var real_mats: Array = []
+var real_done := {}
+var window_tex: ImageTexture
+var window_lit_tex: ImageTexture
+
+func _real_tex(name: String) -> Texture2D:
+	if real_tex.has(name):
+		return real_tex[name]
+	var path := "res://textures/%s.jpg" % name
+	var t: Texture2D = load(path) if ResourceLoader.exists(path) else null
+	real_tex[name] = t
+	return t
+
+func _real_setup(mat: BaseMaterial3D, kind: String, tint: Color, scale := -1.0) -> void:
+	var diff := _real_tex(kind+"_diff")
+	if diff == null:
+		return
+	mat.albedo_texture = diff
+	mat.albedo_color = tint
+	var nor := _real_tex(kind+"_nor")
+	# The browser version skips the bump detail (normal maps) to keep the frame rate up.
+	var lite := OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()
+	if nor != null and not lite:
+		mat.normal_enabled = true
+		mat.normal_texture = nor
+		mat.normal_scale = 0.8
+	mat.uv1_triplanar = true
+	mat.uv1_world_triplanar = true
+	var sc := scale if scale > 0.0 else 1.0/float(REAL_SIZE.get(kind,3.0))
+	mat.uv1_scale = Vector3(sc,sc,sc)
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	real_mats.append(mat)
+
+func _real_kind(base: String) -> String:
+	for kind in REAL_WALLS:
+		if base in (REAL_WALLS[kind] as Array):
+			return kind
+	return ""
+
+func _realify(model: Node) -> void:
+	# Give a loaded model's walls, roofs and glass real-looking materials. The materials are shared
+	# by every copy of the model, so each one is changed only once.
+	var stack: Array[Node] = [model]
+	while stack.size() > 0:
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if not (n is MeshInstance3D) or (n as MeshInstance3D).mesh == null:
+			continue
+		var mesh: Mesh = (n as MeshInstance3D).mesh
+		for si in mesh.get_surface_count():
+			var m := mesh.surface_get_material(si)
+			if not (m is BaseMaterial3D) or real_done.has(m.get_rid()):
+				continue
+			real_done[m.get_rid()] = true
+			var bm := m as BaseMaterial3D
+			var base := m.resource_name.get_slice(".",0)
+			var kind := _real_kind(base)
+			if kind != "":
+				var tint := Color.WHITE.lerp(bm.albedo_color,float(REAL_TINT.get(kind,0.5)))
+				_real_setup(bm,kind,tint,1.0/float(REAL_SIZE[kind]))
+				bm.roughness = 0.9
+			elif base in GLASS_NAMES:
+				_real_glass(bm,base != "WinGlass")
+			elif base in FOLIAGE_NAMES:
+				_real_foliage(bm)
+
+func _real_glass(bm: BaseMaterial3D, grid: bool) -> void:
+	# Glass reflects the sky. Big curtain walls get window frames, and at night only some windows are lit.
+	bm.metallic = 0.55
+	bm.roughness = 0.18
+	bm.metallic_specular = 0.8
+	if not grid:
+		return
+	if window_tex == null:
+		_make_window_textures()
+	bm.albedo_color = bm.albedo_color.lightened(0.15)
+	bm.albedo_texture = window_tex
+	bm.uv1_triplanar = true
+	bm.uv1_world_triplanar = true
+	# One tile = 8 windows across (1.6 m each) and 4 floors (3.4 m each).
+	bm.uv1_scale = Vector3(1.0/12.8,1.0/13.6,1.0/12.8)
+	bm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	bm.emission_texture = window_lit_tex
+	bm.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+	real_mats.append(bm)
+
+func _make_window_textures() -> void:
+	# 8 x 4 windows per tile: dark frames, glass panes with a soft vertical sheen; a second image marks
+	# which windows light up at night (about 4 in 10, in a few warm and cool shades).
+	var w := 256
+	var h := 256
+	var img := Image.create(w,h,true,Image.FORMAT_RGB8)
+	var lit := Image.create(w,h,true,Image.FORMAT_RGB8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3030
+	var on := []
+	var shades := [Color(1.0,0.86,0.62),Color(0.95,0.78,0.5),Color(0.8,0.85,0.95),Color(0.62,0.55,0.42)]
+	for k in 32:
+		on.append(shades[rng.randi() % shades.size()] if rng.randf() < 0.42 else Color(0,0,0))
+	for y in h:
+		for x in w:
+			var cx := x % 32
+			var cy := y % 64
+			var frame := cx < 2 or cy < 3 or (cy > 54)
+			var col := Color(0.35,0.37,0.4)
+			if not frame:
+				var sheen := 0.78+0.22*sin(float(cx)/30.0*PI)*(1.0-float(cy)/64.0)
+				col = Color(sheen,sheen,sheen*1.02)
+			if cy > 54 and cy < 64:
+				col = Color(0.62,0.62,0.6)
+			img.set_pixel(x,y,col)
+			var idx := int(x/32)+8*int(y/64)
+			lit.set_pixel(x,y,Color(0,0,0) if frame else (on[idx] as Color))
+	img.generate_mipmaps()
+	lit.generate_mipmaps()
+	window_tex = ImageTexture.create_from_image(img)
+	window_lit_tex = ImageTexture.create_from_image(lit)
+
 
 func _material(color: Color) -> StandardMaterial3D:
 	var hex := color.to_html(false)
@@ -1033,12 +1217,7 @@ func _prop_stretch(path: String) -> Vector3:
 	# v0.23: with the street-level camera, trees and street lamps looked short. Grow them taller
 	# (width unchanged) so you walk under the leaves.
 	# Width stays as before so trees keep their old footprint beside the roads.
-	if path.contains("tree_round"):
-		return Vector3(1.0,1.6,1.0)
-	if path.contains("tree_pine"):
-		return Vector3(1.0,1.45,1.0)
-	if path.contains("palm"):
-		return Vector3(1.0,1.4,1.0)
+	# v0.30: the new smooth trees and palms are modelled at full height, so they are not stretched.
 	if path.contains("lamp"):
 		return Vector3(1.0,1.3,1.0)
 	return Vector3.ONE
@@ -1609,11 +1788,25 @@ func _online_tint(node: Node, color: Color) -> void:
 				var m := mi.mesh.surface_get_material(surface)
 				var mat_name := m.resource_name if m != null else ""
 				if mat_name.begins_with("Body"):
-					mi.set_surface_override_material(surface,_material(color))
+					mi.set_surface_override_material(surface,_paint_mat(color))
 				elif mat_name.begins_with("Cabin"):
-					mi.set_surface_override_material(surface,_material(color.darkened(0.5)))
+					mi.set_surface_override_material(surface,_paint_mat(color.darkened(0.5)))
 	for child in node.get_children():
 		_online_tint(child,color)
+
+var paint_mats := {}
+
+func _paint_mat(color: Color) -> StandardMaterial3D:
+	# v0.30: glossy car paint that reflects the sky (instead of flat matt colour).
+	var key := color.to_html(false)
+	if not paint_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = color
+		m.metallic = 0.45
+		m.roughness = 0.28
+		m.metallic_specular = 0.7
+		paint_mats[key] = m
+	return paint_mats[key]
 
 func _online_update_peers(delta: float) -> void:
 	if online_peers.is_empty():
@@ -1875,14 +2068,12 @@ func _build_bus() -> void:
 			bus_stop_nodes = parts
 	bus = Node3D.new()
 	add_child(bus)
-	_box(bus,Vector3(0,1.55,0),Vector3(2.7,2.5,9.6),Color("2f7fb8"))
-	_box(bus,Vector3(0,0.95,0),Vector3(2.74,0.5,9.64),Color("f4f7fa"))
-	_box(bus,Vector3(0,2.0,0),Vector3(2.76,0.9,8.6),Color("1d3442"))
-	_box(bus,Vector3(0,2.85,0),Vector3(2.5,0.25,9.2),Color("e8eef2"))
-	for wx in [-1.2,1.2]:
-		for wz in [-3.0,3.0]:
-			_box(bus,Vector3(wx,0.45,wz),Vector3(0.45,0.9,1.1),Color("20262b"))
-	_box(bus,Vector3(0,1.3,-4.82),Vector3(2.3,0.5,0.1),Color("ffe9a8"))
+	# v0.30: a real city bus model when it exists (the old boxes are the fallback).
+	var bus_model := _try_model("res://models/bus.glb")
+	if bus_model != null:
+		bus.add_child(bus_model)
+	else:
+		_bus_boxes()
 	bus_label = Label3D.new()
 	bus_label.font_size = 46
 	bus_label.modulate = Color("d8f0ff")
@@ -1892,6 +2083,16 @@ func _build_bus() -> void:
 	bus_label.pixel_size = 0.014
 	bus.add_child(bus_label)
 	_bus_reset()
+
+func _bus_boxes() -> void:
+	_box(bus,Vector3(0,1.55,0),Vector3(2.7,2.5,9.6),Color("2f7fb8"))
+	_box(bus,Vector3(0,0.95,0),Vector3(2.74,0.5,9.64),Color("f4f7fa"))
+	_box(bus,Vector3(0,2.0,0),Vector3(2.76,0.9,8.6),Color("1d3442"))
+	_box(bus,Vector3(0,2.85,0),Vector3(2.5,0.25,9.2),Color("e8eef2"))
+	for wx in [-1.2,1.2]:
+		for wz in [-3.0,3.0]:
+			_box(bus,Vector3(wx,0.45,wz),Vector3(0.45,0.9,1.1),Color("20262b"))
+	_box(bus,Vector3(0,1.3,-4.82),Vector3(2.3,0.5,0.1),Color("ffe9a8"))
 
 func _bus_side(z: float) -> float:
 	return 6.6 if z > NM_Z0 else 12.6
@@ -3390,6 +3591,10 @@ func _build_car() -> void:
 	car.add_child(car_boxes)
 	car_body_mat = _box(car_boxes,Vector3(0,0,0),Vector3(1.8,0.65,3.4),Color("438fd0")).material_override
 	car_roof_mat = _box(car_boxes,Vector3(0,0.55,0.15),Vector3(1.45,0.65,1.6),Color("264d68")).material_override
+	for pm: StandardMaterial3D in [car_body_mat,car_roof_mat]:
+		pm.metallic = 0.45
+		pm.roughness = 0.28
+		pm.metallic_specular = 0.7
 	spoiler = _box(car_boxes,Vector3(0,0.78,1.62),Vector3(1.7,0.1,0.35),Color("1d2a35"))
 	spoiler.hide()
 	_box(car_boxes,Vector3(0,0.9,0.15),Vector3(1.5,0.12,1.7),Color("5aa4d5"))
@@ -3405,7 +3610,9 @@ func _try_model(path: String) -> Node3D:
 		return null
 	var res = load(path)
 	if res is PackedScene:
-		return (res as PackedScene).instantiate() as Node3D
+		var inst := (res as PackedScene).instantiate() as Node3D
+		_realify(inst)
+		return inst
 	return null
 
 # ---------- v0.14.0: Blender-made people (player, pedestrians, online players on foot) ----------
@@ -5566,7 +5773,8 @@ func _smoke_models() -> void:
 					if mi.get_surface_override_material(k) == car_body_mat or mi.get_surface_override_material(k) == car_roof_mat:
 						tinted += 1
 			stack.append_array(n.get_children())
-		assert(surfaces >= 15 and tinted >= 2,"Car model %d has no tintable body (%d/%d)" % [id,tinted,surfaces])
+		# v0.30: each car is one joined mesh now, so it has one surface per material (7 or so).
+		assert(surfaces >= 6 and tinted >= 2,"Car model %d has no tintable body (%d/%d)" % [id,tinted,surfaces])
 	assert(ResourceLoader.exists("res://models/lighthouse.glb") and ResourceLoader.exists("res://models/windmill.glb"),"Landmark models missing")
 	car_id = 0
 	_apply_car()
@@ -6357,7 +6565,7 @@ func _model_batch(path: String, items: Array, recolor := {}, use_local := false)
 			var key := m.resource_name if m != null else ""
 			for prefix in recolor:
 				if key.begins_with(prefix):
-					mesh.surface_set_material(s,_material(recolor[prefix]))
+					mesh.surface_set_material(s,_paint_mat(recolor[prefix]) if prefix == "Body" else _material(recolor[prefix]))
 	# v0.26.2: some models (the houses) place their mesh with its own transform inside the file.
 	var local := Transform3D.IDENTITY
 	if use_local:
@@ -14857,6 +15065,14 @@ func _build_skytrain() -> void:
 func _sky_make_car(lead: bool, tail: bool) -> Node3D:
 	var car_node := Node3D.new()
 	add_child(car_node)
+	# v0.30: rounded train models (end cars have a sloped nose; the tail car is an end car turned round).
+	var model := _try_model("res://models/sky_car_end.glb" if (lead or tail) else "res://models/sky_car.glb")
+	if model != null:
+		car_node.add_child(model)
+		if tail and not lead:
+			model.rotation.y = PI
+		_sky_skin(model,tail and not lead)
+		return car_node
 	var half := SKY_CAR_LEN/2.0
 	_box(car_node,Vector3(0,1.75,0),Vector3(2.9,2.7,SKY_CAR_LEN),Color("f3f5f2"))
 	_box(car_node,Vector3(0,0.75,0),Vector3(2.94,0.36,SKY_CAR_LEN-0.2),Color("17a2b8"))
@@ -14880,6 +15096,28 @@ func _sky_make_car(lead: bool, tail: bool) -> Node3D:
 		for s in [-0.8,0.8]:
 			_box(car_node,Vector3(s,1.15,half+0.04),Vector3(0.45,0.22,0.06),Color("e0303a"))
 	return car_node
+
+var sky_tail_mat: StandardMaterial3D
+
+func _sky_skin(node: Node, tail: bool) -> void:
+	# Windows use the train's own night-lit glass; the nose lamps are headlights (or red at the tail).
+	if sky_tail_mat == null:
+		sky_tail_mat = StandardMaterial3D.new()
+		sky_tail_mat.albedo_color = Color("e0303a")
+		sky_tail_mat.emission_enabled = true
+		sky_tail_mat.emission = Color("ff2a2a")
+		sky_tail_mat.emission_energy_multiplier = 1.5
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		var mi := node as MeshInstance3D
+		for si in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(si)
+			var key := m.resource_name.get_slice(".",0) if m != null else ""
+			if key == "SkyWindow" and sky_window_mat != null:
+				mi.set_surface_override_material(si,sky_window_mat)
+			elif key == "SkyHead":
+				mi.set_surface_override_material(si,sky_tail_mat if tail else (sky_light_mat if sky_light_mat != null else m))
+	for c in node.get_children():
+		_sky_skin(c,tail)
 
 func _sky_place_trains() -> void:
 	for k in sky_trains.size():
@@ -15426,10 +15664,11 @@ func _daynight_apply(force: bool) -> void:
 		sky_shader_mat.set_shader_parameter("glow",tw)
 	for m: BaseMaterial3D in night_windows:
 		m.emission = Color("ffd9a0")
-		m.emission_energy_multiplier = 0.42*night_amt
+		# v0.30: towers with window frames light only some windows (their emission texture), brighter.
+		m.emission_energy_multiplier = (1.5 if m.emission_texture != null else 0.42)*night_amt
 	for m: BaseMaterial3D in night_lobby:
 		m.emission = Color("ffe2b0")
-		m.emission_energy_multiplier = 0.9*night_amt
+		m.emission_energy_multiplier = (1.6 if m.emission_texture != null else 0.9)*night_amt
 	for m: BaseMaterial3D in night_lamps:
 		m.emission = Color("ffe2a0")
 		m.emission_energy_multiplier = 0.3+3.2*night_amt
@@ -15714,6 +15953,24 @@ func _city_shots() -> void:
 		camera.look_at(sh[4])
 		await _save_shot(String(sh[0]))
 		cam_lock = false
+	# v0.30: close-ups of the new car and bus models.
+	day_hour_override = 15.0
+	_daynight_apply(true)
+	player.position = car.position+Vector3(3,0.2,3)
+	for f in 8:
+		await get_tree().physics_frame
+	cam_lock = true
+	camera.global_position = car.global_position+Vector3(4.5,2.2,-5.0)
+	camera.look_at(car.global_position+Vector3(0,0.6,0))
+	await _save_shot("car-close")
+	if bus != null:
+		player.position = bus.global_position+Vector3(8,0.8,0)
+		for f in 8:
+			await get_tree().physics_frame
+		camera.global_position = bus.global_position+Vector3(9,4,-11)
+		camera.look_at(bus.global_position+Vector3(0,1.6,0))
+		await _save_shot("bus-close")
+	cam_lock = false
 	# v0.29: the clean screen's Menu.
 	day_hour_override = 13.0
 	_daynight_apply(true)

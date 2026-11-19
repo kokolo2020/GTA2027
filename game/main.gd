@@ -336,7 +336,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.34: hover cars, a hoverboard (tap BOARD), the Neon Market for gear and pets, your money on screen and a leaderboard (tap ★ TOP)!")
+	_show_toast("Harbor City 0.34.1: the shop and leaderboard screens close properly now.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -7312,6 +7312,9 @@ func _toggle_menu() -> void:
 		social_panel.hide()
 	if ach_panel != null:
 		ach_panel.hide()
+	# v0.34.1: the leaderboard and market panels close too (they stayed stuck on screen).
+	for xp_panel in extra_panels:
+		(xp_panel as Control).hide()
 	if paused:
 		_open_panel(menu)
 	else:
@@ -8255,6 +8258,14 @@ func _smoke_test() -> void:
 	_lb_got(0,404,PackedStringArray(),PackedByteArray())
 	assert(lb_state == 0 and lb_status.text.contains("isn't switched on"),"v0.34: a missing table shows a clear message")
 	lb_state = -1
+	for opener in [_open_market.bind(1),_open_market.bind(0),_open_lb]:
+		opener.call()
+		assert(paused and (market_panel.visible or lb_panel.visible),"v0.34.1: the panel opens")
+		if market_panel.visible:
+			_close_market()
+		else:
+			_close_lb()
+		assert(not paused and not market_panel.visible and not lb_panel.visible and not menu.visible,"v0.34.1: Close really closes the market and leaderboard")
 	cash = was_m[0]
 	gear_own = was_m[1]
 	gear_on = was_m[2]

@@ -337,7 +337,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.34.7: futuristic towers, a road onto the Marina bridge, glass bus shelters with live countdowns, and City Loop buses all over town!")
+	_show_toast("Harbor City 0.34.8: no more checkpoint loop after your car goes home, and Travel no longer drops your car in the park. Tap CALL CAR when you want it.")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -7152,15 +7152,18 @@ func _physics_process(delta: float) -> void:
 				cam_yaw = lerp_angle(cam_yaw,player.rotation.y,delta*1.4*clampf(control.length(),0.0,1.0))
 		car.velocity.x = move_toward(car.velocity.x,0,delta*20)
 		car.velocity.z = move_toward(car.velocity.z,0,delta*20)
-	car.velocity.y -= 24*delta
-	car.move_and_slide()
-	if car.is_on_floor():
-		car.velocity.y = 0
+	# v0.34.8: a car that went home is hidden with no collision, so it must not fall (it used to drop
+	# through the ground, and the "fell out of the world" rescue then kept teleporting you).
+	if not car_gone:
+		car.velocity.y -= 24*delta
+		car.move_and_slide()
+		if car.is_on_floor():
+			car.velocity.y = 0
 	_bus_tick(delta)
 	_sky_tick(delta)
 	_ap_tick(delta)
 	_sea_tick(delta)
-	if player.position.y < -5 or car.position.y < -5:
+	if player.position.y < -5 or (car.position.y < -5 and not car_gone):
 		_rescue()
 	if driving:
 		best_kmh = maxf(best_kmh,absf(car_speed)*3.6)
@@ -7580,6 +7583,7 @@ func _toggle_menu() -> void:
 	joystick.queue_redraw()
 
 func _rescue() -> void:
+	_car_back()
 	if race_car:
 		_race_car_end(true)
 	bus_riding = false
@@ -8553,6 +8557,11 @@ func _smoke_test() -> void:
 	player.position = car.position+Vector3(2,0,0)
 	_refresh_hud()
 	assert(action_button.text == "CALL CAR" or action_button.text.begins_with("CALL"),"v0.34.5: with the car gone the button says CALL CAR (%s)" % action_button.text)
+	var gone_at := car.position
+	var player_at := player.position
+	for fr in 30:
+		await get_tree().physics_frame
+	assert(car.position.distance_to(gone_at) < 0.1 and player.position.distance_to(player_at) < 3.0,"v0.34.8: a car that went home doesn't fall through the ground or send you back to a checkpoint")
 	_car_back()
 	assert(not car_gone and car.visible,"v0.34.5: CALL CAR brings it back")
 	driving = was_drv
@@ -15907,10 +15916,15 @@ func _travel_to(i: int) -> void:
 		_show_toast(why if why != "" else "That district is still locked.")
 		return
 	var pos: Vector3 = CHECKPOINTS[i]["pos"]
-	car.position = pos+Vector3(4.5,0.8,0)
-	car.rotation = Vector3.ZERO
-	car.velocity = Vector3.ZERO
-	car_speed = 0.0
+	# v0.34.8: on foot you travel alone (your car stays home, CALL CAR brings it); driving, it comes too.
+	var with_car := driving
+	if with_car:
+		car.position = pos+Vector3(4.5,0.8,0)
+		car.rotation = Vector3.ZERO
+		car.velocity = Vector3.ZERO
+		car_speed = 0.0
+	else:
+		_car_away()
 	player.position = pos+Vector3(0,0.75,0)
 	player.velocity = Vector3.ZERO
 	if not driving:
@@ -15920,7 +15934,7 @@ func _travel_to(i: int) -> void:
 	if paused:
 		_toggle_menu()
 	_follow_camera(1.0)
-	_show_toast("Welcome to %s!" % CHECKPOINTS[i]["name"])
+	_show_toast(("Welcome to %s!" if with_car else "Welcome to %s! Tap CALL CAR when you want your car.") % CHECKPOINTS[i]["name"])
 	_refresh_hud()
 
 func _smoke_travel() -> void:
@@ -15937,7 +15951,8 @@ func _smoke_travel() -> void:
 	travel_ready_at = 0.0
 	_travel_to(0)
 	var cp: Vector3 = CHECKPOINTS[0]["pos"]
-	assert(Vector2(player.position.x-cp.x,player.position.z-cp.z).length() < 0.5 and car.position.distance_to(player.position) < 6.0,"Fast travel moves you and your car")
+	assert(Vector2(player.position.x-cp.x,player.position.z-cp.z).length() < 0.5 and car_gone,"v0.34.8: fast travel on foot moves you; your car stays home until you call it")
+	_car_back()
 	var at := player.position
 	_travel_to(9 if not _travel_open(1) else 0)
 	assert(player.position == at,"Fast travel waits, and locked districts stay locked")

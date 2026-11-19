@@ -420,3 +420,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Quests start by themselves: `_quest_offer_tick` auto-picks the nearest open, un-skipped quest (`_quest_auto_pick`), the offer card is disabled, ✕ skips (5 min cooldown), and finishing chains to the next.
 - Release commit c7c64d2, tag v0.33.3, versionCode 46. APK SHA256 95c0f7d9b1705fbc6d513116b19460d88d5c8fb19c304013985bb8f6c8e6d153 (43269712 bytes), same certificate.
 - Verified: release.json, download page edition, live /play/index.pck hash matches the local build, and the downloaded APK hash matches.
+
+## v0.33.4 (released 2026-11-19)
+
+- Peers wear their own look: the pos payload sends `av` = [av_shirt, av_pants, av_hat]; `_peer_look` rebuilds the peer as person variant 0 with those colours and a hat (shared `_build_hat(holder, index, boxy)`). Old clients without `av` keep the random look.
+- Peer name tags hide when at/behind the camera or within 2.5 m (fixes giant tags across the screen).
+- Release commit 5690045, tag v0.33.4, versionCode 47. APK SHA256 c092e4090d300078a5d90cff830baa67d7f33efa734983fcbd5b74ccf0677dc3 (43273808 bytes), same certificate.
+- Verified: release.json, download page edition, live /play/index.pck hash matches the local build, downloaded APK hash matches.

@@ -434,3 +434,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - `_auto_collect_tick` (from `_process`, skipped in the smoke test unless forced): FINDS gems collect within 2.6 m on foot in any mode; the active daily quest completes within 3 m (4.5 m driving).
 - Release commit 2c22a96, tag v0.33.5, versionCode 48. APK SHA256 3a9e6bf7f84581b045749953e842360010d46fe80f1c64fa2b462d9488336d06 (43273808 bytes), same certificate.
 - Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.
+
+## v0.33.6 (released 2026-11-19)
+
+- Harbor Food Court on old-city block FC_BLOCK (-17,0,-17): the building there and the west shop row at (-16,-8.6) are removed; the rooftop billboard stands on posts at z -23.2 and advertises the court.
+- `_build_food_court`: three hover kiosks (FC_STANDS, FC_Z -20) with robot vendors, hologram menus (`_fc_holo`), see-through treats (`_fc_ghost`), neon tables, arch; ~25 crowd people (`fc_people`, culled at 45 m, no shadows; fewer in web-lite). `_food_court_tick` spins/bobs holograms and pods and plays crowd emotes.
+- Bench next to the court about 50 fps (released 0.33.5 about 57) on 2560x1440 desktop.
+- Dev hook: HC_CAM="name;x,y,z;lx,ly,lz;hour" with --city-shots saves one frame.
+- Release commit 8e35bea, tag v0.33.6, versionCode 49. APK SHA256 8f1e45ed7f4cdd605a50c58c3a3b4a4b655ddd2d08d622626d224c193828ad43 (43290192 bytes), same certificate.
+- Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.

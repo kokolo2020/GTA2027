@@ -3814,8 +3814,8 @@ func _clean_hud_tick() -> void:
 			(c as CanvasItem).visible = false
 	if my_tag != null:
 		my_tag.visible = false
-	# The big button only shows when there is something to do right here (not the standing CALL CAR).
-	action_button.visible = action_button.text != "CALL CAR"
+	# v0.29.2: the big button always shows on the clean screen, including CALL CAR.
+	action_button.visible = true
 	if qr_small != null:
 		qr_small.position = Vector2(18,18)
 	# v0.29.1: the one button kept on the clean screen: Quests, under the QR code.

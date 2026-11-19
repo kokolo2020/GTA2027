@@ -312,6 +312,7 @@ func _ready() -> void:
 	_build_future()
 	_build_food_court()
 	_build_market()
+	_build_display()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
 	radio_player = AudioStreamPlayer.new()
 	radio_player.volume_db = -6.0
@@ -336,7 +337,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.34.1: the shop and leaderboard screens close properly now.")
+	_show_toast("Harbor City 0.34.2: Harbor Live opens by West Arcade with giant leaderboard and news screens, and you can wear all your gear at once!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -757,6 +758,11 @@ func _build_world() -> void:
 		for z in [-46.0,-17.0,17.0]:
 			var height := 4.0 + float(count % 4) * 2.2
 			var vis: Array = []
+			if x == DS_BLOCK.x and z == DS_BLOCK.z:
+				# v0.34.2: this building is now the Harbor Live screen plaza.
+				_box(self, Vector3(x,0.12,z), Vector3(15,0.25,15), Color("2a3346"))
+				count += 1
+				continue
 			if x == FC_BLOCK.x and z == FC_BLOCK.z:
 				# v0.33.6: the old Mint Cruiser building is now the open-air Harbor Food Court.
 				_box(self, Vector3(x,0.12,z), Vector3(15,0.25,15), Color("e3d6bf"))
@@ -1694,7 +1700,7 @@ func _online_pos_frame() -> Dictionary:
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
 		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
-		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on,pet_on]}
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on]}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -1886,7 +1892,11 @@ func _peer_look(peer: Dictionary, av: Variant) -> void:
 	var sh := clampi(int(av[0]),0,SHIRTS.size()-1)
 	var pa := clampi(int(av[1]),0,PANTS.size()-1)
 	var ht := clampi(int(av[2]),0,HATS.size()-1)
-	var ge := clampi(int(av[3]),0,GEAR.size()-1) if (av as Array).size() >= 5 else 0
+	var ge := 0
+	if (av as Array).size() >= 5:
+		var g := int(av[3])
+		# 0.34.2+ sends a mask with bit 7 set; 0.34.0/0.34.1 sent one item index.
+		ge = (g & 127 & ((1 << GEAR.size())-2)) if g & 128 else ((1 << clampi(g,0,GEAR.size()-1)) & ~1)
 	var pt := clampi(int(av[4]),0,PETS.size()-1) if (av as Array).size() >= 5 else 0
 	var key := "%d|%d|%d|%d|%d" % [sh,pa,ht,ge,pt]
 	if String(peer.get("look","")) == key:
@@ -7412,7 +7422,7 @@ func _save_progress() -> void:
 	file.set_value("ach","stats",stats)
 	file.set_value("ach","got",ach_got)
 	file.set_value("market","gear_own",gear_own)
-	file.set_value("market","gear_on",gear_on)
+	file.set_value("market","gear_worn",gear_on)
 	file.set_value("market","pet_own",pet_own)
 	file.set_value("market","pet_on",pet_on)
 	file.set_value("market","board_on",board_on)
@@ -7450,10 +7460,9 @@ func _load_progress() -> void:
 		ach_got = ag if ag is Dictionary else {}
 		gear_own = (int(file.get_value("market","gear_own",1)) & ((1 << GEAR.size())-1)) | 1
 		pet_own = (int(file.get_value("market","pet_own",1)) & ((1 << PETS.size())-1)) | 1
-		gear_on = clampi(int(file.get_value("market","gear_on",0)),0,GEAR.size()-1)
+		var old_gear := clampi(int(file.get_value("market","gear_on",0)),0,GEAR.size()-1)
+		gear_on = int(file.get_value("market","gear_worn",(1 << old_gear) if old_gear > 0 else 0)) & gear_own & ~1
 		pet_on = clampi(int(file.get_value("market","pet_on",0)),0,PETS.size()-1)
-		if not (gear_own & (1 << gear_on)):
-			gear_on = 0
 		if not (pet_own & (1 << pet_on)):
 			pet_on = 0
 		board_on = bool(file.get_value("market","board_on",false))
@@ -7734,6 +7743,7 @@ func _process(delta: float) -> void:
 	_lb_tick(delta)
 	_market_tick(delta)
 	_board_tick(delta)
+	_display_tick(delta)
 	_social_tick(delta)
 	_quiz_tick(delta)
 	_ach_tick(delta)
@@ -8225,15 +8235,27 @@ func _smoke_test() -> void:
 	assert((online_peers["col1"]["hat"] as Node3D).get_child_count() > 0,"v0.33.4: other players wear their own hat")
 	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":16,"av":[2,1,0]})
 	assert((online_peers["col1"]["person"]["mats"]["Shirt"] as StandardMaterial3D).albedo_color.is_equal_approx(SHIRTS[2]["color"]),"v0.33.4: a new shirt shows straight away")
-	assert(_online_pos_frame()["payload"]["payload"]["av"] == [av_shirt,av_pants,av_hat,gear_on,pet_on],"v0.33.4: your look (now with gear and pet) is sent to other players")
+	assert(_online_pos_frame()["payload"]["payload"]["av"] == [av_shirt,av_pants,av_hat,gear_on | 128,pet_on],"v0.33.4: your look (now with gear and pet) is sent to other players")
 	# v0.34: Neon Market, pets from level 20, the hoverboard, the money pill and the leaderboard.
 	var was_m := [cash,gear_own,gear_on,pet_own,pet_on,bonus_xp,board_on]
 	cash = 5000
 	market_kind = 0
 	_market_pick(1)
-	assert(gear_on == 1 and (gear_own & 2) != 0 and cash == 3500,"v0.34: buying gear takes the price and you wear it")
+	gear_on = 0
+	_market_pick(1)
+	assert(gear_on == 2 and (gear_own & 2) != 0 and cash == 3500,"v0.34: buying gear takes the price and you wear it")
 	_market_pick(6)
-	assert(gear_on == 1 and cash == 3500,"v0.34: no crown without the money and the level")
+	assert(gear_on == 2 and cash == 3500,"v0.34: no crown without the money and the level")
+	_market_pick(2)
+	assert(gear_on == 6 and cash == 1000,"v0.34.2: you can wear several items at once")
+	_market_pick(1)
+	assert(gear_on == 4 and cash == 1000,"v0.34.2: tapping a worn item takes it off (no charge)")
+	_market_pick(1)
+	_market_apply()
+	assert(gear_on == 6 and gear_holder.get_child_count() >= 4,"v0.34.2: both items show on you")
+	_market_pick(0)
+	assert(gear_on == 0,"v0.34.2: take everything off")
+	market_kind = 0
 	market_kind = 1
 	cash = 300000
 	if _level() < PET_LEVEL:
@@ -8245,7 +8267,9 @@ func _smoke_test() -> void:
 	_market_apply()
 	assert(pet_node != null and pet_node.get_child_count() > 0 and gear_holder.get_child_count() > 0,"v0.34: your pet follows you and your gear shows")
 	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":20,"av":[1,1,0,4,1]})
-	assert(online_peers["col1"].has("pet") and (online_peers["col1"]["gear"] as Node3D).get_child_count() > 0,"v0.34: other players' gear and pets show")
+	assert(online_peers["col1"].has("pet") and (online_peers["col1"]["gear"] as Node3D).get_child_count() > 0,"v0.34: other players' gear and pets show (0.34.0 format)")
+	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":20,"av":[1,1,0,128 | (1 << 3) | (1 << 4),1]})
+	assert(String(online_peers["col1"]["look"]).contains("|24|"),"v0.34.2: other players can wear several items")
 	board_on = true
 	assert(_walk_speed() == BOARD_SPEED,"v0.34: the hoverboard is faster than running")
 	board_on = false
@@ -8258,6 +8282,15 @@ func _smoke_test() -> void:
 	_lb_got(0,404,PackedStringArray(),PackedByteArray())
 	assert(lb_state == 0 and lb_status.text.contains("isn't switched on"),"v0.34: a missing table shows a clear message")
 	lb_state = -1
+	ds_rows = [{"name":"Zed","level":20,"xp":9,"cash":900000,"ach":50,"kind":3},{"name":"Amy","level":12,"xp":5,"cash":2000000,"ach":10,"kind":9}]
+	ds_tab = 1
+	_ds_render_board()
+	assert(ds_board.text.begins_with("★1  Amy") and ds_board_title.text.contains("MONEY"),"v0.34.2: Harbor Live screens show the leaderboard")
+	_ds_render_news()
+	assert(ds_news.text.contains("online") and ds_news.text.contains("Richest: Amy"),"v0.34.2: the news screen shows city news")
+	assert(get_node_or_null("HarborLive") != null,"v0.34.2: Harbor Live plaza is built")
+	ds_rows = []
+	ds_tab = 0
 	for opener in [_open_market.bind(1),_open_market.bind(0),_open_lb]:
 		opener.call()
 		assert(paused and (market_panel.visible or lb_panel.visible),"v0.34.1: the panel opens")
@@ -17459,7 +17492,7 @@ const MARKET := [
 	{"name":"PET PALACE","pos":Vector3(20.5,0,-9.6),"kind":1,"col":Color("ffd23f"),"trim":Color("6fe39b"),"menu":"ROBOTIC PETS\nUNLOCK AT LEVEL 20"},
 ]
 var gear_own := 1
-var gear_on := 0
+var gear_on := 0   # v0.34.2: a mask of worn gear (bit i = GEAR[i]), not one index
 var pet_own := 1
 var pet_on := 0
 var gear_holder: Node3D
@@ -17524,7 +17557,7 @@ func _build_market() -> void:
 			g.position.y = -0.7
 			g.scale = Vector3.ONE*2.6
 			show.add_child(g)
-			_build_gear(g,6)
+			_build_gear(g,1 << 6)
 		else:
 			var d := Node3D.new()
 			d.position.y = -0.5
@@ -17560,9 +17593,15 @@ func _market_near() -> int:
 	return -1
 
 # Gear is built in the hat holder's frame: head centre at (0,0.555,0), face towards -Z, back towards +Z.
-func _build_gear(holder: Node3D, idx: int) -> void:
+func _build_gear(holder: Node3D, mask: int) -> void:
+	# v0.34.2: gear is a set of worn items (bit i = GEAR[i]); wear as many as you like.
 	for c in holder.get_children():
 		c.queue_free()
+	for i in range(1,GEAR.size()):
+		if mask & (1 << i):
+			_gear_piece(holder,i)
+
+func _gear_piece(holder: Node3D, idx: int) -> void:
 	match idx:
 		1:
 			_fc_part(holder,BoxMesh.new(),Vector3(0,0.575,-0.125),_fc_glow(Color("4fe3ff")),Vector3(0.27,0.055,0.05))
@@ -17728,7 +17767,7 @@ func _refresh_market() -> void:
 	if pets:
 		market_info.text = "Robotic pets follow you everywhere, and everyone online sees them. Pets unlock at level %d. You have %s, level %d." % [PET_LEVEL,_money(cash),lv]
 	else:
-		market_info.text = "Cool gear for your avatar, seen by everyone online. Wear one at a time with your hat. You have %s, level %d." % [_money(cash),lv]
+		market_info.text = "Cool gear for your avatar, seen by everyone online. Wear as many as you like; tap again to take one off. You have %s, level %d." % [_money(cash),lv]
 	for child in market_list.get_children():
 		for sub in child.get_children():
 			if sub is Button:
@@ -17738,7 +17777,7 @@ func _refresh_market() -> void:
 	for i in list.size():
 		var e: Array = list[i]
 		var owned := ((pet_own if pets else gear_own) & (1 << i)) != 0
-		var on := (pet_on if pets else gear_on) == i
+		var on := (pet_on == i) if pets else (i > 0 and (gear_on & (1 << i)) != 0)
 		var need := int(e[2])
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation",10)
@@ -17749,8 +17788,11 @@ func _refresh_market() -> void:
 		row.add_child(lab)
 		var txt := ""
 		var c := Color("213d4f")
-		if on:
-			txt = "WEARING" if not pets else "WITH YOU"
+		if not pets and i == 0:
+			txt = "TAKE ALL OFF"
+			c = Color("213d4f") if gear_on != 0 else Color("2f6b3a")
+		elif on:
+			txt = "WEARING ✓  (take off)" if not pets else "WITH YOU"
 			c = Color("2f6b3a")
 		elif owned:
 			txt = "WEAR" if not pets else "BRING"
@@ -17790,8 +17832,12 @@ func _market_pick(i: int) -> void:
 		_stat_add("market_buys")
 	if pets:
 		pet_on = i
+	elif i == 0:
+		gear_on = 0
+	elif owned:
+		gear_on ^= 1 << i
 	else:
-		gear_on = i
+		gear_on |= 1 << i
 	_market_apply()
 	_save_progress()
 	_refresh_market()
@@ -17846,6 +17892,248 @@ func _board_tick(delta: float) -> void:
 		board_button.add_theme_stylebox_override("normal",_panel(Color("c254ff") if board_on else Color("213d4f"),18))
 		board_button.text = "BOARD ✓" if board_on else "BOARD"
 		board_button.position = action_button.position+Vector2(-board_button.size.x-14.0,action_button.size.y-board_button.size.y)
+
+# ---------- v0.34.2: Harbor Live, a plaza of giant screens (leaderboards and city news) ----------
+const DS_BLOCK := Vector3(-46,0,17)
+const DS_SCREEN_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_back, shadows_disabled;
+uniform vec4 edge : source_color = vec4(0.25, 0.9, 1.0, 1.0);
+void fragment() {
+	vec3 base = mix(vec3(0.015, 0.03, 0.07), vec3(0.05, 0.02, 0.11), UV.y);
+	float scan = 0.85 + 0.15 * sin(UV.y * 420.0 - TIME * 3.0);
+	float grid = step(0.985, fract(UV.x * 24.0)) * 0.05 + step(0.985, fract(UV.y * 28.0)) * 0.05;
+	float d = min(min(UV.x, 1.0 - UV.x), min(UV.y, 1.0 - UV.y));
+	float glow = smoothstep(0.03, 0.0, d);
+	ALBEDO = base * scan + vec3(grid) * edge.rgb + edge.rgb * glow * 0.9;
+}
+"""
+const DS_TABS := ["LEVEL","MONEY","ACHIEVEMENTS","KINDNESS"]
+const DS_ADS := ["NEW · Neon Market: visors, halos, jetpacks, wings and crowns","Pets unlock at level 20 · Pet Palace","Harbor Food Court · juice, hot dogs, smoothies","Party Quiz in Harbor Dome every few minutes","Tap your money for the live leaderboard","Ride a hoverboard · tap BOARD","Treasure hunt every 5 minutes · follow the golden beam"]
+var ds_board: Label3D
+var ds_board_title: Label3D
+var ds_news: Label3D
+var ds_ticker: Label3D
+var ds_trophy: Node3D
+var ds_rows: Array = []
+var ds_get: HTTPRequest
+var ds_fetch_t := 3.0
+var ds_tab_t := 0.0
+var ds_tab := 0
+var ds_tick_t := 0.0
+var ds_tick_i := 0
+var ds_news_t := 0.0
+var ds_state := -1
+
+func _ds_screen(root: Node3D, center: Vector3, yaw: float, size: Vector2, edge: Color) -> Node3D:
+	var n := Node3D.new()
+	n.position = center
+	n.rotation.y = yaw
+	root.add_child(n)
+	var sh := Shader.new()
+	sh.code = DS_SCREEN_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("edge",edge)
+	var q := QuadMesh.new()
+	q.size = size
+	_fc_part(n,q,Vector3.ZERO,m)
+	# Slim dark back and chrome frame with a neon top and bottom.
+	_fc_part(n,BoxMesh.new(),Vector3(0,0,-0.12),_fc_chrome(),Vector3(size.x+0.3,size.y+0.3,0.2))
+	_fc_part(n,BoxMesh.new(),Vector3(0,size.y/2.0+0.18,0),_fc_glow(edge),Vector3(size.x+0.3,0.07,0.08))
+	_fc_part(n,BoxMesh.new(),Vector3(0,-size.y/2.0-0.18,0),_fc_glow(Color("ff5fd2")),Vector3(size.x+0.3,0.07,0.08))
+	return n
+
+func _ds_label(parent: Node3D, pos: Vector3, size: int, px: float, col: Color, align := HORIZONTAL_ALIGNMENT_CENTER) -> Label3D:
+	var l := Label3D.new()
+	l.font_size = size
+	l.pixel_size = px
+	l.modulate = col
+	l.outline_size = 8
+	l.outline_modulate = Color(0.02,0.04,0.1,0.9)
+	l.position = pos
+	l.horizontal_alignment = align
+	l.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	l.shaded = false
+	parent.add_child(l)
+	return l
+
+func _build_display() -> void:
+	var root := Node3D.new()
+	root.name = "HarborLive"
+	add_child(root)
+	var c := DS_BLOCK
+	# Glowing floor rings and a raised stage for the screens.
+	for r in [3.2,5.0,6.6]:
+		_fc_part(root,_fc_torus(r,r+0.12),c+Vector3(2.0,0.27,0),_fc_glow(Color("4fe3ff") if r != 5.0 else Color("c254ff")))
+	_box(root,c+Vector3(-5.2,0.5,0),Vector3(3.2,0.6,14.4),Color("1b2233"),true)
+	_fc_part(root,BoxMesh.new(),c+Vector3(-3.58,0.62,0),_fc_glow(Color("4fe3ff")),Vector3(0.05,0.06,14.4))
+	# Two giant screens in a shallow V facing the avenue: top players and city news.
+	var sz := Vector2(6.9,7.6)
+	var lb := _ds_screen(root,c+Vector3(-5.0,5.35,3.55),PI/2.0+0.22,sz,Color("4fe3ff"))
+	var news := _ds_screen(root,c+Vector3(-5.0,5.35,-3.55),PI/2.0-0.22,sz,Color("ffd23f"))
+	for scr in [lb,news]:
+		for sx in [-1.0,1.0]:
+			_fc_part(root,_fc_cone(0.1,0.14,9.4),(scr as Node3D).position*Vector3(1,0,1)+(scr as Node3D).global_basis.x*sx*(sz.x/2.0+0.2)+Vector3(0,4.7,0)-c+c,_fc_chrome())
+	ds_board_title = _ds_label(lb,Vector3(0,3.15,0.03),64,0.0105,Color("7ff6ff"))
+	ds_board = _ds_label(lb,Vector3(-3.1,-0.3,0.03),50,0.0098,Color("f4fbff"),HORIZONTAL_ALIGNMENT_LEFT)
+	ds_board.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var nt := _ds_label(news,Vector3(0,3.15,0.03),64,0.0105,Color("ffe36b"))
+	nt.text = "◆ CITY NEWS ◆"
+	ds_news = _ds_label(news,Vector3(-3.1,-0.3,0.03),46,0.0094,Color("f4fbff"),HORIZONTAL_ALIGNMENT_LEFT)
+	ds_news.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	ds_news.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ds_news.width = 640.0
+	# A ticker strip along the stage front.
+	var tk := _ds_screen(root,c+Vector3(-3.5,1.35,0),PI/2.0,Vector2(13.6,0.75),Color("ff5fd2"))
+	ds_ticker = _ds_label(tk,Vector3(0,0,0.03),44,0.0085,Color("ffd6f2"))
+	# HARBOR LIVE crown and a spinning hologram trophy above it.
+	var title := Label3D.new()
+	title.text = "HARBOR LIVE"
+	title.font_size = 120
+	title.pixel_size = 0.016
+	title.modulate = Color("c8fbff")
+	title.outline_size = 18
+	title.outline_modulate = Color(0.25,0.1,0.6,0.9)
+	title.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	title.position = c+Vector3(-4.2,10.6,0)
+	root.add_child(title)
+	ds_trophy = Node3D.new()
+	ds_trophy.position = c+Vector3(-4.2,12.9,0)
+	root.add_child(ds_trophy)
+	var gold := _fc_ghost(Color("ffd23f"))
+	_fc_part(ds_trophy,_fc_cone(0.75,0.28,1.1),Vector3(0,0.45,0),gold)
+	_fc_part(ds_trophy,_fc_cone(0.1,0.1,0.5),Vector3(0,-0.35,0),gold)
+	_fc_part(ds_trophy,_fc_cone(0.45,0.5,0.18),Vector3(0,-0.65,0),gold)
+	for sx in [-1.0,1.0]:
+		var h := _fc_part(ds_trophy,_fc_torus(0.22,0.3),Vector3(sx*0.78,0.55,0),gold)
+		h.rotation.x = PI/2.0
+	_fc_part(ds_trophy,_fc_torus(1.25,1.33),Vector3(0,0.2,0),_fc_glow(Color("4fe3ff"))).rotation.x = 0.4
+	_fc_part(ds_trophy,_fc_torus(1.5,1.56),Vector3(0,0.2,0),_fc_glow(Color("ff5fd2"))).rotation.z = 0.5
+	# Holo light beams from the stage corners.
+	for z in [-7.0,7.0]:
+		var beam := _fc_part(root,_fc_cone(0.5,0.08,10.0),c+Vector3(-5.6,5.3,z),_fc_holo(Color("4fe3ff"),Color("c254ff"),0.25))
+		beam.mesh.set("cap_top",false)
+		beam.mesh.set("cap_bottom",false)
+	# People watching the screens.
+	var looks := [[Color("e04a3a"),Color("263d54")],[Color("3f8fd2"),Color("38302a")],[Color("5fbf7f"),Color("4a4f57")],[Color("f2b24a"),Color("23324a")],[Color("9b6bd6"),Color("263d54")],[Color("2fb5a8"),Color("7a6a55")]]
+	var spots := [Vector3(2.5,0,4.2),Vector3(3.6,0,-2.8),Vector3(1.4,0,-0.6),Vector3(4.6,0,1.8),Vector3(0.6,0,3.0),Vector3(2.8,0,-5.0)]
+	for i in (3 if web_lite else spots.size()):
+		var n := Node3D.new()
+		n.position = c+(spots[i] as Vector3)+Vector3(0,0.25,0)
+		n.rotation.y = PI/2.0+randf_range(-0.4,0.4)
+		root.add_child(n)
+		var pp := _make_person(n,i % 4,{"Shirt":looks[i][0],"Pants":looks[i][1],"Skin":[Color("f0c9a4"),Color("c68a60"),Color("8d5a3b")][i % 3],"Hair":Color("2b1d14"),"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
+		if not pp.is_empty():
+			fc_people.append(pp)
+			_cull_person(pp["root"],45.0)
+	_collider(root,c+Vector3(-5.6,4.5,0),Vector3(1.2,9.0,14.4))
+	_cull_person(root,160.0)
+	ds_get = HTTPRequest.new()
+	ds_get.timeout = 12.0
+	add_child(ds_get)
+	ds_get.request_completed.connect(_ds_got)
+	_ds_render_board()
+	_ds_render_news()
+	ds_ticker.text = DS_ADS[0]
+
+func _ds_got(_result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if code == 200:
+		var data = JSON.parse_string(body.get_string_from_utf8())
+		ds_rows = data if data is Array else []
+		ds_state = 1
+	else:
+		ds_state = 0
+	_ds_render_board()
+
+func _ds_sorted(tab: int) -> Array:
+	var rows: Array = []
+	for r in ds_rows:
+		if r is Dictionary:
+			rows.append(r)
+	var key: String = ["level","cash","ach","kind"][tab]
+	rows.sort_custom(func(a, b):
+		var va := float(a.get(key,0))
+		var vb := float(b.get(key,0))
+		if va != vb:
+			return va > vb
+		return float(a.get("xp",0)) > float(b.get("xp",0)))
+	return rows
+
+func _ds_render_board() -> void:
+	if ds_board == null:
+		return
+	ds_board_title.text = "★ TOP · %s" % DS_TABS[ds_tab]
+	var rows := _ds_sorted(ds_tab)
+	if rows.is_empty():
+		ds_board.text = "Be the first on the board!\n\nPick a nickname and play.\nScores update every\nminute or two." if ds_state != 0 else "Leaderboard offline"
+		return
+	var lines: Array = []
+	for i in mini(rows.size(),8):
+		var r: Dictionary = rows[i]
+		var nm := _online_clean_name(String(r.get("name","Player"))).substr(0,12)
+		var v := ""
+		match ds_tab:
+			0:
+				v = "Lv %d" % int(r.get("level",1))
+			1:
+				v = _money(int(r.get("cash",0)))
+			2:
+				v = "◆ %d" % int(r.get("ach",0))
+			_:
+				v = "♥ %d" % int(r.get("kind",0))
+		var mark := "★" if i < 3 else " "
+		lines.append("%s%d  %s  ·  %s" % [mark,i+1,nm,v])
+	ds_board.text = "\n".join(lines)
+
+func _ds_render_news() -> void:
+	if ds_news == null:
+		return
+	var lines: Array = []
+	var n := (online_peers.size()+1) if online_on else _watch_count()
+	lines.append("● %d player%s online now" % [n,"" if n == 1 else "s"])
+	var tleft := float(TREASURE_CYCLE)-fmod(_treasure_now(),float(TREASURE_CYCLE))
+	lines.append("◆ Next treasure hunt in %d:%02d" % [int(tleft)/60,int(tleft) % 60])
+	var qs := _quiz_slot()
+	lines.append("◆ Party Quiz: %s" % ("on now in the Dome!" if not bool(qs["results"]) else "next round soon"))
+	var rows := _ds_sorted(1)
+	if not rows.is_empty():
+		lines.append("◆ Richest: %s %s" % [_online_clean_name(String(rows[0].get("name",""))).substr(0,12),_money(int(rows[0].get("cash",0)))])
+	for f in feed:
+		var t := String((f as Dictionary).get("text",""))
+		if t.contains("unlocked") or t.contains("LEGEND") or t.contains("GOLD"):
+			lines.append("★ "+t.substr(0,60))
+	ds_news.text = "\n\n".join(lines.slice(0,6))
+
+func _display_tick(delta: float) -> void:
+	if ds_board == null or player == null:
+		return
+	var near := player.position.distance_to(DS_BLOCK) < 160.0 or (driving and car.position.distance_to(DS_BLOCK) < 160.0)
+	if not near:
+		return
+	if ds_trophy != null:
+		ds_trophy.rotation.y += delta*0.8
+		ds_trophy.position.y = DS_BLOCK.y+12.9+sin(clock*1.4)*0.15
+	ds_tab_t += delta
+	if ds_tab_t > 7.0:
+		ds_tab_t = 0.0
+		ds_tab = (ds_tab+1) % DS_TABS.size()
+		_ds_render_board()
+	ds_news_t -= delta
+	if ds_news_t <= 0.0:
+		ds_news_t = 1.0
+		_ds_render_news()
+	ds_tick_t += delta
+	if ds_tick_t > 4.5:
+		ds_tick_t = 0.0
+		ds_tick_i = (ds_tick_i+1) % DS_ADS.size()
+		ds_ticker.text = DS_ADS[ds_tick_i]
+	if "--smoke-test" in OS.get_cmdline_user_args():
+		return
+	ds_fetch_t -= delta
+	if ds_fetch_t <= 0.0 and ds_get.get_http_client_status() == HTTPClient.STATUS_DISCONNECTED and _online_load_config():
+		ds_fetch_t = 45.0
+		ds_get.request(_lb_url("leaderboard?select=name,level,xp,cash,ach,kind&order=level.desc,xp.desc&limit=50"),_lb_headers())
 
 # ---------- v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online) ----------
 # The 5-minute window comes from the clock, so every player sees the same chest at the same place.

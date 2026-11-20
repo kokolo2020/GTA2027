@@ -513,3 +513,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - main.gd: `_make_person` uses `_make_kperson` when the model loads (old person_%d.glb fallback). One ShaderMaterial per person (game/people.gdshader tints shirt/pants/shoes/skin regions of the "T" skins); `mats` proxies synced with `_ksync`. `_kpeople_tick` advances AnimationPlayers manually by distance (every frame <14 m, 2nd <25 m, 4th <40 m, none beyond). Hats/gear scale 1.9 via `_hat_y`/`_sit_drop`; back gear counter-scaled in `_gear_piece`.
 - Release commit 6ba1e5a, tag v0.35.0, versionCode 60. APK SHA256 1e0f66119b58025154ff6f2a742366f9d73e5ca85eab39ef14224ee840625cde (43869707 bytes), same certificate. Bench about 46 fps (was 51).
 - Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches.
+
+## v0.35.1 (released 2026-11-20)
+
+- Adult proportions: make_kenney_people.py now pose-scales the body after the retarget (legs 1.55, arms 1.4, torso 1.12 long / 1.28 wide, limbs 1.12 thick, head 0.65), raises Hips to keep feet on the floor, bakes the mesh and applies the pose as rest. It prints "FIT" numbers used for K_HAT_SCALE 1.15, K_HEAD_Y 1.53, K_HIP 0.70, K_BACK_Y 0.93, K_HEAD_Z -0.04 in main.gd.
+- Release commit 25d3115, tag v0.35.1, versionCode 61. APK SHA256 e8e429f490a3058b54f3112222c75cb3ee0d1ffc7fc771fa83f184dbe8ad0b4e (43869707 bytes), same certificate.
+- Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches. Hats/back gear up close not visually checked (screenshot run with HC_SHOWOFF hung).

@@ -341,7 +341,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.40: new looks for everyone, and Harbor Galleria is open! Menu > Wardrobe, or Travel > Harbor Galleria.")
+	_show_toast("Harbor City 0.40.1: Harbor Galleria is now a real mall. Use the entrance under the arch or the Sky Run door.")
 	booted = true
 	_online_autostart()
 	if not dev_mode and not crate_done:
@@ -21380,6 +21380,38 @@ func _smoke_style() -> void:
 	for z in [-530.0,GA_Z0-2.0,-575.0,-620.0]:
 		var p := Vector3(GA_C.x+(0.0 if z > -560.0 else 5.0),1,z)
 		assert(not _blocked_at(p,0.3),"v0.40: the Galleria walk is open at z=%.0f (%s)" % [z,_blocker(p,0.3)])
+	# v0.40.1: the mall is closed: walls all round except the two doors.
+	var space := get_world_3d().direct_space_state
+	var ray := func(a: Vector3, b: Vector3) -> bool:
+		var q := PhysicsRayQueryParameters3D.create(a,b)
+		q.exclude = [player.get_rid(),car.get_rid()]
+		return not space.intersect_ray(q).is_empty()
+	for z in range(int(GA_Z0)-1,int(GA_ZN),2):
+		for side in [[GA_X0,-1.0],[GA_X1,1.0]]:
+			var x: float = side[0]
+			var door := float(side[1]) < 0 and absf(float(z)-GA_DOOR_W.x) < GA_DOOR_W.y
+			var hit: bool = ray.call(Vector3(x+float(side[1])*1.5,1.0,float(z)),Vector3(x-float(side[1])*1.5,1.0,float(z)))
+			assert(hit != door,"v0.40.1: mall %s wall at z=%d is %s" % ["west" if float(side[1]) < 0 else "east",z,"open" if hit == false else "shut"])
+	for x in range(int(GA_X0)+1,int(GA_X1),2):
+		var door := absf(float(x)-GA_C.x) < GA_DOOR_S
+		var hs: bool = ray.call(Vector3(float(x),1.0,GA_Z0+1.5),Vector3(float(x),1.0,GA_Z0-1.5))
+		assert(hs != door,"v0.40.1: mall south wall at x=%d" % x)
+		assert(ray.call(Vector3(float(x),1.0,GA_ZN-1.5),Vector3(float(x),1.0,GA_ZN+1.5)),"v0.40.1: mall north wall at x=%d" % x)
+	for p in [Vector3(GA_C.x,1,GA_Z0),Vector3(GA_X0,1,GA_DOOR_W.x)]:
+		assert(not _blocked_at(p,0.4),"v0.40.1: the mall door at %s is open (%s)" % [str(p),_blocker(p,0.4)])
+	# Walk for real at hoverboard speed: into each wall you stop; through each door you get out.
+	var psh: CollisionShape3D = player.get_child(0) as CollisionShape3D
+	var kd := psh.disabled
+	psh.disabled = false
+	for e in [[Vector3(GA_C.x-8.0,0.8,-588.0),Vector3(-1,0,0),false],[Vector3(GA_C.x+8.0,0.8,-588.0),Vector3(1,0,0),false],[Vector3(GA_C.x,0.8,-645.0),Vector3(0,0,-1),false],[Vector3(GA_C.x-15.0,0.8,-550.0),Vector3(0,0,1),false],[Vector3(GA_C.x,0.8,-550.0),Vector3(0,0,1),true],[Vector3(GA_X0+6.0,0.8,GA_DOOR_W.x),Vector3(-1,0,0),true]]:
+		player.position = e[0]
+		player.velocity = Vector3.ZERO
+		for step in 150:
+			var v: Vector3 = (e[1] as Vector3)*15.0
+			player.velocity = Vector3(v.x,player.velocity.y-0.4,v.z)
+			player.move_and_slide()
+		assert(_ga_inside(player.position) != bool(e[2]),"v0.40.1: walking %s from %s you %s (ended at %s)" % [str(e[1]),str(e[0]),"get out through the door" if e[2] else "stay inside",str(player.position)])
+	psh.disabled = kd
 	# Shopping: try on, buy, keep what you bought and take off what you only tried.
 	var keep := [look.duplicate(),look_own.duplicate(),cash,player.position,style_test_day]
 	style_test_day = "2026-11-20"
@@ -22142,6 +22174,14 @@ const GA_C := Vector3(-330,0,-600)
 const GA_Z0 := -545.0          # south arch
 const GA_Z1 := -652.0          # north end
 const GA_W := 12.0             # promenade width
+# v0.40.1: the mall is one closed building. Outer walls on these lines; the only ways in or out are
+# the main entrance under the arch (south) and the Sky Run door (west).
+const GA_X0 := -356.0
+const GA_X1 := -304.0
+const GA_ZN := -653.0
+const GA_DOOR_S := 4.4          # half-width of the main entrance
+const GA_DOOR_W := Vector2(-590.0,2.2)   # west door: z centre, half-width
+const GA_WALL_H := 9.3
 # Store fronts: [store index (-1 = cafe), centre, facing (direction from the store to the promenade)]
 const GA_STORES := [[0,Vector3(-348,0,-570),Vector3(1,0,0)],[1,Vector3(-348,0,-610),Vector3(1,0,0)],
 	[2,Vector3(-312,0,-570),Vector3(-1,0,0)],[-1,Vector3(-312,0,-610),Vector3(-1,0,0)],[3,Vector3(-330,0,-640),Vector3(0,0,1)]]
@@ -22197,7 +22237,7 @@ func _build_galleria() -> void:
 	_ga_box(Vector3(GA_C.x,0.05,(-508.0+GA_Z0)/2.0),Vector3(8,0.1,GA_Z0+508.0),pave)
 	_floor_note(Vector3(GA_C.x,0.05,(-508.0+GA_Z0)/2.0),Vector3(8,0.1,GA_Z0+508.0))
 	var plen := GA_Z0-GA_Z1
-	_ga_box(Vector3(GA_C.x,0.05,(GA_Z0+GA_Z1)/2.0),Vector3(GA_W+28.0,0.1,plen+6.0),_bio_mat(Color("7fd0ff"),0.0,0.3))
+	_ga_box(Vector3(GA_C.x,0.05,(GA_Z0+GA_Z1)/2.0),Vector3(GA_X1-GA_X0+2.0,0.1,plen+6.0),_bio_mat(Color("7fd0ff"),0.0,0.3))
 	# Terrazzo tiles in two tones down the promenade.
 	var tiles := [[],[]]
 	for ix in 5:
@@ -22216,7 +22256,7 @@ func _build_galleria() -> void:
 		mi.material_override = _bio_mat([Color("fff4e0"),Color("ffd9ec")][k],0.0,0.22)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		ga_root.add_child(mi)
-	_floor_note(Vector3(GA_C.x,0.05,(GA_Z0+GA_Z1)/2.0),Vector3(GA_W+28.0,0.1,plen+6.0))
+	_floor_note(Vector3(GA_C.x,0.05,(GA_Z0+GA_Z1)/2.0),Vector3(GA_X1-GA_X0+2.0,0.1,plen+6.0))
 	for sx: float in [-6.1,6.1]:
 		# Chunky coloured kerbs along the promenade.
 		for k in int(plen/4.0):
@@ -22288,8 +22328,62 @@ func _build_galleria() -> void:
 		var pp := _cm_person(ga_root,p,r.randf()*TAU,900+k)
 		if not pp.is_empty():
 			ga_people.append(pp)
+	_ga_shell()
 	_build_ga_fun()
 	_cull_person(ga_root,160.0)
+
+func _ga_shell() -> void:
+	# Solid outer walls up to the glass roof, in the mall's toy colours, with two doorways.
+	var t := 0.6
+	var h := GA_WALL_H
+	var white := _bio_mat(Color("ffffff"),0.0,0.25)
+	var walls: Array = []   # [from, to] along one line
+	var zs := GA_Z0
+	# South front: either side of the main entrance.
+	walls.append([Vector3(GA_X0,0,zs),Vector3(GA_C.x-GA_DOOR_S,0,zs)])
+	walls.append([Vector3(GA_C.x+GA_DOOR_S,0,zs),Vector3(GA_X1,0,zs)])
+	# North back.
+	walls.append([Vector3(GA_X0,0,GA_ZN),Vector3(GA_X1,0,GA_ZN)])
+	# East side, and the west side either side of the Sky Run door.
+	walls.append([Vector3(GA_X1,0,zs),Vector3(GA_X1,0,GA_ZN)])
+	walls.append([Vector3(GA_X0,0,zs),Vector3(GA_X0,0,GA_DOOR_W.x+GA_DOOR_W.y)])
+	walls.append([Vector3(GA_X0,0,GA_DOOR_W.x-GA_DOOR_W.y),Vector3(GA_X0,0,GA_ZN)])
+	for k in walls.size():
+		var a: Vector3 = walls[k][0]
+		var b: Vector3 = walls[k][1]
+		var mid := (a+b)/2.0
+		var along_x := absf(b.x-a.x) > absf(b.z-a.z)
+		var L := (absf(b.x-a.x) if along_x else absf(b.z-a.z))+t
+		var size := Vector3(L,h,t) if along_x else Vector3(t,h,L)
+		_ga_box(mid+Vector3(0,h/2.0,0),size,_bio_mat(GA_TOY[(k*2+1) % GA_TOY.size()],0.0,0.25),true)
+		_ga_box(mid+Vector3(0,h+0.2,0),Vector3(size.x+0.3,0.4,size.z+0.3),white)
+		_ga_box(mid+Vector3(0,0.4,0),Vector3(size.x+0.2,0.8,size.z+0.2),white)
+	# Roof over the store rows (the promenade keeps its glass canopy).
+	for sx: float in [-1.0,1.0]:
+		var cx := GA_C.x+sx*(GA_W/2.0+0.6+(absf(GA_X0-GA_C.x)-GA_W/2.0-0.6)/2.0)
+		var wdt := absf(GA_X0-GA_C.x)-GA_W/2.0-0.6
+		_ga_box(Vector3(cx,h,(GA_Z0+GA_ZN)/2.0),Vector3(wdt,0.3,GA_Z0-GA_ZN),_bio_mat(Color("f4f1ec"),0.0,0.6))
+	_ga_box(Vector3(GA_C.x,h,(GA_Z1+GA_ZN)/2.0-0.5),Vector3(GA_W+1.2,0.3,GA_Z1-GA_ZN+1.0),_bio_mat(Color("f4f1ec"),0.0,0.6))
+	# Door frames with EXIT signs.
+	var green := _fc_glow(Color("4cff7a"))
+	_ga_box(Vector3(GA_C.x,4.6,GA_Z0-0.4),Vector3(GA_DOOR_S*2.0,0.25,0.2),green)
+	var e1 := _ga_text("ENTRANCE · EXIT",Vector3(GA_C.x,5.1,GA_Z0-0.45),Color("4cff7a"),56,30.0)
+	e1.rotation.y = PI
+	e1.double_sided = false
+	e1.pixel_size = 0.006
+	var wz := GA_DOOR_W.x
+	for sz: float in [-1.0,1.0]:
+		_ga_box(Vector3(GA_X0,1.6,wz+sz*(GA_DOOR_W.y+0.25)),Vector3(0.9,3.2,0.5),white,true)
+	_ga_box(Vector3(GA_X0,3.35,wz),Vector3(0.9,0.5,GA_DOOR_W.y*2.0+1.0),white,true)
+	for sd: float in [-1.0,1.0]:
+		_ga_box(Vector3(GA_X0+sd*0.5,3.35,wz),Vector3(0.05,0.2,GA_DOOR_W.y*2.0),green)
+		var ex := _ga_text("EXIT  ·  SKY RUN" if sd > 0 else "ENTRANCE",Vector3(GA_X0+sd*0.48,4.1,wz),Color("4cff7a"),50,25.0)
+		ex.rotation.y = PI/2.0*sd
+		ex.pixel_size = 0.006
+		ex.double_sided = false
+
+func _ga_inside(p: Vector3) -> bool:
+	return p.x > GA_X0 and p.x < GA_X1 and p.z < GA_Z0 and p.z > GA_ZN
 
 func _bio_cyl_col_on(parent: Node3D, p: Vector3, r: float, h: float) -> void:
 	var body := StaticBody3D.new()

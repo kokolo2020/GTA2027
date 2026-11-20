@@ -596,3 +596,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Galleria: muted GA_TOY palette, darker floor; GA_EXTRA adds 5 shops (Sneaker Lab -> Thread & Co shoes tab, Neon Outfitters -> market 0, Pet Palace -> market 1, Seed & Bloom -> garden seed shop, Harbor Sweets decor), interaction via `_extra_near`.
 - Note: untracked research output lives in reports/ and research_notes/ (not committed). scripts/publish-release.py needs a clean tree, so move them aside while publishing.
 - Commit 2014713, versionCode 71, APK SHA256 4d6350cebce2e0cdee01f259bc673bfd70bf151973a3a8762d7a8fa297e85cee (46,468,641 bytes), same certificate. Workflow run 44741649075 passed; release.json, page button, web pck (18,101,400) and downloaded APK hash verified. Not verified on a phone.
+
+## v0.42.0 released and verified (2026-11-20)
+
+- Zoo animals: blender-src/make_animals.py (metaball bodies, painted markings per face, nodes Body/Head/Tail/LegFL/LegBL/LegFR/LegBR with pivots) writes game/models/animals/animal_<kind>.glb for 9 quadrupeds. `_bio_load_animal` uses them in `_bio_make_quad` (old primitive builder is the fallback). Penguin, birds, flamingo, butterflies still primitive.
+- Waterfront kiosks: `_future_kiosk` (KIOSKS names/colours) replaces the four 8x3.6x6 box kiosks at z=40; same collider.
+- Commit ce0ef5c, versionCode 72, APK SHA256 239c4c03b6c7b6aef165ff721fc509d62e7b30e29818cb7ccfdb5b0b8170973f (48,326,072 bytes), same certificate. Workflow run 44765842863 passed; release.json, page button, web pck (19,952,660) and downloaded APK hash verified. Not verified on a phone.

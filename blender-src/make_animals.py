@@ -54,7 +54,20 @@ def blob(name, balls, res, scale=(1, 1, 1)):
     mb.threshold = 0.6
     o = bpy.data.objects.new(name + "_mbo", mb)
     bpy.context.scene.collection.objects.link(o)
-    for co, r in balls:
+    # v0.43: fill gaps between neighbouring balls so chains (necks, wings, tails) merge smoothly.
+    dense = []
+    for i, (co, r) in enumerate(balls):
+        dense.append((co, r))
+        if i + 1 < len(balls):
+            c2, r2 = balls[i + 1]
+            a, b = Vector(co), Vector(c2)
+            gap = (b - a).length
+            n = int(gap / (0.45 * min(r, r2))) if min(r, r2) > 0 else 0
+            if n > 0 and gap < 4.0 * max(r, r2) + 0.6:
+                for k in range(1, n + 1):
+                    t = k / (n + 1)
+                    dense.append((tuple(a.lerp(b, t)), r + (r2 - r) * t))
+    for co, r in dense:
         e = mb.elements.new()
         e.co = co
         e.radius = r / K
@@ -415,7 +428,190 @@ def render(kind, size):
     bpy.data.objects.remove(cam, do_unlink=True)
     bpy.data.objects.remove(sun, do_unlink=True)
 
+# ---------------- birds (v0.43) ----------------
+# Nodes: Body (pivot at the hips; the penguin waddles on it) with WingL/WingR (shoulder pivots,
+# flap on the forward axis) and Head as its children; flamingo legs LegL/LegR (hip pivots).
+def parent(child, par):
+    child.parent = par
+    child.matrix_parent_inverse = par.matrix_world.inverted()
+
+def build_bird(kind):
+    clear()
+    cols = {
+        "penguin": ("1d2130", "f7f6f0", "ff8a1c", "ffc23d"),
+        "flamingo": ("ff8fb1", "ff6f91", "1b1b1f", "ffd0dc"),
+        "owl": ("f6f7f4", "6a6a70", "2a2a2a", "ffd23f"),
+        "parrot": ("e0302c", "2f6fd8", "f4efe6", "ffd23f"),
+        "duck": ("8a7a66", "1f7a3a", "ffb000", "f4f4f2"),
+        "goose": ("8a7d6c", "1b1b1f", "1b1b1f", "f4f4f2"),
+    }[kind]
+    M = [mat("Main_" + kind, cols[0]), mat("Second_" + kind, cols[1]), mat("Beak_" + kind, cols[2], 0.4), mat("Accent_" + kind, cols[3]), mat("Eye_any", "0b0b0e", 0.15)]
+    MAIN, SEC, BEAK, ACC, EYE = range(5)
+    res = 0.02
+    parts = {}
+    eyes = []
+    if kind == "penguin":
+        body = blob("Body", [((0, 0, z), r) for z, r in ((0.3, 0.27), (0.5, 0.29), (0.7, 0.25), (0.88, 0.2), (1.02, 0.17))], res, (1, 0.8, 1))
+        head = join([sphere((0, 0.17, 0.98), 0.03, (1.4, 3.5, 0.9))] + [sphere((s * 0.08, 0.13, 1.05), 0.03) for s in (-1, 1)], "Head")
+        eyes = [Vector((s * 0.08, 0.15, 1.05)) for s in (-1, 1)]
+        wings = [blob("Wing" + nm, [((s * 0.28, 0, 0.7 - 0.12 * k), 0.07 - 0.008 * k) for k in range(4)], res, (0.45, 1, 1)) for nm, s in (("L", -1), ("R", 1))]
+        feet = [sphere((s * 0.1, 0.08, 0.03), 0.07, (1, 1.6, 0.4)) for s in (-1, 1)]
+        body = join([body] + feet, "Body")
+        hip = Vector((0, 0, 0.1))
+        def rule(c, n, nm):
+            if nm == "Head":
+                if any((c - e).length < 0.035 for e in eyes):
+                    return EYE
+                return BEAK
+            if c.z < 0.08:
+                return BEAK
+            if nm == "Body" and n.y > 0.25 and c.z < 0.95:
+                return SEC
+            if nm == "Body" and abs(c.x) > 0.12 and 0.85 < c.z < 1.0 and n.y > -0.2:
+                return ACC
+            return MAIN
+        pivots = {"WingL": Vector((-0.27, 0, 0.75)), "WingR": Vector((0.27, 0, 0.75))}
+    elif kind == "flamingo":
+        body = blob("Body", [((0, y, 1.15 + 0.05 * y), 0.2) for y in (-0.2, -0.05, 0.1, 0.2)], res, (0.85, 1, 0.8))
+        neck = [((0, 0.25 - 0.08 * math.sin(t * 3.0), 1.25 + 0.75 * t), 0.06 - 0.015 * t) for t in [k / 9 for k in range(10)]]
+        neck.append(((0, 0.22, 2.05), 0.09))
+        head = blob("Head", neck, res * 0.6)
+        beak = cone((0, 0.28, 2.05), (0, 0.42, 1.92), 0.04)
+        head = join([head, beak] + [sphere((s * 0.06, 0.25, 2.08), 0.02) for s in (-1, 1)], "Head")
+        eyes = [Vector((s * 0.06, 0.25, 2.08)) for s in (-1, 1)]
+        wings = [blob("Wing" + nm, [((s * 0.17, -0.1 * k, 1.2 - 0.02 * k), 0.08) for k in range(4)], res, (0.4, 1, 0.6)) for nm, s in (("L", -1), ("R", 1))]
+        legs = []
+        for nm, s in (("LegL", -1), ("LegR", 1)):
+            lg = join([rod((s * 0.07, 0, 0.98), (s * 0.07, 0.02, 0.5), 0.018), sphere((s * 0.07, 0.02, 0.5), 0.03), rod((s * 0.07, 0.02, 0.5), (s * 0.07, 0, 0.04), 0.016), sphere((s * 0.07, 0.07, 0.02), 0.05, (1, 1.6, 0.3))], nm)
+            legs.append(lg)
+        hip = Vector((0, 0, 1.1))
+        def rule(c, n, nm):
+            if nm == "Head":
+                if any((c - e).length < 0.025 for e in eyes):
+                    return EYE
+                if c.y > 0.36:
+                    return BEAK
+                if c.y > 0.27 and c.z < 2.05:
+                    return ACC
+            if nm.startswith("Wing") and c.y < -0.2:
+                return BEAK
+            if nm.startswith("Leg"):
+                return SEC
+            return MAIN
+        pivots = {"WingL": Vector((-0.17, 0, 1.2)), "WingR": Vector((0.17, 0, 1.2)), "LegL": Vector((-0.07, 0, 0.98)), "LegR": Vector((0.07, 0, 0.98))}
+        parts["legs"] = legs
+    else:
+        sz = {"owl": 0.45, "parrot": 0.36, "duck": 0.36, "goose": 0.5}[kind]
+        fly = kind in ("owl", "parrot")
+        upright = kind == "owl"
+        if upright:
+            body = blob("Body", [((0, 0, sz * (0.35 + 0.15 * k)), sz * (0.32 - 0.03 * k)) for k in range(4)], res, (1, 0.9, 1))
+            hc = Vector((0, 0.02, sz * 1.0))
+            hr = sz * 0.3
+        else:
+            body = blob("Body", [((0, sz * (0.25 - 0.18 * k), sz * 0.45 + sz * 0.03 * k), sz * (0.3 - 0.02 * k)) for k in range(4)], res, (0.85, 1, 0.75))
+            nl = {"duck": 0.2, "goose": 0.45, "parrot": 0.12}[kind]
+            hc = Vector((0, sz * 0.4, sz * 0.62 + nl))
+            hr = sz * (0.2 if kind != "parrot" else 0.22)
+            if nl > 0.15:
+                body = join([body, blob("Neck", [((0, sz * 0.35, sz * 0.55 + nl * t), sz * 0.09) for t in (0.0, 0.33, 0.66, 1.0)], res)], "Body")
+        hp = [blob("Head", [(tuple(hc), hr)], res * 0.6)]
+        bk_len = {"owl": 0.25, "parrot": 0.55, "duck": 0.7, "goose": 0.55}[kind]
+        if kind == "parrot":
+            hp.append(cone(hc + Vector((0, hr * 0.8, 0)), hc + Vector((0, hr * 1.4, -hr * 0.6)), hr * 0.38))
+        elif kind == "owl":
+            hp.append(cone(hc + Vector((0, hr * 0.85, -hr * 0.1)), hc + Vector((0, hr * 1.15, -hr * 0.35)), hr * 0.15))
+            for s in (-1, 1):
+                hp.append(cone(hc + Vector((s * hr * 0.55, 0, hr * 0.6)), hc + Vector((s * hr * 0.7, -hr * 0.1, hr * 1.1)), hr * 0.2))
+        else:
+            bk = sphere(hc + Vector((0, hr * (0.8 + bk_len * 0.5), -hr * 0.2)), hr * 0.32, (1.0, 1 + bk_len * 1.6, 0.45))
+            hp.append(bk)
+        er = hr * (0.3 if kind == "owl" else 0.16)
+        for s in (-1, 1):
+            e = hc + Vector((s * hr * (0.42 if kind == "owl" else 0.68), hr * (0.75 if kind == "owl" else 0.4), hr * 0.15))
+            eyes.append(e)
+            hp.append(sphere(e, er))
+            if kind == "owl":
+                hp.append(sphere(e + Vector((0, hr * 0.12, 0)), er * 0.5))
+        head = join(hp, "Head")
+        wings = []
+        for nm, s in (("L", -1), ("R", 1)):
+            if fly:
+                wb = [((s * sz * (0.3 + 0.32 * k), -sz * 0.05 * k, sz * 0.62), sz * (0.18 - 0.025 * k)) for k in range(5)]
+                wings.append(blob("Wing" + nm, wb, res, (1, 1, 0.35)))
+            else:
+                wb = [((s * sz * 0.25, sz * (0.15 - 0.2 * k), sz * 0.52), sz * 0.14) for k in range(4)]
+                wings.append(blob("Wing" + nm, wb, res, (0.4, 1, 0.7)))
+        tail_parts = []
+        if kind == "parrot":
+            tail_parts.append(blob("TailP", [((0, -sz * (0.5 + 0.4 * k), sz * (0.45 - 0.1 * k)), sz * (0.1 - 0.015 * k)) for k in range(5)], res, (1, 1, 0.35)))
+        elif kind in ("duck", "goose"):
+            tail_parts.append(sphere((0, -sz * 0.6, sz * 0.62), sz * 0.12, (1, 1.2, 0.5)))
+        if tail_parts:
+            body = join([body] + tail_parts, "Body")
+        hip = Vector((0, 0, sz * 0.4))
+        def rule(c, n, nm):
+            if nm == "Head":
+                if any((c - e).length < er * 1.05 for e in eyes):
+                    if kind == "owl" and not any((c - e - Vector((0, hr * 0.12, 0))).length < er * 0.55 for e in eyes):
+                        return ACC
+                    return EYE
+                if c.y > hc.y + hr * 0.8:
+                    return BEAK
+                if kind == "goose" and abs(c.x) > hr * 0.4 and c.z < hc.z + hr * 0.1:
+                    return ACC
+                if kind in ("duck", "goose"):
+                    return SEC
+                if kind == "owl":
+                    d = noise.voronoi(c * 60.0, distance_metric="DISTANCE")[0]
+                    return SEC if d[0] < 0.08 else MAIN
+                return MAIN
+            if kind == "goose" and nm == "Body" and c.z > sz * 0.7:
+                return SEC
+            if kind == "duck" and nm == "Body" and c.z > sz * 0.7 and c.y > sz * 0.2:
+                return ACC
+            if kind == "parrot" and nm.startswith("Wing"):
+                return SEC if abs(c.x) > sz * 0.7 else ACC
+            if kind == "parrot" and nm == "Body" and c.y < -sz * 0.6:
+                return SEC
+            if kind == "owl":
+                d = noise.voronoi(c * 40.0, distance_metric="DISTANCE")[0]
+                return SEC if d[0] < 0.07 else MAIN
+            if kind in ("duck", "goose") and nm.startswith("Wing"):
+                return SEC if kind == "goose" else MAIN
+            return MAIN
+        pivots = {"WingL": Vector((-sz * 0.28, 0, sz * 0.62)), "WingR": Vector((sz * 0.28, 0, sz * 0.62))}
+    allparts = [body, head] + wings + parts.get("legs", [])
+    for o in allparts:
+        if len(o.data.polygons) > 1500:
+            decimate(o, 1500 / len(o.data.polygons))
+        for p in o.data.polygons:
+            p.use_smooth = True
+        paint(o, M, rule)
+    pivot(body, hip)
+    pivot(head, head.location if False else Vector((0, 0, hip.z)))
+    for w in wings:
+        pivot(w, pivots[w.name])
+    for lg in parts.get("legs", []):
+        pivot(lg, pivots[lg.name])
+    for w in wings:
+        parent(w, body)
+    parent(head, body)
+    select_only(allparts)
+    path = OUT / ("animal_%s.glb" % kind)
+    bpy.ops.export_scene.gltf(filepath=str(path), export_format="GLB", use_selection=True, export_apply=False, export_yup=True)
+    tris = sum(len(p.vertices) - 2 for o in allparts for p in o.data.polygons)
+    print("HARBOR_ANIMAL %s %d tris %d bytes" % (kind, tris, path.stat().st_size))
+    if RENDER:
+        render(kind, {"penguin": 1.1, "flamingo": 2.1}.get(kind, 0.8))
+
 calibrate()
+for kind in ("penguin", "flamingo", "owl", "parrot", "duck", "goose"):
+    try:
+        build_bird(kind)
+    except Exception:
+        import traceback
+        print("HARBOR_ANIMAL ERROR %s\n%s" % (kind, traceback.format_exc()))
 for kind in SPECIES:
     try:
         build(kind)

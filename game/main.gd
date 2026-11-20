@@ -342,7 +342,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.42: new realistic zoo animals in the Biosphere, and futuristic kiosks on the waterfront!")
+	_show_toast("Harbor City 0.43: Harbor Album, a free Season Pass, Harbor Night on Saturdays and daily check-ins. Menu > Album & Pass!")
 	booted = true
 	_sg_boot_note()
 	_online_autostart()
@@ -4689,6 +4689,7 @@ func _build_hud() -> void:
 	_build_market_panel(root)
 	_build_style_panel(root)
 	_build_sg_panel(root)
+	_build_hp_panel(root)
 	_build_puzzle_panel(root)
 	_build_streamer(root)
 	_build_ach(root)
@@ -4748,7 +4749,7 @@ func _build_hud() -> void:
 	var row2 := HBoxContainer.new()
 	row2.add_theme_constant_override("separation",10)
 	items.add_child(row2)
-	for e in [[row1,"Map",_open_map],[row1,"Quests",_open_quests],[row1,"Travel",_open_travel],[row1,"Call car",_menu_call_car],[row2,"Chat",_toggle_chat],[row2,"Wardrobe",_open_wardrobe]]:
+	for e in [[row1,"Map",_open_map],[row1,"Quests",_open_quests],[row1,"Travel",_open_travel],[row1,"Call car",_menu_call_car],[row2,"Chat",_toggle_chat],[row2,"Wardrobe",_open_wardrobe],[row2,"Album & Pass",_open_pass]]:
 		var b := _button(String(e[1]),_menu_go.bind(e[2]))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		(e[0] as HBoxContainer).add_child(b)
@@ -8110,6 +8111,7 @@ func _save_progress() -> void:
 	file.set_value("progress","av_look",[av_shirt,av_pants,av_hat])
 	file.set_value("progress","look_v40",_look_pack(look))
 	file.set_value("progress","sky_run",[sky_day,sky_best])
+	file.set_value("progress","harbor_pass",{"album":album_claimed,"album_all":album_all,"sid":season_id,"sbase":season_base,"sclaim":season_claimed,"cw":cal_week,"cd":cal_days,"cp":cal_paid})
 	file.set_value("progress","sky_garden",{"plots":sg_plots,"bag":sg_bag,"codex":sg_codex,"muts":sg_mutseen,"all":sg_all_done,"bk":sg_bought_key,"bought":sg_bought})
 	file.set_value("progress","look_own_v40",look_own)
 	file.set_value("progress","av_own",av_own)
@@ -8269,6 +8271,16 @@ func _load_progress() -> void:
 		else:
 			look["tc"] = av_shirt
 			look["pc"] = 6+av_pants
+		var hpd = file.get_value("progress","harbor_pass",{})
+		if hpd is Dictionary and (hpd as Dictionary).has("sid"):
+			album_claimed = int(hpd.get("album",0))
+			album_all = bool(hpd.get("album_all",false))
+			season_id = int(hpd.get("sid",-1))
+			season_base = int(hpd.get("sbase",0))
+			season_claimed = int(hpd.get("sclaim",0))
+			cal_week = int(hpd.get("cw",-1))
+			cal_days = int(hpd.get("cd",0)) & 127
+			cal_paid = bool(hpd.get("cp",false))
 		var sgd = file.get_value("progress","sky_garden",{})
 		if sgd is Dictionary and (sgd as Dictionary).has("plots"):
 			sg_plots = []
@@ -8504,6 +8516,7 @@ func _process(delta: float) -> void:
 	_style_face_camera()
 	_ga_fun_tick(get_process_delta_time())
 	_sky_garden_tick(get_process_delta_time())
+	_cal_tick(get_process_delta_time())
 	_daynight_tick(delta)
 	_level_fx_tick(delta)
 	_hud_v23_tick()
@@ -20812,7 +20825,29 @@ func _bio_make_quad(A: Dictionary, p: Dictionary) -> void:
 				_bp(tn,_bcone(b.y*0.13,b.y*0.13,0.05),Vector3(0,t*(0.25+0.25*float(r)),0),p["tailrings"])
 		A["tail"] = tn
 
+func _bio_load_bird(A: Dictionary) -> bool:
+	# v0.43: Blender birds (penguin, flamingo, owl, macaw, duck, goose).
+	if not _bio_load_animal(A):
+		return false
+	var m := (A["node"] as Node3D).get_child((A["node"] as Node3D).get_child_count()-1)
+	A["legs"] = []
+	for nm in ["LegL","LegR"]:
+		var lg := m.find_child(nm,true,false) as Node3D
+		if lg != null:
+			A["legs"].append(lg)
+	for nm in ["WingL","WingR"]:
+		var w := m.find_child(nm,true,false) as Node3D
+		if w != null:
+			A["wings"].append(w)
+	A["tail"] = null
+	match String(A["kind"]):
+		"penguin": A["waddle"] = true
+		"flamingo": A["flamingo"] = true
+	return true
+
 func _bio_make_penguin(A: Dictionary) -> void:
+	if _bio_load_bird(A):
+		return
 	var n: Node3D = A["node"]
 	var body := Node3D.new()
 	n.add_child(body)
@@ -20833,6 +20868,8 @@ func _bio_make_penguin(A: Dictionary) -> void:
 	A["waddle"] = true
 
 func _bio_make_bird(A: Dictionary, p: Dictionary) -> void:
+	if _bio_load_bird(A):
+		return
 	var n: Node3D = A["node"]
 	var s: float = p["size"]
 	var body := Node3D.new()
@@ -20855,6 +20892,8 @@ func _bio_make_bird(A: Dictionary, p: Dictionary) -> void:
 		A["wings"].append(w)
 
 func _bio_make_flamingo(A: Dictionary) -> void:
+	if _bio_load_bird(A):
+		return
 	var n: Node3D = A["node"]
 	var pink := Color("ff8fb1")
 	var body := Node3D.new()
@@ -21680,6 +21719,21 @@ func _style_shots() -> void:
 	for i in 30:
 		await get_tree().process_frame
 	await _save_shot("style-relics")
+	_style_close()
+	bio_seen = (1 << 12)-1
+	sg_codex = 0b111
+	_hp_open("album")
+	for i in 20:
+		await get_tree().process_frame
+	await _save_shot("pass-album")
+	season_id = -1
+	_season_tick()
+	bonus_xp += SEASON_STEP*7
+	_season_claim(5)
+	_hp_open("season")
+	for i in 20:
+		await get_tree().process_frame
+	await _save_shot("pass-season")
 	get_tree().quit()
 
 func _npc_look(seed_i: int, colors: Dictionary, variant: int) -> Dictionary:
@@ -22822,9 +22876,10 @@ func _sky_finish() -> void:
 		sky_best = t
 	if sky_day != _style_today():
 		sky_day = _style_today()
-		cash += SKY_PAY
+		var mult := 3 if _harbor_night() and pass_test_now == 0 and not ("--smoke-test" in OS.get_cmdline_user_args()) else 1
+		cash += SKY_PAY*mult
 		bonus_xp += SKY_XP
-		_show_toast("SKY RUN COMPLETE in %.1f s!  +$%d  +%d XP%s" % [t,SKY_PAY,SKY_XP,"  New best!" if best else ""])
+		_show_toast("SKY RUN COMPLETE in %.1f s!  +$%d  +%d XP%s%s" % [t,SKY_PAY*mult,SKY_XP,"  New best!" if best else "","  (Harbor Night x3!)" if mult > 1 else ""])
 		_feed_add("Sky Run: +$%d" % SKY_PAY,"")
 		if not ("--smoke-test" in OS.get_cmdline_user_args()):
 			_play_coin()
@@ -22944,10 +22999,10 @@ func _sg_stock() -> Array:
 			out.append([i,int(R[3])])
 	return out
 
-func _sg_mut_roll(t: int, p: int) -> int:
+func _sg_mut_roll(t: int, p: int, night := false) -> int:
 	var r := RandomNumberGenerator.new()
 	r.seed = hash("sg-mut-%d-%d" % [t,p])
-	var x := r.randf()
+	var x := r.randf()*(0.5 if night else 1.0)   # v0.43: Harbor Night doubles every mutation chance
 	if x < float(SG_MUTS[3][2]):
 		return 3
 	if x < float(SG_MUTS[3][2])+float(SG_MUTS[2][2]):
@@ -23359,7 +23414,7 @@ func _sg_plant(p: int, si: int) -> bool:
 		return false
 	sg_bag[si] = int(sg_bag[si])-1
 	var t := _sg_now()
-	sg_plots[p] = [si,t,_sg_mut_roll(t,p)]
+	sg_plots[p] = [si,t,_sg_mut_roll(t,p,_harbor_night() and sg_test_now == 0)]
 	_sg_refresh(p)
 	_show_toast("Planted %s: ready in %s, even if you close the game." % [SG_PLANTS[si][0],_sg_time(int(SG_PLANTS[si][3]))])
 	_save_progress()
@@ -23637,6 +23692,346 @@ func _smoke_sky_garden() -> void:
 	sg_bought = keep[9]
 	sg_bought_key = keep[10]
 	_sg_refresh_all()
+	_save_progress()
+
+# ---------- v0.43: HARBOR ALBUM, the free SEASON PASS, HARBOR NIGHT and the CHECK-IN calendar ----------
+# All rewards are earned by playing; nothing can be bought with real money. Nothing you earn can be lost:
+# missing days never resets your week to zero, and season rewards come round again next season.
+const ALBUM_PAY := 2000
+const ALBUM_XP := 150
+const ALBUM_ALL_PAY := 10000
+const SEASON_DAYS := 28
+const SEASON_TIERS := 30
+const SEASON_STEP := 150          # season XP per tier
+# Tier rewards: [tier, kind, value]. kind "cash", or an item: "acc", "hair", "top", "shoes", "relic".
+const SEASON_ITEMS := {5:["acc",1],10:["shoes",4],15:["hair",7],20:["relic",8],25:["top",9],30:["relic",12]}
+const CAL_DAY_PAY := 100
+const CAL_WEEK_PAY := 1500
+const CAL_WEEK_XP := 100
+var album_claimed := 0           # bit per page
+var album_all := false
+var season_id := -1
+var season_base := 0             # your XP when this season began
+var season_claimed := 0          # bit per tier
+var cal_week := -1
+var cal_days := 0                # bit per day of this week checked in
+var cal_paid := false
+var cal_check_t := 0.0
+var night_told := ""
+var pass_test_now := 0
+var hp_panel: PanelContainer
+var hp_title: Label
+var hp_info: Label
+var hp_list: VBoxContainer
+var hp_tab := "album"
+
+func _pass_now() -> int:
+	return pass_test_now if pass_test_now > 0 else int(Time.get_unix_time_from_system())
+
+func _pass_day() -> int:
+	# Days since 1970 in local time (so the day turns at your midnight).
+	var t := _pass_now()+int(Time.get_time_zone_from_system().get("bias",0))*60
+	return t/86400
+
+# ---------------- album ----------------
+func _album_pages() -> Array:
+	# [name, have, total, hint]
+	var wear := 0
+	var wear_total := 0
+	for e in [["t",LK_TOPS.size()],["p",LK_BOTTOMS.size()],["sh",LK_SHOES.size()],["a",LK_ACCS.size()]]:
+		wear += _bits(int(look_own.get(String(e[0]),0)) & ((1 << int(e[1]))-1))
+		wear_total += int(e[1])
+	return [
+		["Biosphere Animals",_bits(bio_seen),BIO_SPECIES.size(),"Spot every animal in the four domes."],
+		["Sky Garden Plants",_bits(sg_codex),SG_PLANTS.size(),"Grow every exotic plant."],
+		["Relics",_bits(int(look_own.get("r",0))),RELICS.size(),"Collect relics at Relic & Curio (new stock daily)."],
+		["Wardrobe",wear,wear_total,"Own every top, bottom, shoe and accessory."],
+		["City Discoveries",_find_count(),FINDS.size(),"Find the hidden sites around the city."],
+	]
+
+func _album_claim(i: int) -> void:
+	var P: Array = _album_pages()[i]
+	if album_claimed & (1 << i) or int(P[1]) < int(P[2]):
+		return
+	album_claimed |= 1 << i
+	cash += ALBUM_PAY
+	bonus_xp += ALBUM_XP
+	_show_toast("ALBUM PAGE COMPLETE: %s!  +%s  +%d XP" % [P[0],_money(ALBUM_PAY),ALBUM_XP])
+	if _bits(album_claimed) == _album_pages().size() and not album_all:
+		album_all = true
+		cash += ALBUM_ALL_PAY
+		_show_toast("HARBOR ALBUM COMPLETE!  +%s" % _money(ALBUM_ALL_PAY))
+		_feed_add("Harbor Album complete!","")
+	_save_progress()
+	_hp_refresh()
+
+# ---------------- season ----------------
+func _season_index() -> int:
+	return _pass_day()/SEASON_DAYS
+
+func _season_tick() -> void:
+	if season_id != _season_index():
+		var first := season_id < 0
+		season_id = _season_index()
+		season_base = _xp()
+		season_claimed = 0
+		if not first:
+			_feed_add("A new Harbor Pass season has started!","")
+
+func _season_xp() -> int:
+	return maxi(0,_xp()-season_base)
+
+func _season_tier() -> int:
+	return mini(SEASON_TIERS,_season_xp()/SEASON_STEP)
+
+func _season_reward(t: int) -> Array:
+	# [text, kind, value]
+	if SEASON_ITEMS.has(t):
+		var it: Array = SEASON_ITEMS[t]
+		var nm := ""
+		match String(it[0]):
+			"acc": nm = String(LK_ACCS[int(it[1])]["name"])
+			"shoes": nm = String(LK_SHOES[int(it[1])]["name"])
+			"hair": nm = String(LK_HAIRS[int(it[1])][0])
+			"top": nm = String(LK_TOPS[int(it[1])]["name"])
+			"relic": nm = String(RELICS[int(it[1])][0])
+		return [nm,String(it[0]),int(it[1])]
+	return [_money(100+t*40),"cash",100+t*40]
+
+func _season_claim(t: int) -> void:
+	if t < 1 or t > _season_tier() or season_claimed & (1 << t):
+		return
+	season_claimed |= 1 << t
+	var R := _season_reward(t)
+	var cat := {"acc":"a","shoes":"sh","hair":"h","top":"t","relic":"r"}.get(String(R[1]),"") as String
+	if cat != "" and _owns(cat,int(R[2])):
+		# Already yours: you get its value in cash instead.
+		cash += 1000
+		_show_toast("Tier %d: you already own %s, so here's $1,000 instead!" % [t,R[0]])
+	elif cat != "":
+		look_own[cat] = int(look_own.get(cat,0)) | (1 << int(R[2]))
+		_show_toast("Tier %d reward: %s! Wear it from Menu > Wardrobe." % [t,R[0]])
+	else:
+		cash += int(R[2])
+		_show_toast("Tier %d reward: +%s" % [t,R[0]])
+	_save_progress()
+	_hp_refresh()
+
+# ---------------- Harbor Night ----------------
+func _harbor_night() -> bool:
+	# Every Saturday, 6pm to 10pm your time.
+	var t := _pass_now()+int(Time.get_time_zone_from_system().get("bias",0))*60
+	var wd := (t/86400+4) % 7   # 1970-01-01 was a Thursday; 6 = Saturday
+	var hr := (t % 86400)/3600
+	return wd == 6 and hr >= 18 and hr < 22
+
+# ---------------- check-in calendar ----------------
+func _cal_tick(delta: float) -> void:
+	cal_check_t -= delta
+	if cal_check_t > 0.0 or not booted:
+		return
+	cal_check_t = 30.0
+	if pass_test_now == 0 and ("--smoke-test" in OS.get_cmdline_user_args() or "--" in " ".join(OS.get_cmdline_user_args())):
+		return   # tests and screenshots never check in
+	_season_tick()
+	var day := _pass_day()
+	var week := (day+3)/7       # weeks start on Monday
+	if week != cal_week:
+		cal_week = week
+		cal_days = 0
+		cal_paid = false
+	var bit := 1 << ((day+3) % 7)
+	if not (cal_days & bit):
+		cal_days |= bit
+		cash += CAL_DAY_PAY
+		var n := _bits(cal_days)
+		_show_toast("Daily check-in: +%s  (%d of 5 days this week)" % [_money(CAL_DAY_PAY),mini(n,5)] if n < 5 or cal_paid else "Daily check-in: +%s" % _money(CAL_DAY_PAY))
+		if n >= 5 and not cal_paid:
+			cal_paid = true
+			cash += CAL_WEEK_PAY
+			bonus_xp += CAL_WEEK_XP
+			_show_toast("WEEKLY CHECK-IN COMPLETE: 5 days!  +%s  +%d XP" % [_money(CAL_WEEK_PAY),CAL_WEEK_XP])
+		_save_progress()
+	var nk := str(day)
+	if _harbor_night() and night_told != nk:
+		night_told = nk
+		_feed_add("HARBOR NIGHT is on until 10pm: Sky Run prizes x3 and twice the Sky Garden mutations!","")
+
+# ---------------- the panel ----------------
+func _build_hp_panel(root: Control) -> void:
+	hp_panel = PanelContainer.new()
+	hp_panel.add_theme_stylebox_override("panel",_panel(Color(0.07,0.12,0.2,0.95),24))
+	hp_panel.custom_minimum_size = Vector2(760,0)
+	root.add_child(hp_panel)
+	extra_panels.append(hp_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",8)
+	hp_panel.add_child(col)
+	hp_title = _label("",26,Color("f0bd62"))
+	col.add_child(hp_title)
+	hp_info = _label("",16,Color("cbd8de"))
+	hp_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hp_info.custom_minimum_size.x = 720
+	col.add_child(hp_info)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(720,340)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	hp_list = VBoxContainer.new()
+	hp_list.add_theme_constant_override("separation",6)
+	hp_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(hp_list)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",8)
+	col.add_child(row)
+	for e in [["Album","album"],["Season Pass","season"],["Check-in","cal"]]:
+		var b := _button(String(e[0]),_hp_open.bind(String(e[1])))
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(b)
+	var close := _button("Close",_hp_close)
+	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(close)
+	hp_panel.hide()
+
+func _open_pass() -> void:
+	_hp_open("album")
+
+func _hp_open(tab: String) -> void:
+	hp_tab = tab
+	if not paused:
+		_toggle_menu()
+	_open_panel(hp_panel)
+	_hp_refresh()
+
+func _hp_close() -> void:
+	if paused:
+		_toggle_menu()
+
+func _hp_row(text: String, col: Color, btn: String, cb: Callable, btn_col: Color) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",10)
+	hp_list.add_child(row)
+	var lab := _label(text,16,col)
+	lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lab.custom_minimum_size.x = 480
+	row.add_child(lab)
+	if btn != "":
+		var b := _button(btn,cb)
+		b.custom_minimum_size = Vector2(210,44)
+		b.add_theme_font_size_override("font_size",16)
+		b.add_theme_stylebox_override("normal",_panel(btn_col,12))
+		row.add_child(b)
+
+func _hp_bar(have: int, total: int) -> String:
+	var n := int(round(10.0*float(have)/float(maxi(total,1))))
+	return "■".repeat(n)+"□".repeat(10-n)
+
+func _hp_refresh() -> void:
+	if hp_panel == null:
+		return
+	for c in hp_list.get_children():
+		for sub in c.find_children("*","Button",true,false):
+			touch_buttons.erase(sub)
+		c.queue_free()
+	match hp_tab:
+		"album":
+			var pages := _album_pages()
+			var done := 0
+			for P in pages:
+				if int(P[1]) >= int(P[2]):
+					done += 1
+			hp_title.text = "HARBOR ALBUM  ·  %d/%d pages" % [done,pages.size()]
+			hp_info.text = "Everything you collect in Harbor City, in one book. Complete a page for %s and %d XP; complete them all for %s more." % [_money(ALBUM_PAY),ALBUM_XP,_money(ALBUM_ALL_PAY)]
+			for i in pages.size():
+				var P: Array = pages[i]
+				var full := int(P[1]) >= int(P[2])
+				var got := (album_claimed & (1 << i)) != 0
+				_hp_row("%s  %d/%d\n%s  %s" % [P[0],P[1],P[2],_hp_bar(int(P[1]),int(P[2])),P[3]],Color("ffd86a") if full else Color("fff5dc"),"CLAIMED ✓" if got else ("CLAIM %s" % _money(ALBUM_PAY) if full else ""),_album_claim.bind(i),Color("2f6b3a") if got else Color("8a5a1c"))
+		"season":
+			var tier := _season_tier()
+			var left := SEASON_DAYS-(_pass_day() % SEASON_DAYS)
+			hp_title.text = "HARBOR PASS  ·  SEASON %d  ·  tier %d/%d" % [season_id % 100,tier,SEASON_TIERS]
+			hp_info.text = "Free for everyone. Every XP you earn this season moves you up (%d XP per tier, %d this season). %d days left; rewards come round again next season. %s" % [SEASON_STEP,_season_xp(),left,"HARBOR NIGHT is on now!" if _harbor_night() else "Harbor Night: Saturdays 6-10pm, Sky Run prizes x3 and twice the garden mutations."]
+			for t in range(1,SEASON_TIERS+1):
+				var R := _season_reward(t)
+				var got := (season_claimed & (1 << t)) != 0
+				var open := t <= tier
+				_hp_row("Tier %d  ·  %s%s" % [t,R[0],"  ★" if String(R[1]) != "cash" else ""],Color("ffd86a") if String(R[1]) != "cash" else (Color("fff5dc") if open else Color("6a7a84")),"CLAIMED ✓" if got else ("CLAIM" if open else "%d XP" % (t*SEASON_STEP-_season_xp())),_season_claim.bind(t),Color("2f6b3a") if got else (Color("8a5a1c") if open else Color("213d4f")))
+		"cal":
+			var n := _bits(cal_days)
+			hp_title.text = "CHECK-IN  ·  %d of 5 days this week" % mini(n,5)
+			hp_info.text = "Open the game on any 5 days of the week (Monday to Sunday) for %s and %d XP. Every day you come pays %s. Missing a day never resets your count." % [_money(CAL_WEEK_PAY),CAL_WEEK_XP,_money(CAL_DAY_PAY)]
+			var names := ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+			var today := (_pass_day()+3) % 7
+			for d in 7:
+				var on := (cal_days & (1 << d)) != 0
+				_hp_row("%s %s%s" % ["✓" if on else "·",names[d],"  (today)" if d == today else ""],Color("7dff9a") if on else Color("cbd8de"),"",Callable(),Color())
+			_hp_row("Weekly bonus: %s" % ("PAID ✓" if cal_paid else "%d more day%s" % [maxi(0,5-n),"" if 5-n == 1 else "s"]),Color("ffd86a"),"",Callable(),Color())
+	if hp_panel.visible:
+		hp_panel.reset_size()
+		_layout_panels()
+
+func _smoke_pass() -> void:
+	var keep := [cash,bonus_xp,album_claimed,album_all,season_id,season_base,season_claimed,cal_week,cal_days,cal_paid,pass_test_now,look_own.duplicate(),bio_seen,sg_codex]
+	# Album: a full page pays once.
+	album_claimed = 0
+	bio_seen = (1 << BIO_SPECIES.size())-1
+	var c0 := cash
+	_album_claim(0)
+	_album_claim(0)
+	assert(cash == c0+ALBUM_PAY and (album_claimed & 1) != 0,"v0.43: a full album page pays once")
+	sg_codex = 0
+	_album_claim(1)
+	assert((album_claimed & 2) == 0,"v0.43: an unfinished page can't be claimed")
+	# Season: tiers from XP earned this season; items unlock; owned items turn into cash.
+	pass_test_now = 2000000000
+	season_id = -1
+	_season_tick()
+	assert(_season_tier() == 0,"v0.43: a new season starts at tier 0")
+	bonus_xp += SEASON_STEP*12
+	assert(_season_tier() == 12,"v0.43: XP moves you up the tiers")
+	look_own["sh"] = 1
+	_season_claim(10)
+	assert(_owns("sh",4),"v0.43: tier 10 unlocks Glow Kicks")
+	c0 = cash
+	_season_claim(10)
+	_season_claim(11)
+	assert(cash == c0+int(_season_reward(11)[2]),"v0.43: each tier pays once")
+	_season_claim(12)
+	c0 = cash
+	_season_claim(25)
+	assert(cash == c0,"v0.43: tiers above yours stay locked")
+	pass_test_now += SEASON_DAYS*86400
+	_season_tick()
+	assert(season_claimed == 0 and _season_tier() == 0,"v0.43: a new season resets the pass")
+	# Check-in: 5 of 7 days, no reset on a missed day.
+	cal_week = -1
+	pass_test_now = 2000000000
+	var d0 := _pass_day()
+	pass_test_now -= ((d0+3) % 7)*86400   # Monday
+	c0 = cash
+	for d in [0,1,3,5,6]:
+		cal_check_t = 0.0
+		_cal_tick(1.0)
+		pass_test_now += 86400*(1 if d in [0,5] else 2)
+	assert(_bits(cal_days) == 5 and cal_paid and cash == c0+CAL_DAY_PAY*5+CAL_WEEK_PAY,"v0.43: 5 of 7 days pays the weekly bonus (%d days, %s)" % [_bits(cal_days),str(cal_paid)])
+	# Harbor Night: Saturday 7pm yes, Saturday 3pm and Friday 7pm no.
+	var bias := int(Time.get_time_zone_from_system().get("bias",0))*60
+	var sat := (2000000000/86400)*86400
+	while (sat/86400+4) % 7 != 6:
+		sat += 86400
+	pass_test_now = sat+19*3600-bias
+	assert(_harbor_night(),"v0.43: Harbor Night on Saturday evening")
+	pass_test_now = sat+15*3600-bias
+	assert(not _harbor_night(),"v0.43: not on Saturday afternoon")
+	pass_test_now = sat-86400+19*3600-bias
+	assert(not _harbor_night(),"v0.43: not on Friday")
+	_hp_open("season")
+	assert(hp_panel.visible,"v0.43: the Harbor Pass opens")
+	_hp_close()
+	cash = keep[0]; bonus_xp = keep[1]; album_claimed = keep[2]; album_all = keep[3]; season_id = keep[4]; season_base = keep[5]
+	season_claimed = keep[6]; cal_week = keep[7]; cal_days = keep[8]; cal_paid = keep[9]; pass_test_now = keep[10]; look_own = keep[11]
+	bio_seen = keep[12]; sg_codex = keep[13]
 	_save_progress()
 
 # ---------- v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard") ----------
@@ -27234,6 +27629,7 @@ func _smoke_v27() -> void:
 	_smoke_style()
 	_smoke_sky_garden()
 	_smoke_car_barriers()
+	_smoke_pass()
 	# Nobody stands in a road, and a car stuck behind someone in its lane moves on after a few seconds.
 	for p in peds:
 		if bool(p["idle"]):

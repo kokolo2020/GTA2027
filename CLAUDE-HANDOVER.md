@@ -633,3 +633,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - TRAFFIC_LOOPS gained 5 inner-lane loops (lane 2.6, "stopline" 13.6, optional "police": the 3rd car is a white car_2 with flashing `police_lights`, toggled in `_gc_tick`); traffic 66. Smoke light test runs with `traffic_test_path` (only that loop's cars, no people) so other loops can't block it.
 - Downtown pedestrian lines cover avenues -140/-220(to the station)/-300/-380/-460/-620 and streets -140/-220/-300/-380(to the stadium); peds 272.
 - Released and verified 2026-11-21: commit 7563b03 (tag v0.46.0), metadata 6ef9b24, versionCode 76. APK SHA256 3e01c82ef3f63affa897eb9b3d629c10a74e693d03f9139409999ae1e574072f (49,797,820 bytes), same certificate. The metadata Pages run failed on GitHub's artifact error again; a `gh workflow run pages.yml` run (44828650281) passed. Live release.json, page button, web pck (21,423,580) and downloaded APK hash verified. Not checked on a phone.
+
+## v0.47.0 (2026-11-21): tabbed menu, 15 m downtown roads, street stalls
+
+- Menu (in `_build_hud` where `menu` is made): header (`menu_who`, `collection_label`), tabs from the `pages` list (`menu_tabs`, `_menu_tab(i)`), tiles reuse the existing button objects (mode/nick/time/view/radio/online/run/screen). Dev: HC_MENU=<tab> with --city-shots shows the menu.
+- DT_ROAD 15 (was 20): dashes at ±3.75, zebra bar count from the width, downtown loops lane 5.6 / inner 1.9 with "stopline" 11.1, downtown pedestrian lines at DT_ROAD/2+3.1. North Highway, Airport Road and Westside Boulevard are still 20 m.
+- `_build_street_stalls` (17 open stalls on the downtown pavements, `street_stalls`), fan plaza trucks replaced by `_gc_kiosk` stalls; `_kiosk_goods` kinds added: HOT DOG HQ/TACO STAND, FRESH DRINKS, FAN STORE, FLOWER CART (and DAILY NEWS uses the news racks).
+- `_cull_people_in(root)` replaces `_cull_person(root)` on gc_root/fill_root: a visibility range on a district-wide MultiMesh hid it whenever its far centre was out of range.

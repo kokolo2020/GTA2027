@@ -345,7 +345,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.46: Grand Central shops are open! Walk in and browse, and downtown is busier with buses, police patrols and crowds.")
+	_show_toast("Harbor City 0.47: a new tidy menu, wider pavements downtown and open street stalls with hot dogs, drinks, news and flowers!")
 	booted = true
 	_sg_boot_note()
 	_online_autostart()

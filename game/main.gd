@@ -408,7 +408,7 @@ func _ready() -> void:
 		# Developer check: build every walk grid and run the v0.44 checks on their own.
 		var t0 := Time.get_ticks_msec()
 		await _smoke_strollers()
-		print("NAV_CHECK_OK %d ms" % (Time.get_ticks_msec()-t0))
+		print("NAV_CHECK_OK %d ms stalls %s" % [Time.get_ticks_msec()-t0,str(street_stalls)])
 		get_tree().quit()
 	elif "--city-shots" in OS.get_cmdline_user_args():
 		await _city_shots()
@@ -4725,80 +4725,86 @@ func _build_hud() -> void:
 	root.add_child(menu)
 	menu.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	menu.position = root.size/2-Vector2(250,235)
-	menu.custom_minimum_size = Vector2(500,0)
-	menu.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	menu.custom_minimum_size = Vector2(880,0)
+	menu.add_theme_stylebox_override("panel",_panel(Color(0.06,0.11,0.16,0.97),28))
+	# v0.47: a tidy menu. A header with who you are, five tabs, and big tiles for the tab you pick.
 	var items := VBoxContainer.new()
-	items.add_theme_constant_override("separation",12)
+	items.add_theme_constant_override("separation",14)
 	menu.add_child(items)
-	items.add_child(_label("WELCOME TO HARBOR CITY",26,Color("f0bd62")))
-	items.add_child(_label("Explore the city, earn money, upgrade your car.\nLeft stick: move • Right button: interact",18,Color("cbd8de")))
-	collection_label = _label("",16,Color("8ddacb"))
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation",14)
+	items.add_child(head)
+	var title := _label("HARBOR CITY",30,Color("f0bd62"))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	menu_who = _label("",18,Color("dff3ff"))
+	menu_who.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	head.add_child(menu_who)
+	collection_label = _label("",15,Color("8ddacb"))
 	collection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	collection_label.custom_minimum_size.x = 440
+	collection_label.custom_minimum_size.x = 820
 	items.add_child(collection_label)
-	var shop_row := HBoxContainer.new()
-	shop_row.add_theme_constant_override("separation",12)
-	items.add_child(shop_row)
-	var garage_open := _button("Garage",_open_garage)
-	garage_open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	shop_row.add_child(garage_open)
-	var journal_open := _button("Journal",_open_journal)
-	journal_open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	shop_row.add_child(journal_open)
-	var trials_open := _button("Trials",_open_trials)
-	trials_open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	shop_row.add_child(trials_open)
-	var chase_open := _button("Chase",_chase_open)
-	chase_open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	shop_row.add_child(chase_open)
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation",8)
+	items.add_child(tabs)
 	mode_button = _button("Switch activity",_toggle_activity)
 	nick_button = _button("Nickname: (not set)",_open_nick)
 	time_button = _button("Time: Always day",_cycle_day_mode)
-	# v0.29: with the clean screen, everything that used to sit on screen lives here.
-	var row1 := HBoxContainer.new()
-	row1.add_theme_constant_override("separation",10)
-	items.add_child(row1)
-	var row2 := HBoxContainer.new()
-	row2.add_theme_constant_override("separation",10)
-	items.add_child(row2)
-	for e in [[row1,"Map",_open_map],[row1,"Quests",_open_quests],[row1,"Travel",_open_travel],[row1,"Directions",_open_dir],[row1,"Call car",_menu_call_car],[row2,"Chat",_toggle_chat],[row2,"Wardrobe",_open_wardrobe],[row2,"Album & Pass",_open_pass]]:
-		var b := _button(String(e[1]),_menu_go.bind(e[2]))
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		(e[0] as HBoxContainer).add_child(b)
 	menu_view_button = _button("View",_menu_stay.bind(_cycle_view))
 	menu_radio_button = _button("Radio",_menu_stay.bind(_radio_next))
 	menu_online_button = _button("Online",_menu_stay.bind(_online_toggle))
-	for b in [menu_view_button,menu_radio_button,menu_online_button]:
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row2.add_child(b)
-	var row_soc := HBoxContainer.new()
-	row_soc.add_theme_constant_override("separation",10)
-	items.add_child(row_soc)
-	for e in [["Players & friends",_open_social],["Achievements",_open_ach],["Leaderboard",_open_lb],["Streamer mode",_toggle_streamer],["Group photo",_photo]]:
-		var b := _button(String(e[0]),e[1])
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row_soc.add_child(b)
-	var row3 := HBoxContainer.new()
-	row3.add_theme_constant_override("separation",10)
-	items.add_child(row3)
 	menu_run_button = _button("Run: ON",_menu_stay.bind(_toggle_run))
 	menu_screen_button = _button("Screen: Clean",_menu_stay.bind(_toggle_clean_hud))
-	for b in [menu_run_button,menu_screen_button,time_button]:
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row3.add_child(b)
-	var row4 := HBoxContainer.new()
-	row4.add_theme_constant_override("separation",10)
-	items.add_child(row4)
-	for b in [mode_button,nick_button]:
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row4.add_child(b)
-	var row5 := HBoxContainer.new()
-	row5.add_theme_constant_override("separation",10)
-	items.add_child(row5)
-	for b in [_button("Continue",_toggle_menu),_button("Return to the car",_rescue)]:
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row5.add_child(b)
-	items.add_child(_label("Built with Godot Engine • MIT license\nLicense and attribution: credits.txt in the project",14,Color("8ddacb")))
+	var pages := [
+		["GO",Color("2f8fb8"),[["Map",_menu_go.bind(_open_map)],["Travel",_menu_go.bind(_open_travel)],["Directions",_menu_go.bind(_open_dir)],["Call car",_menu_go.bind(_menu_call_car)],["Quests",_menu_go.bind(_open_quests)],["Back to my car",_rescue]]],
+		["PLAY",Color("c9612f"),[["Trials",_open_trials],["Chase",_chase_open],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
+		["ME",Color("8a5ad0"),[["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
+		["FRIENDS",Color("2fa37a"),[["Chat",_menu_go.bind(_toggle_chat)],["Players & friends",_open_social],[menu_online_button]]],
+		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[time_button]]],
+	]
+	var page_box := MarginContainer.new()
+	page_box.custom_minimum_size = Vector2(0,210)
+	items.add_child(page_box)
+	for pi in pages.size():
+		var P: Array = pages[pi]
+		var col: Color = P[1]
+		var tb := _button(String(P[0]),_menu_tab.bind(pi))
+		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tb.custom_minimum_size = Vector2(0,54)
+		tb.add_theme_font_size_override("font_size",20)
+		tabs.add_child(tb)
+		var grid := GridContainer.new()
+		grid.columns = 3
+		grid.add_theme_constant_override("h_separation",12)
+		grid.add_theme_constant_override("v_separation",12)
+		page_box.add_child(grid)
+		for e in P[2]:
+			var b: Button = e[0] if e[0] is Button else _button(String(e[0]),e[1])
+			if b.get_parent() != null:
+				b.get_parent().remove_child(b)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			b.custom_minimum_size = Vector2(270,92)
+			b.add_theme_font_size_override("font_size",22)
+			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			b.add_theme_stylebox_override("normal",_panel(col.darkened(0.45),18))
+			b.add_theme_stylebox_override("hover",_panel(col.darkened(0.3),18))
+			b.add_theme_stylebox_override("pressed",_panel(col.darkened(0.15),18))
+			grid.add_child(b)
+		menu_tabs.append([tb,grid,col])
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation",12)
+	items.add_child(foot)
+	var cont := _button("Continue",_toggle_menu)
+	cont.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cont.custom_minimum_size = Vector2(0,64)
+	cont.add_theme_font_size_override("font_size",24)
+	cont.add_theme_stylebox_override("normal",_panel(Color("f0bd62"),20))
+	cont.add_theme_stylebox_override("hover",_panel(Color("ffd58c"),20))
+	cont.add_theme_color_override("font_color",Color("182b38"))
+	cont.add_theme_color_override("font_hover_color",Color("182b38"))
+	foot.add_child(cont)
+	items.add_child(_label("Built with Godot Engine • MIT license · credits.txt in the project",12,Color("6f9aa6")))
+	_menu_tab(0)
 	_build_panels(root)
 	_build_nick_panel(root)
 	menu.hide()
@@ -4814,6 +4820,19 @@ var hud_force_full := false
 func _clean_on() -> bool:
 	return hud_clean and not hud_force_full
 var menu_view_button: Button
+var menu_tabs: Array = []       # [tab button, page grid, colour]
+var menu_who: Label
+
+func _menu_tab(i: int) -> void:
+	for k in menu_tabs.size():
+		var T: Array = menu_tabs[k]
+		var on := k == i
+		(T[1] as Control).visible = on
+		var tb: Button = T[0]
+		var c: Color = T[2]
+		tb.add_theme_stylebox_override("normal",_panel(c if on else Color(0.12,0.2,0.27,1.0),16))
+		tb.add_theme_stylebox_override("hover",_panel(c.lightened(0.1) if on else Color(0.16,0.26,0.34,1.0),16))
+		tb.add_theme_color_override("font_color",Color.WHITE if on else Color("9fb8c4"))
 var menu_radio_button: Button
 var menu_online_button: Button
 var menu_run_button: Button
@@ -7961,7 +7980,9 @@ func _refresh_hud() -> void:
 	for find_index in FINDS.size():
 		if found_mask & (1 << find_index):
 			discovered.append(FINDS[find_index]["name"])
-	collection_label.text = "Found %d/8: %s\n%s" % [count,", ".join(discovered) if count > 0 else "Follow the golden ring to your first blue token.",_level_text()]
+	collection_label.text = "%s  ·  Found %d/8 city tokens" % [_level_text(),count] if count > 0 else "%s  ·  Follow the golden ring to your first blue token." % _level_text()
+	if menu_who != null:
+		menu_who.text = "%s  ·  %s" % [_my_name(),_money(cash)]
 
 func _open_panel(panel: Control) -> void:
 	menu.hide()
@@ -8586,16 +8607,18 @@ func _build_peds() -> void:
 	# Skyline District sidewalks (7.8 m from the road centre) and people standing around.
 	var dt_lines: Array = []
 	# v0.46: every avenue and street downtown has people on both pavements (was 3 avenues, 2 streets).
+	# v0.47: the pavements are wider (roads 15 m), so people walk 10.6 m from the road centre.
+	var pw := DT_ROAD/2.0+3.1
 	for x in [-140.0,-300.0,-380.0,-460.0,-620.0]:
-		for sx in [-12.6,12.6]:
+		for sx in [-pw,pw]:
 			dt_lines.append([Vector3(x+sx,0,-76),Vector3(x+sx,0,-444)])
-	for sx in [-12.6,12.6]:
+	for sx in [-pw,pw]:
 		# Avenue -220 stops at Union Station.
 		dt_lines.append([Vector3(-220.0+sx,0,-76),Vector3(-220.0+sx,0,-296)])
 	for z in [-140.0,-220.0,-300.0]:
-		for sz in [-12.6,12.6]:
+		for sz in [-pw,pw]:
 			dt_lines.append([Vector3(-126,0,z+sz),Vector3(-646,0,z+sz)])
-	for sz in [-12.6,12.6]:
+	for sz in [-pw,pw]:
 		# Street -380 ends at the stadium.
 		dt_lines.append([Vector3(-126,0,-380.0+sz),Vector3(-462,0,-380.0+sz)])
 	for i in 100:
@@ -10466,7 +10489,7 @@ const DT_EAST := -110.5
 const DT_WEST := -660.0
 const DT_NORTH := -61.5
 const DT_SOUTH := -458.0
-const DT_ROAD := 20.0
+const DT_ROAD := 15.0          # v0.47: was 20; four narrower lanes and pavements 7.5 m wide
 const DT_BLOCK := 80.0
 const DT_TOWER_SCALE := 1.7
 const DT_SHOP_SCALE := 1.4
@@ -10492,10 +10515,10 @@ const DOWNTOWN_BONUS := 4000
 const LIGHT_CYCLE := 20.0
 const ADS := ["HARBOR FM 101\nHits all day","NIGHT COMET\nFeel the speed","PIZZA RUSH\nHot in 38 seconds","VISIT MARINA\nHEIGHTS","MINT CRUISER\nSmooth city rides","GRAND MALL\nOpen late","STADIUM\nGame night!","AIRPORT LINE\nOnly $15"]
 const TRAFFIC_LOOPS := [
-	{"lane":6.0,"speed":12.0,"cars":6,"pts":[Vector2(-140,-140),Vector2(-380,-140),Vector2(-380,-380),Vector2(-140,-380)]},
-	{"lane":6.0,"speed":11.0,"cars":4,"pts":[Vector2(-140,-220),Vector2(-300,-220),Vector2(-300,-300),Vector2(-140,-300)]},
-	{"lane":6.0,"speed":12.0,"cars":4,"pts":[Vector2(-380,-140),Vector2(-620,-140),Vector2(-620,-300),Vector2(-380,-300)]},
-	{"lane":6.0,"speed":11.0,"cars":3,"pts":[Vector2(-140,-56),Vector2(-300,-56),Vector2(-300,-140),Vector2(-140,-140)]},
+	{"lane":5.6,"stopline":11.1,"speed":12.0,"cars":6,"pts":[Vector2(-140,-140),Vector2(-380,-140),Vector2(-380,-380),Vector2(-140,-380)]},
+	{"lane":5.6,"stopline":11.1,"speed":11.0,"cars":4,"pts":[Vector2(-140,-220),Vector2(-300,-220),Vector2(-300,-300),Vector2(-140,-300)]},
+	{"lane":5.6,"stopline":11.1,"speed":12.0,"cars":4,"pts":[Vector2(-380,-140),Vector2(-620,-140),Vector2(-620,-300),Vector2(-380,-300)]},
+	{"lane":5.6,"stopline":11.1,"speed":11.0,"cars":3,"pts":[Vector2(-140,-56),Vector2(-300,-56),Vector2(-300,-140),Vector2(-140,-140)]},
 	{"lane":6.0,"speed":12.0,"cars":5,"pts":[Vector2(60,-140),Vector2(-60,-140),Vector2(-60,-300),Vector2(60,-300)]},
 	{"lane":6.0,"speed":11.0,"cars":3,"pts":[Vector2(0,-300),Vector2(-60,-300),Vector2(-60,-380),Vector2(0,-380)]},
 	{"lane":2.3,"speed":8.0,"cars":3,"pts":[Vector2(-32,-32),Vector2(32,-32),Vector2(32,32),Vector2(-32,32)]},
@@ -10505,11 +10528,11 @@ const TRAFFIC_LOOPS := [
 	{"lane":2.5,"speed":9.0,"cars":3,"pts":[Vector2(-300,0),Vector2(-420,0),Vector2(-420,150),Vector2(-300,150)]},
 	# v0.46: busier downtown. These use the inner lanes of the 20 m roads (outer lanes belong to the
 	# loops above) and stop at the crossings like everyone else; "police" loops get a patrol car.
-	{"lane":2.6,"speed":11.0,"cars":6,"stopline":13.6,"police":1,"pts":[Vector2(-300,-300),Vector2(-460,-300),Vector2(-460,-380),Vector2(-300,-380)]},
-	{"lane":2.6,"speed":12.0,"cars":5,"stopline":13.6,"police":1,"pts":[Vector2(-140,-458),Vector2(-140,-380),Vector2(-380,-380),Vector2(-380,-458)]},
-	{"lane":2.6,"speed":11.0,"cars":5,"stopline":13.6,"pts":[Vector2(-460,-140),Vector2(-460,-56),Vector2(-620,-56),Vector2(-620,-140)]},
-	{"lane":2.6,"speed":12.0,"cars":5,"stopline":13.6,"police":1,"pts":[Vector2(-460,-300),Vector2(-620,-300),Vector2(-620,-458),Vector2(-460,-458)]},
-	{"lane":2.6,"speed":11.0,"cars":4,"stopline":13.6,"pts":[Vector2(-140,-140),Vector2(-140,-220),Vector2(-300,-220),Vector2(-300,-140)]},
+	{"lane":1.9,"speed":11.0,"cars":6,"stopline":11.1,"police":1,"pts":[Vector2(-300,-300),Vector2(-460,-300),Vector2(-460,-380),Vector2(-300,-380)]},
+	{"lane":1.9,"speed":12.0,"cars":5,"stopline":11.1,"police":1,"pts":[Vector2(-140,-458),Vector2(-140,-380),Vector2(-380,-380),Vector2(-380,-458)]},
+	{"lane":1.9,"speed":11.0,"cars":5,"stopline":11.1,"pts":[Vector2(-460,-140),Vector2(-460,-56),Vector2(-620,-56),Vector2(-620,-140)]},
+	{"lane":1.9,"speed":12.0,"cars":5,"stopline":11.1,"police":1,"pts":[Vector2(-460,-300),Vector2(-620,-300),Vector2(-620,-458),Vector2(-460,-458)]},
+	{"lane":1.9,"speed":11.0,"cars":4,"stopline":11.1,"pts":[Vector2(-140,-140),Vector2(-140,-220),Vector2(-300,-220),Vector2(-300,-140)]},
 ]
 const TRAFFIC_COLORS := [Color("d33a3a"),Color("eef1f2"),Color("23262b"),Color("2f5fd0"),Color("f2d046"),Color("7ac74f"),Color("9aa3aa"),Color("f07f2e"),Color("22b5c9")]
 var downtown_mask := 0
@@ -10870,7 +10893,7 @@ func _build_downtown() -> void:
 				if not _dt_near_cross(true,z,half+3.0):
 					yellow.append([Vector3(x-0.25,0.06,z),Vector3(0.16,0.02,4.2)])
 					yellow.append([Vector3(x+0.25,0.06,z),Vector3(0.16,0.02,4.2)])
-					for s in [-5.0,5.0]:
+					for s in [-3.75,3.75]:
 						dashes.append([Vector3(x+s,0.06,z),Vector3(0.18,0.02,3)])
 				z += 8.0
 	for z in DT_STREETS:
@@ -10885,7 +10908,7 @@ func _build_downtown() -> void:
 				if not _dt_near_cross(false,x,half+3.0):
 					yellow.append([Vector3(x,0.062,z-0.25),Vector3(4.2,0.02,0.16)])
 					yellow.append([Vector3(x,0.062,z+0.25),Vector3(4.2,0.02,0.16)])
-					for s in [-5.0,5.0]:
+					for s in [-3.75,3.75]:
 						dashes.append([Vector3(x,0.062,z+s),Vector3(3,0.02,0.18)])
 				x += 8.0
 	roads.append([Vector3(-140,0.013,-50),Vector3(12,0.08,24)])
@@ -10898,12 +10921,14 @@ func _build_downtown() -> void:
 				continue
 			light_spots.append(Vector3(x,0,z))
 			for s in [-1.0,1.0]:
+				var nz := int((DT_ROAD-1.6)/1.6)
+				var z0 := -float(nz-1)*0.8
 				if _dt_has(true,x,z+s*(half+2.0)):
-					for k in 12:
-						zebra.append([Vector3(x-8.8+1.6*k,0.065,z+s*(half+2.0)),Vector3(0.7,0.02,3.0)])
+					for k in nz:
+						zebra.append([Vector3(x+z0+1.6*k,0.065,z+s*(half+2.0)),Vector3(0.7,0.02,3.0)])
 				if _dt_has(false,z,x+s*(half+2.0)):
-					for k in 12:
-						zebra.append([Vector3(x+s*(half+2.0),0.067,z-8.8+1.6*k),Vector3(3.0,0.02,0.7)])
+					for k in nz:
+						zebra.append([Vector3(x+s*(half+2.0),0.067,z+z0+1.6*k),Vector3(3.0,0.02,0.7)])
 			var c := half+2.6
 			_signal_pole(poles,ns_caps,ew_caps,Vector3(x+c,0,z+c),PI,true)
 			_signal_pole(poles,ns_caps,ew_caps,Vector3(x-c,0,z-c),0.0,true)
@@ -27862,6 +27887,13 @@ func _city_shots() -> void:
 					camera.global_position = bn.global_position+bn.global_basis*Vector3(7,4,-12)
 					camera.look_at(bn.global_position+Vector3(0,1.5,0))
 					break
+		if OS.get_environment("HC_MENU") != "":
+			# Developer-only: show the Menu on a given tab for the screenshot.
+			_toggle_menu()
+			_menu_tab(int(OS.get_environment("HC_MENU")))
+			_refresh_hud()
+			for i in 3:
+				await get_tree().process_frame
 		await _save_shot(parts[0])
 		get_tree().quit()
 		return
@@ -29043,6 +29075,9 @@ func _smoke_strollers() -> void:
 			gi = i
 	assert(gi >= 0 and (sky_st_info[gi]["entrance"] as Vector3).z < -300.0,"v0.44: Grand Central station opens onto the plaza")
 	assert(lofts.size() >= 15,"v0.44: new lofts built (%d)" % lofts.size())
+	assert(street_stalls.size() >= 8,"v0.47: street stalls downtown (%d)" % street_stalls.size())
+	for c in street_stalls:
+		assert(not _on_road(c),"v0.47: stall at %s stands off the road" % str(c))
 	for L in lofts:
 		var c: Vector3 = L[0]
 		var h: Vector2 = L[1]
@@ -29461,7 +29496,7 @@ func _gc_kiosk(p: Vector3, yaw: float, name: String, col: Color) -> void:
 		_gb("box",pearl,p+b*Vector3(sd*2.42,1.5,0),Vector3(0.16,3.0,3.0),yaw)
 	_gb("box",pearl,p+Vector3(0,2.95,0),Vector3(5.0,0.12,3.0),yaw)
 	_gb("box",_gc_mat("kfloor",Color("c9c1b2"),0.0,0.6),p+Vector3(0,0.02,0),Vector3(4.7,0.04,2.7),yaw)
-	_gb("box",_gc_mat("counterfront",col.darkened(0.35),0.1,0.5),p+b*Vector3(0,0.5,1.25),Vector3(4.7,1.0,0.3),yaw)
+	_gb("box",_gc_mat("counterfront_%s" % col.to_html(false),col.darkened(0.35),0.1,0.5),p+b*Vector3(0,0.5,1.25),Vector3(4.7,1.0,0.3),yaw)
 	_gb("box",wood,p+b*Vector3(0,1.04,1.3),Vector3(4.9,0.08,0.5),yaw)
 	_gb("box",_fc_glow(Color("fff1d0")),p+b*Vector3(0,2.86,0),Vector3(4.2,0.04,0.3),yaw)
 	for k in 5:
@@ -29521,6 +29556,41 @@ func _kiosk_goods(p: Vector3, b: Basis, yaw: float, name: String) -> void:
 				_gb("sph",_goods_mat(k),tp+Vector3(0,0.07,0),Vector3(0.24,0.12,0.2))
 			for k in 6:
 				_gb("cone",_gc_mat("cone",Color("d9a45a"),0.0,0.7),at.call(Vector3(-1.6+float(k)*0.3,1.95,-1.12)),Vector3(0.12,-0.3,0.12))
+		"HOT DOG HQ","TACO STAND":
+			# A grill with sausages, a row of buns, sauce bottles; menu boards behind.
+			_gb("box",_fc_chrome(),at.call(Vector3(-1.2,1.12,1.25)),Vector3(1.6,0.08,0.6),yaw)
+			for k in 6:
+				_gb("cyl",_gc_mat("sausage",Color("b0503a"),0.0,0.5),at.call(Vector3(-1.8+float(k)*0.24,1.2,1.25)),Vector3(0.07,0.5,0.07))
+			for k in 5:
+				var bp: Vector3 = at.call(Vector3(0.4+float(k)*0.32,1.13,1.3))
+				_gb("sph",_gc_mat("bun",Color("d9a45a"),0.0,0.7),bp,Vector3(0.26,0.1,0.12))
+				_gb("box",_gc_mat("sausage",Color("b0503a"),0.0,0.5),bp+Vector3(0,0.05,0),Vector3(0.24,0.05,0.05),yaw)
+			for k in 3:
+				_gb("cyl",[_gc_mat("ketchup",Color("d2302a"),0.0,0.4),_gc_mat("mustard",Color("f2c230"),0.0,0.4),_gc_mat("relish",Color("4f9a3e"),0.0,0.4)][k],at.call(Vector3(1.9,1.25,1.0+float(k)*0.2)),Vector3(0.1,0.26,0.1))
+			for k in 3:
+				_gb("box",_gc_mat("dark",Color("1b232b"),0.3,0.4),at.call(Vector3(-1.4+float(k)*1.4,2.15,-1.25)),Vector3(1.2,0.8,0.04),yaw)
+				_gb("box",_fc_glow(_goods_color(k*3+1)),at.call(Vector3(-1.4+float(k)*1.4,2.3,-1.22)),Vector3(1.0,0.12,0.02),yaw)
+		"FRESH DRINKS":
+			# A glass fridge of coloured bottles, cups on the counter, a juice dispenser.
+			_gb("box",_bio_glass_mat(Color("e9f6ff"),0.3),at.call(Vector3(-1.2,1.6,-1.05)),Vector3(1.8,2.4,0.5),yaw)
+			for h in 4:
+				for k in 6:
+					_gb("cyl",_goods_mat(k+h*2),at.call(Vector3(-1.95+float(k)*0.3,0.75+float(h)*0.55,-1.05)),Vector3(0.1,0.3,0.1))
+			for k in 3:
+				_gb("cyl",_bio_glass_mat([Color("ffb25f"),Color("f27fb2"),Color("7ad67a")][k],0.6),at.call(Vector3(0.6+float(k)*0.55,1.35,1.2)),Vector3(0.36,0.5,0.36))
+			for k in 6:
+				_gb("cyl",_gc_mat("cup",Color("f4f1ea"),0.0,0.5),at.call(Vector3(-1.9+float(k)*0.3,1.16,1.35)),Vector3(0.14,0.18,0.14))
+		"FAN STORE":
+			# Team scarves hanging, caps and shirts on the shelves, flags.
+			for k in 8:
+				_gb("box",_goods_mat([0,7,1][k%3]),at.call(Vector3(-2.0+float(k)*0.55,2.2,1.2)),Vector3(0.18,0.9,0.04),yaw)
+			for h: float in [1.3,1.85,2.4]:
+				for k in 6:
+					_gb("sph",_goods_mat([0,7,1][(k+int(h*2.0))%3]),at.call(Vector3(-1.8+float(k)*0.72,h+0.1,-1.15)),Vector3(0.36,0.2,0.36))
+			for k in 5:
+				_gb("box",_goods_mat([0,7,1][k%3]),at.call(Vector3(-1.8+float(k)*0.9,1.14,1.3)),Vector3(0.6,0.06,0.4),yaw)
+		"FLOWER CART":
+			_kiosk_goods(p,b,yaw,"FLOWER BAR")
 		_:
 			# HARBOR NEWS and anything else: racks of magazines and papers.
 			for h: float in [1.3,1.85,2.4]:
@@ -29695,7 +29765,7 @@ func _build_grand_central() -> void:
 		for m in 2:
 			var off := Vector3(0.55 if m == 0 else -0.55,0,0)
 			_cm_person(gc_root,gp+off,PI/2.0 if m == 0 else -PI/2.0,1500+g*2+m)
-	_cull_person(gc_root,170.0)
+	_cull_people_in(gc_root,170.0)
 
 func _build_gc_towers() -> void:
 	var T := GC_T
@@ -29921,8 +29991,10 @@ func _build_fill() -> void:
 	_build_gardens()
 	# ---- Stadium fan plaza ----
 	_build_fan_plaza()
+	# ---- v0.47: street stalls on the wider downtown pavements ----
+	_build_street_stalls()
 	_gb_flush()
-	_cull_person(fill_root,170.0)
+	_cull_people_in(fill_root,170.0)
 
 func _hg_in_lake(p: Vector3, margin := 0.0) -> bool:
 	var d := Vector2((p.x-HG_LAKE.x)/(HG_LAKE_R.x+margin),(p.z-HG_LAKE.z)/(HG_LAKE_R.y+margin))
@@ -30059,24 +30131,14 @@ func _build_fan_plaza() -> void:
 	var S := STADIUM_POS
 	var fz := S.z+56.0        # middle of the strip between the stadium and the z -300 street
 	var pearl := _gc_mat("pearl",Color("eef2f5"),0.3,0.25)
-	var names := ["STADIUM EATS","HOT DOG HQ","TACO TRUCK","FAN STORE","NOODLE BOX","SODA POP"]
+	# v0.47: open stalls facing the street (they were closed food trucks).
+	var names := ["HOT DOG HQ","FRESH DRINKS","FAN STORE","DAILY NEWS","FLOWER CART","GELATO 21"]
 	var trucks := [-60.0,-44.0,-28.0,28.0,44.0,60.0]
 	for j in trucks.size():
 		var p := S+Vector3(trucks[j],0,56.0)
 		if not _fill_clear(p,3.0):
 			continue
-		var col: Color = GC_SHOP_COL[(j*3) % GC_SHOP_COL.size()]
-		# A food truck: a box van with a serving hatch and awning facing the stadium path (local -z).
-		_gb("box",_gc_mat("truck_%d" % j,col.lerp(Color.WHITE,0.35),0.2,0.4),p+Vector3(0,1.7,0),Vector3(7.0,2.8,2.6))
-		_gb("box",_gc_mat("cab",Color("2a3540"),0.3,0.3),p+Vector3(4.0,1.4,0),Vector3(1.6,2.2,2.5))
-		_collider(fill_root,p+Vector3(0.6,1.5,0),Vector3(8.6,3.0,2.6))
-		_gb("box",_gc_mat("warm",Color("ffe2b0"),0.0,0.4),p+Vector3(-0.5,2.1,-1.32),Vector3(4.0,1.0,0.04))
-		_gb("box",_gc_mat("aw_%s" % col.to_html(false),col.darkened(0.15),0.0,0.6),p+Vector3(-0.5,2.85,-1.9),Vector3(4.6,0.1,1.3))
-		for wx: float in [-2.4,2.6]:
-			for wz: float in [-1.3,1.3]:
-				_gb("cyl",_gc_mat("tyre",Color("1b1b1b"),0.0,0.8),p+Vector3(wx,0.42,wz),Vector3(0.84,0.3,0.84))
-		_gc_text(names[j],p+Vector3(-0.5,3.3,-1.35),PI,col.lightened(0.3),60,0.01,45.0)
-		nav_blocks.append([Vector2(p.x+0.6,p.z),Vector2(4.3,1.3),0.0])
+		_gc_kiosk(p,0.0,names[j],GC_SHOP_COL[(j*3) % GC_SHOP_COL.size()])
 	# Flags in the team colours along the front, trees behind the trucks.
 	var flag_cols := [Color("e04a3a"),Color("f2f2f2"),Color("3f8fd2")]
 	for j in 15:
@@ -30101,7 +30163,7 @@ func _build_fan_plaza() -> void:
 	var c := Vector3(S.x,0,fz)
 	fan_nav = _nav_area("Fan Plaza",S.x-72.0,S.z+46.0,S.x+72.0,S.z+70.0,[c+Vector3(0,0,-2),c+Vector3(-40,0,-6),c+Vector3(40,0,-6)],func(p: Vector3): return not _on_road(p))
 	for j in trucks.size():
-		_nav_spot(fan_nav,S+Vector3(trucks[j]-0.5,0,52.6),Vector3(0,0,1),4.0,9.0,1.0)
+		_nav_spot(fan_nav,S+Vector3(trucks[j],0,59.4),Vector3(0,0,-1),4.0,9.0,1.0)
 	for sx: float in [-1.0,1.0]:
 		_nav_spot(fan_nav,S+Vector3(sx*6.0,0,49.0),Vector3(0,0,-1),2.0,6.0,0.8)
 		_nav_spot(fan_nav,S+Vector3(sx*68.0,0,58.0),Vector3.ZERO,0.5,2.0,0.5)
@@ -30308,3 +30370,35 @@ func _gc_shop_inside(kind: String, T: Vector3, b: Basis, yaw: float, lx: float, 
 					for cs: float in [-1.0,1.0]:
 						_gb("box",wood,tp+b*Vector3(cs*0.85,0.45,0),Vector3(0.45,0.06,0.45),yaw)
 					solid.call(tp+Vector3(0,0.4,0),Vector3(1.0,0.8,1.0))
+
+# ---------------- v0.47: street stalls downtown ----------------
+const STALL_NAMES := ["DAILY NEWS","HOT DOG HQ","FRESH DRINKS","FLOWER CART","GELATO 21","CAFE ORBIT"]
+var street_stalls: Array = []
+
+func _build_street_stalls() -> void:
+	# Open stalls at the back of the pavement, halfway along each block, facing the street.
+	var k := 0
+	for z in [-140.0,-220.0,-300.0]:
+		for x in [-180.0,-260.0,-340.0,-420.0,-500.0,-580.0]:
+			for sd: float in [-1.0,1.0]:
+				if (k + int(absf(x)/80.0)) % 2 == 1:
+					k += 1
+					continue
+				var c := Vector3(x+(6.0 if sd > 0.0 else -6.0),0,z+sd*(DT_ROAD/2.0+6.1))
+				k += 1
+				if absf(c.x-GC_C.x) < 30.0 and absf(c.z-GC_C.z) < 30.0:
+					continue
+				if absf(c.x-GC_T.x) < 30.0 and absf(c.z-GC_T.z) < 30.0:
+					continue
+				if _on_road(c) or not _fill_clear(c,2.6):
+					continue
+				_gc_kiosk(c,0.0 if sd < 0.0 else PI,STALL_NAMES[street_stalls.size() % STALL_NAMES.size()],GC_SHOP_COL[street_stalls.size() % GC_SHOP_COL.size()])
+				street_stalls.append(c)
+
+func _cull_people_in(root: Node3D, distance: float) -> void:
+	# v0.47: fade out only the people. Batched scenery (one MultiMesh can span the whole district)
+	# must not get a visibility range, or it vanishes when its far-away centre is out of range.
+	for c in root.get_children():
+		if c is MultiMeshInstance3D or c is CollisionObject3D or c is Label3D or c is MeshInstance3D:
+			continue
+		_cull_person(c,distance)

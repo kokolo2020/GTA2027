@@ -337,7 +337,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.34.9: sleek new futuristic jets at Harbor International Airport!")
+	_show_toast("Harbor City 0.35: everyone in the city is new, with real faces, outfits and smooth natural animation!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -2086,7 +2086,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	blue_light.hide()
 	var foot_node := Node3D.new()
 	node.add_child(foot_node)
-	var foot_person := _make_person(foot_node,id.hash() & 3,{"Shirt":body_color,"Pants":Color("263d54"),"Skin":Color("e8c9a0"),"Hair":Color("2b1d14"),"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
+	var foot_person := _make_person(foot_node,id.hash() & 3,{"Shirt":body_color,"Pants":Color("263d54"),"Skin":Color("e8c9a0"),"Hair":Color("2b1d14"),"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")},true)
 	if foot_person.is_empty():
 		_box(foot_node,Vector3(0,0.75,0),Vector3(0.5,1.2,0.35),body_color)
 		_box(foot_node,Vector3(0,1.5,0),Vector3(0.4,0.4,0.4),Color("e8c9a0"))
@@ -2129,18 +2129,23 @@ func _peer_look(peer: Dictionary, av: Variant) -> void:
 		# First real look: rebuild the body as the same character everyone plays.
 		var old: Dictionary = peer["person"]
 		(old["root"] as Node).queue_free()
-		var pp := _make_person(foot,0,{"Shirt":SHIRTS[sh]["color"],"Pants":PANTS[pa]["color"],"Skin":Color("ac7552"),"Hair":Color("2b1d14"),"Shoes":Color("eef1f2"),"Eye":Color("1c1c22")})
+		var pp := _make_person(foot,0,{"Shirt":SHIRTS[sh]["color"],"Pants":PANTS[pa]["color"],"Skin":Color("ac7552"),"Hair":Color("2b1d14"),"Shoes":Color("eef1f2"),"Eye":Color("1c1c22")},true)
 		if pp.is_empty():
 			return
 		peer["person"] = pp
 		var hh := Node3D.new()
-		hh.position.y = 0.99
+		hh.position.y = _hat_y(0.0)
+		if pp.has("ap"):
+			hh.position.z = -0.06
+			hh.scale = Vector3.ONE*K_HAT_SCALE
 		foot.add_child(hh)
 		peer["hat"] = hh
 	else:
 		var pm: Dictionary = (peer["person"] as Dictionary)["mats"]
 		(pm["Shirt"] as StandardMaterial3D).albedo_color = SHIRTS[sh]["color"]
 		(pm["Pants"] as StandardMaterial3D).albedo_color = PANTS[pa]["color"]
+		if (peer["person"] as Dictionary).has("body_mat"):
+			_ksync(peer["person"])
 	peer["look"] = key
 	_build_hat(peer["hat"],ht,false)
 	if not peer.has("gear"):
@@ -2785,6 +2790,8 @@ func _apply_avatar() -> void:
 	for m in pants_mats:
 		(m as StandardMaterial3D).albedo_color = PANTS[av_pants]["color"]
 	_set_hat(av_hat)
+	if player_person.has("body_mat"):
+		_ksync(player_person)
 
 func _shop_count(row: int) -> int:
 	match shop_kind:
@@ -3967,7 +3974,7 @@ func _build_player() -> void:
 	player.add_child(collision)
 	hat_holder = Node3D.new()
 	player.add_child(hat_holder)
-	player_person = _make_person(player,0,{"Shirt":Color("f2b24a"),"Pants":Color("263d54"),"Skin":Color("ac7552"),"Hair":Color("2b1d14"),"Shoes":Color("eef1f2"),"Eye":Color("1c1c22")})
+	player_person = _make_person(player,0,{"Shirt":Color("f2b24a"),"Pants":Color("263d54"),"Skin":Color("ac7552"),"Hair":Color("2b1d14"),"Shoes":Color("eef1f2"),"Eye":Color("1c1c22")},true)
 	if player_person.is_empty():
 		shirt_mat = _box(player, Vector3(0,0,0),Vector3(0.65,0.85,0.4),Color("f2b24a")).material_override as StandardMaterial3D
 		_box(player, Vector3(0,0.68,0),Vector3(0.46,0.46,0.46),Color("ac7552"))
@@ -3978,7 +3985,10 @@ func _build_player() -> void:
 		(player_person["root"] as Node3D).position.y = -0.7
 		shirt_mat = player_person["mats"]["Shirt"]
 		pants_mats.append(player_person["mats"]["Pants"])
-		hat_holder.position.y = 0.29
+		hat_holder.position.y = _hat_y(-0.7)
+		if player_person.has("ap"):
+			hat_holder.position.z = -0.06
+			hat_holder.scale = Vector3.ONE*K_HAT_SCALE
 	# Real players stand on a glowing ring (yours gold, other players cyan); NPC walkers have none.
 	my_ring = _player_ring(player,Color("ffcf4a"))
 	my_ring.position.y = -0.58
@@ -4029,7 +4039,14 @@ func _try_model(path: String) -> Node3D:
 	return null
 
 # ---------- v0.14.0: Blender-made people (player, pedestrians, online players on foot) ----------
-func _make_person(parent: Node3D, variant: int, colors: Dictionary) -> Dictionary:
+func _make_person(parent: Node3D, variant: int, colors: Dictionary, tint := false) -> Dictionary:
+	# v0.35: rigged, animated people (Kenney CC0 body + Harbor City animations) when the model is there.
+	if not kperson_tried:
+		kperson_tried = true
+		if ResourceLoader.exists(KPERSON_PATH):
+			kperson_scene = load(KPERSON_PATH) as PackedScene
+	if kperson_scene != null:
+		return _make_kperson(parent,variant,colors,tint)
 	var model := _try_model("res://models/person_%d.glb" % variant)
 	if model == null:
 		return {}
@@ -4057,8 +4074,174 @@ func _make_person(parent: Node3D, variant: int, colors: Dictionary) -> Dictionar
 		limbs[part] = model.find_child(part,true,false)
 	return {"root":model,"mats":mats,"limbs":limbs}
 
+const KPERSON_PATH := "res://models/kperson.glb"
+# Skins 0/1 are the plain outfits the game recolours (shirt, trousers, shoes, skin tone); the rest keep their look.
+const KSKINS := ["humanMaleAT","humanFemaleAT","skaterMaleA","skaterFemaleA","cyborgFemaleA","criminalMaleA","survivorMaleB","survivorFemaleA"]
+const KIDLES := ["Idle","Look","Talk","Idle","Phone","Sip","Look","Talk"]
+const K_HAT_SCALE := 1.9      # hats and head gear were sized for the old, smaller head
+const K_HEAD_Y := 1.43        # centre of the new head above the feet
+const K_HIP := 0.5            # seat contact height when sitting
+const K_SKIN_REF := Color("e8b896")
+var kperson_scene: PackedScene
+var kperson_tried := false
+var kskin_tex := {}
+var kanim_ready := false
+var kpeople: Array = []
+var kpeople_t := 0.0
+var kpeople_frame := 0
+
+var kskin_mat := {}
+var kshader: Shader
+
+func _kshader() -> Shader:
+	if kshader == null:
+		kshader = load("res://people.gdshader") as Shader
+	return kshader
+
+# Copy the outfit colours (set on the plain "mats") onto the body shader when they change.
+func _ksync(person: Dictionary) -> void:
+	var mats: Dictionary = person["mats"]
+	var cols: Array = []
+	for key in ["Skin","Shirt","Pants","Shoes"]:
+		cols.append((mats[key] as StandardMaterial3D).albedo_color)
+	var key := str(cols)
+	if key == String(person["synced"]):
+		return
+	person["synced"] = key
+	var bm: ShaderMaterial = person["body_mat"]
+	var names := ["c_skin","c_shirt","c_pants","c_shoes"]
+	for k in 4:
+		var c: Color = cols[k]
+		bm.set_shader_parameter(names[k],Vector3(c.r,c.g,c.b))
+
+func _kskin(skin_name: String) -> Texture2D:
+	if not kskin_tex.has(skin_name):
+		var path := "res://models/people/%s.png" % skin_name
+		kskin_tex[skin_name] = load(path) if ResourceLoader.exists(path) else null
+	return kskin_tex[skin_name]
+
+func _make_kperson(parent: Node3D, variant: int, colors: Dictionary, tint: bool) -> Dictionary:
+	var holder := Node3D.new()
+	parent.add_child(holder)
+	var model := kperson_scene.instantiate() as Node3D
+	# The model faces +Z; Harbor City people face -Z like the old ones.
+	model.rotation.y = PI
+	holder.add_child(model)
+	var h := absi(hash("%s|%s|%d" % [colors.get("Shirt",Color.WHITE),colors.get("Pants",Color.WHITE),variant]))
+	var skin := (variant & 1) if tint else (h % 10)
+	var tintable := tint or skin < 4
+	var skin_name: String = KSKINS[skin & 1] if tintable else KSKINS[skin-2]
+	# "mats" keeps one plain material per part so outfit code can keep setting colours; the body
+	# itself draws with one shader material (one skinning pass), synced from these colours.
+	var mats := {}
+	for key in ["Skin","Shirt","Pants","Shoes"]:
+		mats[key] = StandardMaterial3D.new()
+	if tintable:
+		(mats["Shirt"] as StandardMaterial3D).albedo_color = colors.get("Shirt",Color.WHITE)
+		(mats["Pants"] as StandardMaterial3D).albedo_color = colors.get("Pants",Color.WHITE)
+		var sh: Color = colors.get("Shoes",Color.WHITE)
+		(mats["Shoes"] as StandardMaterial3D).albedo_color = Color.WHITE.lerp(sh,0.6)
+		var sk: Color = colors.get("Skin",K_SKIN_REF)
+		(mats["Skin"] as StandardMaterial3D).albedo_color = Color(minf(1.0,sk.r/K_SKIN_REF.r),minf(1.0,sk.g/K_SKIN_REF.g),minf(1.0,sk.b/K_SKIN_REF.b))
+	var body_mat: ShaderMaterial
+	if tintable:
+		body_mat = ShaderMaterial.new()
+		body_mat.shader = _kshader()
+		body_mat.set_shader_parameter("skin_tex",_kskin(skin_name))
+	else:
+		# Fixed outfits share one material per skin.
+		if not kskin_mat.has(skin_name):
+			var sm := ShaderMaterial.new()
+			sm.shader = _kshader()
+			sm.set_shader_parameter("skin_tex",_kskin(skin_name))
+			kskin_mat[skin_name] = sm
+		body_mat = kskin_mat[skin_name]
+	var ap: AnimationPlayer = null
+	var stack: Array[Node] = [model]
+	while stack.size() > 0:
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is AnimationPlayer and ap == null:
+			ap = n as AnimationPlayer
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			mi.material_override = body_mat
+	if ap != null and not kanim_ready:
+		kanim_ready = true
+		for an in ap.get_animation_list():
+			if an != "Jump":
+				ap.get_animation(an).loop_mode = Animation.LOOP_LINEAR
+	var idle: String = "Idle" if tint else KIDLES[(h/10) % KIDLES.size()]
+	var person := {"root":holder,"mats":mats,"limbs":{},"ap":ap,"idle":idle,"speed":0.85+0.3*float(h % 7)/6.0,"model":model,"body_mat":body_mat,"tint":tintable,"synced":""}
+	if tintable:
+		_ksync(person)
+	if ap != null:
+		ap.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+		ap.play(idle)
+		ap.seek(float(h % 97)/97.0*ap.current_animation_length,true)
+		ap.speed_scale = float(person["speed"])
+		kpeople.append(person)
+	return person
+
+# Hat holder height for feet at feet_y (the hats were made for the old head, 0.555 m below its centre).
+func _hat_y(feet_y: float) -> float:
+	return feet_y+(K_HEAD_Y-K_HAT_SCALE*0.555 if kperson_scene != null else 0.99)
+
+func _sit_drop() -> float:
+	return K_HIP if kperson_scene != null else 0.86
+
+func _kplay(person: Dictionary, anim: String, speed := -1.0) -> void:
+	var ap: AnimationPlayer = person.get("ap")
+	if ap == null or not is_instance_valid(ap):
+		return
+	if ap.current_animation != anim:
+		ap.play(anim,0.2)
+	ap.speed_scale = float(person["speed"]) if speed < 0.0 else speed
+
+# Animated people update by distance: every frame within 14 m, every 2nd frame to 25 m, every 4th
+# frame to 40 m, and not at all further away or when hidden (they're culled at 45-95 m anyway).
+func _kpeople_tick(delta: float) -> void:
+	kpeople_frame += 1
+	kpeople_t -= delta
+	var regrade := kpeople_t <= 0.0
+	if regrade:
+		kpeople_t = 0.4
+	var cp := camera.global_position if camera != null else Vector3.ZERO
+	for i in range(kpeople.size()-1,-1,-1):
+		var p: Dictionary = kpeople[i]
+		var root = p.get("root")
+		if not is_instance_valid(root):
+			kpeople.remove_at(i)
+			continue
+		if regrade:
+			if p["tint"]:
+				_ksync(p)
+			var r3 := root as Node3D
+			var d2 := r3.global_position.distance_squared_to(cp)
+			p["lod"] = 0 if (not r3.is_visible_in_tree() or d2 > 1600.0) else (1 if d2 < 196.0 else (2 if d2 < 625.0 else 4))
+		var lod := int(p.get("lod",1))
+		if lod == 0:
+			p["acc"] = 0.0
+			continue
+		var acc := float(p.get("acc",0.0))+delta
+		if lod == 1 or (kpeople_frame+i) % lod == 0:
+			(p["ap"] as AnimationPlayer).advance(acc)
+			acc = 0.0
+		p["acc"] = acc
+
 func _pose_person(person: Dictionary, phase: float, amount: float) -> void:
 	if person.is_empty():
+		return
+	if person.has("ap"):
+		(person["root"] as Node3D).position.y = person.get("base_y",0.0) as float
+		if person.get("busy",false):
+			return
+		if amount > 1.2:
+			_kplay(person,"Run",1.0)
+		elif amount > 0.05:
+			_kplay(person,"Walk",clampf(amount*1.1,0.6,1.25))
+		else:
+			_kplay(person,String(person["idle"]))
 		return
 	var limbs: Dictionary = person["limbs"]
 	var swing := sin(phase)*amount
@@ -7978,6 +8161,7 @@ func _radio_refresh() -> void:
 	radio_caption.visible = radio_station > 0 and not loading
 
 func _process(delta: float) -> void:
+	_kpeople_tick(delta)
 	_daynight_tick(delta)
 	_level_fx_tick(delta)
 	_hud_v23_tick()
@@ -9156,10 +9340,19 @@ func _smoke_radio_peds() -> void:
 	assert(not player_person.is_empty() and player_person["mats"].has("Shirt"),"Player person model missing")
 	for p in peds:
 		assert(not (p["person"] as Dictionary).is_empty(),"Pedestrian person model missing")
-	var leg: Node3D = (peds[0]["person"] as Dictionary)["limbs"]["LegL"]
-	var leg_before := leg.rotation.x
-	_update_peds(0.3)
-	assert(absf(leg.rotation.x-leg_before) > 0.01,"Pedestrian legs do not swing")
+	if (peds[0]["person"] as Dictionary).has("ap"):
+		var walker: Dictionary = {}
+		for p in peds:
+			if not bool(p["idle"]):
+				walker = p["person"]
+				break
+		_update_peds(0.3)
+		assert(not walker.is_empty() and String((walker["ap"] as AnimationPlayer).current_animation) == "Walk","v0.35: walking people play the walk animation")
+	else:
+		var leg: Node3D = (peds[0]["person"] as Dictionary)["limbs"]["LegL"]
+		var leg_before := leg.rotation.x
+		_update_peds(0.3)
+		assert(absf(leg.rotation.x-leg_before) > 0.01,"Pedestrian legs do not swing")
 	for p in peds:
 		var a: Vector3 = p["a"]
 		var b: Vector3 = p["b"]
@@ -12497,6 +12690,11 @@ func _hub_glass(node: Node) -> void:
 func _sit_pose(person: Dictionary, h: float, base_y: float) -> void:
 	if person.is_empty():
 		return
+	if person.has("ap"):
+		person["idle"] = "Sit"
+		_kplay(person,"Sit")
+		(person["root"] as Node3D).position.y = base_y-(K_HIP-(h+0.06))
+		return
 	var limbs: Dictionary = person["limbs"]
 	for part in ["LegL","LegR"]:
 		if limbs[part] != null:
@@ -12576,6 +12774,9 @@ func _emote(person: Dictionary, kind: int) -> void:
 			e["until"] = clock+3.2
 			return
 	var root: Node3D = person["root"]
+	if person.has("ap") and String(person["idle"]) != "Sit":
+		person["busy"] = true
+		_kplay(person,["Wave","Talk","Cheer","Cheer"][clampi(kind,0,3)],1.0)
 	hub_emotes.append({"person":person,"kind":kind,"until":clock+3.2,"root_y":root.position.y,"root_rot":root.rotation.y})
 
 func _hub_people_tick(delta: float) -> void:
@@ -12594,6 +12795,22 @@ func _hub_people_tick(delta: float) -> void:
 			continue
 		var limbs: Dictionary = person["limbs"]
 		var root: Node3D = person["root"]
+		if person.has("ap"):
+			# Animated people play the gesture; dancing and jumping still sway and bounce the body.
+			if clock > float(e["until"]):
+				person["busy"] = false
+				_kplay(person,String(person["idle"]))
+				root.rotation.y = float(e["root_rot"])
+				root.position.y = float(e["root_y"])
+				hub_emotes.remove_at(i)
+				continue
+			var kt := clock*10.0
+			if int(e["kind"]) == 2:
+				root.rotation.y = float(e["root_rot"])+sin(kt*0.3)*0.6
+				root.position.y = float(e["root_y"])+absf(sin(kt*0.6))*0.12
+			elif int(e["kind"]) == 3:
+				root.position.y = float(e["root_y"])+absf(sin(kt*0.5))*0.25
+			continue
 		if clock > float(e["until"]):
 			for part in ["ArmL","ArmR"]:
 				if limbs[part] != null:
@@ -12686,7 +12903,7 @@ func _sit(i: int) -> void:
 	player.get_child(0).set_deferred("disabled",true)
 	_sit_pose(player_person,float(seat["h"]),-0.7)
 	if hat_holder != null:
-		hat_holder.position.y = 0.29-(0.86-(float(seat["h"])+0.06))
+		hat_holder.position.y = _hat_y(-0.7)-(_sit_drop()-(float(seat["h"])+0.06))
 	var kind := String(seat["kind"])
 	var t := int(seat["table"])
 	if kind == "ttt":
@@ -12733,9 +12950,11 @@ func _stand_up() -> void:
 	player.position = (seat["pos"] as Vector3)-dir*1.1+Vector3(0,0.75,0)
 	seat_id = -1
 	player.get_child(0).set_deferred("disabled",false)
+	if not player_person.is_empty() and player_person.has("ap"):
+		player_person["idle"] = "Idle"
 	_pose_person(player_person,0.0,0.0)
 	if hat_holder != null:
-		hat_holder.position.y = 0.29
+		hat_holder.position.y = _hat_y(-0.7)
 	game_panel.hide()
 
 func _seated_tick(delta: float) -> void:
@@ -13471,6 +13690,8 @@ func _smoke_hub() -> void:
 	(online_peers["p2"]["node"] as Node3D).queue_free()
 	online_peers.erase("p2")
 	hub_emotes.clear()
+	if not player_person.is_empty() and player_person.has("ap"):
+		player_person["idle"] = "Idle"
 	_pose_person(player_person,0.0,0.0)
 	player.position = was[0]
 	player.rotation = was[1]
@@ -17889,6 +18110,18 @@ func _build_gear(holder: Node3D, mask: int) -> void:
 			_gear_piece(holder,i)
 
 func _gear_piece(holder: Node3D, idx: int) -> void:
+	# v0.35: on the animated people the holder is scaled up to fit the bigger head. Face gear moves down
+	# to the eyes; back gear (jetpack, wings) goes on a child node at normal size on the shorter body.
+	var gk := holder.scale.x
+	if gk > 1.01:
+		var sub := Node3D.new()
+		holder.add_child(sub)
+		if idx == 4 or idx == 5:
+			sub.scale = Vector3.ONE*0.85/gk
+			sub.position = Vector3(0,(0.73-(K_HEAD_Y-K_HAT_SCALE*0.555))/gk,-0.02/gk)
+		elif idx == 1 or idx == 2:
+			sub.position = Vector3(0,-0.045,0.01)
+		holder = sub
 	match idx:
 		1:
 			_fc_part(holder,BoxMesh.new(),Vector3(0,0.575,-0.125),_fc_glow(Color("4fe3ff")),Vector3(0.27,0.055,0.05))
@@ -17972,6 +18205,7 @@ func _market_apply() -> void:
 		player.add_child(gear_holder)
 	if hat_holder != null:
 		gear_holder.position = hat_holder.position
+		gear_holder.scale = hat_holder.scale
 	if gear_shown != gear_on:
 		gear_shown = gear_on
 		_build_gear(gear_holder,gear_on)
@@ -18159,7 +18393,7 @@ func _board_tick(delta: float) -> void:
 	var riding := board_on and not driving and not eye_view and seat_id < 0
 	board_node.visible = riding
 	if not player_person.is_empty() and hat_holder != null:
-		hat_holder.position.y = 0.47 if riding else 0.29
+		hat_holder.position.y = _hat_y(-0.52 if riding else -0.7)
 	if not player_person.is_empty():
 		var root := player_person["root"] as Node3D
 		player_person["base_y"] = -0.52 if riding else -0.7

@@ -543,3 +543,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Online players now walk (phase from their speed). Online by default: `online_pref` (saved), `_online_autostart` after boot; any `--` developer arg stays offline.
 - Release commit 01d643f, tag v0.36.1, versionCode 64. APK SHA256 dd2023288c24e2daac851dcbc14834807edf9b97b2124f695885a44fb054d89e (43877899 bytes), same certificate.
 - Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches. Live auto-connect not exercised from desktop.
+
+## v0.37.0 (released 2026-11-20)
+
+- The Biosphere (`_build_biosphere`, `_biosphere_tick`, `_smoke_biosphere`): hub at BIO_C (-500,0,-600), domes at hub ±44 m (radius 30), tunnels hub->each dome plus BIO_LINKS; entrance walk south to the Skyline boulevard (z -472). 16 species in BIO_SPECIES (zones in/out/swim/fly/flutter), procedural animals (`_bio_make_*`), wander targets stay within ±0.7 rad so walks don't cut across ring habitats. Spotting saved as bio_seen; ACH "bio4"/"bio16" via `_ach_value("bio")`.
+- make_people.py: more detailed original people (faces, hands, sneakers), ~6000-6900 tris each; node names/pivots unchanged; generate_lods on import. HARBOR_PEOPLE_RENDER=<dir> renders previews.
+- Airport: parked jets use AP_PARK_SCALE 2.5 (jet span 17.9 m model) so wings clear 50 m gates; smoke asserts it.
+- `_bake_map` now calls `_unfade` so far-culled places show on the baked map; world_map.png re-baked.
+- Release commit 1dd9369, tag v0.37.0, versionCode 65. APK SHA256 dd23d5892b49ccd8ab43e16cafbc82db179e842cc4a5485e0fcabccbb1a7faf4 (44049931 bytes), same certificate. Bench about 54 fps.
+- Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches. Not checked on a phone.

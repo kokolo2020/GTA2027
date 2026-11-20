@@ -8585,13 +8585,20 @@ func _build_peds() -> void:
 		plan.append([lines[i % lines.size()][0],lines[i % lines.size()][1],false])
 	# Skyline District sidewalks (7.8 m from the road centre) and people standing around.
 	var dt_lines: Array = []
-	for x in [-140.0,-300.0,-620.0]:
+	# v0.46: every avenue and street downtown has people on both pavements (was 3 avenues, 2 streets).
+	for x in [-140.0,-300.0,-380.0,-460.0,-620.0]:
 		for sx in [-12.6,12.6]:
 			dt_lines.append([Vector3(x+sx,0,-76),Vector3(x+sx,0,-444)])
-	for z in [-140.0,-300.0]:
+	for sx in [-12.6,12.6]:
+		# Avenue -220 stops at Union Station.
+		dt_lines.append([Vector3(-220.0+sx,0,-76),Vector3(-220.0+sx,0,-296)])
+	for z in [-140.0,-220.0,-300.0]:
 		for sz in [-12.6,12.6]:
 			dt_lines.append([Vector3(-126,0,z+sz),Vector3(-646,0,z+sz)])
-	for i in 36:
+	for sz in [-12.6,12.6]:
+		# Street -380 ends at the stadium.
+		dt_lines.append([Vector3(-126,0,-380.0+sz),Vector3(-462,0,-380.0+sz)])
+	for i in 100:
 		plan.append([dt_lines[i % dt_lines.size()][0],dt_lines[i % dt_lines.size()][1],false])
 	# v0.29: North Highway pavements (12.6 m from the road centre) and people at the park, skate plaza and yard.
 	var nm_lines: Array = []
@@ -9718,7 +9725,7 @@ func _wait_radio(station: int) -> void:
 	assert(radio_streams.has(station),"Radio station %d did not generate" % station)
 
 func _smoke_radio_peds() -> void:
-	assert(peds.size() == 208,"Pedestrians missing: %d" % peds.size())
+	assert(peds.size() == 272,"Pedestrians missing: %d" % peds.size())
 	assert(not player_person.is_empty() and player_person["mats"].has("Shirt"),"Player person model missing")
 	for p in peds:
 		assert(not (p["person"] as Dictionary).is_empty(),"Pedestrian person model missing")
@@ -10496,6 +10503,13 @@ const TRAFFIC_LOOPS := [
 	{"lane":2.5,"speed":9.0,"cars":4,"pts":[Vector2(-95,32),Vector2(-230,32),Vector2(-230,72),Vector2(-95,72)]},
 	{"lane":2.5,"speed":9.0,"cars":3,"pts":[Vector2(330,150),Vector2(530,150),Vector2(530,250),Vector2(330,250)]},
 	{"lane":2.5,"speed":9.0,"cars":3,"pts":[Vector2(-300,0),Vector2(-420,0),Vector2(-420,150),Vector2(-300,150)]},
+	# v0.46: busier downtown. These use the inner lanes of the 20 m roads (outer lanes belong to the
+	# loops above) and stop at the crossings like everyone else; "police" loops get a patrol car.
+	{"lane":2.6,"speed":11.0,"cars":6,"stopline":13.6,"police":1,"pts":[Vector2(-300,-300),Vector2(-460,-300),Vector2(-460,-380),Vector2(-300,-380)]},
+	{"lane":2.6,"speed":12.0,"cars":5,"stopline":13.6,"police":1,"pts":[Vector2(-140,-458),Vector2(-140,-380),Vector2(-380,-380),Vector2(-380,-458)]},
+	{"lane":2.6,"speed":11.0,"cars":5,"stopline":13.6,"pts":[Vector2(-460,-140),Vector2(-460,-56),Vector2(-620,-56),Vector2(-620,-140)]},
+	{"lane":2.6,"speed":12.0,"cars":5,"stopline":13.6,"police":1,"pts":[Vector2(-460,-300),Vector2(-620,-300),Vector2(-620,-458),Vector2(-460,-458)]},
+	{"lane":2.6,"speed":11.0,"cars":4,"stopline":13.6,"pts":[Vector2(-140,-140),Vector2(-140,-220),Vector2(-300,-220),Vector2(-300,-140)]},
 ]
 const TRAFFIC_COLORS := [Color("d33a3a"),Color("eef1f2"),Color("23262b"),Color("2f5fd0"),Color("f2d046"),Color("7ac74f"),Color("9aa3aa"),Color("f07f2e"),Color("22b5c9")]
 var downtown_mask := 0
@@ -10508,6 +10522,7 @@ var light_ns_mat: StandardMaterial3D
 var light_ew_mat: StandardMaterial3D
 var light_state := -1
 var blocked_skip_traffic := false
+var traffic_test_path := -1      # tests only: obey just this loop's cars and no people
 
 func _downtown_open() -> bool:
 	return _bay_open()
@@ -11222,7 +11237,7 @@ func _build_traffic() -> void:
 				var lat := absf((l-a).cross(d))
 				if along > lane+0.5 and along <= a.distance_to(b)+0.5 and lat < lane+1.5:
 					stops.append([float(cum[i])+along,0 if absf(d.y) > absf(d.x) else 1])
-		traffic_paths.append({"way":way,"cum":cum,"total":cum[n],"stops":stops,"stopline":lane*2.0+1.6,"speed":float(loop["speed"])})
+		traffic_paths.append({"way":way,"cum":cum,"total":cum[n],"stops":stops,"stopline":float(loop.get("stopline",lane*2.0+1.6)),"speed":float(loop["speed"])})
 		for k in int(loop["cars"]):
 			var node := AnimatableBody3D.new()
 			node.sync_to_physics = false
@@ -11235,7 +11250,8 @@ func _build_traffic() -> void:
 			shape.shape = box
 			shape.position.y = 1.5 if is_bus else 0.8
 			node.add_child(shape)
-			var model := _try_model("res://models/bus.glb" if is_bus else "res://models/car_%d.glb" % (rng.randi() % 5))
+			var is_cop := not is_bus and int(loop.get("police",0)) > 0 and k == 2
+			var model := _try_model("res://models/bus.glb" if is_bus else ("res://models/car_2.glb" if is_cop else "res://models/car_%d.glb" % (rng.randi() % 5)))
 			if model != null and is_bus:
 				node.add_child(model)
 				_bus_skin(model,[Color("c254ff"),Color("1fb5c9"),Color("ff5f8a")][li % 3])
@@ -11250,6 +11266,31 @@ func _build_traffic() -> void:
 				tag.position = Vector3(0,4.2,0)
 				tag.visibility_range_end = 90.0
 				node.add_child(tag)
+			elif model != null and is_cop:
+				# v0.46: a police patrol car: white with dark trim, flashing roof lights and a POLICE tag.
+				model.position.y = 0.8
+				node.add_child(model)
+				_online_tint(model,Color("f4f6f8"))
+				_cull_person(model,150.0,true)
+				for sd in [-1,1]:
+					var bl := MeshInstance3D.new()
+					var bm := BoxMesh.new()
+					bm.size = Vector3(0.36,0.12,0.2)
+					bl.mesh = bm
+					bl.material_override = _fc_glow(Color("ff3b3b") if sd < 0 else Color("3b7bff"))
+					bl.position = Vector3(float(sd)*0.24,0.8+1.27,0.25)
+					node.add_child(bl)
+					police_lights.append([bl,sd])
+				var pt := Label3D.new()
+				pt.text = "POLICE"
+				pt.font_size = 36
+				pt.pixel_size = 0.01
+				pt.modulate = Color("cfe2ff")
+				pt.outline_size = 6
+				pt.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+				pt.position = Vector3(0,2.6,0)
+				pt.visibility_range_end = 60.0
+				node.add_child(pt)
 			elif model != null:
 				model.position.y = 0.8
 				node.add_child(model)
@@ -11342,7 +11383,9 @@ func _traffic_tick(delta: float) -> void:
 			if d < INF:
 				target = minf(target,maxf(0.0,(d-5.0-(my_half-1.8))*1.6))
 		# Wait for people crossing; if someone stays in the lane, edge past after a few seconds.
-		if float(t.get("ped_skip",0.0)) > 0.0:
+		if traffic_test_path >= 0:
+			pass
+		elif float(t.get("ped_skip",0.0)) > 0.0:
 			t["ped_skip"] = float(t["ped_skip"])-delta
 		else:
 			var ped_target := INF
@@ -11365,6 +11408,8 @@ func _traffic_tick(delta: float) -> void:
 			if j == i:
 				continue
 			var o: Dictionary = traffic[j]
+			if traffic_test_path >= 0 and int(o["path"]) != traffic_test_path:
+				continue
 			var d := _traffic_blocked_by(pos,dir,o["pos"])
 			if d == INF:
 				continue
@@ -11448,7 +11493,7 @@ func _smoke_downtown() -> void:
 	player.position = was_pos
 	driving = was_driving
 	# Traffic: built, moves, stops at a red light and behind an obstacle.
-	assert(traffic.size() == 41 and light_spots.size() >= 51,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
+	assert(traffic.size() == 66 and light_spots.size() >= 51,"Traffic %d / signals %d" % [traffic.size(),light_spots.size()])
 	var was_car := car.position
 	var was_clock := clock
 	car.position = Vector3(400,0.8,400)
@@ -11468,6 +11513,8 @@ func _smoke_downtown() -> void:
 	var t0: Dictionary = traffic[0]
 	var path0: Dictionary = traffic_paths[int(t0["path"])]
 	var stop: Array = path0["stops"][0]
+	# v0.46: with many more cars and people downtown, test the light rules on loop 0 on its own.
+	traffic_test_path = int(t0["path"])
 	clock = 12.0 if int(stop[1]) == 0 else 3.0
 	assert(not _light_green(int(stop[1])),"Test light should be red")
 	t0["s"] = fposmod(float(stop[0])-float(path0["stopline"])-14.0,float(path0["total"]))
@@ -11491,6 +11538,7 @@ func _smoke_downtown() -> void:
 		_traffic_tick(1.0/30.0)
 	var gap := Vector2(car.position.x,car.position.z).distance_to(t0["pos"])
 	assert(gap > 3.5 and float(t0["v"]) < 0.5,"Traffic hit the player car (gap %.2f)" % gap)
+	traffic_test_path = -1
 	traffic_on = false
 	car.position = was_car
 	clock = was_clock
@@ -28909,7 +28957,7 @@ func _strollers_tick(delta: float) -> void:
 func _smoke_strollers() -> void:
 	# v0.44: walk grids are built, every cell on them is clear of anything solid, every spot can be
 	# reached, and the walkers actually walk.
-	for A in [ga_nav,bio_nav,gc_nav,hg_nav,fan_nav]:
+	for A in [ga_nav,bio_nav,gc_nav,gc_shop_nav,hg_nav,fan_nav]:
 		if not bool(A["ready"]):
 			if not bool(A["building"]):
 				_nav_build(A)
@@ -29263,6 +29311,13 @@ const GC_T := Vector3(-340,0,-340)
 const GC_WALKERS := 28
 const GC_SCREEN := ["GRAND CENTRAL\nThe heart of Harbor City","HARBOR LOOP\n10 stations · all of town","AURORA RESIDENCES\nSky homes now open","TONIGHT\nGame night at the stadium","CAFE ORBIT\nCold brew on the plaza","THE MERIDIAN\nOffices with a view","HARBOR GALLERIA\nNew looks every day","THE BIOSPHERE\nFour domes · one ticket"]
 const GC_SHOPS := ["MAISON LUMA","ATELIER NOVA","BLOOM & CO","VELVET","KAI SUSHI","NORTHWIND","PIXEL HOUSE","SOLENE","THE BAKERY","OPTIQUE","GREEN TABLE","HARBOR BOOKS","LUX TECH","GELATO 21","STUDIO MODA","CAFE ORBIT"]
+# v0.46: which shops open in the podium (12 bays) and what each one sells.
+const GC_SHOP_PICK := [0,1,2,3,4,5,6,7,8,11,12,13]
+const GC_SHOP_KIND := ["fashion","fashion","flowers","fashion","sushi","sport","tech","optics","bakery","optics","cafe","books","tech","gelato","fashion","cafe"]
+var gc_shop_spots: Array = []   # [front, inside, facing, shop index]
+var gc_shop_nav: Dictionary = {}
+var police_lights: Array = []   # [light, side]: patrol car roof lights flashing red/blue
+const GC_SHOP_WALKERS := 30
 const GC_SHOP_COL := [Color("ff8ad8"),Color("5fd0ff"),Color("7ad67a"),Color("c89bff"),Color("ffb25f"),Color("8fe3ff"),Color("ff7a4a"),Color("f0bd62")]
 var gc_root: Node3D
 var gc_batch := {}
@@ -29395,18 +29450,84 @@ func _gc_planter(p: Vector3, tree: String, s: float) -> void:
 	_gc_tree(tree,p+Vector3(0,0.7,0),s,p.x*0.37+p.z)
 
 func _gc_kiosk(p: Vector3, yaw: float, name: String, col: Color) -> void:
-	# A glass-and-pearl kiosk with a striped awning; the counter faces local +z.
+	# v0.46: an open kiosk. Back and side walls, a roof with a striped awning, a counter at the
+	# front (local +z) with real things on it and shelves behind, and someone serving.
 	var b := Basis(Vector3.UP,yaw)
 	var pearl := _gc_mat("pearl",Color("eef2f5"),0.3,0.25)
-	_gb("box",pearl,p+Vector3(0,1.5,0),Vector3(5.0,3.0,3.0),yaw)
+	var wood := _gc_mat("wood",Color("9a6a42"),0.0,0.55)
 	_collider(gb_root,p+Vector3(0,1.5,0),Vector3(5.0,3.0,3.0) if absf(sin(yaw)) < 0.5 else Vector3(3.0,3.0,5.0))
-	_gb("box",_gc_mat("warm",Color("ffe2b0"),0.0,0.4),p+b*Vector3(0,1.7,1.52),Vector3(4.4,1.2,0.04),yaw)
-	_gb("box",_gc_mat("wood",Color("9a6a42"),0.0,0.55),p+b*Vector3(0,1.05,1.75),Vector3(4.6,0.12,0.6),yaw)
+	_gb("box",pearl,p+b*Vector3(0,1.5,-1.42),Vector3(5.0,3.0,0.16),yaw)
+	for sd: float in [-1.0,1.0]:
+		_gb("box",pearl,p+b*Vector3(sd*2.42,1.5,0),Vector3(0.16,3.0,3.0),yaw)
+	_gb("box",pearl,p+Vector3(0,2.95,0),Vector3(5.0,0.12,3.0),yaw)
+	_gb("box",_gc_mat("kfloor",Color("c9c1b2"),0.0,0.6),p+Vector3(0,0.02,0),Vector3(4.7,0.04,2.7),yaw)
+	_gb("box",_gc_mat("counterfront",col.darkened(0.35),0.1,0.5),p+b*Vector3(0,0.5,1.25),Vector3(4.7,1.0,0.3),yaw)
+	_gb("box",wood,p+b*Vector3(0,1.04,1.3),Vector3(4.9,0.08,0.5),yaw)
+	_gb("box",_fc_glow(Color("fff1d0")),p+b*Vector3(0,2.86,0),Vector3(4.2,0.04,0.3),yaw)
 	for k in 5:
 		var c: Color = col if k % 2 == 0 else Color("f4f1ea")
 		_gb("box",_gc_mat("aw_%s" % c.to_html(false),c,0.0,0.6),p+b*Vector3(-2.0+float(k),2.85,2.05),Vector3(1.0,0.12,1.3),yaw)
 	_gb("box",_neon_mat(col),p+Vector3(0,3.05,0),Vector3(5.05,0.08,3.05),yaw)
-	_gc_text(name,p+b*Vector3(0,2.45,1.56),yaw,col.lightened(0.3),56,0.008,40.0)
+	_gb("box",_gc_mat("signband",Color("1d2a33"),0.2,0.4),p+b*Vector3(0,3.35,1.4),Vector3(4.6,0.55,0.12),yaw)
+	_gc_text(name,p+b*Vector3(0,3.35,1.47),yaw,col.lightened(0.3),56,0.008,40.0)
+	# Shelves on the back wall.
+	for h: float in [1.3,1.85,2.4]:
+		_gb("box",wood,p+b*Vector3(0,h,-1.18),Vector3(4.3,0.05,0.34),yaw)
+	_kiosk_goods(p,b,yaw,name)
+	var clerk := _cm_person(gb_root,p+b*Vector3(0.6,0,0.1),yaw+PI,2100+name.length()*7+int(absf(p.x)))
+	if not clerk.is_empty():
+		clerk["walk"] = true      # keeps still behind the counter (no idle wander)
+		_pose_person(clerk,0.0,0.0)
+
+func _goods_color(i: int) -> Color:
+	return [Color("e04a3a"),Color("3f8fd2"),Color("5fbf7f"),Color("f2b24a"),Color("9b6bd6"),Color("f27fb2"),Color("2fb5a8"),Color("f2f2f2"),Color("ffd23f"),Color("1d2a33")][posmod(i,10)]
+
+func _goods_mat(i: int) -> StandardMaterial3D:
+	var c := _goods_color(i)
+	return _gc_mat("goods_%d" % posmod(i,10),c,0.05,0.45)
+
+func _kiosk_goods(p: Vector3, b: Basis, yaw: float, name: String) -> void:
+	# What each kiosk sells, on its counter and shelves.
+	var at := func(v: Vector3) -> Vector3: return p+b*v
+	match name:
+		"CAFE ORBIT","TERRACE BAR":
+			_gb("box",_fc_chrome(),at.call(Vector3(-1.4,1.45,-1.0)),Vector3(0.9,0.75,0.5),yaw)
+			_gb("box",_gc_mat("dark",Color("1b232b"),0.3,0.4),at.call(Vector3(-1.4,1.55,-0.74)),Vector3(0.7,0.25,0.04),yaw)
+			for k in 6:
+				_gb("cyl",_gc_mat("cup",Color("f4f1ea"),0.0,0.5),at.call(Vector3(-1.9+float(k)*0.32,1.16,1.32)),Vector3(0.14,0.16,0.14))
+			for k in 4:
+				_gb("sph",_gc_mat("pastry",Color("d39a52"),0.0,0.7),at.call(Vector3(0.9+float(k%2)*0.35,1.15,1.2+float(k/2)*0.18)),Vector3(0.22,0.12,0.16))
+			for h: float in [1.3,1.85,2.4]:
+				for k in 9:
+					_gb("cyl",_goods_mat(k+int(h*3.0)),at.call(Vector3(-1.9+float(k)*0.48,h+0.14,-1.18)),Vector3(0.12,0.26,0.12))
+		"FLOWER BAR":
+			for k in 7:
+				var fp: Vector3 = at.call(Vector3(-1.95+float(k)*0.65,1.08,1.3))
+				_gb("cyl",_gc_mat("bucket",Color("8a9aa6"),0.4,0.4),fp+Vector3(0,0.15,0),Vector3(0.36,0.3,0.36))
+				for j in 5:
+					var a := float(j)*1.26+float(k)
+					_gb("sph",_goods_mat(k*3+j % 3),fp+Vector3(cos(a)*0.1,0.4+0.06*float(j%2),sin(a)*0.1),Vector3(0.16,0.16,0.16))
+				_gb("sph",_gc_mat("leaf",Color("4f8a3e"),0.0,0.8),fp+Vector3(0,0.32,0),Vector3(0.3,0.16,0.3))
+			for h: float in [1.3,1.85,2.4]:
+				for k in 6:
+					var sp: Vector3 = at.call(Vector3(-1.8+float(k)*0.72,h+0.12,-1.15))
+					_gb("cyl",_gc_mat("pot",Color("c9785a"),0.0,0.7),sp,Vector3(0.24,0.22,0.24))
+					_gb("sph",_goods_mat(k+int(h*5.0)),sp+Vector3(0,0.22,0),Vector3(0.3,0.26,0.3))
+		"GELATO 21":
+			_gb("box",_bio_glass_mat(Color("e9f6ff"),0.35),at.call(Vector3(0,1.3,1.25)),Vector3(4.0,0.45,0.4),yaw)
+			for k in 10:
+				var tp: Vector3 = at.call(Vector3(-1.8+float(k)*0.4,1.13,1.25))
+				_gb("box",_goods_mat(k),tp,Vector3(0.34,0.1,0.3),yaw)
+				_gb("sph",_goods_mat(k),tp+Vector3(0,0.07,0),Vector3(0.24,0.12,0.2))
+			for k in 6:
+				_gb("cone",_gc_mat("cone",Color("d9a45a"),0.0,0.7),at.call(Vector3(-1.6+float(k)*0.3,1.95,-1.12)),Vector3(0.12,-0.3,0.12))
+		_:
+			# HARBOR NEWS and anything else: racks of magazines and papers.
+			for h: float in [1.3,1.85,2.4]:
+				for k in 8:
+					_gb("box",_goods_mat(k+int(h*7.0)),at.call(Vector3(-1.9+float(k)*0.54,h+0.22,-1.12)),Vector3(0.44,0.4,0.04),yaw)
+			for k in 6:
+				_gb("box",_goods_mat(k*3),at.call(Vector3(-1.8+float(k)*0.6,1.12,1.3)),Vector3(0.48,0.04,0.34),yaw)
 
 func _build_grand_central() -> void:
 	gc_root = Node3D.new()
@@ -29556,6 +29677,19 @@ func _build_grand_central() -> void:
 	_nav_spot(gc_nav,C+Vector3(0,0,-13.0),Vector3.ZERO,1.0,4.0,0.5)
 	for k in GC_WALKERS:
 		_stroller(gc_nav,gc_root,1300+k*13,k % 10 == 6)
+	# v0.46: shoppers on the shop block: along the fronts and in and out of every shop.
+	var T := GC_T
+	gc_shop_nav = _nav_area("Grand Central Shops",T.x-29.6,T.z-29.6,T.x+29.6,T.z+29.6,[T+Vector3(0,0,26.5),T+Vector3(26.5,0,0),T+Vector3(0,0,-26.5),T+Vector3(-26.5,0,0)],func(p: Vector3): return not _on_road(p))
+	for S in gc_shop_spots:
+		var f: Vector3 = S[2]
+		_nav_spot(gc_shop_nav,S[1],f,4.0,12.0,1.0)
+		_nav_spot(gc_shop_nav,(S[1] as Vector3)-f*2.6+Vector3(f.z,0,-f.x)*2.6,f,3.0,9.0,0.8)
+		_nav_spot(gc_shop_nav,(S[0] as Vector3)-f*3.5,-f,2.0,6.0,0.5)
+	for s1: float in [-1.0,1.0]:
+		for s2: float in [-1.0,1.0]:
+			_nav_spot(gc_shop_nav,T+Vector3(s1*27.0,0,s2*27.0),Vector3.ZERO,0.3,1.5,0.5)
+	for k in GC_SHOP_WALKERS:
+		_stroller(gc_shop_nav,gc_root,2500+k*17,k % 9 == 4)
 	for g in 3:
 		var gp: Vector3 = C+([Vector3(-8,0.12,-8),Vector3(9,0.12,16),Vector3(-14,0.12,19)][g] as Vector3)
 		for m in 2:
@@ -29567,27 +29701,50 @@ func _build_gc_towers() -> void:
 	var T := GC_T
 	var pearl := _gc_mat("pearl",Color("eef2f5"),0.3,0.25)
 	var cyan := _neon_mat(NEON_CYAN)
-	# ---- the shopping podium: 16 shops round the block, a garden on the roof ----
+	# ---- the shopping podium (v0.46): 12 open walk-in shops round a solid core, a garden on the roof ----
+	# Each side has three shop bays (local +z is the street side, 8 m deep from the core at 15 m to the
+	# front at 23 m), solid corner blocks, and the floors above as a band over the shop fronts.
 	var pod := _gc_mat("podium",Color("d9d2c4"),0.05,0.5)
-	_gb("box",pod,T+Vector3(0,3.6,0),Vector3(46,7.2,46))
-	_collider(gc_root,T+Vector3(0,3.6,0),Vector3(46,7.2,46))
+	_gb("box",pod,T+Vector3(0,3.6,0),Vector3(30,7.2,30))
+	_collider(gc_root,T+Vector3(0,3.6,0),Vector3(30,7.2,30))
+	for cx: float in [-1.0,1.0]:
+		for cz: float in [-1.0,1.0]:
+			_gb("box",pod,T+Vector3(cx*19.25,3.6,cz*19.25),Vector3(7.5,7.2,7.5))
+			_collider(gc_root,T+Vector3(cx*19.25,3.6,cz*19.25),Vector3(7.5,7.2,7.5))
 	_gb("box",pearl,T+Vector3(0,7.35,0),Vector3(47,0.3,47))
 	_gb("box",_gc_mat("lawn",Color("4f7a3e"),0.0,0.9),T+Vector3(0,7.52,0),Vector3(45,0.06,45))
+	var shop_floor := _gc_mat("shopfloor",Color("efe9de"),0.05,0.35)
+	var inner := _gc_mat("shopwall",Color("f4f1ea"),0.0,0.6)
+	var k_shop := 0
 	for k in 4:
 		var yaw := float(k)*PI/2.0
 		var b := Basis(Vector3.UP,yaw)
-		for j in 4:
-			var si := k*4+j
+		# The band over the fronts (floors above the shops) on this side.
+		_gb("box",pod,T+b*Vector3(0,5.9,19.0),Vector3(31.0,2.6,8.0),yaw)
+		for j in 3:
+			var si: int = GC_SHOP_PICK[k_shop]
+			k_shop += 1
 			var col: Color = GC_SHOP_COL[si % GC_SHOP_COL.size()]
-			var lx := -16.5+float(j)*11.0
-			var fp := T+b*Vector3(lx,0,23.05)
-			_gb("box",_gc_mat("shopglass",Color("ffe7b8"),0.0,0.3),fp+Vector3(0,2.3,0),Vector3(9.6,3.8,0.08),yaw)
-			_gb("box",_gc_mat("signband",Color("1d2a33"),0.2,0.4),T+b*Vector3(lx,5.3,23.25),Vector3(10.6,1.3,0.4),yaw)
-			_gb("box",_neon_mat(col),T+b*Vector3(lx,4.6,23.47),Vector3(10.6,0.08,0.06),yaw)
-			_gb("box",_gc_mat("aw_%s" % col.to_html(false),col.darkened(0.15),0.0,0.6),T+b*Vector3(lx,4.25,24.0),Vector3(9.4,0.14,1.7),yaw)
-			_gc_text(GC_SHOPS[si],T+b*Vector3(lx,5.3,23.47),yaw,col.lightened(0.35),72,0.009,60.0)
-			if j < 3:
-				_gb("box",pearl,T+b*Vector3(lx+5.5,3.6,23.1),Vector3(1.0,7.2,0.5),yaw)
+			var lx := -10.3+float(j)*10.3
+			var bc := T+b*Vector3(lx,0,19.0)
+			_gb("box",shop_floor,bc+Vector3(0,0.13,0),Vector3(10.0,0.02,8.0),yaw)
+			_gb("box",inner,T+b*Vector3(lx,2.3,15.08),Vector3(10.0,4.6,0.12),yaw)
+			_gb("box",_fc_glow(Color("fff4dc")),T+b*Vector3(lx,4.55,19.0),Vector3(8.6,0.05,0.4),yaw)
+			_gb("box",_fc_glow(Color("fff4dc")),T+b*Vector3(lx,4.55,17.0),Vector3(8.6,0.05,0.4),yaw)
+			if j < 2:
+				_gb("box",pearl,T+b*Vector3(lx+5.15,2.3,19.0),Vector3(0.3,4.6,8.0),yaw)
+				var wp := T+b*Vector3(lx+5.15,2.3,19.0)
+				_collider(gc_root,wp,Vector3(0.3,4.6,8.0) if absf(sin(yaw)) < 0.5 else Vector3(8.0,4.6,0.3))
+			# Shop front: sign band, neon line, awning, slim glass panes beside a wide open doorway.
+			_gb("box",_gc_mat("signband",Color("1d2a33"),0.2,0.4),T+b*Vector3(lx,5.3,23.15),Vector3(9.8,1.2,0.3),yaw)
+			_gb("box",_neon_mat(col),T+b*Vector3(lx,4.68,23.32),Vector3(9.8,0.08,0.06),yaw)
+			_gb("box",_gc_mat("aw_%s" % col.to_html(false),col.darkened(0.15),0.0,0.6),T+b*Vector3(lx,4.35,23.9),Vector3(9.0,0.14,1.6),yaw)
+			_gc_text(GC_SHOPS[si],T+b*Vector3(lx,5.3,23.32),yaw,col.lightened(0.35),72,0.009,60.0)
+			for sd: float in [-1.0,1.0]:
+				_gb("box",_bio_glass_mat(Color("e9f6ff"),0.25),T+b*Vector3(lx+sd*3.6,2.2,22.95),Vector3(2.4,4.2,0.06),yaw)
+				_gb("box",pearl,T+b*Vector3(lx+sd*2.35,2.2,22.95),Vector3(0.12,4.4,0.12),yaw)
+			_gc_shop_inside(GC_SHOP_KIND[si],T,b,yaw,lx,col,si)
+			gc_shop_spots.append([T+b*Vector3(lx,0,21.0),T+b*Vector3(lx,0,17.6),b*Vector3(0,0,-1),si])
 	# Roof garden trees and a glass rail.
 	for xx: float in [-18.0,-6.0,6.0,18.0]:
 		for zz: float in [-18.0,18.0]:
@@ -29636,6 +29793,10 @@ func _build_gc_towers() -> void:
 	mt.outline_size = 0
 
 func _gc_tick(delta: float) -> void:
+	if not police_lights.is_empty():
+		var on := int(clock*4.0) % 2
+		for L in police_lights:
+			(L[0] as Node3D).visible = (on == 0) == (int(L[1]) < 0)
 	if gc_root == null:
 		return
 	for s in gc_spin:
@@ -29982,3 +30143,168 @@ func _car_underglow(model: Node3D) -> void:
 	mi.position = Vector3(0,-0.5,0)
 	mi.visibility_range_end = 90.0
 	model.add_child(mi)
+
+# ---------------- v0.46: what is inside the Grand Central shops ----------------
+func _gc_shop_inside(kind: String, T: Vector3, b: Basis, yaw: float, lx: float, col: Color, si: int) -> void:
+	# Local frame of one bay: x across the front (centre lx), z from the back wall (15) to the street (23).
+	var at := func(x: float, y: float, z: float) -> Vector3: return T+b*Vector3(lx+x,y,z)
+	var wood := _gc_mat("wood",Color("9a6a42"),0.0,0.55)
+	var white := _gc_mat("fixture",Color("f7f5f0"),0.05,0.4)
+	var chrome := _fc_chrome()
+	var dark := _gc_mat("dark",Color("1b232b"),0.3,0.4)
+	var accent := _gc_mat("acc_%s" % col.to_html(false),col.darkened(0.1),0.1,0.45)
+	var solid := func(pos: Vector3, size: Vector3) -> void:
+		var sz := size if absf(sin(yaw)) < 0.5 else Vector3(size.z,size.y,size.x)
+		_collider(gc_root,pos,sz)
+	# Counter at the back with someone serving.
+	_gb("box",accent,at.call(0.0,0.5,16.6),Vector3(4.0,1.0,0.7),yaw)
+	_gb("box",wood,at.call(0.0,1.04,16.6),Vector3(4.2,0.08,0.8),yaw)
+	solid.call(at.call(0.0,0.5,16.6),Vector3(4.0,1.0,0.7))
+	var clerk := _cm_person(gc_root,at.call(0.8,0.12,15.7),yaw+PI,2300+si*5)
+	if not clerk.is_empty():
+		clerk["walk"] = true
+		_pose_person(clerk,0.0,0.0)
+	_gb("box",dark,at.call(-1.2,1.25,16.6),Vector3(0.5,0.35,0.06),yaw)
+	match kind:
+		"fashion":
+			# Two clothes rails with hanging clothes, a table of folded tops, a stand with an outfit.
+			for rz: float in [18.2,20.6]:
+				for sd: float in [-1.0,1.0]:
+					_gb("cyl",chrome,at.call(sd*3.0,0.8,rz),Vector3(0.06,1.6,0.06))
+					_gb("box",chrome,at.call(sd*3.0,1.6,rz),Vector3(0.04,0.04,0.04),yaw)
+					for c in 6:
+						var hx := sd*3.0-sd*0.3-sd*float(c)*0.28
+						_gb("box",_goods_mat(c+int(rz)+si),at.call(hx,1.12,rz),Vector3(0.06,0.9,0.55),yaw)
+					_gb("box",chrome,at.call(sd*2.2,1.6,rz),Vector3(1.6,0.03,0.03),yaw)
+					solid.call(at.call(sd*2.2,0.8,rz),Vector3(1.8,1.6,0.6))
+			_gb("box",white,at.call(0.0,0.4,19.4),Vector3(1.8,0.8,1.0),yaw)
+			solid.call(at.call(0.0,0.4,19.4),Vector3(1.8,0.8,1.0))
+			for c in 6:
+				_gb("box",_goods_mat(c+si),at.call(-0.6+float(c%3)*0.6,0.84+float(c/3)*0.08,19.2+float(c/3)*0.3),Vector3(0.45,0.07,0.35),yaw)
+			for sd: float in [-1.0,1.0]:
+				# A dress form showing an outfit.
+				var mp: Vector3 = at.call(sd*4.0,0.12,16.2)
+				_gb("cyl",chrome,mp+Vector3(0,0.5,0),Vector3(0.05,1.0,0.05))
+				_gb("box",_goods_mat(si+int(sd)+4),mp+Vector3(0,1.35,0),Vector3(0.42,0.7,0.26),yaw)
+				_gb("sph",white,mp+Vector3(0,1.85,0),Vector3(0.22,0.26,0.22))
+				for h: float in [1.6,2.4,3.2]:
+					_gb("box",wood,at.call(sd*3.8,h,15.35),Vector3(1.6,0.05,0.4),yaw)
+					for c in 4:
+						_gb("box",_goods_mat(c+int(h)+si),at.call(sd*3.8-0.6+float(c)*0.4,h+0.1,15.35),Vector3(0.32,0.14,0.3),yaw)
+		"sushi":
+			# A long bar with stools, a glowing conveyor and plates; red lanterns overhead.
+			_gb("box",wood,at.call(0.0,0.55,19.4),Vector3(7.6,1.1,0.9),yaw)
+			solid.call(at.call(0.0,0.55,19.4),Vector3(7.6,1.1,0.9))
+			_gb("box",_neon_mat(col),at.call(0.0,1.12,19.4),Vector3(7.4,0.04,0.3),yaw)
+			for c in 10:
+				var px := -3.4+float(c)*0.75
+				_gb("cyl",white,at.call(px,1.16,19.4),Vector3(0.36,0.03,0.36))
+				_gb("box",_goods_mat([0,7,3,0,5][c%5]),at.call(px,1.21,19.4),Vector3(0.2,0.07,0.1),yaw)
+			for c in 6:
+				var sp: Vector3 = at.call(-3.0+float(c)*1.2,0.0,20.4)
+				_gb("cyl",chrome,sp+Vector3(0,0.35,0),Vector3(0.08,0.7,0.08))
+				_gb("cyl",dark,sp+Vector3(0,0.72,0),Vector3(0.42,0.06,0.42))
+			for c in 4:
+				_gb("sph",_fc_glow(Color("ff5f4a")),at.call(-3.0+float(c)*2.0,3.6,19.0),Vector3(0.45,0.55,0.45))
+		"flowers":
+			for row in 3:
+				var rz := 17.8+float(row)*1.6
+				_gb("box",wood,at.call(0.0,0.3+float(2-row)*0.25,rz),Vector3(7.0,0.12,0.9),yaw)
+				solid.call(at.call(0.0,0.35,rz),Vector3(7.0,0.7,0.9))
+				for c in 9:
+					var fp: Vector3 = at.call(-3.2+float(c)*0.8,0.36+float(2-row)*0.25,rz)
+					_gb("cyl",_gc_mat("bucket",Color("8a9aa6"),0.4,0.4),fp+Vector3(0,0.15,0),Vector3(0.4,0.3,0.4))
+					_gb("sph",_gc_mat("leaf",Color("4f8a3e"),0.0,0.8),fp+Vector3(0,0.4,0),Vector3(0.42,0.22,0.42))
+					for j in 4:
+						var a := float(j)*1.57+float(c)
+						_gb("sph",_goods_mat(c+row*2+j%2),fp+Vector3(cos(a)*0.12,0.52,sin(a)*0.12),Vector3(0.17,0.17,0.17))
+		"sport":
+			# A shoe wall, a bike on a stand and racks of jerseys.
+			for h in 5:
+				for c in 12:
+					_gb("box",_goods_mat(c+h),at.call(-4.4+float(c)*0.8,0.8+float(h)*0.6,15.4),Vector3(0.5,0.2,0.28),yaw)
+				_gb("box",white,at.call(0.0,0.68+float(h)*0.6,15.4),Vector3(9.6,0.04,0.36),yaw)
+			for sd: float in [-1.0,1.0]:
+				_gb("box",white,at.call(sd*2.8,0.45,20.0),Vector3(2.2,0.9,0.9),yaw)
+				solid.call(at.call(sd*2.8,0.45,20.0),Vector3(2.2,0.9,0.9))
+				for c in 4:
+					_gb("box",_goods_mat(c*2+si),at.call(sd*2.8-0.75+float(c)*0.5,0.98,20.0),Vector3(0.36,0.16,0.26),yaw)
+			_gb("cyl",dark,at.call(0.0,0.55,20.2),Vector3(0.9,0.06,0.9))
+			_gb("box",accent,at.call(0.0,0.9,20.2),Vector3(0.08,0.12,1.3),yaw)
+		"tech":
+			# White tables of glowing tablets and phones, a big screen wall.
+			for sd: float in [-1.0,1.0]:
+				for rz: float in [18.4,20.8]:
+					_gb("box",white,at.call(sd*2.5,0.45,rz),Vector3(2.6,0.9,1.0),yaw)
+					solid.call(at.call(sd*2.5,0.45,rz),Vector3(2.6,0.9,1.0))
+					for c in 4:
+						_gb("box",dark,at.call(sd*2.5-0.9+float(c)*0.6,0.93,rz),Vector3(0.36,0.03,0.5),yaw)
+						_gb("box",_fc_glow(_goods_color(c+si+int(rz))),at.call(sd*2.5-0.9+float(c)*0.6,0.95,rz),Vector3(0.3,0.01,0.42),yaw)
+			_gb("box",dark,at.call(-3.0,2.6,15.2),Vector3(3.2,1.8,0.08),yaw)
+			_gb("box",_fc_glow(col.lightened(0.3)),at.call(-3.0,2.6,15.27),Vector3(3.0,1.6,0.02),yaw)
+			_gb("box",dark,at.call(3.0,2.6,15.2),Vector3(3.2,1.8,0.08),yaw)
+			_gb("box",_fc_glow(Color("8fe3ff")),at.call(3.0,2.6,15.27),Vector3(3.0,1.6,0.02),yaw)
+		"optics":
+			# Glass cases with sunglasses and jewellery, mirrors on the wall.
+			for sd: float in [-1.0,1.0]:
+				for rz: float in [18.6,21.0]:
+					_gb("box",white,at.call(sd*2.6,0.45,rz),Vector3(2.4,0.9,0.8),yaw)
+					_gb("box",_bio_glass_mat(Color("e9f6ff"),0.3),at.call(sd*2.6,1.1,rz),Vector3(2.4,0.4,0.8),yaw)
+					solid.call(at.call(sd*2.6,0.65,rz),Vector3(2.4,1.3,0.8))
+					for c in 5:
+						_gb("box",_goods_mat([9,9,8,4,9][c]),at.call(sd*2.6-0.9+float(c)*0.45,0.95,rz),Vector3(0.3,0.05,0.1),yaw)
+				_gb("box",_gc_mat("mirror",Color("cfe6f2"),0.9,0.05),at.call(sd*3.6,2.0,15.2),Vector3(1.4,2.4,0.04),yaw)
+		"bakery":
+			# A glass counter of cakes and pastries, shelves of loaves, a cafe table or two.
+			_gb("box",white,at.call(0.0,0.5,18.6),Vector3(6.0,1.0,0.9),yaw)
+			_gb("box",_bio_glass_mat(Color("e9f6ff"),0.3),at.call(0.0,1.25,18.6),Vector3(6.0,0.5,0.9),yaw)
+			solid.call(at.call(0.0,0.7,18.6),Vector3(6.0,1.4,0.9))
+			for c in 10:
+				var cp: Vector3 = at.call(-2.6+float(c)*0.58,1.06,18.6)
+				if c % 3 == 0:
+					_gb("cyl",_goods_mat([5,7,3][c%3]),cp+Vector3(0,0.1,0),Vector3(0.4,0.2,0.4))
+					_gb("sph",_gc_mat("berry",Color("c22a3a"),0.0,0.5),cp+Vector3(0,0.24,0),Vector3(0.08,0.08,0.08))
+				else:
+					_gb("sph",_gc_mat("bread",Color("c98a46"),0.0,0.7),cp+Vector3(0,0.07,0),Vector3(0.36,0.14,0.22))
+			for h: float in [1.6,2.3,3.0]:
+				_gb("box",wood,at.call(0.0,h,15.35),Vector3(8.0,0.05,0.42),yaw)
+				for c in 10:
+					_gb("sph",_gc_mat("bread",Color("c98a46"),0.0,0.7),at.call(-3.6+float(c)*0.8,h+0.12,15.35),Vector3(0.6,0.2,0.26))
+			for sd: float in [-1.0,1.0]:
+				_gb("cyl",white,at.call(sd*3.0,0.75,21.0),Vector3(0.9,0.05,0.9))
+				_gb("cyl",chrome,at.call(sd*3.0,0.37,21.0),Vector3(0.08,0.74,0.08))
+		"books":
+			# Book walls on three sides and tables of books.
+			for h in 5:
+				for c in 24:
+					var bw := 0.12+0.06*float((c*7+h*3)%3)
+					_gb("box",_goods_mat(c*3+h),at.call(-4.6+float(c)*0.4,0.62+float(h)*0.62,15.32),Vector3(bw,0.42+0.08*float(c%3),0.3),yaw)
+				_gb("box",wood,at.call(0.0,0.4+float(h)*0.62,15.32),Vector3(9.8,0.05,0.36),yaw)
+			for sd: float in [-1.0,1.0]:
+				_gb("box",wood,at.call(sd*2.4,0.42,19.6),Vector3(2.4,0.84,1.4),yaw)
+				solid.call(at.call(sd*2.4,0.42,19.6),Vector3(2.4,0.84,1.4))
+				for c in 8:
+					_gb("box",_goods_mat(c+si),at.call(sd*2.4-0.9+float(c%4)*0.6,0.9+float(c/4)*0.06,19.3+float(c/4)*0.5),Vector3(0.36,0.06,0.5),yaw)
+		"gelato":
+			_gb("box",white,at.call(0.0,0.5,18.8),Vector3(6.0,1.0,0.9),yaw)
+			_gb("box",_bio_glass_mat(Color("e9f6ff"),0.3),at.call(0.0,1.25,18.8),Vector3(6.0,0.5,0.9),yaw)
+			solid.call(at.call(0.0,0.7,18.8),Vector3(6.0,1.4,0.9))
+			for c in 12:
+				var tp: Vector3 = at.call(-2.7+float(c)*0.49,1.06,18.8)
+				_gb("box",_goods_mat(c),tp,Vector3(0.42,0.1,0.6),yaw)
+				_gb("sph",_goods_mat(c),tp+Vector3(0,0.07,0),Vector3(0.36,0.14,0.46))
+			for sd: float in [-1.0,1.0]:
+				_gb("cyl",white,at.call(sd*3.0,0.75,21.0),Vector3(0.9,0.05,0.9))
+				_gb("cyl",chrome,at.call(sd*3.0,0.37,21.0),Vector3(0.08,0.74,0.08))
+		_:
+			# Cafe: tables with chairs and a coffee machine on the counter.
+			_gb("box",chrome,at.call(-1.0,1.45,16.6),Vector3(0.9,0.75,0.5),yaw)
+			for sd: float in [-1.0,1.0]:
+				for rz: float in [18.6,21.0]:
+					var tp: Vector3 = at.call(sd*2.6,0.0,rz)
+					_gb("cyl",white,tp+Vector3(0,0.75,0),Vector3(1.0,0.05,1.0))
+					_gb("cyl",chrome,tp+Vector3(0,0.37,0),Vector3(0.08,0.74,0.08))
+					_gb("cyl",_gc_mat("cup",Color("f4f1ea"),0.0,0.5),tp+Vector3(0.2,0.84,0.1),Vector3(0.12,0.14,0.12))
+					for cs: float in [-1.0,1.0]:
+						_gb("box",wood,tp+b*Vector3(cs*0.85,0.45,0),Vector3(0.45,0.06,0.45),yaw)
+					solid.call(tp+Vector3(0,0.4,0),Vector3(1.0,0.8,1.0))

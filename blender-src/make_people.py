@@ -5,7 +5,11 @@
 #   Body (hips pivot), Head (neck pivot),
 #   ArmL/ArmR (shoulder pivots) each with a ForeArmL/ForeArmR child (elbow pivot),
 #   LegL/LegR (hip pivots) each with a ShinL/ShinR child (knee pivot).
-# Recoloured per character: Shirt, Pants, Skin, Hair, Shoes, Eye. Fixed: EyeWhite, Mouth, Sole, Belt.
+# Recoloured per character: Shirt, Pants, Skin, Hair, Brow, Shoes, Eye. Fixed: EyeWhite, Mouth, Sole, Belt.
+# v0.40: the bodies are exported without hair. Hair, facial hair, clothes and accessories are separate
+# pieces written by blender-src/make_wear.py (hair_N, beard_N, wear_*, acc_*): each piece file holds
+# objects named after the node they ride on (Head, Body, ArmL, ForeArmL, LegL, ShinL...), with the same
+# pivots as the body, so the game hangs them on those nodes and they move with the animation.
 # Feet at y=0, top of head ~1.65 m, hips at 0.86 m, facing -Z in Godot (+Y in Blender).
 import bpy, bmesh, math, os, random
 from pathlib import Path
@@ -92,8 +96,9 @@ def cut_below(o, fn):
     return o
 
 def group(name, parts, pivot):
-    for o in bpy.context.view_layer.objects:
-        o.select_set(False)
+    for o in bpy.context.scene.objects:
+        if o is not None and o not in parts:
+            o.select_set(False)
     for o in parts:
         o.select_set(True)
     bpy.context.view_layer.objects.active = parts[0]
@@ -114,6 +119,7 @@ SHIRT = mat("Shirt", "f2b24a")
 PANTS = mat("Pants", "263d54")
 SKIN = mat("Skin", "c68a60", 0.6)
 HAIR = mat("Hair", "3b2a20", 0.8)
+BROW = mat("Brow", "3b2a20", 0.8)
 SHOES = mat("Shoes", "2b2b2b", 0.5)
 EYE = mat("Eye", "1c1c22", 0.2)
 WHITE = mat("EyeWhite", "f4f1ec", 0.3)
@@ -155,14 +161,20 @@ def head_parts(style):
         p.append(ball(0.003, (s * 0.034, 0.111, HEAD + 0.024), SHINE, (1, 0.5, 1), 6, 4))
         p.append(ball(0.02, (s * 0.038, 0.09, HEAD + 0.034), SKIN, (1.05, 0.5, 0.3), 8, 4))
         # Eyebrows: an inner and outer piece for a gentle arch.
-        p.append(rbox((0.024, 0.012, 0.01), (s * 0.028, 0.1, HEAD + 0.052), HAIR, 0.004, (0, s * -0.05, 0)))
-        p.append(rbox((0.024, 0.012, 0.009), (s * 0.05, 0.096, HEAD + 0.05), HAIR, 0.004, (0, s * 0.3, 0)))
+        p.append(rbox((0.024, 0.012, 0.01), (s * 0.028, 0.1, HEAD + 0.052), BROW, 0.004, (0, s * -0.05, 0)))
+        p.append(rbox((0.024, 0.012, 0.009), (s * 0.05, 0.096, HEAD + 0.05), BROW, 0.004, (0, s * 0.3, 0)))
     # Lips.
     p.append(ball(0.017, (0, 0.093, HEAD - 0.05), MOUTH, (1.3, 0.35, 0.28), 10, 6))
     p.append(ball(0.015, (0, 0.09, HEAD - 0.058), MOUTH, (1.15, 0.38, 0.32), 10, 6))
     # Neck.
     p.append(tube(0.046, 0.042, NECK - 0.04, HEAD - 0.06, 0, -0.01, SKIN, 10, 1.0, False))
-    # Hair.
+    if style < 0:
+        return p
+    p += hair_parts(style)
+    return p
+
+def hair_parts(style):
+    p = []
     def cap(r, back_cut, front_cut, sc=(0.95, 1.04, 1.04)):
         h = ball(r, (0, -0.008, HEAD + 0.02), HAIR, sc, 16, 10)
         def low(co):
@@ -250,7 +262,7 @@ def build(style):
             bar(0.062, 0.32, (0, -0.005, SH - 0.04), SHIRT, "X", 12),
             ring(0.054, 0.017, NECK - 0.03, SHIRT, 0.9)]
     out.append(group("Body", body, (0, 0, HIP)))
-    out.append(group("Head", head_parts(style), (0, 0, NECK)))
+    out.append(group("Head", head_parts(-1 if BALD else style), (0, 0, NECK)))
     # Arms: rounded shoulder, sleeve with a cuff, upper arm (Arm node); forearm and hand (ForeArm child).
     elbow = SH - 0.29
     for side, s in (("L", -1), ("R", 1)):
@@ -296,10 +308,12 @@ def render(style):
     bpy.data.objects.remove(cam, do_unlink=True)
     bpy.data.objects.remove(sun, do_unlink=True)
 
-try:
+BALD = True   # v0.40: hair comes from hair_N.glb
+if __name__ == "__main__" and not os.environ.get("HARBOR_PEOPLE_LIB"):
+  try:
     for style in range(4):
         build(style)
     print("HARBOR_PEOPLE DONE")
-except Exception:
+  except Exception:
     import traceback
     print("HARBOR_PEOPLE ERROR\n" + traceback.format_exc())

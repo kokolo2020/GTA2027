@@ -314,6 +314,7 @@ func _ready() -> void:
 	_build_food_court()
 	_build_commons()
 	_build_biosphere()
+	_build_galleria()
 	_build_market()
 	_build_display()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
@@ -328,7 +329,7 @@ func _ready() -> void:
 	_refresh_time_button()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check"]:
+	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--style-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -340,7 +341,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.39: new Biosphere layouts and trees. Day pass $50 at the TICKETS desk in the hub!")
+	_show_toast("Harbor City 0.40: new looks for everyone, and Harbor Galleria is open! Menu > Wardrobe, or Travel > Harbor Galleria.")
 	booted = true
 	_online_autostart()
 	if not dev_mode and not crate_done:
@@ -351,6 +352,8 @@ func _ready() -> void:
 		await _shots()
 	elif "--people-shots" in OS.get_cmdline_user_args():
 		await _people_shots()
+	elif "--style-shots" in OS.get_cmdline_user_args():
+		await _style_shots()
 	elif "--skyline-shots" in OS.get_cmdline_user_args():
 		await _skyline_shots()
 	elif "--view-shots" in OS.get_cmdline_user_args():
@@ -1952,7 +1955,7 @@ func _online_pos_frame() -> Dictionary:
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
 		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
-		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"qc":1 if my_bubble_crew else 0,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on]}
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"qc":1 if my_bubble_crew else 0,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on],"lk":_look_pack(look)}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -2074,6 +2077,12 @@ func _online_peer_update(p: Dictionary) -> void:
 	peer["seat"] = seat if seat >= 0 and seat < hub_seats.size() else -1
 	peer["id"] = id
 	_peer_look(peer,p.get("av",null))
+	if p.has("lk"):
+		var sk := str(p["lk"])+String(peer.get("look",""))
+		if String(peer.get("style_key","")) != sk:
+			peer["style_key"] = sk
+			((peer.get("person",{}) as Dictionary)).erase("dressed")
+			_peer_style(peer,p["lk"])
 	_social_peer_extras(peer,p)
 	var rc := int(p.get("rc",0)) == 1
 	if rc != bool(peer.get("rc",false)):
@@ -2839,9 +2848,13 @@ func _hat_part(mesh: Mesh, pos: Vector3, scale_v: Vector3, color: Color) -> Mesh
 	return m
 
 func _apply_avatar() -> void:
-	shirt_mat.albedo_color = SHIRTS[av_shirt]["color"]
-	for m in pants_mats:
-		(m as StandardMaterial3D).albedo_color = PANTS[av_pants]["color"]
+	if player_person.is_empty():
+		shirt_mat.albedo_color = SHIRTS[av_shirt]["color"]
+		for m in pants_mats:
+			(m as StandardMaterial3D).albedo_color = PANTS[av_pants]["color"]
+	else:
+		player_person.erase("dressed")
+		_apply_look()
 	_set_hat(av_hat)
 	if player_person.has("body_mat"):
 		_ksync(player_person)
@@ -2982,6 +2995,8 @@ func _shop_action() -> void:
 			av_shirt = int(shop_sel[0])
 			av_pants = int(shop_sel[1])
 			av_hat = int(shop_sel[2])
+			look["tc"] = av_shirt
+			look["pc"] = 6+av_pants
 			_show_toast("Looking sharp!")
 		2:
 			var sel := int(shop_sel[0])
@@ -4127,7 +4142,20 @@ func _make_person(parent: Node3D, variant: int, colors: Dictionary, tint := fals
 	var limbs := {}
 	for part in ["ArmL","ArmR","LegL","LegR","Head","ShinL","ShinR","ForeArmL","ForeArmR"]:
 		limbs[part] = model.find_child(part,true,false)
-	return {"root":model,"mats":mats,"limbs":limbs}
+	var pp := {"root":model,"mats":mats,"limbs":limbs}
+	# v0.40: hair, clothes and accessories are pieces hung on the body. Players get their own look
+	# later; everyone else in the city gets a random everyday outfit from their seed.
+	_person_index(pp,model)
+	var L := _npc_look(npc_seq,colors,variant)
+	if tint:
+		for k in ["t","p","sh","a","f","b"]:
+			L[k] = 0
+		L["h"] = variant
+	else:
+		pp["npc"] = true
+		npc_seq += 1
+	_dress(pp,L)
+	return pp
 
 const KPERSON_PATH := "res://models/kperson.glb"
 const USE_KPERSON := false
@@ -4629,6 +4657,7 @@ func _build_hud() -> void:
 	_build_social(root)
 	_build_lb(root)
 	_build_market_panel(root)
+	_build_style_panel(root)
 	_build_puzzle_panel(root)
 	_build_streamer(root)
 	_build_ach(root)
@@ -4688,7 +4717,7 @@ func _build_hud() -> void:
 	var row2 := HBoxContainer.new()
 	row2.add_theme_constant_override("separation",10)
 	items.add_child(row2)
-	for e in [[row1,"Map",_open_map],[row1,"Quests",_open_quests],[row1,"Travel",_open_travel],[row1,"Call car",_menu_call_car],[row2,"Chat",_toggle_chat]]:
+	for e in [[row1,"Map",_open_map],[row1,"Quests",_open_quests],[row1,"Travel",_open_travel],[row1,"Call car",_menu_call_car],[row2,"Chat",_toggle_chat],[row2,"Wardrobe",_open_wardrobe]]:
 		var b := _button(String(e[1]),_menu_go.bind(e[2]))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		(e[0] as HBoxContainer).add_child(b)
@@ -7673,6 +7702,9 @@ func _interact() -> void:
 	if _ticket_near():
 		_bio_buy_pass()
 		return
+	if _store_near() >= 0:
+		_open_store(_store_near())
+		return
 	var mk := _market_near()
 	if mk >= 0:
 		_open_market(int(MARKET[mk]["kind"]))
@@ -7854,6 +7886,8 @@ func _refresh_hud() -> void:
 		action_button.text = "OPEN " + String(MARKET[_market_near()]["name"])
 	elif _puzzle_near():
 		action_button.text = "DAILY PUZZLE ✓" if pz_day == _pz_today() else "DAILY PUZZLE"
+	elif _store_near() >= 0:
+		action_button.text = "SHOP: " + String(STORES[_store_near()]["name"])
 	elif _ticket_near():
 		action_button.text = "DAY PASS ✓" if _bio_pass_ok() else "BUY DAY PASS  $%d" % BIO_PASS_PRICE
 	elif _qt() and trial_active < 0 and distance < (6 if driving else 5):
@@ -7919,10 +7953,15 @@ func _layout_panels() -> void:
 	for xp_panel in extra_panels:
 		var xc := xp_panel as Control
 		xc.position = Vector2((view.x-xc.size.x)/2.0,maxf(8.0,(view.y-xc.size.y)/2.0))
+		if xc == style_panel:
+			# v0.40: the store panel sits on the right so you can see yourself on the left.
+			xc.position = Vector2(maxf(8.0,view.x-xc.size.x-16.0),maxf(8.0,(view.y-xc.size.y)/2.0))
 
 func _toggle_menu() -> void:
 	if crate_open:
 		return
+	if style_panel != null and style_panel.visible:
+		_style_finish()
 	if shop_kind >= 0:
 		shop_kind = -1
 		_apply_car()
@@ -8027,6 +8066,9 @@ func _save_progress() -> void:
 	file.set_value("progress","shop_visit",shop_visit_mask)
 	file.set_value("progress","car_paint",car_paint)
 	file.set_value("progress","av_look",[av_shirt,av_pants,av_hat])
+	file.set_value("progress","look_v40",_look_pack(look))
+	file.set_value("progress","sky_run",[sky_day,sky_best])
+	file.set_value("progress","look_own_v40",look_own)
 	file.set_value("progress","av_own",av_own)
 	file.set_value("progress","crate_done",crate_done)
 	file.set_value("progress","bonus_xp",bonus_xp)
@@ -8177,6 +8219,28 @@ func _load_progress() -> void:
 				av_pants = 0
 			if not (int(av_own[2]) & (1 << av_hat)):
 				av_hat = 0
+		# v0.40: your full look; older saves start from their Style Shop colours.
+		var lv40 = file.get_value("progress","look_v40",[])
+		if lv40 is Array and (lv40 as Array).size() >= LOOK_KEYS.size():
+			look = _look_clean(lv40)
+		else:
+			look["tc"] = av_shirt
+			look["pc"] = 6+av_pants
+		var sr = file.get_value("progress","sky_run",[])
+		if sr is Array and (sr as Array).size() >= 2:
+			sky_day = String(sr[0])
+			sky_best = maxf(0.0,float(sr[1]))
+		var lo40 = file.get_value("progress","look_own_v40",{})
+		if lo40 is Dictionary:
+			for k in look_own:
+				look_own[k] = int((lo40 as Dictionary).get(k,look_own[k]))
+		for cat in ["t","p","sh","h","f"]:
+			look_own[cat] = int(look_own[cat]) | 1
+		look_own["h"] = int(look_own["h"]) | 15
+		for cat in ["t","p","sh","h","f","r"]:
+			if not _owns(cat,int(look[cat])):
+				look[cat] = -1 if cat == "r" else 0
+		look["a"] = int(look["a"]) & int(look_own["a"])
 		var saved_times = file.get_value("progress","best_times",[])
 		best_times = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 		if saved_times is Array:
@@ -8371,6 +8435,10 @@ func _radio_refresh() -> void:
 
 func _process(delta: float) -> void:
 	_kpeople_tick(delta)
+	_on_foot_collision_guard()
+	_relic_tick()
+	_style_face_camera()
+	_ga_fun_tick(get_process_delta_time())
 	_daynight_tick(delta)
 	_level_fx_tick(delta)
 	_hud_v23_tick()
@@ -11387,7 +11455,7 @@ const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["BIOSPHERE",Vector2(-500,-600)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["BIOSPHERE",Vector2(-500,-600)],["GALLERIA",Vector2(-330,-600)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -12347,6 +12415,7 @@ const CHECKPOINTS := [
 	{"name":"Westside","pos":Vector3(-270,0,80)},
 	{"name":"Harbor Airport","pos":Vector3(52,0,-470)},
 	{"name":"The Biosphere","pos":Vector3(-500,0,-486)},
+	{"name":"Harbor Galleria","pos":Vector3(-330,0,-514)},
 ]
 var checkpoint_id := -1
 var checkpoint_nodes: Array = []
@@ -16230,6 +16299,8 @@ func _call_block_reason() -> String:
 		return "You can't call your car right now."
 	if Vector2(player.position.x-HUB_C.x,player.position.z-HUB_C.z).length() < HUB_R+2.0:
 		return "Cars can't come into Harbor Dome. Walk outside first."
+	if _bio_inside(player.position):
+		return "Cars can't come into the Biosphere. Walk back out to the entrance path first."
 	if _in_raceway(player.position) and not _in_rw_lot(player.position):
 		return "Walk to the raceway car park to call your car."
 	if clock < call_ready_at:
@@ -16425,7 +16496,7 @@ const RUN_SPEED := 9.0
 const WALK_SPEED := 5.0
 # Which area must be open before you can travel to each checkpoint (see _area_open):
 # 0 city, 1 ridge (east), 2 bay (west), 3 north, 4 marina, 5 skyline downtown.
-const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1,0,0,0,0]   # v0.37.1: The Biosphere, always open
+const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1,0,0,0,0,0]   # v0.37.1: The Biosphere, always open
 const TRAVEL_COOL := 20.0
 var run_on := true
 var run_button: Button
@@ -16612,10 +16683,15 @@ func _smoke_travel() -> void:
 		assert(i == checkpoint_id or _travel_open(i) == _area_open(int(TRAVEL_AREA[i])),"Travel follows district locks")
 	assert(STOP_CLOCK.x > 4.5 and absf(STOP_WEST.x+32.0) > 4.5,"Job stops are beside the road, not on it")
 	travel_ready_at = 0.0
-	var bi := CHECKPOINTS.size()-1
+	var bi := CHECKPOINTS.size()-2
 	assert(String(CHECKPOINTS[bi]["name"]) == "The Biosphere" and _travel_open(bi),"v0.37.1: fast travel to the Biosphere is open")
 	_travel_to(bi)
 	assert(Vector2(player.position.x-BIO_C.x,player.position.z+486.0).length() < 0.5 and not _blocked_at(player.position,0.3),"v0.37.1: fast travel lands on the Biosphere walk")
+	travel_ready_at = 0.0
+	var gi := CHECKPOINTS.size()-1
+	assert(String(CHECKPOINTS[gi]["name"]) == "Harbor Galleria" and _travel_open(gi),"v0.40: fast travel to the Galleria is open")
+	_travel_to(gi)
+	assert(not _blocked_at(player.position,0.3) and not _on_road(player.position),"v0.40: fast travel lands on the Galleria walk")
 	_car_back()
 	travel_ready_at = 0.0
 	driving = was_driving
@@ -19243,10 +19319,30 @@ func _bio_gridshell(c: Vector3, theta: float, apo: float, D: Dictionary, m: int,
 			if Vector2(mid.x-(p as Vector3).x,mid.z-(p as Vector3).z).length() < 3.3+colw*0.5:
 				o = true
 		door.append(o)
+		var a := _bio_hexpt(c,theta,apo,float(k)/float(m),0.0)
+		var b := _bio_hexpt(c,theta,apo,float(k+1)/float(m),0.0)
+		var yaw := atan2(-(b-a).z,(b-a).x)
 		if not o:
-			var a := _bio_hexpt(c,theta,apo,float(k)/float(m),0.0)
-			var b := _bio_hexpt(c,theta,apo,float(k+1)/float(m),0.0)
-			walls.append([(a+b)/2.0+Vector3(0,wh/2.0,0),Vector3(colw+0.3,wh,0.5),atan2(-(b-a).z,(b-a).x)])
+			walls.append([(a+b)/2.0+Vector3(0,wh/2.0,0),Vector3(colw+0.3,wh,0.5),yaw])
+		else:
+			# v0.39.1: a doorway panel stays solid beyond 2.85 m either side of the opening, so the
+			# tunnel fits it exactly and nobody can slip in beside the tunnel.
+			var ab := Vector2(b.x-a.x,b.z-a.z)
+			var lo := 0.0
+			var hi := ab.length()
+			var cut0 := hi
+			var cut1 := 0.0
+			for p in open_pts:
+				var rel := Vector2((p as Vector3).x-a.x,(p as Vector3).z-a.z)
+				var t := rel.dot(ab.normalized())
+				if absf(rel.cross(ab.normalized())) < 1.0:
+					cut0 = minf(cut0,t-2.85)
+					cut1 = maxf(cut1,t+2.85)
+			for piece in [[lo,clampf(cut0,lo,hi)],[clampf(cut1,lo,hi),hi]]:
+				var L := float(piece[1])-float(piece[0])
+				if L > 0.05:
+					var pm := a.lerp(b,(float(piece[0])+float(piece[1]))/2.0/hi)
+					walls.append([pm+Vector3(0,wh/2.0,0),Vector3(L+0.15,wh,0.5),yaw])
 	var grid: Array = []
 	for j in levels.size():
 		var row: Array = []
@@ -19613,6 +19709,40 @@ func _bio_ticket_hall(hub_open: Array) -> void:
 		bio_gates.append({"pos":g,"dir":dirv,"dist":Vector2(g.x-BIO_C.x,g.z-BIO_C.z).length(),"body":body,"panels":panels,"bar":bar,"label":lab,"state":-1})
 	_bio_gates_update()
 
+func _on_foot_collision_guard() -> void:
+	# v0.39.1: whenever you are walking about yourself (not driving, riding or seated) your body
+	# must be solid. Some ways out of a car (e.g. accepting an invite) used to leave it switched
+	# off, so you could walk through walls and the Biosphere gates.
+	if player == null or driving or bus_riding or race_car or sky_riding or seat_id >= 0 or not player.visible:
+		return
+	var sh := player.get_child(0) as CollisionShape3D
+	if sh != null and sh.disabled:
+		sh.disabled = false
+
+func _bio_inside(p: Vector3) -> bool:
+	# In the hub, a dome or a tunnel between them.
+	if bio_root == null:
+		return false
+	if Vector2(p.x-BIO_C.x,p.z-BIO_C.z).length() < BIO_HUB_A/cos(PI/6.0)+1.0:
+		return true
+	for i in BIO_DOMES.size():
+		var c := _bio_dome_c(i)
+		if Vector2(p.x-c.x,p.z-c.z).length() < BIO_A/cos(PI/6.0)+1.0 and _bio_apo(i,p) < BIO_A+1.0:
+			return true
+	var links: Array = []
+	for i in BIO_DOMES.size():
+		links.append([BIO_C,_bio_dome_c(i)])
+	for l in BIO_LINKS:
+		links.append([_bio_dome_c(int(l[0])),_bio_dome_c(int(l[1]))])
+	for l in links:
+		var a: Vector3 = l[0]
+		var b: Vector3 = l[1]
+		var ab := Vector2(b.x-a.x,b.z-a.z)
+		var u := clampf(Vector2(p.x-a.x,p.z-a.z).dot(ab)/ab.length_squared(),0.0,1.0)
+		if Vector2(p.x-a.x-ab.x*u,p.z-a.z-ab.y*u).length() < 3.6:
+			return true
+	return false
+
 func _bio_pass_ok() -> bool:
 	return bio_pass_day == _pz_today()
 
@@ -19645,8 +19775,11 @@ func _bio_gates_update() -> void:
 	var me: Node3D = car if driving else player
 	var ok := _bio_pass_ok()
 	for G in bio_gates:
-		var d := Vector2(me.position.x-BIO_C.x,me.position.z-BIO_C.z).length()
-		var shut := not ok and d < float(G["dist"])-1.2
+		# Which side of the gate's own plane you are on (you can never be inside a solid gate, so the
+		# hub side always keeps it shut, however close you walk up to it).
+		var along := (me.position-(G["pos"] as Vector3)).dot(G["dir"] as Vector3)
+		var near_g := (me.position-(G["pos"] as Vector3)).length() < 20.0
+		var shut := not ok and along < 0.0 and near_g
 		var state := (2 if ok else 0)+(1 if shut else 0)
 		if state == int(G["state"]):
 			continue
@@ -20866,8 +20999,39 @@ func _smoke_biosphere() -> void:
 		var gd: Vector3 = G["dir"]
 		assert((G["body"] as StaticBody3D).collision_layer == 1,"v0.39: gate shut without a pass")
 		assert(not (ray.call(gp-gd*1.2+Vector3(0,1,0),gp+gd*1.2+Vector3(0,1,0)) as Dictionary).is_empty(),"v0.39: the shut gate blocks the tunnel")
+	# No slipping in beside a tunnel: the dome and hub walls are solid right up to each tunnel.
+	for i in BIO_DOMES.size():
+		var c := _bio_dome_c(i)
+		for o in _bio_open_angles(i):
+			var dp := c+_bio_dir(float(o))*_bio_hex_r(_bio_theta(i),BIO_A,float(o))
+			var n := _bio_sec_n(i,_bio_sec_of(i,float(o)))
+			var nv := _bio_dir(n)
+			var tv := Vector3(-nv.z,0,nv.x)
+			for sd: float in [-1.0,1.0]:
+				for off: float in [3.3,4.5]:
+					var q := dp+tv*sd*off+Vector3(0,1,0)
+					assert(not (ray.call(q+nv*1.5,q-nv*1.5) as Dictionary).is_empty(),"v0.39.1: %s has no gap beside its doorway (%.1f m)" % [BIO_DOMES[i]["name"],off*sd])
+	# Walk into a shut gate for real: it stops you.
+	var pshape2: CollisionShape3D = player.get_child(0) as CollisionShape3D
+	var keep_dis2 := pshape2.disabled
+	pshape2.disabled = false
+	var g0: Dictionary = bio_gates[0]
+	player.position = (g0["pos"] as Vector3)-(g0["dir"] as Vector3)*3.0+Vector3(0,0.8,0)
+	player.velocity = Vector3.ZERO
+	for step in 120:
+		_bio_gates_update()
+		var v: Vector3 = (g0["dir"] as Vector3)*9.0
+		player.velocity = Vector3(v.x,player.velocity.y-0.4,v.z)
+		player.move_and_slide()
+	var past := (player.position-(g0["pos"] as Vector3)).dot(g0["dir"] as Vector3)
+	assert(past < 0.0,"v0.39.1: a shut gate stops you even on the hoverboard (%.2f m past)" % past)
+	pshape2.disabled = keep_dis2
 	player.position = BIO_TICKET+Vector3(0,0.8,0)
 	assert(_ticket_near(),"v0.39: the ticket desk is reachable")
+	assert(_call_block_reason().begins_with("Cars can't come into the Biosphere"),"v0.39.1: no calling the car in the hub")
+	for i in BIO_DOMES.size():
+		assert(_bio_inside(_bio_dome_c(i)+Vector3(5,0,3)),"v0.39.1: inside a dome counts as the Biosphere")
+	assert(not _bio_inside(Vector3(BIO_C.x,0,-480.0)),"v0.39.1: the entrance walk outside is not inside")
 	assert(not _blocked_at(BIO_TICKET+Vector3(0,1,0),0.3),"v0.39: room to stand at the ticket desk (%s)" % _blocker(BIO_TICKET+Vector3(0,1,0),0.3))
 	cash = 30
 	_bio_buy_pass()
@@ -20921,6 +21085,1516 @@ func _smoke_biosphere() -> void:
 		elif A.has("rmax"):
 			var r := Vector2(p.x-(A["c"] as Vector3).x,p.z-(A["c"] as Vector3).z).length()
 			assert(r >= float(A["rmin"])-0.6 and r <= float(A["rmax"])+0.6,"v0.39: %s stays in its habitat (r=%.1f)" % [S["name"],r])
+
+# ---------- v0.40: STYLE - hair, faces, builds, clothes, accessories and relics ----------
+# People are a hairless body (models/person_N.glb) plus pieces from models/wear/*.glb (made by
+# blender-src/make_wear.py). A piece file holds meshes named after the body node they ride on; the
+# game hangs each one on that node (Head, Body, ArmL, ForeArmL, LegL, ShinL...), so it moves with the
+# walk. Builds scale the body's nodes, so every outfit fits every build.
+const LK_SKINS := [Color("f6d5b8"),Color("f0c9a4"),Color("e2b48e"),Color("c68a60"),Color("ac7552"),Color("8d5a3b"),Color("6e4430"),Color("4e2f20")]
+const LK_HAIRC := [Color("2b1d14"),Color("1a1a1a"),Color("5a3a22"),Color("7a4a26"),Color("b57a3a"),Color("d9b26a"),Color("efe0b0"),Color("9a9a9a"),Color("c83a3a"),Color("4fb8ff"),Color("c254ff"),Color("ff7ab8")]
+const LK_EYES := [Color("1c1c22"),Color("4a3020"),Color("3a6a9a"),Color("3a7a4a"),Color("6a6a74"),Color("8a5a2a")]
+# Clothing colours (the first eleven are the old Style Shop shirt and trouser colours).
+const LK_COLORS := [Color("f2b24a"),Color("5aa7d6"),Color("e8685a"),Color("52c79a"),Color("7b5bd6"),Color("23262b"),
+	Color("263d54"),Color("b89a64"),Color("3b3f45"),Color("e9edef"),Color("b03a3a"),
+	Color("f27fb2"),Color("2fb5a8"),Color("ffd23f"),Color("8a5a36"),Color("ffffff"),Color("3e6fb0"),Color("6b8a3a")]
+const LK_BUILDS := ["Regular","Slim","Broad"]
+const LK_HAIRS := [["Short Tufts",0],["Long Layers",0],["Bun & Ponytail",0],["Curls",0],["Buzz Cut",300],["Afro",600],["Braids",800],["Mohawk",700],["Slick Side Part",400],["Bob",500]]
+const LK_BEARDS := [["Clean shave",0],["Stubble",150],["Moustache",250],["Full Beard",400],["Goatee",300]]
+# arms: short / bare / long. legs: "" / shins (bare below the knee) / bare. inner: the shirt under a jacket.
+const LK_TOPS := [
+	{"name":"Classic Tee","file":"","price":0,"arms":"short","col":0},
+	{"name":"Tank Top","file":"","price":200,"arms":"bare","col":15},
+	{"name":"Polo Shirt","file":"top_polo","price":400,"arms":"short","col":3},
+	{"name":"Harbor Jersey","file":"top_jersey","price":600,"arms":"short","col":1},
+	{"name":"Cosy Sweater","file":"top_sweater","price":800,"arms":"long","col":10},
+	{"name":"Hoodie","file":"top_hoodie","price":900,"arms":"long","col":8},
+	{"name":"Summer Dress","file":"top_dress","price":1200,"arms":"short","dress":true,"col":11},
+	{"name":"Denim Jacket","file":"top_denim","price":1500,"arms":"long","inner":Color("f4f1ec"),"col":16},
+	{"name":"Puffer Jacket","file":"top_puffer","price":2500,"arms":"long","col":13},
+	{"name":"Leather Jacket","file":"top_leather","price":3500,"arms":"long","inner":Color("2a2a2e"),"col":5},
+	{"name":"Sharp Suit","file":"top_suit","price":5000,"arms":"long","inner":Color("f4f1ec"),"col":6},
+]
+const LK_BOTTOMS := [
+	{"name":"Jeans","file":"","price":0,"col":6},
+	{"name":"Shorts","file":"bottom_shorts","price":300,"legs":"shins","col":7},
+	{"name":"Joggers","file":"bottom_joggers","price":500,"col":8},
+	{"name":"Pleated Skirt","file":"bottom_skirt","price":500,"legs":"bare","col":4},
+	{"name":"Cargo Pants","file":"bottom_cargo","price":600,"col":17},
+]
+const LK_SHOES := [
+	{"name":"Sneakers","file":"","price":0,"col":15},
+	{"name":"High-tops","file":"shoes_hightops","price":700,"col":2},
+	{"name":"Boots","file":"shoes_boots","price":900,"col":14},
+	{"name":"Loafers","file":"shoes_loafers","price":1200,"col":14},
+	{"name":"Glow Kicks","file":"shoes_glow","price":4000,"col":5},
+]
+const LK_ACCS := [
+	{"name":"Glasses","file":"acc_glasses","price":300},
+	{"name":"Sunglasses","file":"acc_sunglasses","price":500},
+	{"name":"Scarf","file":"acc_scarf","price":400},
+	{"name":"Backpack","file":"acc_backpack","price":800},
+	{"name":"Crossbody Bag","file":"acc_bag","price":700},
+	{"name":"Earrings","file":"acc_earrings","price":900},
+	{"name":"Wristwatch","file":"acc_watch","price":1500},
+	{"name":"Gold Chain","file":"acc_chain","price":6000},
+]
+# Relics: rare curios from the Relic & Curio shop. Wear one and it floats beside you.
+# [name, price, rarity 0 common .. 3 legendary, story, colour, shape]
+const RELICS := [
+	["Brass Compass",2000,0,"Its needle points to the nearest adventure.",Color("d8a84a"),"compass"],
+	["Sea Glass Orb",2500,0,"Polished by a thousand Harbor City tides.",Color("6fd3c4"),"orb"],
+	["Lucky Dice",3000,0,"Always rolls a six. Almost always.",Color("f4f1ec"),"dice"],
+	["Paper Lantern",3500,0,"Lit once, it never goes out.",Color("ff8a3c"),"lantern"],
+	["Spiral Shell",5000,1,"Hold it to your ear to hear the old harbor.",Color("f2c0a0"),"shell"],
+	["Phoenix Feather",8000,1,"Warm to the touch, even in winter.",Color("ff5a3c"),"feather"],
+	["Tidal Hourglass",9000,1,"The sand runs up when the tide comes in.",Color("4fb8ff"),"hourglass"],
+	["Jade Mask",12000,1,"Carved by a sculptor nobody remembers.",Color("3fae7a"),"mask"],
+	["Golden Harbor Key",20000,2,"Said to open the very first lighthouse.",Color("ffd23f"),"key"],
+	["Crystal Skull",25000,2,"Clear as ice, and strangely friendly.",Color("cfefff"),"skull"],
+	["Dragon Egg",35000,2,"Something inside it is humming.",Color("7a3ad8"),"egg"],
+	["Meteor Fragment",40000,2,"Fell on Summit Pass one starry night.",Color("8a8f9a"),"meteor"],
+	["Starlight Gem",60000,3,"Glows brighter the more friends you have online.",Color("ff7ab8"),"gem"],
+	["Ancient Crown",80000,3,"Worn by the first Mayor of Harbor City.",Color("ffcf4a"),"crown"],
+	["Sun Disc",100000,3,"A piece of the dawn, kept forever.",Color("ffb000"),"sun"],
+	["Moon Pearl",120000,3,"Found on Sunset Beach under a blue moon.",Color("e9e4ff"),"pearl"],
+]
+const RELIC_RARITY := [["Common",Color("cbd8de")],["Rare",Color("6fd3ff")],["Epic",Color("c88bff")],["Legendary",Color("ffcf4a")]]
+const RELIC_STOCK := 6          # relics in stock each day
+const DEAL_OFF := 0.3           # today's deal: 30% off one item in each store
+# Your look: b build, s skin, e eyes, h hair, hc hair colour, f facial hair, t top, tc top colour,
+# p bottom, pc bottom colour, sh shoes, sc shoe colour, a accessory mask, r relic (-1 none).
+var look := {"b":0,"s":4,"e":0,"h":0,"hc":0,"f":0,"t":0,"tc":0,"p":0,"pc":6,"sh":0,"sc":15,"a":0,"r":-1}
+var look_own := {"h":15,"f":1,"t":1,"p":1,"sh":1,"a":0,"r":0}
+var look_try := {}              # what you are trying on in a store
+var wear_cache := {}            # piece file -> [[node name, mesh, transform]]
+var wear_mats := {}
+var npc_seq := 0
+var relic_node: Node3D
+var relic_shown := -2
+
+func _lk(key: String) -> int:
+	return int((look_try if not look_try.is_empty() else look).get(key,0))
+
+func _wear_piece(file: String) -> Array:
+	# The meshes in models/wear/<file>.glb, each with the node it rides on and its place on the body.
+	if wear_cache.has(file):
+		return wear_cache[file]
+	var out: Array = []
+	var res = load("res://models/wear/%s.glb" % file) if ResourceLoader.exists("res://models/wear/%s.glb" % file) else null
+	if res is PackedScene:
+		var inst := (res as PackedScene).instantiate() as Node3D
+		var stack: Array = [[inst,Transform3D.IDENTITY]]
+		while not stack.is_empty():
+			var e: Array = stack.pop_back()
+			var n: Node = e[0]
+			var xf: Transform3D = e[1]
+			if n != inst and n is Node3D:
+				xf = xf*(n as Node3D).transform
+			if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+				out.append([String(n.name),(n as MeshInstance3D).mesh,xf])
+			for ch in n.get_children():
+				stack.append([ch,xf])
+		inst.free()
+	wear_cache[file] = out
+	return out
+
+func _wear_mat(col: Color, kind := "") -> StandardMaterial3D:
+	var key := col.to_html(true)+kind
+	if not wear_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = col
+		m.roughness = 0.8 if kind == "" else 0.3
+		if kind == "lens":
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			m.metallic_specular = 1.0
+		elif kind == "glow":
+			m.emission_enabled = true
+			m.emission = col
+			m.emission_energy_multiplier = 1.4
+		wear_mats[key] = m
+	return wear_mats[key]
+
+func _person_index(pp: Dictionary, model: Node3D) -> void:
+	# Remember each body surface (for bare arms and legs) and where each node sits at rest.
+	var surf: Array = []
+	var rest := {}
+	var stack: Array = [[model,Transform3D.IDENTITY]]
+	while not stack.is_empty():
+		var e: Array = stack.pop_back()
+		var n: Node = e[0]
+		var xf: Transform3D = e[1]
+		if n != model and n is Node3D:
+			xf = xf*(n as Node3D).transform
+			rest[String(n.name)] = xf
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			for k in mi.mesh.get_surface_count():
+				var m := mi.mesh.surface_get_material(k)
+				surf.append([mi,k,m.resource_name if m != null else "",String(n.name)])
+		for ch in n.get_children():
+			stack.append([ch,xf])
+	pp["surf"] = surf
+	pp["rest"] = rest
+	pp["limbs"]["Body"] = model.find_child("Body",true,false)
+
+func _dress(pp: Dictionary, L: Dictionary) -> void:
+	# Put look L on person pp: build, skin, eyes, hair, beard, clothes and accessories.
+	if pp.is_empty() or not pp.has("surf"):
+		return
+	var key := str(L)
+	if String(pp.get("dressed","")) == key:
+		return
+	pp["dressed"] = key
+	for n in pp.get("wear",[]):
+		if is_instance_valid(n):
+			(n as Node).queue_free()
+	var worn: Array = []
+	var limbs: Dictionary = pp["limbs"]
+	var top: Dictionary = LK_TOPS[clampi(int(L.get("t",0)),0,LK_TOPS.size()-1)]
+	var bot: Dictionary = LK_BOTTOMS[clampi(int(L.get("p",0)),0,LK_BOTTOMS.size()-1)]
+	var sho: Dictionary = LK_SHOES[clampi(int(L.get("sh",0)),0,LK_SHOES.size()-1)]
+	var skin: Color = LK_SKINS[clampi(int(L.get("s",4)),0,LK_SKINS.size()-1)]
+	var hair: Color = LK_HAIRC[clampi(int(L.get("hc",0)),0,LK_HAIRC.size()-1)]
+	var tcol: Color = L["tcol"] if L.has("tcol") else LK_COLORS[clampi(int(L.get("tc",0)),0,LK_COLORS.size()-1)]
+	var pcol: Color = L["pcol"] if L.has("pcol") else LK_COLORS[clampi(int(L.get("pc",6)),0,LK_COLORS.size()-1)]
+	var scol: Color = LK_COLORS[clampi(int(L.get("sc",15)),0,LK_COLORS.size()-1)]
+	var dress := bool(top.get("dress",false))
+	var legs := "bare" if dress else String(bot.get("legs",""))
+	var mats: Dictionary = pp["mats"]
+	for k in ["Skin","Shirt","Pants","Hair","Shoes","Eye","Brow"]:
+		if not mats.has(k):
+			var m := StandardMaterial3D.new()
+			m.roughness = 0.75
+			mats[k] = m
+	(mats["Skin"] as StandardMaterial3D).albedo_color = skin
+	(mats["Shirt"] as StandardMaterial3D).albedo_color = top.get("inner",tcol)
+	(mats["Pants"] as StandardMaterial3D).albedo_color = tcol if dress else pcol
+	(mats["Hair"] as StandardMaterial3D).albedo_color = hair
+	(mats["Brow"] as StandardMaterial3D).albedo_color = hair.darkened(0.1)
+	(mats["Shoes"] as StandardMaterial3D).albedo_color = scol
+	(mats["Eye"] as StandardMaterial3D).albedo_color = LK_EYES[clampi(int(L.get("e",0)),0,LK_EYES.size()-1)]
+	for e in pp["surf"]:
+		var mi: MeshInstance3D = e[0]
+		var nm: String = e[2]
+		var limb: String = e[3]
+		var use: Material = mats.get(nm)
+		if nm == "Shirt" and limb.begins_with("Arm") and String(top["arms"]) == "bare":
+			use = mats["Skin"]
+		elif nm == "Pants" and limb.begins_with("Shin") and legs != "":
+			use = mats["Skin"]
+		elif nm == "Pants" and limb.begins_with("Leg") and legs == "bare":
+			use = mats["Skin"]
+		if use != null and is_instance_valid(mi):
+			mi.set_surface_override_material(int(e[1]),use)
+	# Build: slim and broad bodies scale the body's nodes, so clothes scale with them.
+	var b := int(L.get("b",0))
+	var bs: Vector3 = [Vector3(1,1,1),Vector3(0.9,1,0.9),Vector3(1.12,1,1.1)][clampi(b,0,2)]
+	var ls: Vector3 = [Vector3(1,1,1),Vector3(0.9,1,0.92),Vector3(1.08,1,1.08)][clampi(b,0,2)]
+	var rest: Dictionary = pp["rest"]
+	for limb in ["Body","LegL","LegR"]:
+		var n: Node3D = limbs.get(limb)
+		if n != null:
+			n.scale = bs if limb == "Body" else ls
+	for limb in ["ArmL","ArmR"]:
+		var n: Node3D = limbs.get(limb)
+		if n != null and rest.has(limb):
+			var r: Transform3D = rest[limb]
+			n.position.x = r.origin.x*bs.x
+			n.scale = Vector3(ls.x,1,ls.z)
+	# Pieces.
+	var pieces: Array = [["hair_%d" % clampi(int(L.get("h",0)),0,LK_HAIRS.size()-1),tcol]]
+	if int(L.get("f",0)) > 0:
+		pieces.append(["beard_%d" % clampi(int(L["f"]),1,LK_BEARDS.size()-1),tcol])
+	if String(top["file"]) != "":
+		pieces.append([top["file"],tcol])
+	if String(bot["file"]) != "" and not dress:
+		pieces.append([bot["file"],pcol])
+	if String(sho["file"]) != "":
+		pieces.append([sho["file"],scol])
+	var am := int(L.get("a",0))
+	for k in LK_ACCS.size():
+		if am & (1 << k):
+			pieces.append([LK_ACCS[k]["file"],LK_COLORS[(k*5+int(L.get("tc",0))+3) % LK_COLORS.size()] if not L.has("acol") else L["acol"]])
+	for pc in pieces:
+		var cloth: Color = pc[1]
+		for part in _wear_piece(String(pc[0])):
+			var target: Node3D = limbs.get(String(part[0]))
+			if target == null or not rest.has(String(part[0])):
+				continue
+			var mi := MeshInstance3D.new()
+			mi.mesh = part[1]
+			mi.transform = (rest[String(part[0])] as Transform3D).affine_inverse()*(part[2] as Transform3D)
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if pp.get("npc",false) else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			var mesh: Mesh = part[1]
+			for k in mesh.get_surface_count():
+				var m := mesh.surface_get_material(k)
+				var nm := m.resource_name if m != null else ""
+				match nm:
+					"Cloth": mi.set_surface_override_material(k,_wear_mat(cloth))
+					"Trim": mi.set_surface_override_material(k,_wear_mat(cloth.darkened(0.35) if cloth.get_luminance() > 0.25 else cloth.lightened(0.3)))
+					"Hair": mi.set_surface_override_material(k,mats["Hair"])
+					"Stubble": mi.set_surface_override_material(k,_wear_mat(skin.lerp(hair,0.5)))
+					"ClearLens": mi.set_surface_override_material(k,_wear_mat(Color(0.85,0.95,1.0,0.25),"lens"))
+					"Lens": mi.set_surface_override_material(k,_wear_mat(Color(0.08,0.1,0.14,0.85),"lens"))
+					"GlowSole": mi.set_surface_override_material(k,_wear_mat(Color("4fe3ff"),"glow"))
+			if pp.has("vis_end"):
+				mi.visibility_range_end = float(pp["vis_end"])
+			target.add_child(mi)
+			worn.append(mi)
+	pp["wear"] = worn
+
+func _smoke_style() -> void:
+	# v0.40: every wardrobe piece loads and hangs on a real body node.
+	for i in LK_HAIRS.size():
+		assert(not _wear_piece("hair_%d" % i).is_empty(),"v0.40: hair %d loads" % i)
+	for i in range(1,LK_BEARDS.size()):
+		assert(not _wear_piece("beard_%d" % i).is_empty(),"v0.40: beard %d loads" % i)
+	var nodes := ["Head","Body","ArmL","ArmR","ForeArmL","ForeArmR","LegL","LegR","ShinL","ShinR"]
+	for list in [LK_TOPS,LK_BOTTOMS,LK_SHOES,LK_ACCS]:
+		for e in list:
+			if String(e["file"]) == "":
+				continue
+			var parts := _wear_piece(String(e["file"]))
+			assert(not parts.is_empty(),"v0.40: %s loads" % e["name"])
+			for part in parts:
+				assert(String(part[0]) in nodes,"v0.40: %s rides on a body node (%s)" % [e["name"],part[0]])
+	# Dressing someone puts the pieces on, and bare legs show skin.
+	var n := Node3D.new()
+	add_child(n)
+	var pp := _make_person(n,0,{"Shirt":Color.WHITE,"Pants":Color.WHITE,"Skin":Color.WHITE,"Hair":Color.WHITE,"Shoes":Color.WHITE,"Eye":Color.BLACK},true)
+	_dress(pp,{"b":2,"s":5,"h":5,"hc":1,"t":5,"tc":3,"p":1,"pc":6,"sh":2,"sc":14,"a":3,"f":3,"r":-1,"e":0})
+	assert((pp["wear"] as Array).size() >= 7,"v0.40: hair, beard, hoodie, shorts, boots and two accessories are worn (%d)" % (pp["wear"] as Array).size())
+	assert(((pp["limbs"]["Body"] as Node3D).scale.x > 1.05),"v0.40: a broad build is broader")
+	var shin_skin := false
+	for e in pp["surf"]:
+		if String(e[3]).begins_with("Shin") and String(e[2]) == "Pants":
+			shin_skin = (e[0] as MeshInstance3D).get_surface_override_material(int(e[1])) == pp["mats"]["Skin"]
+	assert(shin_skin,"v0.40: shorts show bare shins")
+	n.queue_free()
+	# The Galleria: stores you can walk into and shop at.
+	assert(ga_spots.size() == STORES.size(),"v0.40: every store has a counter")
+	for e in ga_spots:
+		var sp: Vector3 = e[1]
+		assert(not _blocked_at(sp+Vector3(0,1,0),0.3),"v0.40: room to stand at %s (%s)" % [STORES[int(e[0])]["name"],_blocker(sp+Vector3(0,1,0),0.3)])
+	for z in [-530.0,GA_Z0-2.0,-575.0,-620.0]:
+		var p := Vector3(GA_C.x+(0.0 if z > -560.0 else 5.0),1,z)
+		assert(not _blocked_at(p,0.3),"v0.40: the Galleria walk is open at z=%.0f (%s)" % [z,_blocker(p,0.3)])
+	# Shopping: try on, buy, keep what you bought and take off what you only tried.
+	var keep := [look.duplicate(),look_own.duplicate(),cash,player.position,style_test_day]
+	style_test_day = "2026-11-20"
+	look_own = {"h":15,"f":1,"t":1,"p":1,"sh":1,"a":0,"r":0}
+	look["t"] = 0
+	player.position = ga_spots[0][1]+Vector3(0,0.7,0)
+	assert(_store_near() == 0,"v0.40: standing at Thread & Co.")
+	cash = 5000
+	_open_store(0)
+	assert(style_panel.visible and style_store == 0,"v0.40: the store opens")
+	var hoodie := 5
+	_style_pick("top",hoodie)
+	assert(int(look_try["t"]) == hoodie and cash == 5000,"v0.40: trying on is free")
+	_style_pick("top",hoodie)
+	var paid := _style_price("top",hoodie)
+	assert(cash == 5000-paid and _owns("t",hoodie) and int(look["t"]) == hoodie,"v0.40: buying the hoodie")
+	_style_pick("top",9)
+	_style_color("tc",4)
+	_style_close()
+	assert(not style_panel.visible and int(look["t"]) == hoodie and int(look["tc"]) == 4,"v0.40: leaving keeps what you own, drops the try-on, keeps the free colour")
+	# Relics: only today's stock sells; you can wear one.
+	var stock := _relic_stock()
+	assert(stock.size() == RELIC_STOCK,"v0.40: six relics in stock")
+	var out := -1
+	for i in RELICS.size():
+		if not stock.has(i):
+			out = i
+			break
+	cash = 500000
+	_open_store(3)
+	_style_pick("relic",out)
+	_style_pick("relic",out)
+	assert(not _owns("r",out),"v0.40: a relic that is out of stock can't be bought")
+	_style_pick("relic",int(stock[0]))
+	_style_pick("relic",int(stock[0]))
+	assert(_owns("r",int(stock[0])) and int(look["r"]) == int(stock[0]),"v0.40: buying a relic in stock")
+	_style_close()
+	assert(relic_node != null,"v0.40: your relic floats beside you")
+	# The Sky Run: from each pad you can steer onto the next platform (real physics, walking speed).
+	var pshape: CollisionShape3D = player.get_child(0) as CollisionShape3D
+	var keep_dis := pshape.disabled
+	pshape.disabled = false
+	var keep_sky := [sky_day,sky_best,cash,bonus_xp]
+	sky_day = ""
+	var c0 := cash
+	for k in SKY_PADS.size()-1:
+		var c: Vector3 = SKY_PADS[k][0]
+		var nc: Vector3 = SKY_PADS[k+1][0]
+		var nt: float = SKY_PADS[k+1][1]
+		player.position = c+Vector3(0,float(SKY_PADS[k][1])+0.72,0)
+		player.velocity = Vector3.ZERO
+		sky_cool = 0.0
+		if k > 0:
+			sky_t = 1.0
+		_ga_fun_tick(0.016)
+		assert(player.velocity.y > 5.0,"v0.40: pad %d launches you" % k)
+		var landed := false
+		for step in 200:
+			var d := Vector3(nc.x-player.position.x,0,nc.z-player.position.z)
+			var v := d.normalized()*WALK_SPEED if d.length() > 0.5 else Vector3.ZERO
+			player.velocity = Vector3(v.x,player.velocity.y-24.0/60.0,v.z)
+			player.move_and_slide()
+			if step > 10 and player.is_on_floor():
+				landed = true
+				break
+		assert(landed and absf(player.position.y-0.7-nt) < 0.3,"v0.40: Sky Run stage %d lands on the next platform (feet %.2f, want %.1f)" % [k,player.position.y-0.7,nt])
+	_ga_fun_tick(0.016)
+	assert(cash == c0+SKY_PAY and sky_day == _style_today(),"v0.40: the Sky Run prize pays once a day")
+	sky_day = keep_sky[0]
+	sky_best = keep_sky[1]
+	cash = keep_sky[2]
+	bonus_xp = keep_sky[3]
+	pshape.disabled = keep_dis
+	# Your look goes online and comes back the same.
+	assert(_look_clean(_online_pos_frame()["payload"]["payload"]["lk"]) == look,"v0.40: your look is sent to other players")
+	look = keep[0]
+	look_own = keep[1]
+	cash = keep[2]
+	player.position = keep[3]
+	style_test_day = keep[4]
+	_apply_look()
+	_save_progress()
+
+func _style_shots() -> void:
+	# Developer-only: a line-up of outfits, builds, hair and accessories. Never saves.
+	var base := Vector3(2.0,0,24)
+	var looks: Array = [
+		{"b":0,"s":1,"h":8,"hc":0,"t":10,"tc":6,"p":0,"pc":5,"sh":3,"sc":14,"a":1 << 6},
+		{"b":1,"s":3,"h":9,"hc":5,"t":6,"tc":11,"sh":1,"sc":15,"a":(1 << 5)|(1 << 4)},
+		{"b":2,"s":5,"h":5,"hc":1,"t":5,"tc":8,"p":2,"pc":5,"sh":1,"sc":2,"a":1 << 1},
+		{"b":0,"s":2,"h":6,"hc":3,"t":7,"tc":16,"p":3,"pc":4,"sh":2,"sc":14,"a":1 << 3},
+		{"b":2,"s":4,"h":4,"hc":0,"f":3,"t":9,"tc":5,"p":4,"pc":17,"sh":2,"sc":14,"a":1 << 7},
+		{"b":1,"s":0,"h":7,"hc":8,"t":1,"tc":15,"p":1,"pc":7,"sh":4,"sc":5,"a":1 << 0},
+		{"b":0,"s":6,"h":3,"hc":1,"t":8,"tc":13,"p":0,"pc":6,"sh":1,"sc":15,"a":1 << 2,"f":1},
+		{"b":0,"s":3,"h":1,"hc":4,"t":4,"tc":10,"p":0,"pc":9,"sh":0,"sc":15},
+	]
+	var row: Array = []
+	for v in looks.size():
+		var n := Node3D.new()
+		add_child(n)
+		n.position = base+Vector3(float(v)*0.95,0,0)
+		n.rotation.y = PI+(0.3 if v % 2 == 1 else -0.2)
+		var pp := _make_person(n,0,{"Shirt":Color.WHITE,"Pants":Color.WHITE,"Skin":Color.WHITE,"Hair":Color.WHITE,"Shoes":Color.WHITE,"Eye":Color.BLACK},true)
+		_dress(pp,looks[v])
+		_pose_person(pp,1.3 if v % 3 == 1 else 0.0,1.0 if v % 3 == 1 else 0.0)
+		row.append(pp)
+	player.position = base+Vector3(0,0.7,-6)
+	for i in 10:
+		await get_tree().process_frame
+	paused = true
+	var mid := base+Vector3(float(looks.size()-1)*0.95/2.0,0,0)
+	camera.position = mid+Vector3(0,1.25,4.6)
+	camera.look_at(mid+Vector3(0,0.85,0))
+	await _save_shot("style-lineup")
+	for k in 3:
+		var c := base+Vector3(float(k*3)*0.95,0,0)
+		camera.position = c+Vector3(0.25,1.5,1.0)
+		camera.look_at(c+Vector3(0.95,1.2,0))
+		await _save_shot("style-close-%d" % k)
+	# The store panel, with you trying something on.
+	paused = false
+	player.position = (ga_spots[0][1] as Vector3)+Vector3(0,0.7,0)
+	_follow_camera(1.0)
+	for i in 20:
+		await get_tree().process_frame
+	cash = 12000
+	_open_store(0)
+	_style_pick("top",7)
+	_style_color("tc",16)
+	for i in 30:
+		await get_tree().process_frame
+	await _save_shot("style-store")
+	_style_set_tab("relic")
+	_open_store(3)
+	_style_pick("relic",int(_relic_stock()[0]))
+	for i in 30:
+		await get_tree().process_frame
+	await _save_shot("style-relics")
+	get_tree().quit()
+
+func _npc_look(seed_i: int, colors: Dictionary, variant: int) -> Dictionary:
+	# A random everyday outfit for someone in the city, from their seed.
+	var r := RandomNumberGenerator.new()
+	r.seed = 7919*seed_i+13
+	var L := {"b":r.randi() % 3,"h":variant if r.randf() < 0.45 else r.randi() % LK_HAIRS.size(),"e":r.randi() % LK_EYES.size(),
+		"t":0,"p":0,"sh":0,"a":0,"f":0,"sc":[15,5,14,1][r.randi() % 4]}
+	L["tcol"] = colors.get("Shirt",LK_COLORS[r.randi() % LK_COLORS.size()])
+	L["pcol"] = colors.get("Pants",Color("263d54"))
+	var sk: Color = colors.get("Skin",Color("c68a60"))
+	var best := 0
+	for k in LK_SKINS.size():
+		if (LK_SKINS[k] as Color).is_equal_approx(sk) or absf((LK_SKINS[k] as Color).get_luminance()-sk.get_luminance()) < absf((LK_SKINS[best] as Color).get_luminance()-sk.get_luminance()):
+			best = k
+	L["s"] = best
+	var hc: Color = colors.get("Hair",Color("2b1d14"))
+	var bh := 0
+	for k in LK_HAIRC.size():
+		var ck: Color = LK_HAIRC[k]
+		var cb: Color = LK_HAIRC[bh]
+		if Vector3(ck.r-hc.r,ck.g-hc.g,ck.b-hc.b).length() < Vector3(cb.r-hc.r,cb.g-hc.g,cb.b-hc.b).length():
+			bh = k
+	L["hc"] = bh
+	var roll := r.randf()
+	if roll < 0.12:
+		L["t"] = 6 if r.randf() < 0.7 else 1
+	elif roll < 0.55:
+		L["t"] = [2,3,4,5,7,8,9,10][r.randi() % 8]
+	if r.randf() < 0.35 and int(L["t"]) != 6:
+		L["p"] = 1+r.randi() % (LK_BOTTOMS.size()-1)
+	if r.randf() < 0.3:
+		L["sh"] = 1+r.randi() % 3
+	if r.randf() < 0.35:
+		L["a"] = 1 << (r.randi() % LK_ACCS.size())
+	if r.randf() < 0.25 and int(L["t"]) != 6 and int(L["p"]) != 3:
+		L["f"] = 1+r.randi() % (LK_BEARDS.size()-1)
+	return L
+
+# ---------------- your look: apply, save, share ----------------
+const LOOK_KEYS := ["b","s","e","h","hc","f","t","tc","p","pc","sh","sc","a","r"]
+const LOOK_LIMITS := {"b":3,"s":8,"e":6,"h":10,"hc":12,"f":5,"t":11,"tc":18,"p":5,"pc":18,"sh":5,"sc":18,"a":256,"r":16}
+
+func _look_clean(src: Variant) -> Dictionary:
+	# A look from a save or another player, with every value checked.
+	var L := look.duplicate()
+	if src is Dictionary:
+		for k in LOOK_KEYS:
+			if (src as Dictionary).has(k):
+				L[k] = int(src[k])
+	elif src is Array:
+		for i in mini((src as Array).size(),LOOK_KEYS.size()):
+			L[LOOK_KEYS[i]] = int(src[i])
+	for k in LOOK_KEYS:
+		var lim := int(LOOK_LIMITS[k])
+		L[k] = clampi(int(L[k]),-1 if k == "r" else 0,lim-1)
+	return L
+
+func _look_pack(L: Dictionary) -> Array:
+	var out: Array = []
+	for k in LOOK_KEYS:
+		out.append(int(L[k]))
+	return out
+
+func _owns(cat: String, i: int) -> bool:
+	if i < 0:
+		return true
+	return (int(look_own.get(cat,0)) & (1 << i)) != 0
+
+func _apply_look() -> void:
+	if player_person.is_empty():
+		return
+	_dress(player_person,look_try if not look_try.is_empty() else look)
+	_relic_refresh()
+
+func _relic_model(i: int) -> Node3D:
+	# A small glowing relic, built from simple shapes.
+	var n := Node3D.new()
+	if i < 0 or i >= RELICS.size():
+		return n
+	var R: Array = RELICS[i]
+	var col: Color = R[4]
+	var g := _fc_glow(col)
+	var p := _fc_pearl()
+	match String(R[5]):
+		"compass":
+			_fc_part(n,_fc_cone(0.12,0.12,0.04),Vector3.ZERO,g).rotation.x = PI/2.0
+			_fc_part(n,BoxMesh.new(),Vector3(0,0,0.025),_fc_glow(Color("ff4f5a")),Vector3(0.02,0.16,0.01))
+		"orb", "pearl":
+			_fc_part(n,_fc_sphere(0.1),Vector3.ZERO,g)
+			_fc_part(n,_fc_torus(0.13,0.145),Vector3.ZERO,p).rotation.x = 1.1
+		"dice":
+			_fc_part(n,BoxMesh.new(),Vector3.ZERO,g,Vector3.ONE*0.15).rotation = Vector3(0.6,0.6,0)
+		"lantern":
+			_fc_part(n,_fc_cone(0.07,0.09,0.2),Vector3.ZERO,g)
+			_fc_part(n,_fc_torus(0.05,0.065),Vector3(0,0.13,0),p).rotation.x = PI/2.0
+		"shell":
+			for k in 4:
+				_fc_part(n,_fc_sphere(0.1-k*0.02),Vector3(k*0.04,k*0.025,0),g)
+		"feather":
+			_fc_part(n,_fc_sphere(0.1),Vector3.ZERO,g,Vector3(0.35,1.6,0.1)).rotation.z = 0.4
+		"hourglass":
+			_fc_part(n,_fc_cone(0.0,0.08,0.11),Vector3(0,-0.055,0),g)
+			_fc_part(n,_fc_cone(0.08,0.0,0.11),Vector3(0,0.055,0),g)
+			_fc_part(n,_fc_cone(0.09,0.09,0.015),Vector3(0,0.12,0),p)
+			_fc_part(n,_fc_cone(0.09,0.09,0.015),Vector3(0,-0.12,0),p)
+		"mask":
+			_fc_part(n,_fc_sphere(0.12),Vector3.ZERO,g,Vector3(1,1.2,0.4))
+			for sx in [-0.045,0.045]:
+				_fc_part(n,_fc_sphere(0.022),Vector3(sx,0.03,0.045),_fc_glow(Color("15202b")))
+		"key":
+			_fc_part(n,_fc_torus(0.04,0.06),Vector3(0,0.1,0),g).rotation.x = PI/2.0
+			_fc_part(n,BoxMesh.new(),Vector3(0,-0.03,0),g,Vector3(0.025,0.2,0.025))
+			_fc_part(n,BoxMesh.new(),Vector3(0.03,-0.11,0),g,Vector3(0.05,0.025,0.025))
+		"skull":
+			_fc_part(n,_fc_sphere(0.1),Vector3.ZERO,_fc_ghost(col))
+			for sx in [-0.035,0.035]:
+				_fc_part(n,_fc_sphere(0.025),Vector3(sx,0.0,0.08),_fc_glow(Color("4fe3ff")))
+		"egg":
+			_fc_part(n,_fc_sphere(0.1),Vector3.ZERO,g,Vector3(0.85,1.15,0.85))
+			_fc_part(n,_fc_torus(0.085,0.095),Vector3(0,0.02,0),_fc_glow(Color("ffcf4a")))
+		"meteor":
+			_fc_part(n,_fc_sphere(0.1),Vector3.ZERO,_fc_mesh_mat(col),Vector3(1.2,0.9,1.0))
+			_fc_part(n,_fc_sphere(0.04),Vector3(0.06,0.05,0.04),_fc_glow(Color("ff7a3c")))
+		"gem":
+			_fc_part(n,_fc_cone(0.0,0.1,0.12),Vector3(0,-0.06,0),g).rotation.x = PI
+			_fc_part(n,_fc_cone(0.06,0.1,0.05),Vector3(0,0.025,0),g)
+		"crown":
+			_fc_part(n,_fc_cone(0.1,0.09,0.08),Vector3.ZERO,g)
+			for k in 5:
+				var a := float(k)*TAU/5.0
+				_fc_part(n,_fc_cone(0.0,0.025,0.06),Vector3(cos(a)*0.09,0.07,sin(a)*0.09),g)
+		"sun":
+			_fc_part(n,_fc_sphere(0.08),Vector3.ZERO,g)
+			for k in 8:
+				var a := float(k)*TAU/8.0
+				var ray := _fc_part(n,_fc_cone(0.0,0.025,0.07),Vector3(cos(a)*0.12,sin(a)*0.12,0),g)
+				ray.rotation.z = a-PI/2.0
+	return n
+
+func _fc_mesh_mat(col: Color) -> StandardMaterial3D:
+	return _wear_mat(col)
+
+func _relic_refresh() -> void:
+	var r := int((look_try if not look_try.is_empty() else look).get("r",-1))
+	if r == relic_shown and relic_node != null:
+		return
+	relic_shown = r
+	if relic_node != null:
+		relic_node.queue_free()
+		relic_node = null
+	if r < 0 or player == null:
+		return
+	relic_node = Node3D.new()
+	player.add_child(relic_node)
+	relic_node.add_child(_relic_model(r))
+
+func _relic_tick() -> void:
+	if relic_node != null:
+		relic_node.position = Vector3(0.55,0.75+sin(clock*2.0)*0.06,0.15)
+		relic_node.rotation.y = clock*1.4
+	for id in online_peers:
+		var peer: Dictionary = online_peers[id]
+		var rn = peer.get("relic_node")
+		if rn != null and is_instance_valid(rn):
+			(rn as Node3D).position = Vector3(0.55,0.75+sin(clock*2.0)*0.06,0.15)
+			(rn as Node3D).rotation.y = clock*1.4
+
+func _peer_style(peer: Dictionary, lk: Variant) -> void:
+	# v0.40: other players' full look (hair, clothes, accessories, relic), from 0.40 on.
+	if not (lk is Array) or (lk as Array).size() < LOOK_KEYS.size() or (peer.get("person",{}) as Dictionary).is_empty():
+		return
+	var L := _look_clean(lk)
+	var pp: Dictionary = peer["person"]
+	_dress(pp,L)
+	var r := int(L["r"])
+	if int(peer.get("relic",-2)) != r:
+		peer["relic"] = r
+		var old = peer.get("relic_node")
+		if old != null and is_instance_valid(old):
+			(old as Node).queue_free()
+		peer["relic_node"] = null
+		if r >= 0:
+			var rn := Node3D.new()
+			(peer["foot"] as Node3D).add_child(rn)
+			rn.add_child(_relic_model(r))
+			peer["relic_node"] = rn
+
+# ---------------- stores and the wardrobe ----------------
+const STORES := [
+	{"name":"THREAD & CO.","sub":"Clothes and shoes","tabs":["top","bottom","shoes"],"col":Color("ff7ab8")},
+	{"name":"SHEAR BLISS SALON","sub":"Hair, beards and colour","tabs":["hair","hcol","beard","body"],"col":Color("c88bff")},
+	{"name":"GLINT","sub":"Accessories","tabs":["acc"],"col":Color("4fe3ff")},
+	{"name":"RELIC & CURIO","sub":"Rare relics","tabs":["relic"],"col":Color("ffcf4a")},
+]
+const STYLE_TAB_NAMES := {"top":"Tops","bottom":"Bottoms","shoes":"Shoes","hair":"Hair","hcol":"Hair colour","beard":"Facial hair","body":"Body & face","acc":"Accessories","relic":"Relics"}
+var style_panel: PanelContainer
+var style_title: Label
+var style_info: Label
+var style_tabs: HBoxContainer
+var style_list: GridContainer
+var style_swatches: GridContainer
+var style_store := -1          # -1 = your wardrobe
+var style_tab := "top"
+var style_test_day := ""
+var style_cam_dir := Vector3.FORWARD
+
+func _style_today() -> String:
+	return style_test_day if style_test_day != "" else _pz_today()
+
+func _style_items(tab: String) -> Array:
+	match tab:
+		"top": return LK_TOPS
+		"bottom": return LK_BOTTOMS
+		"shoes": return LK_SHOES
+		"acc": return LK_ACCS
+	return []
+
+func _style_cat(tab: String) -> String:
+	return {"top":"t","bottom":"p","shoes":"sh","hair":"h","beard":"f","acc":"a","relic":"r"}.get(tab,"")
+
+func _style_price(tab: String, i: int) -> int:
+	var base := 0
+	match tab:
+		"hair": base = int(LK_HAIRS[i][1])
+		"beard": base = int(LK_BEARDS[i][1])
+		"relic": base = int(RELICS[i][1])
+		_:
+			var items := _style_items(tab)
+			if i < items.size():
+				base = int(items[i]["price"])
+	if _style_deal(tab) == i:
+		base = int(round(float(base)*(1.0-DEAL_OFF)))
+	return base
+
+func _style_deal(tab: String) -> int:
+	# Today's deal: one item per tab is 30% off.
+	var n := 0
+	match tab:
+		"top","bottom","shoes","acc": n = _style_items(tab).size()
+		"hair": n = LK_HAIRS.size()
+		"relic": n = RELICS.size()
+	if n <= 1:
+		return -1
+	var h := absi(hash("deal-"+tab+"-"+_style_today()))
+	var i := 1+h % (n-1)
+	return i if _style_price_base(tab,i) > 0 else -1
+
+func _style_price_base(tab: String, i: int) -> int:
+	match tab:
+		"hair": return int(LK_HAIRS[i][1])
+		"relic": return int(RELICS[i][1])
+	var items := _style_items(tab)
+	return int(items[i]["price"]) if i < items.size() else 0
+
+func _relic_stock() -> Array:
+	# Today's relics in stock: RELIC_STOCK of them, chosen by the date.
+	var r := RandomNumberGenerator.new()
+	r.seed = hash("relics-"+_style_today())
+	var ids: Array = range(RELICS.size())
+	for k in range(ids.size()-1,0,-1):
+		var j := r.randi() % (k+1)
+		var t = ids[k]
+		ids[k] = ids[j]
+		ids[j] = t
+	return ids.slice(0,RELIC_STOCK)
+
+func _build_style_panel(root: Control) -> void:
+	style_panel = PanelContainer.new()
+	style_panel.add_theme_stylebox_override("panel",_panel(Color(0.07,0.17,0.23,0.94),24))
+	style_panel.custom_minimum_size = Vector2(640,0)
+	root.add_child(style_panel)
+	extra_panels.append(style_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",8)
+	style_panel.add_child(col)
+	style_title = _label("",26,Color("f0bd62"))
+	col.add_child(style_title)
+	style_info = _label("",16,Color("cbd8de"))
+	style_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	style_info.custom_minimum_size.x = 600
+	col.add_child(style_info)
+	var tsc := ScrollContainer.new()
+	tsc.custom_minimum_size = Vector2(600,54)
+	tsc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(tsc)
+	style_tabs = HBoxContainer.new()
+	style_tabs.add_theme_constant_override("separation",6)
+	tsc.add_child(style_tabs)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(600,330)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	style_list = GridContainer.new()
+	style_list.columns = 3
+	style_list.add_theme_constant_override("h_separation",8)
+	style_list.add_theme_constant_override("v_separation",8)
+	style_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(style_list)
+	style_swatches = GridContainer.new()
+	style_swatches.columns = 9
+	style_swatches.add_theme_constant_override("h_separation",6)
+	style_swatches.add_theme_constant_override("v_separation",6)
+	col.add_child(style_swatches)
+	col.add_child(_button("Done",_style_close))
+	style_panel.hide()
+
+func _open_store(i: int) -> void:
+	style_store = i
+	# The fitting camera looks at you from the shop floor (in a store) or from where the camera is.
+	style_cam_dir = Vector3.ZERO
+	for e in ga_spots:
+		if int(e[0]) == i and e.size() > 2:
+			style_cam_dir = e[2]
+	if style_cam_dir == Vector3.ZERO and camera != null and player != null:
+		style_cam_dir = camera.global_position-player.global_position
+		style_cam_dir.y = 0.0
+	style_cam_dir = style_cam_dir.normalized() if style_cam_dir.length() > 0.01 else Vector3.BACK
+	style_tab = String((STORES[i]["tabs"] as Array)[0]) if i >= 0 else "top"
+	look_try = look.duplicate()
+	if not paused:
+		_toggle_menu()
+	_open_panel(style_panel)
+	_refresh_style()
+	_stat_add("store_visits")
+
+func _open_wardrobe() -> void:
+	_open_store(-1)
+
+func _style_close() -> void:
+	if paused:
+		_toggle_menu()
+
+func _style_finish() -> void:
+	# Leaving a store: keep what you own, take off anything you only tried on.
+	if look_try.is_empty():
+		return
+	var L := look_try.duplicate()
+	for cat in ["t","p","sh","h","f","r"]:
+		if not _owns(cat,int(L[cat])):
+			L[cat] = look[cat]
+	L["a"] = int(L["a"]) & int(look_own.get("a",0))
+	look = L
+	look_try = {}
+	_sync_old_avatar()
+	_apply_look()
+	_save_progress()
+
+func _sync_old_avatar() -> void:
+	# Older players' phones still read the Style Shop shirt and trouser colours.
+	if int(look["tc"]) < SHIRTS.size():
+		av_shirt = int(look["tc"])
+	if int(look["pc"]) >= 6 and int(look["pc"]) < 6+PANTS.size():
+		av_pants = int(look["pc"])-6
+
+func _style_tabs_for() -> Array:
+	if style_store >= 0:
+		return STORES[style_store]["tabs"]
+	return ["top","bottom","shoes","acc","relic","hair","hcol","beard","body"]
+
+func _refresh_style() -> void:
+	if style_panel == null:
+		return
+	var wardrobe := style_store < 0
+	if wardrobe:
+		style_title.text = "YOUR WARDROBE"
+		style_info.text = "Change into anything you own. Colours are free. You have %s." % _money(cash)
+	else:
+		var S: Dictionary = STORES[style_store]
+		style_title.text = String(S["name"])
+		style_title.add_theme_color_override("font_color",S["col"])
+		var extra := ""
+		if style_tab == "relic":
+			extra = "  %d relics in stock today; new stock every day." % RELIC_STOCK
+		style_info.text = "%s. Tap an item to try it on, then buy it. Today's deal is 30%% off.%s You have %s." % [S["sub"],extra,_money(cash)]
+	if wardrobe:
+		style_title.add_theme_color_override("font_color",Color("f0bd62"))
+	for c in style_tabs.get_children():
+		touch_buttons.erase(c)
+		c.queue_free()
+	for t in _style_tabs_for():
+		var b := _button(String(STYLE_TAB_NAMES[t]),_style_set_tab.bind(String(t)))
+		b.custom_minimum_size = Vector2(0,44)
+		b.add_theme_font_size_override("font_size",16)
+		b.add_theme_stylebox_override("normal",_panel(Color("8a5a1c") if t == style_tab else Color("213d4f"),12))
+		style_tabs.add_child(b)
+	for c in style_list.get_children():
+		for sub in c.find_children("*","Button",true,false):
+			touch_buttons.erase(sub)
+		if c is Button:
+			touch_buttons.erase(c)
+		c.queue_free()
+	var L := look_try if not look_try.is_empty() else look
+	var rows: Array = []   # [label, sub, index, state]
+	match style_tab:
+		"top","bottom","shoes","acc":
+			var items := _style_items(style_tab)
+			for i in items.size():
+				rows.append([String(items[i]["name"]),i])
+		"hair":
+			for i in LK_HAIRS.size():
+				rows.append([String(LK_HAIRS[i][0]),i])
+		"beard":
+			for i in LK_BEARDS.size():
+				rows.append([String(LK_BEARDS[i][0]),i])
+		"relic":
+			var stock := _relic_stock()
+			for i in RELICS.size():
+				if stock.has(i) or _owns("r",i):
+					rows.append([String(RELICS[i][0]),i])
+	for e in rows:
+		var i := int(e[1])
+		var cat := _style_cat(style_tab)
+		var owned := _owns(cat,i)
+		if wardrobe and not owned and not (style_tab == "acc"):
+			continue
+		if wardrobe and style_tab == "acc" and not owned:
+			continue
+		var on := ((int(L["a"]) & (1 << i)) != 0) if style_tab == "acc" else int(L[cat]) == i
+		var price := _style_price(style_tab,i)
+		var deal := _style_deal(style_tab) == i and not owned
+		var sub := ""
+		if style_tab == "relic":
+			var R: Array = RELICS[i]
+			sub = "%s  ·  %s" % [String(RELIC_RARITY[int(R[2])][0]),String(R[3])]
+		var price_txt := "owned" if owned else ("free" if price == 0 else _money(price))
+		# A catalog card: a colour tile, the name, the price and one button.
+		var tile_col := Color("3a5a6a")
+		match style_tab:
+			"top","bottom","shoes":
+				var it: Dictionary = _style_items(style_tab)[i]
+				var ck := {"top":"tc","bottom":"pc","shoes":"sc"}[style_tab] as String
+				tile_col = LK_COLORS[int(L[ck])] if on else LK_COLORS[int(it.get("col",0))]
+			"acc": tile_col = LK_COLORS[(i*5+int(L["tc"])+3) % LK_COLORS.size()]
+			"hair","beard": tile_col = LK_HAIRC[int(L["hc"])]
+			"relic": tile_col = RELICS[i][4]
+		var card := PanelContainer.new()
+		var cs := _panel(Color("2a4a3a") if on else Color("1b3644"),14)
+		cs.content_margin_left = 8
+		cs.content_margin_right = 8
+		cs.content_margin_top = 8
+		cs.content_margin_bottom = 8
+		if on:
+			cs.border_color = Color("ffd86a")
+			cs.set_border_width_all(3)
+		card.add_theme_stylebox_override("panel",cs)
+		card.custom_minimum_size = Vector2(192,0)
+		style_list.add_child(card)
+		var cv := VBoxContainer.new()
+		cv.add_theme_constant_override("separation",4)
+		card.add_child(cv)
+		var tile := PanelContainer.new()
+		var ts := _panel(tile_col,10)
+		tile.add_theme_stylebox_override("panel",ts)
+		tile.custom_minimum_size = Vector2(0,44)
+		cv.add_child(tile)
+		if deal or style_tab == "relic":
+			var badge := _label("-30% DEAL" if deal else String(RELIC_RARITY[int(RELICS[i][2])][0]).to_upper(),14,Color("15202b") if tile_col.get_luminance() > 0.55 else Color.WHITE)
+			badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			tile.add_child(badge)
+		var nl := _label(String(e[0]),16,Color("ffd86a") if on else (Color(RELIC_RARITY[int(RELICS[i][2])][1]) if style_tab == "relic" else Color("fff5dc")))
+		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		nl.custom_minimum_size.x = 176
+		cv.add_child(nl)
+		cv.add_child(_label(price_txt,15,Color("cbd8de")))
+		if sub != "":
+			var sl := _label(String(RELICS[i][3]),13,Color("9fb6c3"))
+			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			sl.custom_minimum_size.x = 176
+			cv.add_child(sl)
+		var txt := ""
+		var c := Color("213d4f")
+		if on and owned:
+			txt = "TAKE OFF" if style_tab in ["acc","relic"] else "WEARING ✓"
+			c = Color("2f6b3a")
+		elif on:
+			txt = "BUY " + _money(price)
+			c = Color("c0602a") if cash >= price else Color("3a2a2a")
+		elif owned:
+			txt = "WEAR"
+			c = Color("1f6f8b")
+		else:
+			txt = "TRY ON"
+		var b := _button(txt,_style_pick.bind(style_tab,i))
+		b.custom_minimum_size = Vector2(176,42)
+		b.add_theme_font_size_override("font_size",16)
+		b.add_theme_stylebox_override("normal",_panel(c,12))
+		cv.add_child(b)
+	style_list.columns = 1 if style_tab == "body" else 3
+	if style_tab == "body":
+		_style_body_rows(L)
+	# Colour swatches for the slot you are looking at.
+	for c in style_swatches.get_children():
+		touch_buttons.erase(c)
+		c.queue_free()
+	var ckey: String = {"top":"tc","bottom":"pc","shoes":"sc","hcol":"hc","hair":"hc"}.get(style_tab,"")
+	style_swatches.visible = ckey != ""
+	if ckey != "":
+		var pal: Array = LK_HAIRC if ckey == "hc" else LK_COLORS
+		for k in pal.size():
+			var sw := _button("✓" if int(L[ckey]) == k else "",_style_color.bind(String(ckey),k))
+			sw.custom_minimum_size = Vector2(56,40)
+			sw.add_theme_font_size_override("font_size",18)
+			sw.add_theme_color_override("font_color",Color("15202b") if (pal[k] as Color).get_luminance() > 0.5 else Color.WHITE)
+			sw.add_theme_stylebox_override("normal",_panel(pal[k],10))
+			sw.add_theme_stylebox_override("hover",_panel((pal[k] as Color).lightened(0.15),10))
+			style_swatches.add_child(sw)
+	if style_panel.visible:
+		style_panel.reset_size()
+		_layout_panels()
+
+func _style_body_rows(L: Dictionary) -> void:
+	# Build, skin tone and eye colour: free to change.
+	for e in [["Build","b",LK_BUILDS.size()],["Skin tone","s",LK_SKINS.size()],["Eye colour","e",LK_EYES.size()]]:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation",8)
+		style_list.add_child(row)
+		var key := String(e[1])
+		var val := int(L[key])
+		var name := String(LK_BUILDS[val]) if key == "b" else "%d of %d" % [val+1,int(e[2])]
+		var lab := _label("%s: %s" % [e[0],name],17,Color("fff5dc"))
+		lab.custom_minimum_size.x = 300
+		row.add_child(lab)
+		for st in [-1,1]:
+			var b := _button("◀" if st < 0 else "▶",_style_step.bind(key,int(st),int(e[2])))
+			b.custom_minimum_size = Vector2(90,44)
+			row.add_child(b)
+
+func _style_set_tab(t: String) -> void:
+	style_tab = t
+	_refresh_style()
+
+func _style_step(key: String, st: int, n: int) -> void:
+	look_try[key] = posmod(int(look_try[key])+st,n)
+	_apply_look()
+	_refresh_style()
+
+func _style_color(key: String, k: int) -> void:
+	look_try[key] = k
+	_apply_look()
+	_refresh_style()
+
+func _style_pick(tab: String, i: int) -> void:
+	var cat := _style_cat(tab)
+	var owned := _owns(cat,i)
+	if tab == "acc":
+		var on := (int(look_try["a"]) & (1 << i)) != 0
+		if on and owned:
+			look_try["a"] = int(look_try["a"]) & ~(1 << i)
+		elif on and not owned:
+			if _style_buy(tab,i):
+				look_own["a"] = int(look_own["a"]) | (1 << i)
+				look["a"] = int(look["a"]) | (1 << i)
+		else:
+			look_try["a"] = int(look_try["a"]) | (1 << i)
+	elif tab == "relic":
+		var on := int(look_try["r"]) == i
+		if on and owned:
+			look_try["r"] = -1
+		elif on and not owned:
+			if _style_buy(tab,i):
+				look_own["r"] = int(look_own["r"]) | (1 << i)
+				look["r"] = i
+				_ach_relics_check()
+		else:
+			look_try["r"] = i
+	else:
+		var on := int(look_try[cat]) == i
+		if on and not owned:
+			if _style_buy(tab,i):
+				look_own[cat] = int(look_own[cat]) | (1 << i)
+				look[cat] = i
+		else:
+			look_try[cat] = i
+	_apply_look()
+	_refresh_style()
+
+func _style_buy(tab: String, i: int) -> bool:
+	var price := _style_price(tab,i)
+	var name := ""
+	match tab:
+		"hair": name = String(LK_HAIRS[i][0])
+		"beard": name = String(LK_BEARDS[i][0])
+		"relic": name = String(RELICS[i][0])
+		_: name = String(_style_items(tab)[i]["name"])
+	if tab == "relic" and not _relic_stock().has(i):
+		_show_toast("%s is sold out today. New stock comes in tomorrow!" % name)
+		return false
+	if cash < price:
+		_show_toast("%s costs %s (you have %s)." % [name,_money(price),_money(cash)])
+		return false
+	cash -= price
+	_stat_add("style_buys")
+	_show_toast("Bought %s for %s!" % [name,_money(price)])
+	if not ("--smoke-test" in OS.get_cmdline_user_args()):
+		_play_coin()
+	_save_progress()
+	return true
+
+func _ach_relics_check() -> void:
+	var n := _bits(int(look_own.get("r",0)))
+	if n == 1:
+		_feed_add("Your first relic! Collect more at Relic & Curio.","")
+
+func _style_face_camera() -> void:
+	# While you shop, you turn to face the camera so you can see your outfit.
+	if style_panel == null or not style_panel.visible or player == null or camera == null:
+		return
+	# Frame yourself on the left of the screen, with the store panel on the right.
+	var f := style_cam_dir
+	var right := Vector3(-f.z,0,f.x)
+	var head := player.global_position+Vector3(0,0.35,0)
+	camera.global_position = head+f*3.1+Vector3(0,0.55,0)-right*0.0
+	camera.look_at(head-right*1.15+Vector3(0,-0.15,0))
+	player.rotation.y = lerp_angle(player.rotation.y,atan2(-f.x,-f.z),0.3)
+
+# ---------------- HARBOR GALLERIA: the shopping mall ----------------
+# North of the city between the Biosphere and the airport. A glass-roofed promenade runs north from
+# an arch on the city's north road, with Thread & Co. (clothes) and Shear Bliss (salon) on the west
+# side, Glint (accessories) and a cafe on the east, and Relic & Curio at the north end.
+const GA_C := Vector3(-330,0,-600)
+const GA_Z0 := -545.0          # south arch
+const GA_Z1 := -652.0          # north end
+const GA_W := 12.0             # promenade width
+# Store fronts: [store index (-1 = cafe), centre, facing (direction from the store to the promenade)]
+const GA_STORES := [[0,Vector3(-348,0,-570),Vector3(1,0,0)],[1,Vector3(-348,0,-610),Vector3(1,0,0)],
+	[2,Vector3(-312,0,-570),Vector3(-1,0,0)],[-1,Vector3(-312,0,-610),Vector3(-1,0,0)],[3,Vector3(-330,0,-640),Vector3(0,0,1)]]
+# v0.40: a bright, chunky, toy-plastic look for the Galleria (playful hangout style).
+const GA_TOY := [Color("ff5d8f"),Color("ffc83d"),Color("3fb6ff"),Color("5fd36a"),Color("a06cff"),Color("ff8a3d")]
+var ga_root: Node3D
+var ga_spots: Array = []       # [store index, where you stand to shop]
+var ga_people: Array = []
+
+func _ga_text(text: String, pos: Vector3, col: Color, size: int, near: float, yaw := 0.0, billboard := false) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = size
+	l.pixel_size = 0.005
+	l.outline_size = 5
+	l.outline_modulate = Color(0.06,0.09,0.12,0.85)
+	l.modulate = col
+	l.position = pos
+	l.rotation.y = yaw
+	l.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y if billboard else BaseMaterial3D.BILLBOARD_DISABLED
+	l.visibility_range_end = near
+	l.visibility_range_end_margin = near*0.15
+	l.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	ga_root.add_child(l)
+	return l
+
+func _ga_box(pos: Vector3, size: Vector3, mat: Material, solid := false, yaw := 0.0) -> MeshInstance3D:
+	var m := _fc_part(ga_root,_bbox(),pos,mat,size)
+	m.rotation.y = yaw
+	if solid:
+		var body := StaticBody3D.new()
+		body.collision_mask = 0
+		var sh := CollisionShape3D.new()
+		var b := BoxShape3D.new()
+		b.size = size
+		sh.shape = b
+		body.position = pos
+		body.rotation.y = yaw
+		body.add_child(sh)
+		ga_root.add_child(body)
+	return m
+
+func _build_galleria() -> void:
+	ga_root = Node3D.new()
+	ga_root.name = "Galleria"
+	ga_root.set_meta("static_floor",true)
+	add_child(ga_root)
+	var stone := _bio_mat(Color("ece6da"),0.0,0.7)
+	var pave := _bio_mat(Color("d9d2c4"),0.0,0.8)
+	var dark := _bio_mat(Color("1d2a33"),0.3,0.4)
+	var gold := _fc_glow(Color("ffd27a"))
+	# Walk from the north road to the arch, and the promenade floor with an inlaid glowing line.
+	_ga_box(Vector3(GA_C.x,0.05,(-508.0+GA_Z0)/2.0),Vector3(8,0.1,GA_Z0+508.0),pave)
+	_floor_note(Vector3(GA_C.x,0.05,(-508.0+GA_Z0)/2.0),Vector3(8,0.1,GA_Z0+508.0))
+	var plen := GA_Z0-GA_Z1
+	_ga_box(Vector3(GA_C.x,0.05,(GA_Z0+GA_Z1)/2.0),Vector3(GA_W+28.0,0.1,plen+6.0),_bio_mat(Color("7fd0ff"),0.0,0.3))
+	# Terrazzo tiles in two tones down the promenade.
+	var tiles := [[],[]]
+	for ix in 5:
+		for iz in int(plen/2.4):
+			var tp := Vector3(GA_C.x-4.8+float(ix)*2.4,0.105,GA_Z0-1.2-float(iz)*2.4)
+			tiles[(ix+iz) % 2].append(Transform3D(Basis.from_scale(Vector3(2.32,0.02,2.32)),tp))
+	for k in 2:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = _bbox()
+		mm.instance_count = (tiles[k] as Array).size()
+		for t in (tiles[k] as Array).size():
+			mm.set_instance_transform(t,tiles[k][t])
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		mi.material_override = _bio_mat([Color("fff4e0"),Color("ffd9ec")][k],0.0,0.22)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		ga_root.add_child(mi)
+	_floor_note(Vector3(GA_C.x,0.05,(GA_Z0+GA_Z1)/2.0),Vector3(GA_W+28.0,0.1,plen+6.0))
+	for sx: float in [-6.1,6.1]:
+		# Chunky coloured kerbs along the promenade.
+		for k in int(plen/4.0):
+			_fc_part(ga_root,_bbox(),Vector3(GA_C.x+sx,0.2,GA_Z0-2.0-float(k)*4.0),_bio_mat(GA_TOY[k % GA_TOY.size()],0.0,0.25),Vector3(0.3,0.2,3.9))
+	for k in 6:
+		var lz := -512.0-float(k)*6.0
+		if lz < GA_Z0+2.0:
+			break
+		for sx: float in [-4.6,4.6]:
+			_fc_part(ga_root,_bcone(0.05,0.07,3.4),Vector3(GA_C.x+sx,1.7,lz),_fc_chrome())
+			_fc_part(ga_root,_bsph(0.2),Vector3(GA_C.x+sx,3.45,lz),_fc_glow(Color("fff1c8")))
+	# The arch.
+	for sx: float in [-5.2,5.2]:
+		_ga_box(Vector3(GA_C.x+sx,4.0,GA_Z0),Vector3(1.4,8.0,1.4),_bio_mat(GA_TOY[0] if sx < 0 else GA_TOY[2],0.0,0.25),true)
+		_fc_part(ga_root,_bsph(1.0),Vector3(GA_C.x+sx,9.6,GA_Z0),_bio_mat(GA_TOY[1],0.0,0.25))
+	_ga_box(Vector3(GA_C.x,8.3,GA_Z0),Vector3(12.2,2.0,1.6),_bio_mat(Color("ffc83d"),0.0,0.25))
+	_ga_box(Vector3(GA_C.x,7.55,GA_Z0+0.62),Vector3(11.6,0.06,0.04),gold)
+	var gt := _ga_text("HARBOR GALLERIA",Vector3(GA_C.x,8.3,GA_Z0+0.62),Color("1d2a33"),96,120.0)
+	gt.pixel_size = 0.011
+	gt.outline_size = 0
+	var gs := _ga_text("Fashion · Beauty · Accessories · Relics",Vector3(GA_C.x,9.55,GA_Z0+0.62),Color("fff1c8"),44,60.0)
+	gs.pixel_size = 0.008
+	# Glass canopy over the promenade on slim columns.
+	var glass := _bio_glass_mat(Color("e9f6ff"),0.22)
+	var steel := _bio_mat(Color("ffffff"),0.0,0.25)
+	_ga_box(Vector3(GA_C.x,9.0,(GA_Z0+GA_Z1)/2.0),Vector3(GA_W+2.0,0.06,plen),glass)
+	var nb := int(plen/6.0)
+	for k in nb+1:
+		var z := GA_Z0-float(k)*plen/float(nb)
+		var bay := _bio_mat(GA_TOY[k % GA_TOY.size()],0.0,0.25)
+		_ga_box(Vector3(GA_C.x,9.05,z),Vector3(GA_W+2.0,0.4,0.4),bay)
+		for sx: float in [-GA_W/2.0-0.4,GA_W/2.0+0.4]:
+			if k % 2 == 0:
+				_ga_box(Vector3(GA_C.x+sx,4.5,z),Vector3(0.5,9.0,0.5),bay,true)
+	for sx: float in [-GA_W/2.0-0.4,0.0,GA_W/2.0+0.4]:
+		_ga_box(Vector3(GA_C.x+sx,9.08,(GA_Z0+GA_Z1)/2.0),Vector3(0.14,0.14,plen),steel)
+	# Stores.
+	for e in GA_STORES:
+		_ga_store(int(e[0]),e[1],e[2])
+	# Promenade: a fountain, planters with trees, benches and a kiosk.
+	var fc := Vector3(GA_C.x,0,-590.0)
+	_fc_part(ga_root,_bcone(3.2,3.4,0.6),fc+Vector3(0,0.3,0),_bio_mat(GA_TOY[4],0.0,0.25))
+	_bio_cyl_col_on(ga_root,fc+Vector3(0,0.3,0),3.4,0.6)
+	_fc_part(ga_root,_bcone(2.9,2.9,0.06),fc+Vector3(0,0.58,0),_bio_water_mat(Color("5fc9e8")))
+	_fc_part(ga_root,_bcone(0.35,0.5,2.2),fc+Vector3(0,1.4,0),_fc_pearl())
+	_fc_part(ga_root,_bcone(0.9,0.6,0.25),fc+Vector3(0,2.5,0),_fc_pearl())
+	_fc_part(ga_root,_bsph(0.3),fc+Vector3(0,2.9,0),_fc_glow(Color("bff6ff")))
+	var trees: Array = []
+	for z: float in [-556.0,-576.0,-604.0,-624.0]:
+		for sx: float in [-4.2,4.2]:
+			var pp := Vector3(GA_C.x+sx,0,z)
+			_fc_part(ga_root,_bio_hexmesh(1.0,0.7),pp+Vector3(0,0.35,0),_bio_mat(GA_TOY[int(absf(z)+sx) % GA_TOY.size()],0.0,0.25))
+			_bio_cyl_col_on(ga_root,pp+Vector3(0,0.35,0),1.05,0.7)
+			trees.append(Transform3D(Basis(Vector3.UP,z*0.7+sx).scaled(Vector3.ONE*0.7),pp+Vector3(0,0.7,0)))
+			_cm_bench(ga_root,Vector3(GA_C.x+sx*0.55,0,z+3.0),0.0 if sx < 0 else PI)
+	_ga_models("nature_oak",trees)
+	var flowers: Array = []
+	for z: float in [-566.0,-614.0]:
+		for sx: float in [-4.2,4.2]:
+			flowers.append(Transform3D(Basis().scaled(Vector3.ONE*1.2),Vector3(GA_C.x+sx,0.1,z)))
+	_ga_models("nature_bush_flower",flowers)
+	# Shoppers with all kinds of outfits.
+	var r := RandomNumberGenerator.new()
+	r.seed = 4040
+	for k in 14:
+		var p := Vector3(GA_C.x+r.randf_range(-4.8,4.8),0,r.randf_range(GA_Z1+16.0,GA_Z0-6.0))
+		if p.distance_to(fc) < 4.4:
+			continue
+		var pp := _cm_person(ga_root,p,r.randf()*TAU,900+k)
+		if not pp.is_empty():
+			ga_people.append(pp)
+	_build_ga_fun()
+	_cull_person(ga_root,160.0)
+
+func _bio_cyl_col_on(parent: Node3D, p: Vector3, r: float, h: float) -> void:
+	var body := StaticBody3D.new()
+	body.collision_mask = 0
+	var sh := CollisionShape3D.new()
+	var cs := CylinderShape3D.new()
+	cs.radius = r
+	cs.height = h
+	sh.shape = cs
+	body.position = p
+	body.add_child(sh)
+	parent.add_child(body)
+
+func _ga_models(name: String, xs: Array) -> void:
+	var mesh := _bio_nature_mesh(name)
+	if mesh == null or xs.is_empty():
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = xs.size()
+	for k in xs.size():
+		mm.set_instance_transform(k,xs[k])
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ga_root.add_child(mi)
+
+func _ga_lbox(n: Node3D, pos: Vector3, size: Vector3, mat: Material, solid := false) -> MeshInstance3D:
+	var m := _fc_part(n,_bbox(),pos,mat,size)
+	if solid:
+		var body := StaticBody3D.new()
+		body.collision_mask = 0
+		var sh := CollisionShape3D.new()
+		var b := BoxShape3D.new()
+		b.size = size
+		sh.shape = b
+		body.position = pos
+		body.add_child(sh)
+		n.add_child(body)
+	return m
+
+func _ga_ltext(n: Node3D, text: String, pos: Vector3, col: Color, size: int, near: float) -> Label3D:
+	var l := _ga_text(text,Vector3.ZERO,col,size,near)
+	ga_root.remove_child(l)
+	n.add_child(l)
+	l.position = pos
+	return l
+
+func _ga_store(si: int, c: Vector3, face: Vector3) -> void:
+	# A store in its own frame: local +z faces the promenade, x runs along the front.
+	# 16 m wide, 12 m deep, a two-storey facade with a door and display windows.
+	var W := 16.0
+	var D := 12.0
+	var H := 7.0
+	var n := Node3D.new()
+	n.position = c
+	n.rotation.y = atan2(face.x,face.z)
+	ga_root.add_child(n)
+	var S: Dictionary = STORES[si] if si >= 0 else {"name":"HARBOR BREW","sub":"Coffee and cakes","col":Color("e0a060")}
+	var accent: Color = S["col"]
+	var wall := _bio_mat(accent.lerp(Color.WHITE,0.15),0.0,0.25)
+	var floor_m := _bio_mat([Color("8a6a4a"),Color("5a4868"),Color("2a3a48"),Color("2a2230"),Color("7a5a3e")][si if si >= 0 else 4],0.1,0.35)
+	var inner := _bio_mat(accent.darkened(0.55),0.0,0.7)
+	var wood := _bio_mat(Color("9a6a42"),0.0,0.55)
+	var fz := D/2.0
+	_ga_lbox(n,Vector3(0,0.11,0),Vector3(W,0.02,D),floor_m)
+	_ga_lbox(n,Vector3(0,H/2.0,-D/2.0),Vector3(W,H,0.4),wall,true)
+	_ga_lbox(n,Vector3(0,2.6,-D/2.0+0.22),Vector3(W-1.0,5.2,0.04),inner)
+	for sd: float in [-1.0,1.0]:
+		_ga_lbox(n,Vector3(sd*W/2.0,H/2.0,0),Vector3(0.4,H,D),wall,true)
+		_ga_lbox(n,Vector3(sd*(W/2.0-0.22),2.6,0),Vector3(0.04,5.2,D-1.0),inner)
+		# Wood cladding on the facade either side of the windows.
+		_ga_lbox(n,Vector3(sd*(W/2.0-0.15),3.5,fz+0.35),Vector3(0.9,7.0,0.5),_bio_mat(Color("ffffff"),0.0,0.25))
+	_ga_lbox(n,Vector3(0,H,0),Vector3(W+0.4,0.3,D+0.4),wall)
+	_ga_lbox(n,Vector3(0,H-0.2,0),Vector3(W-1.0,0.06,D-1.0),_fc_glow(Color("fff6e0")))
+	# Facade: pillars by the door, glass windows on low sills either side, a dark sign band.
+	for sd: float in [-1.0,1.0]:
+		var wx := sd*(W/4.0+0.95)
+		var ww := W/2.0-1.9
+		_ga_lbox(n,Vector3(wx,0.35,fz),Vector3(ww,0.7,0.5),wall,true)
+		var win := _ga_lbox(n,Vector3(wx,2.2,fz),Vector3(ww,3.0,0.08),_bio_glass_mat(Color("dff3ff"),0.22),true)
+		win.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_ga_lbox(n,Vector3(wx,3.75,fz),Vector3(ww,0.1,0.1),_fc_glow(accent))
+		_ga_lbox(n,Vector3(sd*1.9,2.6,fz),Vector3(0.7,5.2,0.7),_bio_mat(Color("ffc83d"),0.0,0.25),true)
+	_ga_lbox(n,Vector3(0,5.6,fz+0.1),Vector3(W+0.6,2.9,0.9),_bio_mat(Color("ffffff"),0.0,0.25),true)
+	var nm := _ga_ltext(n,String(S["name"]),Vector3(0,5.95,fz+0.57),accent.darkened(0.15),120,70.0)
+	nm.outline_size = 0
+	var sb := _ga_ltext(n,String(S["sub"]),Vector3(0,5.0,fz+0.57),Color("2a3440"),46,40.0)
+	sb.outline_size = 0
+	# A chunky striped awning over the door.
+	for k in 5:
+		_ga_lbox(n,Vector3(-2.0+float(k)*1.0,4.0,fz+1.1),Vector3(1.0,0.25,2.2),_bio_mat(accent if k % 2 == 0 else Color.WHITE,0.0,0.25))
+	# Inside: a counter at the back, the shop assistant behind it, and where you stand to shop.
+	var cz := -D/2.0+2.4
+	_ga_lbox(n,Vector3(0,0.55,cz),Vector3(4.2,1.1,1.0),_fc_pearl(),true)
+	_ga_lbox(n,Vector3(0,1.12,cz),Vector3(4.4,0.06,1.2),_bio_mat(accent.darkened(0.3),0.2,0.4))
+	var clerk := _cm_person(n,Vector3(0,0,cz-1.0),0.0,700+maxi(si,4)+si)
+	if not clerk.is_empty():
+		ga_people.append(clerk)
+	if si >= 0:
+		ga_spots.append([si,n.transform*Vector3(0,0,cz+1.4),n.transform.basis*Vector3(0,0,1)])
+		var ring := _fc_part(n,_fc_torus(0.75,0.95),Vector3(0,0.14,cz+1.4),_fc_glow(accent))
+		ring.scale = Vector3(1,0.3,1)
+	match si:
+		0:
+			for sd: float in [-1.0,1.0]:
+				for k in 3:
+					var rx := sd*(W/2.0-1.0)
+					var rz := -3.4+float(k)*2.6
+					_ga_lbox(n,Vector3(rx,1.75,rz),Vector3(0.06,0.06,2.0),_fc_chrome())
+					for h in 5:
+						var hc: Color = LK_COLORS[(k*5+h+int(sd+1.0)*3) % LK_COLORS.size()]
+						_ga_lbox(n,Vector3(rx,1.15,rz-0.8+float(h)*0.4),Vector3(0.55,0.95,0.06),_bio_mat(hc,0.0,0.8))
+			_ga_mannequins(n,fz-1.2,[{"t":7,"tc":16,"p":0,"pc":5,"sh":2,"sc":14,"h":4},{"t":6,"tc":11,"sh":1,"sc":15,"h":9,"hc":5},{"t":10,"tc":6,"pc":5,"sh":3,"sc":14,"h":8},{"t":5,"tc":8,"p":2,"pc":5,"sh":1,"sc":2,"h":5}])
+		1:
+			for k in 3:
+				var cx := -4.5+float(k)*4.5
+				_ga_lbox(n,Vector3(cx,0.45,-0.5),Vector3(0.7,0.9,0.7),_bio_mat(Color("c88bff"),0.1,0.5),true)
+				_ga_lbox(n,Vector3(cx,1.7,-1.6),Vector3(0.9,1.3,0.06),_bio_glass_mat(Color("e9f6ff"),0.6))
+			_ga_mannequins(n,fz-1.2,[{"h":5,"hc":1,"s":5},{"h":6,"hc":3,"s":2},{"h":7,"hc":8,"s":0},{"h":9,"hc":6,"s":1}],true)
+		2:
+			for k in 4:
+				var cx := -5.0+float(k)*3.3
+				_ga_lbox(n,Vector3(cx,0.5,0),Vector3(1.0,1.0,1.0),_fc_pearl(),true)
+				_ga_lbox(n,Vector3(cx,1.25,0),Vector3(0.95,0.5,0.95),_bio_glass_mat(Color("dff3ff"),0.3))
+				_fc_part(n,_bsph(0.09),Vector3(cx,1.1,0),_fc_glow([Color("ffd23f"),Color("4fe3ff"),Color("ff7ab8"),Color("c0c8d0")][k]))
+			_ga_mannequins(n,fz-1.2,[{"a":(1 << 1)|(1 << 7),"t":9,"tc":5,"h":8},{"a":(1 << 5)|(1 << 4),"t":0,"tc":15,"h":9,"hc":5},{"a":(1 << 3)|(1 << 0),"t":5,"tc":1,"h":3},{"a":(1 << 6)|(1 << 2),"t":4,"tc":10,"h":1,"hc":4}],true)
+		3:
+			for k in 6:
+				var cx := -5.0+float(k % 3)*5.0
+				var cz2 := -1.0+float(k/3)*3.2
+				_ga_lbox(n,Vector3(cx,0.5,cz2),Vector3(0.9,1.0,0.9),_bio_mat(Color("3a2a4a"),0.3,0.4),true)
+				var rel := _relic_model([8,9,10,13,14,15][k])
+				rel.position = Vector3(cx,1.35,cz2)
+				rel.scale = Vector3.ONE*2.2
+				n.add_child(rel)
+				_ga_lbox(n,Vector3(cx,1.4,cz2),Vector3(0.85,0.8,0.85),_bio_glass_mat(Color("fff1c8"),0.18))
+		_:
+			for k in 3:
+				_bio_cafe_on(n,Vector3(-4.0+float(k)*4.0,0,1.0),k)
+
+func _bio_cafe_on(n: Node3D, p: Vector3, seed_i: int) -> void:
+	var wood := Color("8a5a36")
+	_fc_part(n,_bcone(0.45,0.45,0.05),p+Vector3(0,0.75,0),_bio_mat(Color("f6f3ec"),0.0,0.6))
+	_fc_part(n,_bcone(0.04,0.04,0.75),p+Vector3(0,0.37,0),_fc_chrome())
+	for k in 3:
+		var a := float(k)*TAU/3.0+float(seed_i)
+		_fc_part(n,_bbox(),p+_bio_dir(a)*0.8+Vector3(0,0.45,0),_bio_mat(wood,0.0,0.6),Vector3(0.42,0.06,0.42))
+
+func _ga_mannequins(n: Node3D, z: float, looks: Array, heads := false) -> void:
+	# Mannequins in the shop windows (white, or with real faces in the salon), wearing what the store sells.
+	for k in looks.size():
+		var x: float = [-6.2,-3.6,3.6,6.2][k % 4]
+		_fc_part(n,_bcone(0.4,0.45,0.15),Vector3(x,0.08,z),_fc_pearl())
+		var m := Node3D.new()
+		m.position = Vector3(x,0.15,z)
+		m.rotation.y = 0.3 if k % 2 == 0 else -0.3
+		n.add_child(m)
+		var pp := _make_person(m,0,{"Shirt":Color.WHITE,"Pants":Color.WHITE,"Skin":Color.WHITE,"Hair":Color.WHITE,"Shoes":Color.WHITE,"Eye":Color.BLACK},true)
+		var L := {}
+		for key in LOOK_KEYS:
+			L[key] = 0
+		L["r"] = -1
+		L["pc"] = 6
+		L["sc"] = 15
+		for key in looks[k]:
+			L[key] = looks[k][key]
+		_dress(pp,L)
+		if not heads:
+			(pp["mats"]["Skin"] as StandardMaterial3D).albedo_color = Color("f2f2f0")
+			(pp["mats"]["Eye"] as StandardMaterial3D).albedo_color = Color("f2f2f0")
+			(pp["mats"]["Hair"] as StandardMaterial3D).albedo_color = Color("f2f2f0")
+		_pose_person(pp,0.0,0.0)
+
+# ---------------- featured outfits and the Sky Run ----------------
+# Two spinning podiums on the promenade show today's featured outfits (new every day). Beside the
+# mall, the Sky Run: bounce pads launch you from platform to platform up to a prize at the top
+# (once a day). There is no jump button in Harbor City, so the pads do the jumping.
+const SKY_PADS := [[Vector3(-364,0,-590),0.0],[Vector3(-369,0,-595),3.5],[Vector3(-375,0,-599),7.0],[Vector3(-381,0,-595),10.5],[Vector3(-386,0,-589),14.0],[Vector3(-381,0,-583),17.5]]
+const SKY_PAY := 300
+const SKY_XP := 60
+var ga_spin: Array = []
+var sky_day := ""
+var sky_best := 0.0
+var sky_t := -1.0
+var sky_cool := 0.0
+
+func _ga_featured_look(k: int) -> Dictionary:
+	var r := RandomNumberGenerator.new()
+	r.seed = hash("featured-%d-%s" % [k,_style_today()])
+	var L := {}
+	for key in LOOK_KEYS:
+		L[key] = 0
+	L["r"] = -1
+	L["b"] = r.randi() % 3
+	L["s"] = r.randi() % LK_SKINS.size()
+	L["h"] = 4+r.randi() % 6
+	L["hc"] = r.randi() % LK_HAIRC.size()
+	L["t"] = 4+r.randi() % (LK_TOPS.size()-4)
+	L["tc"] = r.randi() % LK_COLORS.size()
+	L["p"] = r.randi() % LK_BOTTOMS.size()
+	L["pc"] = r.randi() % LK_COLORS.size()
+	L["sh"] = 1+r.randi() % (LK_SHOES.size()-1)
+	L["sc"] = r.randi() % LK_COLORS.size()
+	L["a"] = (1 << (r.randi() % LK_ACCS.size())) | (1 << (r.randi() % LK_ACCS.size()))
+	L["r"] = r.randi() % RELICS.size()
+	return L
+
+func _build_ga_fun() -> void:
+	for k in 2:
+		var p := Vector3(GA_C.x,0,[-563.0,-617.0][k])
+		_fc_part(ga_root,_bcone(1.25,1.35,0.5),p+Vector3(0,0.25,0),_bio_mat(GA_TOY[k*2+1],0.0,0.25))
+		_bio_cyl_col_on(ga_root,p+Vector3(0,0.25,0),1.35,0.5)
+		var ring := _fc_part(ga_root,_fc_torus(1.25,1.4),p+Vector3(0,0.5,0),_fc_glow(GA_TOY[k*2+2]))
+		ring.scale = Vector3(1,0.4,1)
+		var spin := Node3D.new()
+		spin.position = p+Vector3(0,0.5,0)
+		ga_root.add_child(spin)
+		ga_spin.append(spin)
+		var pp := _make_person(spin,0,{"Shirt":Color.WHITE,"Pants":Color.WHITE,"Skin":Color.WHITE,"Hair":Color.WHITE,"Shoes":Color.WHITE,"Eye":Color.BLACK},true)
+		var L := _ga_featured_look(k)
+		_dress(pp,L)
+		_pose_person(pp,0.0,0.0)
+		var rel := _relic_model(int(L["r"]))
+		rel.position = Vector3(0.55,1.45,0.15)
+		spin.add_child(rel)
+		var t := _ga_text("FEATURED TODAY",p+Vector3(0,2.45,0),GA_TOY[k*2+1].lightened(0.2),44,25.0,0.0,true)
+		t.pixel_size = 0.006
+	# The Sky Run.
+	for k in SKY_PADS.size():
+		var c: Vector3 = SKY_PADS[k][0]
+		var top: float = SKY_PADS[k][1]
+		var col: Color = GA_TOY[k % GA_TOY.size()]
+		if k > 0:
+			var sz := 5.0 if k == SKY_PADS.size()-1 else 3.6
+			_ga_box(c+Vector3(0,top-0.25,0),Vector3(sz,0.5,sz),_bio_mat(col,0.0,0.25),true)
+			_ga_box(c+Vector3(0,top-0.55,0),Vector3(sz-0.4,0.1,sz-0.4),_fc_glow(col.lightened(0.3)))
+		if k < SKY_PADS.size()-1:
+			_fc_part(ga_root,_bcone(0.9,0.95,0.12),c+Vector3(0,top+0.06,0),_bio_mat(Color("ffffff"),0.0,0.2))
+			var pad := _fc_part(ga_root,_fc_torus(0.55,0.85),c+Vector3(0,top+0.13,0),_fc_glow(Color("4fe3ff")))
+			pad.scale = Vector3(1,0.4,1)
+			var arrow := _fc_part(ga_root,_bcone(0.0,0.3,0.4),c+Vector3(0,top+0.5,0),_fc_glow(Color("4fe3ff")))
+			ga_spin.append(arrow)
+	var fin: Vector3 = SKY_PADS[SKY_PADS.size()-1][0]
+	var ft: float = SKY_PADS[SKY_PADS.size()-1][1]
+	_ga_box(fin+Vector3(0,ft+0.4,-1.6),Vector3(1.2,0.8,0.8),_bio_mat(Color("c0602a"),0.0,0.4))
+	_ga_box(fin+Vector3(0,ft+0.85,-1.6),Vector3(1.25,0.15,0.85),_fc_glow(Color("ffd23f")))
+	_fc_part(ga_root,_bcone(0.05,0.05,3.0),fin+Vector3(1.8,ft+1.5,-1.8),_fc_chrome())
+	_ga_box(fin+Vector3(2.3,ft+2.7,-1.8),Vector3(1.0,0.6,0.05),_bio_mat(GA_TOY[0],0.0,0.25))
+	var st := _ga_text("SKY RUN",SKY_PADS[0][0]+Vector3(0,2.6,0),Color("ffc83d"),80,40.0,0.0,true)
+	st.pixel_size = 0.008
+	_ga_text("Step on the pads. Prize at the top, once a day!",SKY_PADS[0][0]+Vector3(0,2.0,0),Color("ffffff"),32,20.0,0.0,true).pixel_size = 0.006
+
+func _ga_fun_tick(delta: float) -> void:
+	for n in ga_spin:
+		(n as Node3D).rotation.y += delta*0.8
+	if player == null or driving or paused or ga_root == null:
+		return
+	sky_cool -= delta
+	if sky_t >= 0.0:
+		sky_t += delta
+	if player.position.distance_to(SKY_PADS[2][0]) > 40.0:
+		return
+	var feet := player.position.y-0.7
+	for k in SKY_PADS.size()-1:
+		var c: Vector3 = SKY_PADS[k][0]
+		var top: float = SKY_PADS[k][1]
+		if Vector2(player.position.x-c.x,player.position.z-c.z).length() < 0.95 and absf(feet-top) < 0.35 and player.velocity.y <= 0.5 and sky_cool <= 0.0:
+			var nxt: float = SKY_PADS[k+1][1]
+			player.velocity.y = sqrt(2.0*24.0*(nxt-top+2.0))
+			sky_cool = 0.4
+			if k == 0:
+				sky_t = 0.0
+	var fin: Vector3 = SKY_PADS[SKY_PADS.size()-1][0]
+	var ft: float = SKY_PADS[SKY_PADS.size()-1][1]
+	if sky_t >= 0.0 and absf(feet-ft) < 0.4 and Vector2(player.position.x-fin.x,player.position.z-fin.z).length() < 2.6:
+		_sky_finish()
+
+func _sky_finish() -> void:
+	var t := sky_t
+	sky_t = -1.0
+	var best := sky_best <= 0.0 or t < sky_best
+	if best:
+		sky_best = t
+	if sky_day != _style_today():
+		sky_day = _style_today()
+		cash += SKY_PAY
+		bonus_xp += SKY_XP
+		_show_toast("SKY RUN COMPLETE in %.1f s!  +$%d  +%d XP%s" % [t,SKY_PAY,SKY_XP,"  New best!" if best else ""])
+		_feed_add("Sky Run: +$%d" % SKY_PAY,"")
+		if not ("--smoke-test" in OS.get_cmdline_user_args()):
+			_play_coin()
+	else:
+		_show_toast("Sky Run in %.1f s%s  (best %.1f s). The prize comes back tomorrow." % [t,"  New best!" if best else "",sky_best])
+	_save_progress()
+
+func _store_near() -> int:
+	if driving or player == null or paused:
+		return -1
+	for e in ga_spots:
+		var p: Vector3 = e[1]
+		if Vector2(player.position.x-p.x,player.position.z-p.z).length() < 2.4:
+			return int(e[0])
+	return -1
 
 # ---------- v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard") ----------
 var extra_panels: Array = []
@@ -24514,6 +26188,7 @@ func _smoke_v27() -> void:
 	_smoke_chat()
 	_smoke_feet()
 	_smoke_biosphere()
+	_smoke_style()
 	# Nobody stands in a road, and a car stuck behind someone in its lane moves on after a few seconds.
 	for p in peds:
 		if bool(p["idle"]):

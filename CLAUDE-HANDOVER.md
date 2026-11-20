@@ -525,3 +525,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Natural motion: blender-src/make_people_motion.py reopens game/models/kperson.glb (output of make_kenney_people.py) and replaces Idle, Walk, Talk, Wave, Cheer, Sip, Phone, Look and Sit with hand-made poses solved as absolute armature-space directions (feet grounded from the lowest foot point). Run and Jump stay Kenney's. Rebuild order: make_kenney_people.py, then make_people_motion.py <in.glb> <out.glb> [render_dir] (HC_SIDE=1 for side renders).
 - Release commit 9b62d39, tag v0.35.2, versionCode 62. APK SHA256 d4574969956392cb56de8ebdd290eeac43ab0ae851f4bfd632e5fff9cc86dbc3 (43841035 bytes), same certificate.
 - Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches. Quaternius Drive still "Quota exceeded" on 2026-11-20.
+
+## v0.36.0 (released 2026-11-20)
+
+- Harbor Commons park (`_build_commons`, `_commons_tick`) in the old empty field x -132..-54, z -56..-16 (fountain CM_C, playground CM_PLAY, court CM_COURT, Puzzle Pavilion CM_PUZZLE). Custom benches `_cm_bench`; kids are people scaled 0.62.
+- Daily puzzle (`_pz_*`): date-seeded, alternates Neon Lights 4x4 / Slide 8; pays PZ_PAY + streak once a day; saved as pz_day / pz_streak / pz_total. Action button DAILY PUZZLE at CM_TERMINAL.
+- Nearby chat: HUB_PHRASES extended (append-only; indexes are sent online as "q"), CHAT pill under PLAYERS, speech bubbles (`_bubble`), CHAT_NEAR 40 m filter, crew-only flag "qc" in the pos frame, chat log with `_chat_area`. Symbols must exist in NotoSansSymbols2 (smoke checks it). HC_CHAT=1/2 screenshot preview uses chat_preview and never connects (an earlier preview briefly went online as "Tester"; don't set online_on in shot hooks without online_retry = 1e9).
+- Daytime default: day_mode 1, one-time migration flag day_default_v036. Pose fixes in make_people_motion.py (FOOT_YAW, FORE_TWIST 0.8, wider step).
+- Release commit 08b397e, tag v0.36.0, versionCode 63. APK SHA256 945d4f955337a654efbccdf674c12a4cf3e49ae1973fe0bf6febb24a5ab58f4c (43869707 bytes), same certificate.
+- Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches.

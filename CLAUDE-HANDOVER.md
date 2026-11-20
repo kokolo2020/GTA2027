@@ -519,3 +519,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Adult proportions: make_kenney_people.py now pose-scales the body after the retarget (legs 1.55, arms 1.4, torso 1.12 long / 1.28 wide, limbs 1.12 thick, head 0.65), raises Hips to keep feet on the floor, bakes the mesh and applies the pose as rest. It prints "FIT" numbers used for K_HAT_SCALE 1.15, K_HEAD_Y 1.53, K_HIP 0.70, K_BACK_Y 0.93, K_HEAD_Z -0.04 in main.gd.
 - Release commit 25d3115, tag v0.35.1, versionCode 61. APK SHA256 e8e429f490a3058b54f3112222c75cb3ee0d1ffc7fc771fa83f184dbe8ad0b4e (43869707 bytes), same certificate.
 - Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches. Hats/back gear up close not visually checked (screenshot run with HC_SHOWOFF hung).
+
+## v0.35.2 (released 2026-11-20)
+
+- Natural motion: blender-src/make_people_motion.py reopens game/models/kperson.glb (output of make_kenney_people.py) and replaces Idle, Walk, Talk, Wave, Cheer, Sip, Phone, Look and Sit with hand-made poses solved as absolute armature-space directions (feet grounded from the lowest foot point). Run and Jump stay Kenney's. Rebuild order: make_kenney_people.py, then make_people_motion.py <in.glb> <out.glb> [render_dir] (HC_SIDE=1 for side renders).
+- Release commit 9b62d39, tag v0.35.2, versionCode 62. APK SHA256 d4574969956392cb56de8ebdd290eeac43ab0ae851f4bfd632e5fff9cc86dbc3 (43841035 bytes), same certificate.
+- Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches. Quaternius Drive still "Quota exceeded" on 2026-11-20.

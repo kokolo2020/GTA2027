@@ -4142,6 +4142,8 @@ func _try_model(path: String) -> Node3D:
 	if res is PackedScene:
 		var inst := (res as PackedScene).instantiate() as Node3D
 		_realify(inst)
+		if path.begins_with("res://models/car_"):
+			_car_underglow(inst)
 		return inst
 	return null
 
@@ -29945,3 +29947,38 @@ func _build_fan_plaza() -> void:
 	_nav_spot(fan_nav,S+Vector3(0,0,62.0),Vector3.ZERO,1.0,3.0,0.6)
 	for j in FAN_WALKERS:
 		_stroller(fan_nav,fill_root,1900+j*19,j % 6 == 2)
+
+# ---------------- v0.45: hover car underglow ----------------
+var underglow_mat: StandardMaterial3D
+
+func _car_underglow(model: Node3D) -> void:
+	# A soft cyan pool of light on the road under every hover car (additive, no lighting cost).
+	if underglow_mat == null:
+		var tex := GradientTexture2D.new()
+		var grad := Gradient.new()
+		grad.set_color(0,Color(1,1,1,1))
+		grad.set_color(1,Color(1,1,1,0))
+		grad.add_point(0.5,Color(1,1,1,0.35))
+		tex.gradient = grad
+		tex.fill = GradientTexture2D.FILL_RADIAL
+		tex.fill_from = Vector2(0.5,0.5)
+		tex.fill_to = Vector2(1.0,0.5)
+		tex.width = 64
+		tex.height = 64
+		underglow_mat = StandardMaterial3D.new()
+		underglow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		underglow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		underglow_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		underglow_mat.albedo_texture = tex
+		underglow_mat.albedo_color = Color(0.25,0.95,1.0,0.75)
+		underglow_mat.disable_receive_shadows = true
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(2.6,4.6)
+	var mi := MeshInstance3D.new()
+	mi.name = "Underglow"
+	mi.mesh = pm
+	mi.material_override = underglow_mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.position = Vector3(0,-0.5,0)
+	mi.visibility_range_end = 90.0
+	model.add_child(mi)

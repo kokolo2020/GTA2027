@@ -337,7 +337,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.35.1: everyone in the city now has grown-up proportions!")
+	_show_toast("Harbor City 0.35.2: people walk and stand naturally now!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()

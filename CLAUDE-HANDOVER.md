@@ -583,3 +583,8 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Fixes included: Biosphere gate side test uses the gate plane (`along < 0`, within 20 m), doorway wall pieces stop 2.85 m from openings, `_on_foot_collision_guard`, CALL CAR blocked by `_bio_inside`.
 - Developer: `--style-shots` (outfit line-up and store screens; offline).
 - Commit be111ce, versionCode 69, APK SHA256 7d05370125750ea9fa8791f9e29f6a454817457816bc36a2c283db7b8a955fc9 (46,431,777 bytes), same certificate. Workflow run 44733051176 passed; release.json, page button, web pck (18,064,328) and downloaded APK hash verified. Desktop bench 55.8 fps. Not verified on a phone.
+
+## v0.40.1 released and verified (2026-11-20)
+
+- Harbor Galleria enclosed: `_ga_shell` builds solid walls on GA_X0/GA_X1/GA_Z0/GA_ZN up to GA_WALL_H with roofs over the store rows; doors are the arch (half-width GA_DOOR_S) and the west Sky Run door (GA_DOOR_W). `_ga_inside` tells inside from outside; smoke test ray-checks every wall metre and walks into each wall and out of each door at hoverboard speed.
+- Commit a40b256, versionCode 70, APK SHA256 a3d402381eb58dbdfb42cd7748c649fda98dc18cf3e8fa560103b908689fcc0c (46,431,777 bytes), same certificate. Workflow run 44736976191 passed; release.json, page button, web pck (18,065,976) and downloaded APK hash verified.

@@ -337,7 +337,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.35: everyone in the city is new, with real faces, outfits and smooth natural animation!")
+	_show_toast("Harbor City 0.35.1: everyone in the city now has grown-up proportions!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -2136,7 +2136,7 @@ func _peer_look(peer: Dictionary, av: Variant) -> void:
 		var hh := Node3D.new()
 		hh.position.y = _hat_y(0.0)
 		if pp.has("ap"):
-			hh.position.z = -0.06
+			hh.position.z = K_HEAD_Z
 			hh.scale = Vector3.ONE*K_HAT_SCALE
 		foot.add_child(hh)
 		peer["hat"] = hh
@@ -3987,7 +3987,7 @@ func _build_player() -> void:
 		pants_mats.append(player_person["mats"]["Pants"])
 		hat_holder.position.y = _hat_y(-0.7)
 		if player_person.has("ap"):
-			hat_holder.position.z = -0.06
+			hat_holder.position.z = K_HEAD_Z
 			hat_holder.scale = Vector3.ONE*K_HAT_SCALE
 	# Real players stand on a glowing ring (yours gold, other players cyan); NPC walkers have none.
 	my_ring = _player_ring(player,Color("ffcf4a"))
@@ -4078,9 +4078,13 @@ const KPERSON_PATH := "res://models/kperson.glb"
 # Skins 0/1 are the plain outfits the game recolours (shirt, trousers, shoes, skin tone); the rest keep their look.
 const KSKINS := ["humanMaleAT","humanFemaleAT","skaterMaleA","skaterFemaleA","cyborgFemaleA","criminalMaleA","survivorMaleB","survivorFemaleA"]
 const KIDLES := ["Idle","Look","Talk","Idle","Phone","Sip","Look","Talk"]
-const K_HAT_SCALE := 1.9      # hats and head gear were sized for the old, smaller head
-const K_HEAD_Y := 1.43        # centre of the new head above the feet
-const K_HIP := 0.5            # seat contact height when sitting
+# v0.35.1: adult proportions (longer legs, arms and torso, smaller head); numbers printed by
+# blender-src/make_kenney_people.py as "FIT".
+const K_HAT_SCALE := 1.15     # hats and head gear were sized for the old blocky head
+const K_HEAD_Y := 1.53        # centre of the head above the feet
+const K_HIP := 0.70           # seat contact height when sitting
+const K_BACK_Y := 0.93        # where back gear (jetpack, wings) sits on the body
+const K_HEAD_Z := -0.04       # head is slightly forward of the feet
 const K_SKIN_REF := Color("e8b896")
 var kperson_scene: PackedScene
 var kperson_tried := false
@@ -18110,7 +18114,7 @@ func _build_gear(holder: Node3D, mask: int) -> void:
 			_gear_piece(holder,i)
 
 func _gear_piece(holder: Node3D, idx: int) -> void:
-	# v0.35: on the animated people the holder is scaled up to fit the bigger head. Face gear moves down
+	# v0.35: on the animated people the holder is scaled to fit their head. Face gear moves down
 	# to the eyes; back gear (jetpack, wings) goes on a child node at normal size on the shorter body.
 	var gk := holder.scale.x
 	if gk > 1.01:
@@ -18118,7 +18122,7 @@ func _gear_piece(holder: Node3D, idx: int) -> void:
 		holder.add_child(sub)
 		if idx == 4 or idx == 5:
 			sub.scale = Vector3.ONE*0.85/gk
-			sub.position = Vector3(0,(0.73-(K_HEAD_Y-K_HAT_SCALE*0.555))/gk,-0.02/gk)
+			sub.position = Vector3(0,(K_BACK_Y-(K_HEAD_Y-K_HAT_SCALE*0.555))/gk,-0.05/gk)
 		elif idx == 1 or idx == 2:
 			sub.position = Vector3(0,-0.045,0.01)
 		holder = sub

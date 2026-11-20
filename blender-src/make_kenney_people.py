@@ -57,6 +57,46 @@ body.matrix_world = mw
 md = body.modifiers.new('Armature', 'ARMATURE'); md.object = rig
 bpy.data.objects.remove(model_rig, do_unlink=True)
 
+# ---------- 0.35.1: adult proportions ----------
+# Kenney's body is a chunky "big head, short legs" figure (head ~28% of height, legs ~33%), which looks
+# like a crowd of dwarfs next to Harbor City's cars and doors. Stretch the legs, arms and torso and
+# shrink the head (head ~17%, legs ~45%), bake that shape into the mesh and make it the new rest pose.
+# Rotations in the animations are relative to each bone's rest, so they still play unchanged.
+LEG_S, ARM_S, TORSO_S, TORSO_W, HEAD_S, LIMB_W = 1.55, 1.4, 1.12, 1.28, 0.65, 1.12
+L, A = (LIMB_W, LEG_S, LIMB_W), (LIMB_W, ARM_S, LIMB_W)
+STRETCH = {'LeftUpLeg': L, 'RightUpLeg': L, 'LeftLeg': L, 'RightLeg': L,
+           'LeftArm': A, 'RightArm': A, 'LeftForeArm': A, 'RightForeArm': A,
+           'Spine': (TORSO_W, TORSO_S, TORSO_W), 'Chest': (TORSO_W, TORSO_S, TORSO_W), 'UpperChest': (TORSO_W, TORSO_S, TORSO_W),
+           'Head': (HEAD_S, HEAD_S, HEAD_S)}
+OLD = {n: rig.data.bones[n].head_local.copy() for n in ('Head', 'UpperChest', 'LeftUpLeg', 'LeftFoot')}
+OLD_TOP = max((body.matrix_world @ Vector(c)).z for c in body.bound_box)
+for b in rig.data.bones:
+    b.inherit_scale = 'NONE'
+for n, sc in STRETCH.items():
+    rig.pose.bones[n].scale = sc
+bpy.context.view_layer.update()
+foot_drop = OLD['LeftFoot'].z - rig.pose.bones['LeftFoot'].head.z
+hp = rig.pose.bones['Hips']
+hp.matrix = Matrix.Translation((0, 0, foot_drop)) @ hp.matrix
+bpy.context.view_layer.update()
+print('FOOT_DROP', foot_drop, 'foot now', rig.pose.bones['LeftFoot'].head.z)
+bpy.context.view_layer.objects.active = body
+for m in list(body.modifiers):
+    if m.type == 'ARMATURE':
+        bpy.ops.object.modifier_apply(modifier=m.name)
+bpy.ops.object.select_all(action='DESELECT')
+rig.select_set(True)
+bpy.context.view_layer.objects.active = rig
+bpy.ops.object.mode_set(mode='POSE')
+bpy.ops.pose.armature_apply(selected=False)
+bpy.ops.object.mode_set(mode='OBJECT')
+for b in rig.data.bones:
+    b.inherit_scale = 'FULL'
+md = body.modifiers.new('Armature', 'ARMATURE'); md.object = rig
+bpy.context.view_layer.update()
+NEW = {n: rig.data.bones[n].head_local.copy() for n in OLD}
+NEW_TOP = max((body.matrix_world @ Vector(c)).z for c in body.bound_box)
+
 actions = {}
 for name in ['idle', 'run', 'jump']:
     before = set(bpy.data.objects)
@@ -82,6 +122,14 @@ H = max((body.matrix_world @ Vector(c)).z for c in body.bound_box)
 s = TARGET_H / H
 rig.scale = (s, s, s)
 print('SCALE', H, s)
+# Fitting numbers for main.gd (game metres above the feet): head centre, upper chest, hip joint, and
+# the head-size ratio against the 0.35.0 body (old scale = TARGET_H / OLD_TOP).
+so = TARGET_H / OLD_TOP
+hc_old = (OLD['Head'].z + 0.53) * so
+hc_new = (NEW['Head'].z + 0.53 * HEAD_S) * s
+print('FIT head_centre %.3f (was %.3f) head_ratio %.3f upper_chest %.3f (was %.3f) hip %.3f (was %.3f)' % (
+    hc_new, hc_old, HEAD_S * s / so, NEW['UpperChest'].z * s, OLD['UpperChest'].z * so,
+    NEW['LeftUpLeg'].z * s, OLD['LeftUpLeg'].z * so))
 
 def fc_map(act):
     return {(f.data_path, f.array_index): f for f in act.fcurves}

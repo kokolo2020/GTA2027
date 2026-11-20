@@ -315,6 +315,7 @@ func _ready() -> void:
 	_build_commons()
 	_build_biosphere()
 	_build_galleria()
+	_build_sky_garden()
 	_build_market()
 	_build_display()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
@@ -341,8 +342,9 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.40.1: Harbor Galleria is now a real mall. Use the entrance under the arch or the Sky Run door.")
+	_show_toast("Harbor City 0.41: the Sky Garden is open! Grow exotic plants that keep growing while you are away. Travel > Sky Garden.")
 	booted = true
+	_sg_boot_note()
 	_online_autostart()
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -4658,6 +4660,7 @@ func _build_hud() -> void:
 	_build_lb(root)
 	_build_market_panel(root)
 	_build_style_panel(root)
+	_build_sg_panel(root)
 	_build_puzzle_panel(root)
 	_build_streamer(root)
 	_build_ach(root)
@@ -7590,6 +7593,7 @@ func _physics_process(delta: float) -> void:
 	_guidance_tick(delta)
 	_hub_people_tick(delta)
 	_hub_keep_cars_out()
+	_people_only_keep_cars_out()
 	_race_keep_cars_out()
 	_rw_tick(delta)
 	_feed_tick()
@@ -7704,6 +7708,12 @@ func _interact() -> void:
 		return
 	if _store_near() >= 0:
 		_open_store(_store_near())
+		return
+	if _extra_near() >= 0:
+		_extra_open(_extra_near())
+		return
+	if _sg_near() >= 0:
+		_sg_interact()
 		return
 	var mk := _market_near()
 	if mk >= 0:
@@ -7886,8 +7896,12 @@ func _refresh_hud() -> void:
 		action_button.text = "OPEN " + String(MARKET[_market_near()]["name"])
 	elif _puzzle_near():
 		action_button.text = "DAILY PUZZLE ✓" if pz_day == _pz_today() else "DAILY PUZZLE"
+	elif _sg_near() >= 0:
+		action_button.text = _sg_button_text()
 	elif _store_near() >= 0:
 		action_button.text = "SHOP: " + String(STORES[_store_near()]["name"])
+	elif _extra_near() >= 0:
+		action_button.text = "SHOP: " + String(ga_extra_spots[_extra_near()][2])
 	elif _ticket_near():
 		action_button.text = "DAY PASS ✓" if _bio_pass_ok() else "BUY DAY PASS  $%d" % BIO_PASS_PRICE
 	elif _qt() and trial_active < 0 and distance < (6 if driving else 5):
@@ -8068,6 +8082,7 @@ func _save_progress() -> void:
 	file.set_value("progress","av_look",[av_shirt,av_pants,av_hat])
 	file.set_value("progress","look_v40",_look_pack(look))
 	file.set_value("progress","sky_run",[sky_day,sky_best])
+	file.set_value("progress","sky_garden",{"plots":sg_plots,"bag":sg_bag,"codex":sg_codex,"muts":sg_mutseen,"all":sg_all_done,"bk":sg_bought_key,"bought":sg_bought})
 	file.set_value("progress","look_own_v40",look_own)
 	file.set_value("progress","av_own",av_own)
 	file.set_value("progress","crate_done",crate_done)
@@ -8226,6 +8241,27 @@ func _load_progress() -> void:
 		else:
 			look["tc"] = av_shirt
 			look["pc"] = 6+av_pants
+		var sgd = file.get_value("progress","sky_garden",{})
+		if sgd is Dictionary and (sgd as Dictionary).has("plots"):
+			sg_plots = []
+			for e in sgd["plots"]:
+				if e is Array and (e as Array).size() >= 3 and int(e[0]) < SG_PLANTS.size():
+					sg_plots.append([int(e[0]),int(e[1]),clampi(int(e[2]),0,SG_MUTS.size()-1)])
+			while sg_plots.size() < 8:
+				sg_plots.append([-1,0,0])
+			sg_bag = {}
+			for k in (sgd.get("bag",{}) as Dictionary):
+				if int(k) >= 0 and int(k) < SG_PLANTS.size():
+					sg_bag[int(k)] = maxi(0,int(sgd["bag"][k]))
+			sg_codex = int(sgd.get("codex",0)) & ((1 << SG_PLANTS.size())-1)
+			sg_mutseen = int(sgd.get("muts",0))
+			sg_all_done = bool(sgd.get("all",false))
+			sg_bought_key = int(sgd.get("bk",-1))
+			sg_bought = {}
+			for k in (sgd.get("bought",{}) as Dictionary):
+				sg_bought[int(k)] = int(sgd["bought"][k])
+		else:
+			sg_bag = {0:3}   # v0.41: three free Sunburst Daisy seeds to start
 		var sr = file.get_value("progress","sky_run",[])
 		if sr is Array and (sr as Array).size() >= 2:
 			sky_day = String(sr[0])
@@ -8439,6 +8475,7 @@ func _process(delta: float) -> void:
 	_relic_tick()
 	_style_face_camera()
 	_ga_fun_tick(get_process_delta_time())
+	_sky_garden_tick(get_process_delta_time())
 	_daynight_tick(delta)
 	_level_fx_tick(delta)
 	_hud_v23_tick()
@@ -11455,7 +11492,7 @@ const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["BIOSPHERE",Vector2(-500,-600)],["GALLERIA",Vector2(-330,-600)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["BIOSPHERE",Vector2(-500,-600)],["GALLERIA",Vector2(-330,-600)],["SKY GARDEN",Vector2(-402,-636)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -12416,6 +12453,7 @@ const CHECKPOINTS := [
 	{"name":"Harbor Airport","pos":Vector3(52,0,-470)},
 	{"name":"The Biosphere","pos":Vector3(-500,0,-486)},
 	{"name":"Harbor Galleria","pos":Vector3(-330,0,-514)},
+	{"name":"Sky Garden","pos":Vector3(-403,0,-610)},
 ]
 var checkpoint_id := -1
 var checkpoint_nodes: Array = []
@@ -14273,6 +14311,39 @@ func _hub_shots() -> void:
 		await get_tree().physics_frame
 	await _save_shot("hub-chat")
 	get_tree().quit()
+
+func _sg_on_terrace(p: Vector3) -> bool:
+	return p.x > SG_X0-0.5 and p.x < SG_X1+0.5 and p.z < SG_Z0+0.5 and p.z > SG_Z1-0.5
+
+func _people_only(p: Vector3) -> bool:
+	# v0.41: places cars never go: the Biosphere, the Galleria and the Sky Garden.
+	return _bio_inside(p) or (ga_root != null and _ga_inside(p)) or (sg_root != null and _sg_on_terrace(p))
+
+func _people_only_keep_cars_out() -> void:
+	# Old saves or odd pushes can leave a car inside: send it away (CALL CAR brings it back outside).
+	if car == null or car_gone or not _people_only(car.position):
+		return
+	if driving:
+		driving = false
+		player.show()
+		player.get_child(0).set_deferred("disabled",false)
+		_apply_view()
+	_car_away()
+	_show_toast("Cars can't go in here. Your car is waiting outside: tap CALL CAR when you're back out.")
+
+func _car_barrier(items: Array) -> void:
+	# Bollards that stop cars (they only collide with the car layer); people walk between them.
+	_multi_collider(items,HUB_CAR_LAYER)
+	for it in items:
+		var c: Vector3 = it[0]
+		var size: Vector3 = it[1]
+		var yaw := float(it[2])
+		var along := Vector3(cos(yaw),0,-sin(yaw))
+		var n := int(size.x/1.3)+1
+		for k in n:
+			var bp := c+along*(-size.x/2.0+size.x*float(k)/float(maxi(n-1,1)))
+			_fc_part(self,_bcone(0.16,0.18,0.9),Vector3(bp.x,0.45,bp.z),_bio_mat(Color("f2c94c"),0.1,0.4))
+			_fc_part(self,_bcone(0.17,0.17,0.12),Vector3(bp.x,0.75,bp.z),_bio_mat(Color("23262b"),0.1,0.4))
 
 func _hub_keep_cars_out() -> void:
 	# Cars never belong inside the dome (old saves, rescues or pushes): park them outside.
@@ -16301,6 +16372,10 @@ func _call_block_reason() -> String:
 		return "Cars can't come into Harbor Dome. Walk outside first."
 	if _bio_inside(player.position):
 		return "Cars can't come into the Biosphere. Walk back out to the entrance path first."
+	if ga_root != null and _ga_inside(player.position):
+		return "Cars can't come into Harbor Galleria. Walk out through the entrance first."
+	if sg_root != null and (_sg_on_terrace(player.position) or player.position.y > 1.8):
+		return "Cars can't come up to the Sky Garden. Walk down the ramp first."
 	if _in_raceway(player.position) and not _in_rw_lot(player.position):
 		return "Walk to the raceway car park to call your car."
 	if clock < call_ready_at:
@@ -16496,7 +16571,7 @@ const RUN_SPEED := 9.0
 const WALK_SPEED := 5.0
 # Which area must be open before you can travel to each checkpoint (see _area_open):
 # 0 city, 1 ridge (east), 2 bay (west), 3 north, 4 marina, 5 skyline downtown.
-const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1,0,0,0,0,0]   # v0.37.1: The Biosphere, always open
+const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1,0,0,0,0,0,0]   # v0.37.1: The Biosphere, always open
 const TRAVEL_COOL := 20.0
 var run_on := true
 var run_button: Button
@@ -16683,12 +16758,12 @@ func _smoke_travel() -> void:
 		assert(i == checkpoint_id or _travel_open(i) == _area_open(int(TRAVEL_AREA[i])),"Travel follows district locks")
 	assert(STOP_CLOCK.x > 4.5 and absf(STOP_WEST.x+32.0) > 4.5,"Job stops are beside the road, not on it")
 	travel_ready_at = 0.0
-	var bi := CHECKPOINTS.size()-2
+	var bi := CHECKPOINTS.size()-3
 	assert(String(CHECKPOINTS[bi]["name"]) == "The Biosphere" and _travel_open(bi),"v0.37.1: fast travel to the Biosphere is open")
 	_travel_to(bi)
 	assert(Vector2(player.position.x-BIO_C.x,player.position.z+486.0).length() < 0.5 and not _blocked_at(player.position,0.3),"v0.37.1: fast travel lands on the Biosphere walk")
 	travel_ready_at = 0.0
-	var gi := CHECKPOINTS.size()-1
+	var gi := CHECKPOINTS.size()-2
 	assert(String(CHECKPOINTS[gi]["name"]) == "Harbor Galleria" and _travel_open(gi),"v0.40: fast travel to the Galleria is open")
 	_travel_to(gi)
 	assert(not _blocked_at(player.position,0.3) and not _on_road(player.position),"v0.40: fast travel lands on the Galleria walk")
@@ -19602,6 +19677,8 @@ func _build_biosphere() -> void:
 		_bio_tunnel(ta,tb,BIO_DOMES[i0]["rib"].lerp(BIO_DOMES[i1]["rib"],0.5),walls,rng)
 		tubes.append([ta,tb])
 	_bio_ticket_hall(hub_open)
+	# Bollards across the entrance walk: people only from here on.
+	_car_barrier([[Vector3(BIO_C.x,0.9,BIO_C.z+BIO_HUB_A+3.0),Vector3(7.6,1.8,0.5),0.0]])
 	_bio_grounds(tubes,rng)
 	_bio_flush()
 	# ---- Domes ----
@@ -22183,10 +22260,19 @@ const GA_DOOR_S := 4.4          # half-width of the main entrance
 const GA_DOOR_W := Vector2(-590.0,2.2)   # west door: z centre, half-width
 const GA_WALL_H := 9.3
 # Store fronts: [store index (-1 = cafe), centre, facing (direction from the store to the promenade)]
+# v0.41: five more shops fill the gaps (the west middle stays open for the Sky Run door).
+const GA_EXTRA := [
+	[{"name":"SNEAKER LAB","sub":"Shoes and kicks","col":Color("e07a4a"),"act":"shoes"},Vector3(-312,0,-590),Vector3(-1,0,0)],
+	[{"name":"NEON OUTFITTERS","sub":"Visors, halos, jetpacks","col":Color("4fb8d8"),"act":"gear"},Vector3(-348,0,-553.5),Vector3(1,0,0)],
+	[{"name":"PET PALACE","sub":"Robot pets","col":Color("d8b84a"),"act":"pets"},Vector3(-312,0,-553.5),Vector3(-1,0,0)],
+	[{"name":"SEED & BLOOM","sub":"Sky Garden seeds","col":Color("6fb86a"),"act":"seeds"},Vector3(-348,0,-636),Vector3(1,0,0)],
+	[{"name":"HARBOR SWEETS","sub":"Ice cream and cakes","col":Color("d886a8"),"act":""},Vector3(-312,0,-636),Vector3(-1,0,0)],
+]
+var ga_extra_spots: Array = []
 const GA_STORES := [[0,Vector3(-348,0,-570),Vector3(1,0,0)],[1,Vector3(-348,0,-610),Vector3(1,0,0)],
 	[2,Vector3(-312,0,-570),Vector3(-1,0,0)],[-1,Vector3(-312,0,-610),Vector3(-1,0,0)],[3,Vector3(-330,0,-640),Vector3(0,0,1)]]
 # v0.40: a bright, chunky, toy-plastic look for the Galleria (playful hangout style).
-const GA_TOY := [Color("ff5d8f"),Color("ffc83d"),Color("3fb6ff"),Color("5fd36a"),Color("a06cff"),Color("ff8a3d")]
+const GA_TOY := [Color("9a6a74"),Color("a08a5a"),Color("5e7a92"),Color("66806a"),Color("776c92"),Color("9a7458")]   # v0.41: softer
 var ga_root: Node3D
 var ga_spots: Array = []       # [store index, where you stand to shop]
 var ga_people: Array = []
@@ -22237,7 +22323,7 @@ func _build_galleria() -> void:
 	_ga_box(Vector3(GA_C.x,0.05,(-508.0+GA_Z0)/2.0),Vector3(8,0.1,GA_Z0+508.0),pave)
 	_floor_note(Vector3(GA_C.x,0.05,(-508.0+GA_Z0)/2.0),Vector3(8,0.1,GA_Z0+508.0))
 	var plen := GA_Z0-GA_Z1
-	_ga_box(Vector3(GA_C.x,0.05,(GA_Z0+GA_Z1)/2.0),Vector3(GA_X1-GA_X0+2.0,0.1,plen+6.0),_bio_mat(Color("7fd0ff"),0.0,0.3))
+	_ga_box(Vector3(GA_C.x,0.05,(GA_Z0+GA_Z1)/2.0),Vector3(GA_X1-GA_X0+2.0,0.1,plen+6.0),_bio_mat(Color("5a5650"),0.0,0.6))
 	# Terrazzo tiles in two tones down the promenade.
 	var tiles := [[],[]]
 	for ix in 5:
@@ -22253,7 +22339,7 @@ func _build_galleria() -> void:
 			mm.set_instance_transform(t,tiles[k][t])
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
-		mi.material_override = _bio_mat([Color("fff4e0"),Color("ffd9ec")][k],0.0,0.22)
+		mi.material_override = _bio_mat([Color("8e877c"),Color("78716a")][k],0.05,0.55)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		ga_root.add_child(mi)
 	_floor_note(Vector3(GA_C.x,0.05,(GA_Z0+GA_Z1)/2.0),Vector3(GA_X1-GA_X0+2.0,0.1,plen+6.0))
@@ -22272,7 +22358,7 @@ func _build_galleria() -> void:
 	for sx: float in [-5.2,5.2]:
 		_ga_box(Vector3(GA_C.x+sx,4.0,GA_Z0),Vector3(1.4,8.0,1.4),_bio_mat(GA_TOY[0] if sx < 0 else GA_TOY[2],0.0,0.25),true)
 		_fc_part(ga_root,_bsph(1.0),Vector3(GA_C.x+sx,9.6,GA_Z0),_bio_mat(GA_TOY[1],0.0,0.25))
-	_ga_box(Vector3(GA_C.x,8.3,GA_Z0),Vector3(12.2,2.0,1.6),_bio_mat(Color("ffc83d"),0.0,0.25))
+	_ga_box(Vector3(GA_C.x,8.3,GA_Z0),Vector3(12.2,2.0,1.6),_bio_mat(Color("8a7a5a"),0.1,0.5))
 	_ga_box(Vector3(GA_C.x,7.55,GA_Z0+0.62),Vector3(11.6,0.06,0.04),gold)
 	var gt := _ga_text("HARBOR GALLERIA",Vector3(GA_C.x,8.3,GA_Z0+0.62),Color("1d2a33"),96,120.0)
 	gt.pixel_size = 0.011
@@ -22281,12 +22367,12 @@ func _build_galleria() -> void:
 	gs.pixel_size = 0.008
 	# Glass canopy over the promenade on slim columns.
 	var glass := _bio_glass_mat(Color("e9f6ff"),0.22)
-	var steel := _bio_mat(Color("ffffff"),0.0,0.25)
+	var steel := _bio_mat(Color("aaa396"),0.0,0.6)
 	_ga_box(Vector3(GA_C.x,9.0,(GA_Z0+GA_Z1)/2.0),Vector3(GA_W+2.0,0.06,plen),glass)
 	var nb := int(plen/6.0)
 	for k in nb+1:
 		var z := GA_Z0-float(k)*plen/float(nb)
-		var bay := _bio_mat(GA_TOY[k % GA_TOY.size()],0.0,0.25)
+		var bay := _bio_mat(GA_TOY[k % GA_TOY.size()],0.0,0.55)
 		_ga_box(Vector3(GA_C.x,9.05,z),Vector3(GA_W+2.0,0.4,0.4),bay)
 		for sx: float in [-GA_W/2.0-0.4,GA_W/2.0+0.4]:
 			if k % 2 == 0:
@@ -22296,6 +22382,8 @@ func _build_galleria() -> void:
 	# Stores.
 	for e in GA_STORES:
 		_ga_store(int(e[0]),e[1],e[2])
+	for e in GA_EXTRA:
+		_ga_store(-2,e[1],e[2],e[0])
 	# Promenade: a fountain, planters with trees, benches and a kiosk.
 	var fc := Vector3(GA_C.x,0,-590.0)
 	_fc_part(ga_root,_bcone(3.2,3.4,0.6),fc+Vector3(0,0.3,0),_bio_mat(GA_TOY[4],0.0,0.25))
@@ -22329,6 +22417,7 @@ func _build_galleria() -> void:
 		if not pp.is_empty():
 			ga_people.append(pp)
 	_ga_shell()
+	_car_barrier([[Vector3(GA_C.x,0.9,GA_Z0+1.6),Vector3(GA_DOOR_S*2.0+1.0,1.8,0.5),0.0],[Vector3(GA_X0-1.6,0.9,GA_DOOR_W.x),Vector3(GA_DOOR_W.y*2.0+1.0,1.8,0.5),PI/2.0]])
 	_build_ga_fun()
 	_cull_person(ga_root,160.0)
 
@@ -22336,7 +22425,7 @@ func _ga_shell() -> void:
 	# Solid outer walls up to the glass roof, in the mall's toy colours, with two doorways.
 	var t := 0.6
 	var h := GA_WALL_H
-	var white := _bio_mat(Color("ffffff"),0.0,0.25)
+	var white := _bio_mat(Color("aaa396"),0.0,0.6)
 	var walls: Array = []   # [from, to] along one line
 	var zs := GA_Z0
 	# South front: either side of the main entrance.
@@ -22355,7 +22444,7 @@ func _ga_shell() -> void:
 		var along_x := absf(b.x-a.x) > absf(b.z-a.z)
 		var L := (absf(b.x-a.x) if along_x else absf(b.z-a.z))+t
 		var size := Vector3(L,h,t) if along_x else Vector3(t,h,L)
-		_ga_box(mid+Vector3(0,h/2.0,0),size,_bio_mat(GA_TOY[(k*2+1) % GA_TOY.size()],0.0,0.25),true)
+		_ga_box(mid+Vector3(0,h/2.0,0),size,_bio_mat(GA_TOY[(k*2+1) % GA_TOY.size()].darkened(0.15),0.0,0.6),true)
 		_ga_box(mid+Vector3(0,h+0.2,0),Vector3(size.x+0.3,0.4,size.z+0.3),white)
 		_ga_box(mid+Vector3(0,0.4,0),Vector3(size.x+0.2,0.8,size.z+0.2),white)
 	# Roof over the store rows (the promenade keeps its glass canopy).
@@ -22433,7 +22522,7 @@ func _ga_ltext(n: Node3D, text: String, pos: Vector3, col: Color, size: int, nea
 	l.position = pos
 	return l
 
-func _ga_store(si: int, c: Vector3, face: Vector3) -> void:
+func _ga_store(si: int, c: Vector3, face: Vector3, X := {}) -> void:
 	# A store in its own frame: local +z faces the promenade, x runs along the front.
 	# 16 m wide, 12 m deep, a two-storey facade with a door and display windows.
 	var W := 16.0
@@ -22443,9 +22532,9 @@ func _ga_store(si: int, c: Vector3, face: Vector3) -> void:
 	n.position = c
 	n.rotation.y = atan2(face.x,face.z)
 	ga_root.add_child(n)
-	var S: Dictionary = STORES[si] if si >= 0 else {"name":"HARBOR BREW","sub":"Coffee and cakes","col":Color("e0a060")}
+	var S: Dictionary = STORES[si] if si >= 0 else ({"name":"HARBOR BREW","sub":"Coffee and cakes","col":Color("e0a060")} if X.is_empty() else X)
 	var accent: Color = S["col"]
-	var wall := _bio_mat(accent.lerp(Color.WHITE,0.15),0.0,0.25)
+	var wall := _bio_mat(accent.darkened(0.25).lerp(Color("8a8278"),0.35),0.0,0.6)
 	var floor_m := _bio_mat([Color("8a6a4a"),Color("5a4868"),Color("2a3a48"),Color("2a2230"),Color("7a5a3e")][si if si >= 0 else 4],0.1,0.35)
 	var inner := _bio_mat(accent.darkened(0.55),0.0,0.7)
 	var wood := _bio_mat(Color("9a6a42"),0.0,0.55)
@@ -22457,7 +22546,7 @@ func _ga_store(si: int, c: Vector3, face: Vector3) -> void:
 		_ga_lbox(n,Vector3(sd*W/2.0,H/2.0,0),Vector3(0.4,H,D),wall,true)
 		_ga_lbox(n,Vector3(sd*(W/2.0-0.22),2.6,0),Vector3(0.04,5.2,D-1.0),inner)
 		# Wood cladding on the facade either side of the windows.
-		_ga_lbox(n,Vector3(sd*(W/2.0-0.15),3.5,fz+0.35),Vector3(0.9,7.0,0.5),_bio_mat(Color("ffffff"),0.0,0.25))
+		_ga_lbox(n,Vector3(sd*(W/2.0-0.15),3.5,fz+0.35),Vector3(0.9,7.0,0.5),_bio_mat(Color("aaa396"),0.0,0.6))
 	_ga_lbox(n,Vector3(0,H,0),Vector3(W+0.4,0.3,D+0.4),wall)
 	_ga_lbox(n,Vector3(0,H-0.2,0),Vector3(W-1.0,0.06,D-1.0),_fc_glow(Color("fff6e0")))
 	# Facade: pillars by the door, glass windows on low sills either side, a dark sign band.
@@ -22468,15 +22557,15 @@ func _ga_store(si: int, c: Vector3, face: Vector3) -> void:
 		var win := _ga_lbox(n,Vector3(wx,2.2,fz),Vector3(ww,3.0,0.08),_bio_glass_mat(Color("dff3ff"),0.22),true)
 		win.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_ga_lbox(n,Vector3(wx,3.75,fz),Vector3(ww,0.1,0.1),_fc_glow(accent))
-		_ga_lbox(n,Vector3(sd*1.9,2.6,fz),Vector3(0.7,5.2,0.7),_bio_mat(Color("ffc83d"),0.0,0.25),true)
-	_ga_lbox(n,Vector3(0,5.6,fz+0.1),Vector3(W+0.6,2.9,0.9),_bio_mat(Color("ffffff"),0.0,0.25),true)
-	var nm := _ga_ltext(n,String(S["name"]),Vector3(0,5.95,fz+0.57),accent.darkened(0.15),120,70.0)
+		_ga_lbox(n,Vector3(sd*1.9,2.6,fz),Vector3(0.7,5.2,0.7),_bio_mat(Color("b8935a"),0.1,0.5),true)
+	_ga_lbox(n,Vector3(0,5.6,fz+0.1),Vector3(W+0.6,2.9,0.9),_bio_mat(Color("2a2f36"),0.1,0.5),true)
+	var nm := _ga_ltext(n,String(S["name"]),Vector3(0,5.95,fz+0.57),accent.lightened(0.25),120,70.0)
 	nm.outline_size = 0
-	var sb := _ga_ltext(n,String(S["sub"]),Vector3(0,5.0,fz+0.57),Color("2a3440"),46,40.0)
+	var sb := _ga_ltext(n,String(S["sub"]),Vector3(0,5.0,fz+0.57),Color("e4ddd0"),46,40.0)
 	sb.outline_size = 0
 	# A chunky striped awning over the door.
 	for k in 5:
-		_ga_lbox(n,Vector3(-2.0+float(k)*1.0,4.0,fz+1.1),Vector3(1.0,0.25,2.2),_bio_mat(accent if k % 2 == 0 else Color.WHITE,0.0,0.25))
+		_ga_lbox(n,Vector3(-2.0+float(k)*1.0,4.0,fz+1.1),Vector3(1.0,0.25,2.2),_bio_mat(accent.darkened(0.1) if k % 2 == 0 else Color("e4ddd0"),0.0,0.6))
 	# Inside: a counter at the back, the shop assistant behind it, and where you stand to shop.
 	var cz := -D/2.0+2.4
 	_ga_lbox(n,Vector3(0,0.55,cz),Vector3(4.2,1.1,1.0),_fc_pearl(),true)
@@ -22486,6 +22575,15 @@ func _ga_store(si: int, c: Vector3, face: Vector3) -> void:
 		ga_people.append(clerk)
 	if si >= 0:
 		ga_spots.append([si,n.transform*Vector3(0,0,cz+1.4),n.transform.basis*Vector3(0,0,1)])
+	elif String(X.get("act","")) != "":
+		ga_extra_spots.append([String(X["act"]),n.transform*Vector3(0,0,cz+1.4),String(X["name"])])
+		var ring2 := _fc_part(n,_fc_torus(0.75,0.95),Vector3(0,0.14,cz+1.4),_fc_glow(accent))
+		ring2.scale = Vector3(1,0.3,1)
+		for sd: float in [-1.0,1.0]:
+			for k in 3:
+				_ga_lbox(n,Vector3(sd*(W/2.0-1.0),0.6+float(k)*0.8,-1.0),Vector3(0.6,0.06,5.0),_bio_mat(Color("8a6a4a"),0.0,0.6))
+				for j in 5:
+					_ga_lbox(n,Vector3(sd*(W/2.0-1.0),0.8+float(k)*0.8,-3.0+float(j)*1.0),Vector3(0.35,0.3,0.35),_bio_mat(GA_TOY[(j+k) % GA_TOY.size()],0.0,0.5))
 		var ring := _fc_part(n,_fc_torus(0.75,0.95),Vector3(0,0.14,cz+1.4),_fc_glow(accent))
 		ring.scale = Vector3(1,0.3,1)
 	match si:
@@ -22681,6 +22779,24 @@ func _sky_finish() -> void:
 		_show_toast("Sky Run in %.1f s%s  (best %.1f s). The prize comes back tomorrow." % [t,"  New best!" if best else "",sky_best])
 	_save_progress()
 
+func _extra_near() -> int:
+	if driving or player == null or paused:
+		return -1
+	for i in ga_extra_spots.size():
+		var p: Vector3 = ga_extra_spots[i][1]
+		if Vector2(player.position.x-p.x,player.position.z-p.z).length() < 2.4:
+			return i
+	return -1
+
+func _extra_open(i: int) -> void:
+	match String(ga_extra_spots[i][0]):
+		"shoes":
+			_open_store(0)
+			_style_set_tab("shoes")
+		"gear": _open_market(0)
+		"pets": _open_market(1)
+		"seeds": _sg_open("shop",-1)
+
 func _store_near() -> int:
 	if driving or player == null or paused:
 		return -1
@@ -22689,6 +22805,786 @@ func _store_near() -> int:
 		if Vector2(player.position.x-p.x,player.position.z-p.z).length() < 2.4:
 			return int(e[0])
 	return -1
+
+# ---------- v0.41: THE SKY GARDEN ----------
+# A raised garden terrace west of the Galleria, by the Sky Run. Buy exotic seeds at the Seed Stall
+# (new stock every 20 minutes), plant them in your eight beds and come back: they grow in real time,
+# even while the game is closed. Rarer plants take longer and sell for more. Some sprout a mutation
+# (Giant, Golden or Rainbow) worth 2x, 3x or 10x. Every plant you grow fills your Garden Codex.
+# Plants never wither, and every chance is shown on screen.
+const SG_C := Vector3(-402,0,-636)
+const SG_TOP := 3.0
+const SG_X0 := -415.0
+const SG_X1 := -389.0
+const SG_Z0 := -628.0          # south edge (the ramp comes up here)
+const SG_Z1 := -644.0
+const SG_RAMP_X := -403.0
+const SG_RESTOCK := 1200       # seconds between Seed Stall restocks
+# [name, rarity, seed price, grow seconds, sell value, colour A, colour B, shape]
+const SG_PLANTS := [
+	["Sunburst Daisy",0,20,120,45,Color("ffd23f"),Color("ff8a1c"),"daisy"],
+	["Fire Lily",0,40,300,100,Color("ff4f3a"),Color("ffb347"),"lily"],
+	["Ghost Fern",1,90,600,220,Color("bfefff"),Color("7fd6c8"),"fern"],
+	["Crystal Cactus",1,150,900,380,Color("6fd3ff"),Color("3f9a6a"),"cactus"],
+	["Glow Orchid",2,300,1800,800,Color("c254ff"),Color("ff7ab8"),"orchid"],
+	["Venus Snapper",2,450,2700,1200,Color("5fbf3a"),Color("d8392b"),"snapper"],
+	["Dragonfruit Vine",3,900,5400,2600,Color("ff3f8f"),Color("4fae4a"),"vine"],
+	["Star Lotus",3,1400,7200,4200,Color("fff1c8"),Color("ff9ad0"),"lotus"],
+	["Golden Bamboo",4,3000,14400,9500,Color("ffcf4a"),Color("b88a2a"),"bamboo"],
+	["Celestial Rose",4,5000,21600,16000,Color("8a5bff"),Color("4fe3ff"),"rose"],
+	["Moonbloom Tree",5,12000,43200,42000,Color("e9f6ff"),Color("9fd8ff"),"tree"],
+	["Phoenix Palm",5,20000,86400,75000,Color("ff6a1c"),Color("ffd23f"),"palm"],
+]
+const SG_RARITY := [["Common",Color("cbd8de"),1.0,6],["Uncommon",Color("7dff9a"),0.7,3],["Rare",Color("6fd3ff"),0.4,2],["Epic",Color("c88bff"),0.18,1],["Legendary",Color("ffcf4a"),0.06,1],["Mythic",Color("ff7ab8"),0.02,1]]
+# Mutations: [name, value multiplier, chance]
+const SG_MUTS := [["",1,0.0],["Giant",2,0.08],["Golden",3,0.06],["Rainbow",10,0.01]]
+const SG_ALL_PAY := 5000
+var sg_root: Node3D
+var sg_plots: Array = []        # per bed: [seed, planted unix time, mutation] (seed -1 = empty)
+var sg_bag := {0:3}             # seed index -> count (three free daisies to start)
+var sg_codex := 0               # bit per plant grown
+var sg_mutseen := 0             # bit per mutation found
+var sg_all_done := false
+var sg_bought := {}             # this restock: seed index -> bought
+var sg_bought_key := -1
+var sg_test_now := 0
+var sg_nodes: Array = []        # per bed: {"node","plant","spark","label","key"}
+var sg_beds: Array = []         # bed centres
+var sg_rainbow: StandardMaterial3D
+var sg_tick_t := 0.0
+var sg_panel: PanelContainer
+var sg_title: Label
+var sg_info: Label
+var sg_list: VBoxContainer
+var sg_mode := "shop"
+var sg_plot_sel := -1
+var sg_told := false
+
+func _sg_now() -> int:
+	return sg_test_now if sg_test_now > 0 else int(Time.get_unix_time_from_system())
+
+func _sg_progress(p: int) -> float:
+	var P: Array = sg_plots[p]
+	if int(P[0]) < 0:
+		return 0.0
+	return clampf(float(_sg_now()-int(P[1]))/float(SG_PLANTS[int(P[0])][3]),0.0,1.0)
+
+func _sg_time(sec: int) -> String:
+	if sec >= 3600:
+		return "%dh %02dm" % [sec/3600,(sec % 3600)/60]
+	if sec >= 60:
+		return "%dm %02ds" % [sec/60,sec % 60]
+	return "%ds" % sec
+
+func _sg_stock() -> Array:
+	# This restock's seeds: [seed, how many]. Commons always; rarer seeds turn up by chance.
+	var key := _sg_now()/SG_RESTOCK
+	if key != sg_bought_key:
+		sg_bought_key = key
+		sg_bought = {}
+	var r := RandomNumberGenerator.new()
+	r.seed = hash("sky-garden-%d" % key)
+	var out: Array = []
+	for i in SG_PLANTS.size():
+		var R: Array = SG_RARITY[int(SG_PLANTS[i][1])]
+		if r.randf() < float(R[2]):
+			out.append([i,int(R[3])])
+	return out
+
+func _sg_mut_roll(t: int, p: int) -> int:
+	var r := RandomNumberGenerator.new()
+	r.seed = hash("sg-mut-%d-%d" % [t,p])
+	var x := r.randf()
+	if x < float(SG_MUTS[3][2]):
+		return 3
+	if x < float(SG_MUTS[3][2])+float(SG_MUTS[2][2]):
+		return 2
+	if x < float(SG_MUTS[3][2])+float(SG_MUTS[2][2])+float(SG_MUTS[1][2]):
+		return 1
+	return 0
+
+# ---------------- building ----------------
+func _sg_box(pos: Vector3, size: Vector3, mat: Material, solid := false) -> MeshInstance3D:
+	var m := _fc_part(sg_root,_bbox(),pos,mat,size)
+	if solid:
+		_collider(sg_root,pos,size)
+	return m
+
+func _sg_text(text: String, pos: Vector3, col: Color, size: int, near: float) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = size
+	l.pixel_size = 0.005
+	l.outline_size = 5
+	l.outline_modulate = Color(0.06,0.09,0.12,0.85)
+	l.modulate = col
+	l.position = pos
+	l.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	l.visibility_range_end = near
+	sg_root.add_child(l)
+	return l
+
+func _build_sky_garden() -> void:
+	sg_root = Node3D.new()
+	sg_root.name = "SkyGarden"
+	add_child(sg_root)
+	sg_rainbow = StandardMaterial3D.new()
+	sg_rainbow.emission_enabled = true
+	sg_rainbow.emission_energy_multiplier = 0.6
+	var W := SG_X1-SG_X0
+	var D := SG_Z0-SG_Z1
+	var cx := (SG_X0+SG_X1)/2.0
+	var cz := (SG_Z0+SG_Z1)/2.0
+	# The terrace: a stone block with a green vine band, a wooden deck and a low railing.
+	_sg_box(Vector3(cx,SG_TOP/2.0,cz),Vector3(W,SG_TOP,D),_bio_mat(Color("e9e2d4"),0.0,0.7),true)
+	_sg_box(Vector3(cx,SG_TOP-0.35,cz),Vector3(W+0.1,0.5,D+0.1),_bio_mat(Color("4f9a45"),0.0,0.8))
+	_sg_box(Vector3(cx,SG_TOP+0.02,cz),Vector3(W-0.2,0.04,D-0.2),_bio_mat(Color("b88a5a"),0.0,0.6))
+	var rail := _bio_mat(Color("ffffff"),0.0,0.3)
+	var gap0 := SG_RAMP_X-1.6
+	var gap1 := SG_RAMP_X+1.6
+	for seg in [[SG_X0,gap0,SG_Z0],[gap1,SG_X1,SG_Z0],[SG_X0,SG_X1,SG_Z1]]:
+		var a: float = seg[0]
+		var b: float = seg[1]
+		_sg_box(Vector3((a+b)/2.0,SG_TOP+0.55,float(seg[2])),Vector3(b-a,1.1,0.25),rail,true)
+	for x in [SG_X0,SG_X1]:
+		_sg_box(Vector3(x,SG_TOP+0.55,cz),Vector3(0.25,1.1,D),rail,true)
+	# The ramp up from the grass (its foot meets the ground collider exactly, so no step).
+	var a := Vector3(SG_RAMP_X,-0.04,SG_Z0+11.0)
+	var b := Vector3(SG_RAMP_X,SG_TOP+0.02,SG_Z0)
+	# A flat landing laid over the terrace edge, so the ramp joins it with no step.
+	_sg_box(Vector3(SG_RAMP_X,SG_TOP+0.01,SG_Z0-0.9),Vector3(3.0,0.02,2.0),_bio_mat(Color("b88a5a"),0.0,0.6),true)
+	var d := b-a
+	var L := d.length()
+	var X := d/L
+	var Z := X.cross(Vector3.UP).normalized()
+	var Y := Z.cross(X)
+	var ctr := (a+b)/2.0-Y*0.15
+	var xf := Transform3D(Basis(X,Y,Z),ctr)
+	var rm := MeshInstance3D.new()
+	rm.mesh = _bbox()
+	rm.transform = Transform3D(Basis(X*L,Y*0.3,Z*3.0),ctr)
+	rm.material_override = _bio_mat(Color("b88a5a"),0.0,0.6)
+	sg_root.add_child(rm)
+	var body := StaticBody3D.new()
+	body.collision_mask = 0
+	var sh := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(L,0.3,3.0)
+	sh.shape = box
+	sh.transform = xf
+	body.add_child(sh)
+	sg_root.add_child(body)
+	for sx: float in [-1.6,1.6]:
+		for k in 5:
+			var p := a.lerp(b,float(k)/4.0)+Vector3(sx,0,0)
+			_fc_part(sg_root,_bcone(0.05,0.05,1.0),p+Vector3(0,0.5,0),_fc_chrome())
+			_fc_part(sg_root,_bsph(0.09),p+Vector3(0,1.05,0),_fc_glow(Color("ffe08a")))
+	# Pergola with string lights, and the sign.
+	for px in [SG_X0+0.5,SG_X1-0.5]:
+		for pz in [SG_Z0-0.5,SG_Z1+0.5]:
+			_sg_box(Vector3(px,SG_TOP+2.2,pz),Vector3(0.3,4.4,0.3),rail)
+	for pz in [SG_Z0-0.5,SG_Z1+0.5]:
+		_sg_box(Vector3(cx,SG_TOP+4.4,pz),Vector3(W-1.0,0.25,0.25),rail)
+	for k in 9:
+		var x := lerpf(SG_X0+1.0,SG_X1-1.0,float(k)/8.0)
+		_sg_box(Vector3(x,SG_TOP+4.45,cz),Vector3(0.15,0.15,D-1.0),rail)
+		for j in 6:
+			var z := lerpf(SG_Z0-1.2,SG_Z1+1.2,float(j)/5.0)
+			_fc_part(sg_root,_bsph(0.08),Vector3(x,SG_TOP+4.25-0.15*sin(float(j)*1.1),z),_fc_glow([Color("ffe08a"),Color("ff9ad0"),Color("9fd8ff")][(k+j) % 3]))
+	var t := _sg_text("SKY GARDEN",Vector3(cx,SG_TOP+5.6,SG_Z0),Color("7dff9a"),90,90.0)
+	t.pixel_size = 0.009
+	_sg_text("Grow exotic plants · they grow while you're away",Vector3(cx,SG_TOP+4.95,SG_Z0),Color("ffffff"),36,40.0).pixel_size = 0.006
+	_sg_text("SKY GARDEN ▲",Vector3(SG_RAMP_X,2.4,SG_Z0+11.5),Color("7dff9a"),40,30.0)
+	# Eight beds in two rows of four.
+	var soil := _bio_mat(Color("4a3020"),0.0,0.95)
+	var wood := _bio_mat(Color("8a5a36"),0.0,0.6)
+	for row in 2:
+		for col in 4:
+			var bc := Vector3(-410.5+float(col)*5.0,SG_TOP,[-633.5,-639.5][row])
+			sg_beds.append(bc)
+			_sg_box(bc+Vector3(0,0.25,0),Vector3(3.2,0.5,2.2),wood,true)
+			_sg_box(bc+Vector3(0,0.52,0),Vector3(2.9,0.06,1.9),soil)
+			var n := Node3D.new()
+			n.position = bc+Vector3(0,0.55,0)
+			sg_root.add_child(n)
+			var lab := _sg_text("",bc+Vector3(0,2.6,0),Color("ffffff"),30,16.0)
+			var spark := _fc_part(sg_root,_bsph(0.18),bc+Vector3(0,2.2,0),_fc_glow(Color("ffd23f")))
+			spark.visible = false
+			sg_nodes.append({"node":n,"plant":null,"spark":spark,"label":lab,"key":""})
+	while sg_plots.size() < sg_beds.size():
+		sg_plots.append([-1,0,0])
+	# The Seed Stall (east end) and the Garden Codex board (west end).
+	var st := Vector3(SG_X1-2.0,SG_TOP,-636.5)
+	_sg_box(st+Vector3(0,0.55,0),Vector3(1.0,1.1,3.4),wood,true)
+	for sz: float in [-1.6,1.6]:
+		_sg_box(st+Vector3(0.3,1.6,sz),Vector3(0.12,3.2,0.12),rail)
+	for k in 5:
+		_sg_box(st+Vector3(0.3,3.2,-1.6+float(k)*0.8),Vector3(1.6,0.12,0.8),_bio_mat(Color("ff5d8f") if k % 2 == 0 else Color.WHITE,0.0,0.4))
+	for k in 6:
+		_fc_part(sg_root,_bsph(0.13),st+Vector3(-0.1,1.22,-1.3+float(k)*0.52),_bio_mat(SG_PLANTS[k*2][5],0.0,0.5))
+	_sg_text("SEED STALL",st+Vector3(-0.4,2.6,0),Color("ffd23f"),56,25.0)
+	var cb := Vector3(SG_X0+1.2,SG_TOP,-636.5)
+	_sg_box(cb+Vector3(0,1.4,0),Vector3(0.2,2.2,3.2),_bio_mat(Color("1f3a2e"),0.1,0.6),true)
+	_sg_text("GARDEN CODEX",cb+Vector3(0.4,2.85,0),Color("7dff9a"),48,25.0)
+	_car_barrier([[Vector3(SG_RAMP_X,0.9,SG_Z0+12.2),Vector3(4.0,1.8,0.5),0.0]])
+	_cull_person(sg_root,200.0)
+	if OS.get_environment("HC_GARDEN_DEMO") != "" and "--city-shots" in OS.get_cmdline_user_args():
+		# Developer screenshots only: a garden in full bloom (never saved).
+		var demo := [[10,0],[7,2],[9,0],[11,3],[4,0],[8,1],[6,0],[3,0]]
+		for p in demo.size():
+			sg_plots[p] = [int(demo[p][0]),_sg_now()-(200000 if p != 6 else 2000),int(demo[p][1])]
+	_sg_refresh_all()
+
+func _sg_seed_spot() -> Vector3:
+	return Vector3(SG_X1-3.2,SG_TOP,-636.5)
+
+func _sg_codex_spot() -> Vector3:
+	return Vector3(SG_X0+2.4,SG_TOP,-636.5)
+
+# ---------------- plants ----------------
+func _sg_plant_model(si: int, mut: int) -> Node3D:
+	# An exotic plant built from simple shapes, about 1-2.5 m tall at full size.
+	var n := Node3D.new()
+	var P: Array = SG_PLANTS[si]
+	var ca: Color = P[5]
+	var cb: Color = P[6]
+	var A: Material = _bio_mat(ca,0.1,0.45)
+	var B: Material = _bio_mat(cb,0.1,0.45)
+	var G: Material = _fc_glow(ca)
+	if mut == 2:
+		A = _bio_mat(Color("ffcf4a"),0.9,0.2)
+		B = _bio_mat(Color("e8b84a"),0.9,0.25)
+		G = _fc_glow(Color("ffd23f"))
+	elif mut == 3:
+		A = sg_rainbow
+		B = sg_rainbow
+		G = sg_rainbow
+	var stem := _bio_mat(Color("3e8a3a"),0.0,0.7)
+	match String(P[7]):
+		"daisy":
+			_fc_part(n,_bcone(0.03,0.04,0.7),Vector3(0,0.35,0),stem)
+			for k in 10:
+				var a := float(k)*TAU/10.0
+				_fc_part(n,_bsph(0.12),Vector3(cos(a)*0.2,0.72,sin(a)*0.2),A,Vector3(1.4,0.3,0.7)).rotation.y = -a
+			_fc_part(n,_bsph(0.11),Vector3(0,0.74,0),B)
+		"lily":
+			_fc_part(n,_bcone(0.03,0.04,0.9),Vector3(0,0.45,0),stem)
+			for k in 6:
+				var a := float(k)*TAU/6.0
+				var pe := _fc_part(n,_bcone(0.0,0.1,0.5),Vector3(cos(a)*0.12,1.05,sin(a)*0.12),A)
+				pe.rotation = Vector3(0,-a,0.7)
+			_fc_part(n,_bsph(0.07),Vector3(0,0.95,0),G)
+		"fern":
+			for k in 8:
+				var a := float(k)*TAU/8.0
+				var fr := _fc_part(n,_bsph(0.3),Vector3(cos(a)*0.35,0.35,sin(a)*0.35),_bio_glass_mat(ca,0.55) if mut < 2 else A,Vector3(0.35,0.12,1.4))
+				fr.rotation = Vector3(0.5,-a+PI/2.0,0)
+			_fc_part(n,_bsph(0.08),Vector3(0,0.5,0),G)
+		"cactus":
+			_fc_part(n,_bcone(0.22,0.26,1.2),Vector3(0,0.6,0),B)
+			for s in [-1.0,1.0]:
+				_fc_part(n,_bcone(0.12,0.14,0.5),Vector3(s*0.32,0.85,0),B)
+				_fc_part(n,_bcone(0.0,0.1,0.25),Vector3(s*0.32,1.2,0),G)
+			_fc_part(n,_bcone(0.0,0.2,0.4),Vector3(0,1.4,0),G)
+		"orchid":
+			_fc_part(n,_bcone(0.03,0.04,1.2),Vector3(0,0.6,0),stem)
+			for k in 4:
+				_fc_part(n,_bsph(0.13),Vector3(0.12*sin(float(k)*1.7),0.9+float(k)*0.18,0.12*cos(float(k)*1.7)),G,Vector3(1.3,0.8,0.5))
+			for k in 3:
+				_fc_part(n,_bsph(0.2),Vector3(cos(float(k)*2.1)*0.25,0.12,sin(float(k)*2.1)*0.25),stem,Vector3(1.5,0.3,0.6))
+		"snapper":
+			_fc_part(n,_bcone(0.05,0.06,0.6),Vector3(0,0.3,0),stem)
+			for s in [-1.0,1.0]:
+				var j := _fc_part(n,_bsph(0.28),Vector3(0,0.75,s*0.06),A,Vector3(1,0.55,0.6))
+				j.rotation.x = s*0.5
+				_fc_part(n,_bsph(0.22),Vector3(0,0.75,s*0.04),B,Vector3(0.95,0.4,0.5)).rotation.x = s*0.5
+			for k in 6:
+				_fc_part(n,_bcone(0.0,0.025,0.12),Vector3(-0.24+float(k)*0.1,0.85,0),_bio_mat(Color.WHITE,0.0,0.4))
+		"vine":
+			_fc_part(n,_bcone(0.04,0.05,2.0),Vector3(0,1.0,0),_bio_mat(Color("8a5a36"),0.0,0.6))
+			for k in 14:
+				var a := float(k)*0.9
+				_fc_part(n,_bsph(0.14),Vector3(cos(a)*0.22,0.2+float(k)*0.13,sin(a)*0.22),B)
+				if k % 3 == 1:
+					_fc_part(n,_bsph(0.14),Vector3(cos(a)*0.3,0.2+float(k)*0.13,sin(a)*0.3),A,Vector3(1,1.3,1))
+		"lotus":
+			_fc_part(n,_bcone(0.6,0.6,0.04),Vector3(0,0.05,0),_bio_mat(Color("3e9a4a"),0.0,0.6))
+			for layer in 3:
+				for k in 8:
+					var a := float(k)*TAU/8.0+float(layer)*0.3
+					var pe := _fc_part(n,_bsph(0.16-layer*0.03),Vector3(cos(a)*(0.28-layer*0.08),0.18+layer*0.08,sin(a)*(0.28-layer*0.08)),A if layer < 2 else B,Vector3(0.6,1.2,0.35))
+					pe.rotation = Vector3(0,-a,0.5)
+			_fc_part(n,_bsph(0.09),Vector3(0,0.42,0),G)
+		"bamboo":
+			for k in 5:
+				var x := -0.5+float(k)*0.25
+				var h := 1.4+0.3*float(k % 3)
+				_fc_part(n,_bcone(0.06,0.07,h),Vector3(x,h/2.0,0.1*sin(float(k)*2.0)),A)
+				for j in int(h/0.4):
+					_fc_part(n,_bcone(0.075,0.075,0.04),Vector3(x,0.4*float(j+1),0.1*sin(float(k)*2.0)),B)
+				_fc_part(n,_bsph(0.15),Vector3(x+0.1,h,0.1*sin(float(k)*2.0)),stem,Vector3(1.6,0.3,0.6))
+		"rose":
+			_fc_part(n,_bcone(0.03,0.04,1.1),Vector3(0,0.55,0),stem)
+			for layer in 3:
+				for k in 5:
+					var a := float(k)*TAU/5.0+float(layer)*0.6
+					_fc_part(n,_bsph(0.11),Vector3(cos(a)*(0.13-layer*0.04),1.15+layer*0.05,sin(a)*(0.13-layer*0.04)),A,Vector3(1,1.2,0.6)).rotation.y = -a
+			_fc_part(n,_bsph(0.06),Vector3(0,1.3,0),G)
+			for k in 4:
+				_fc_part(n,_bsph(0.035),Vector3(cos(float(k)*1.6)*0.4,1.4+0.1*float(k),sin(float(k)*1.6)*0.4),G)
+		"tree":
+			_fc_part(n,_bcone(0.08,0.14,1.4),Vector3(0,0.7,0),_bio_mat(Color("d8dde3"),0.2,0.4))
+			for k in 7:
+				var a := float(k)*TAU/7.0
+				_fc_part(n,_bsph(0.32),Vector3(cos(a)*0.35,1.55+0.15*sin(float(k)*2.0),sin(a)*0.35),_fc_glow(ca) if mut < 2 else A)
+			_fc_part(n,_bsph(0.38),Vector3(0,1.85,0),_fc_glow(cb) if mut < 2 else B)
+		"palm":
+			_fc_part(n,_bcone(0.09,0.14,1.8),Vector3(0,0.9,0),_bio_mat(Color("8a5a36"),0.0,0.6))
+			for k in 7:
+				var a := float(k)*TAU/7.0
+				var fr := _fc_part(n,_bcone(0.0,0.14,1.1),Vector3(cos(a)*0.45,1.75,sin(a)*0.45),G)
+				fr.rotation = Vector3(0,-a,PI/2.0+0.4)
+			_fc_part(n,_bsph(0.22),Vector3(0,1.85,0),A)
+	return n
+
+func _sg_refresh_all() -> void:
+	for p in sg_nodes.size():
+		_sg_refresh(p)
+
+func _sg_refresh(p: int) -> void:
+	# Rebuild a bed's plant when it changes, and size it by how far it has grown.
+	var N: Dictionary = sg_nodes[p]
+	var P: Array = sg_plots[p]
+	var si := int(P[0])
+	var key := "%d|%d|%d" % [si,int(P[1]),int(P[2])]
+	if String(N["key"]) != key:
+		N["key"] = key
+		if N["plant"] != null and is_instance_valid(N["plant"]):
+			(N["plant"] as Node).queue_free()
+		N["plant"] = null
+		if si >= 0:
+			var m := _sg_plant_model(si,int(P[2]))
+			(N["node"] as Node3D).add_child(m)
+			N["plant"] = m
+	var lab: Label3D = N["label"]
+	var spark: MeshInstance3D = N["spark"]
+	if si < 0:
+		lab.text = "Empty bed · tap PLANT"
+		lab.modulate = Color("cbd8de")
+		spark.visible = false
+		return
+	var pr := _sg_progress(p)
+	var giant := 1.45 if int(P[2]) == 1 else 1.0
+	(N["plant"] as Node3D).scale = Vector3.ONE*lerpf(0.15,1.0,pr)*giant
+	var mut := String(SG_MUTS[int(P[2])][0])
+	var nm := ("%s %s" % [mut,SG_PLANTS[si][0]]).strip_edges() if pr >= 1.0 else String(SG_PLANTS[si][0])
+	if pr >= 1.0:
+		lab.text = "%s\nREADY!" % nm
+		lab.modulate = Color("ffd23f")
+	else:
+		var left := int(SG_PLANTS[si][3])-(_sg_now()-int(P[1]))
+		lab.text = "%s\n%d%%  ·  %s" % [nm,int(pr*100.0),_sg_time(maxi(left,0))]
+		lab.modulate = SG_RARITY[int(SG_PLANTS[si][1])][1]
+	spark.visible = pr >= 1.0
+
+func _sky_garden_tick(delta: float) -> void:
+	if sg_root == null or player == null:
+		return
+	if sg_rainbow != null:
+		var c := Color.from_hsv(fposmod(clock*0.15,1.0),0.75,1.0)
+		sg_rainbow.albedo_color = c
+		sg_rainbow.emission = c
+	if player.position.distance_to(SG_C) > 90.0:
+		return
+	for N in sg_nodes:
+		var sp: MeshInstance3D = N["spark"]
+		if sp.visible:
+			sp.position.y = SG_TOP+2.1+sin(clock*3.0)*0.12
+	sg_tick_t -= delta
+	if sg_tick_t > 0.0:
+		return
+	sg_tick_t = 0.5
+	_sg_refresh_all()
+
+func _sg_ready_count() -> int:
+	var n := 0
+	for p in sg_plots.size():
+		if int(sg_plots[p][0]) >= 0 and _sg_progress(p) >= 1.0:
+			n += 1
+	return n
+
+func _sg_boot_note() -> void:
+	# Coming back: tell the player what grew while they were away.
+	if sg_told:
+		return
+	sg_told = true
+	var n := _sg_ready_count()
+	if n > 0:
+		_feed_add("Sky Garden: %d plant%s ready to harvest!" % [n,"" if n == 1 else "s"],"")
+
+# ---------------- interacting ----------------
+func _sg_near() -> int:
+	# The bed (0-7), the Seed Stall (100) or the Codex (101) you are standing at; -1 for none.
+	if driving or player == null or paused or sg_root == null:
+		return -1
+	if player.position.y < SG_TOP+0.4:
+		return -1
+	var pp := Vector2(player.position.x,player.position.z)
+	var ss := _sg_seed_spot()
+	if pp.distance_to(Vector2(ss.x,ss.z)) < 1.8:
+		return 100
+	var cs := _sg_codex_spot()
+	if pp.distance_to(Vector2(cs.x,cs.z)) < 1.8:
+		return 101
+	var best := -1
+	var bd := 2.4
+	for p in sg_beds.size():
+		var b: Vector3 = sg_beds[p]
+		var dd := pp.distance_to(Vector2(b.x,b.z))
+		if dd < bd:
+			bd = dd
+			best = p
+	return best
+
+func _sg_button_text() -> String:
+	var s := _sg_near()
+	if s == 100:
+		return "SEED STALL"
+	if s == 101:
+		return "GARDEN CODEX"
+	var P: Array = sg_plots[s]
+	if int(P[0]) < 0:
+		return "PLANT A SEED"
+	if _sg_progress(s) >= 1.0:
+		return "HARVEST  +%s" % _money(_sg_value(s))
+	return "GROWING %d%%" % int(_sg_progress(s)*100.0)
+
+func _sg_value(p: int) -> int:
+	var P: Array = sg_plots[p]
+	return int(SG_PLANTS[int(P[0])][4])*int(SG_MUTS[int(P[2])][1])
+
+func _sg_interact() -> void:
+	var s := _sg_near()
+	if s == 100:
+		_sg_open("shop",-1)
+	elif s == 101:
+		_sg_open("codex",-1)
+	elif s >= 0:
+		var P: Array = sg_plots[s]
+		if int(P[0]) < 0:
+			_sg_open("plant",s)
+		elif _sg_progress(s) >= 1.0:
+			_sg_harvest(s)
+		else:
+			var left := int(SG_PLANTS[int(P[0])][3])-(_sg_now()-int(P[1]))
+			_show_toast("%s is growing: ready in %s. It keeps growing while you're away!" % [SG_PLANTS[int(P[0])][0],_sg_time(maxi(left,0))])
+
+func _sg_buy(si: int) -> bool:
+	var stock := _sg_stock()
+	var have := 0
+	for e in stock:
+		if int(e[0]) == si:
+			have = int(e[1])-int(sg_bought.get(si,0))
+	if have <= 0:
+		_show_toast("%s seeds are sold out. New stock in %s." % [SG_PLANTS[si][0],_sg_time(SG_RESTOCK-_sg_now() % SG_RESTOCK)])
+		return false
+	var price := int(SG_PLANTS[si][2])
+	if cash < price:
+		_show_toast("%s seeds cost %s (you have %s)." % [SG_PLANTS[si][0],_money(price),_money(cash)])
+		return false
+	cash -= price
+	sg_bought[si] = int(sg_bought.get(si,0))+1
+	sg_bag[si] = int(sg_bag.get(si,0))+1
+	_show_toast("Bought a %s seed!" % SG_PLANTS[si][0])
+	if not ("--smoke-test" in OS.get_cmdline_user_args()):
+		_play_coin()
+	_save_progress()
+	return true
+
+func _sg_plant(p: int, si: int) -> bool:
+	if int(sg_bag.get(si,0)) <= 0 or int(sg_plots[p][0]) >= 0:
+		return false
+	sg_bag[si] = int(sg_bag[si])-1
+	var t := _sg_now()
+	sg_plots[p] = [si,t,_sg_mut_roll(t,p)]
+	_sg_refresh(p)
+	_show_toast("Planted %s: ready in %s, even if you close the game." % [SG_PLANTS[si][0],_sg_time(int(SG_PLANTS[si][3]))])
+	_save_progress()
+	return true
+
+func _sg_harvest(p: int) -> void:
+	var P: Array = sg_plots[p]
+	var si := int(P[0])
+	if si < 0 or _sg_progress(p) < 1.0:
+		return
+	var mut := int(P[2])
+	var value := _sg_value(p)
+	var xp := 10+int(SG_PLANTS[si][1])*15
+	cash += value
+	bonus_xp += xp
+	var name := ("%s %s" % [SG_MUTS[mut][0],SG_PLANTS[si][0]]).strip_edges()
+	var new := (sg_codex & (1 << si)) == 0
+	sg_codex |= 1 << si
+	if mut > 0:
+		sg_mutseen |= 1 << mut
+	sg_plots[p] = [-1,0,0]
+	_sg_refresh(p)
+	_show_toast("Harvested %s!  +%s  +%d XP%s" % [name,_money(value),xp,"  ·  NEW in your Codex!" if new else ""])
+	if mut == 3:
+		_feed_add("RAINBOW %s harvested! +%s" % [SG_PLANTS[si][0],_money(value)],"")
+	if _bits(sg_codex) == SG_PLANTS.size() and not sg_all_done:
+		sg_all_done = true
+		cash += SG_ALL_PAY
+		_show_toast("MASTER GARDENER!  Every plant grown: +%s" % _money(SG_ALL_PAY))
+		_feed_add("Master Gardener: all %d plants grown!" % SG_PLANTS.size(),"")
+	_stat_add("sg_harvests")
+	if not ("--smoke-test" in OS.get_cmdline_user_args()):
+		_play_coin()
+	_save_progress()
+
+# ---------------- the garden screen ----------------
+func _build_sg_panel(root: Control) -> void:
+	sg_panel = PanelContainer.new()
+	sg_panel.add_theme_stylebox_override("panel",_panel(Color(0.06,0.16,0.12,0.95),24))
+	sg_panel.custom_minimum_size = Vector2(760,0)
+	root.add_child(sg_panel)
+	extra_panels.append(sg_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",8)
+	sg_panel.add_child(col)
+	sg_title = _label("",26,Color("7dff9a"))
+	col.add_child(sg_title)
+	sg_info = _label("",16,Color("cbd8de"))
+	sg_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sg_info.custom_minimum_size.x = 720
+	col.add_child(sg_info)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(720,360)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	sg_list = VBoxContainer.new()
+	sg_list.add_theme_constant_override("separation",6)
+	sg_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(sg_list)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",8)
+	col.add_child(row)
+	for e in [["Seeds","shop"],["Codex","codex"]]:
+		var b := _button(String(e[0]),_sg_open.bind(String(e[1]),-1))
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(b)
+	var close := _button("Close",_sg_close)
+	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(close)
+	sg_panel.hide()
+
+func _sg_open(mode: String, plot: int) -> void:
+	sg_mode = mode
+	if plot >= 0:
+		sg_plot_sel = plot
+	if not paused:
+		_toggle_menu()
+	_open_panel(sg_panel)
+	_sg_refresh_panel()
+
+func _sg_close() -> void:
+	if paused:
+		_toggle_menu()
+
+func _sg_row(text: String, col: Color, btn: String, cb: Callable, btn_col: Color) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",10)
+	sg_list.add_child(row)
+	var lab := _label(text,16,col)
+	lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lab.custom_minimum_size.x = 470
+	row.add_child(lab)
+	if btn != "":
+		var b := _button(btn,cb)
+		b.custom_minimum_size = Vector2(220,46)
+		b.add_theme_font_size_override("font_size",17)
+		b.add_theme_stylebox_override("normal",_panel(btn_col,12))
+		row.add_child(b)
+
+func _sg_refresh_panel() -> void:
+	if sg_panel == null:
+		return
+	for c in sg_list.get_children():
+		for sub in c.find_children("*","Button",true,false):
+			touch_buttons.erase(sub)
+		c.queue_free()
+	match sg_mode:
+		"shop":
+			var stock := _sg_stock()
+			sg_title.text = "SEED STALL"
+			sg_info.text = "New stock every 20 minutes (next in %s). Rare seeds only turn up sometimes: Uncommon 70%%, Rare 40%%, Epic 18%%, Legendary 6%%, Mythic 2%% per restock. You have %s." % [_sg_time(SG_RESTOCK-_sg_now() % SG_RESTOCK),_money(cash)]
+			for e in stock:
+				var si := int(e[0])
+				var P: Array = SG_PLANTS[si]
+				var left := int(e[1])-int(sg_bought.get(si,0))
+				var R: Array = SG_RARITY[int(P[1])]
+				_sg_row("%s  ·  %s\nGrows in %s · sells for %s · in your bag: %d · %d left" % [P[0],R[0],_sg_time(int(P[3])),_money(int(P[4])),int(sg_bag.get(si,0)),maxi(left,0)],R[1],"BUY %s" % _money(int(P[2])) if left > 0 else "SOLD OUT",_sg_pick_buy.bind(si),Color("8a5a1c") if left > 0 and cash >= int(P[2]) else Color("3a2a2a"))
+		"plant":
+			sg_title.text = "PLANT A SEED  ·  bed %d" % (sg_plot_sel+1)
+			sg_info.text = "Pick a seed from your bag. Each plant may sprout a mutation: Giant 8%% (2x), Golden 6%% (3x), Rainbow 1%% (10x)."
+			var any := false
+			for si in SG_PLANTS.size():
+				var n := int(sg_bag.get(si,0))
+				if n <= 0:
+					continue
+				any = true
+				var P: Array = SG_PLANTS[si]
+				_sg_row("%s  x%d\n%s · grows in %s · sells for %s" % [P[0],n,SG_RARITY[int(P[1])][0],_sg_time(int(P[3])),_money(int(P[4]))],SG_RARITY[int(P[1])][1],"PLANT",_sg_pick_plant.bind(si),Color("2f6b3a"))
+			if not any:
+				_sg_row("Your seed bag is empty. Buy seeds at the Seed Stall at the east end of the garden.",Color("fff5dc"),"SEED STALL",_sg_open.bind("shop",-1),Color("1f6f8b"))
+		"codex":
+			sg_title.text = "GARDEN CODEX  ·  %d/%d" % [_bits(sg_codex),SG_PLANTS.size()]
+			var muts: Array = []
+			for k in range(1,SG_MUTS.size()):
+				muts.append(("✓ " if sg_mutseen & (1 << k) else "? ")+String(SG_MUTS[k][0]))
+			sg_info.text = "Grow every plant to become a Master Gardener (+%s). Mutations found: %s" % [_money(SG_ALL_PAY),"   ".join(muts)]
+			for si in SG_PLANTS.size():
+				var P: Array = SG_PLANTS[si]
+				var got := (sg_codex & (1 << si)) != 0
+				_sg_row(("✓ %s  ·  %s" % [P[0],SG_RARITY[int(P[1])][0]]) if got else ("? ? ?  ·  %s" % SG_RARITY[int(P[1])][0]),SG_RARITY[int(P[1])][1] if got else Color("6a7a84"),"",Callable(),Color())
+	if sg_panel.visible:
+		sg_panel.reset_size()
+		_layout_panels()
+
+func _sg_pick_buy(si: int) -> void:
+	_sg_buy(si)
+	_sg_refresh_panel()
+
+func _sg_pick_plant(si: int) -> void:
+	if _sg_plant(sg_plot_sel,si):
+		_sg_close()
+	else:
+		_sg_refresh_panel()
+
+func _smoke_car_barriers() -> void:
+	# v0.41: a car can't be driven into the Biosphere, the Galleria or up to the Sky Garden; people
+	# walk straight through the bollards; CALL CAR refuses inside; a car left inside is sent away.
+	var keep := [driving,player.position,car.position,car.rotation,car_gone,car_speed]
+	var psh: CollisionShape3D = player.get_child(0) as CollisionShape3D
+	var kd := psh.disabled
+	for e in [[Vector3(BIO_C.x,0.8,BIO_C.z+BIO_HUB_A+9.0),Vector3(0,0,-1)],[Vector3(GA_C.x,0.8,GA_Z0+8.0),Vector3(0,0,-1)],[Vector3(GA_X0-8.0,0.8,GA_DOOR_W.x),Vector3(1,0,0)],[Vector3(SG_RAMP_X,0.8,SG_Z0+18.0),Vector3(0,0,-1)]]:
+		var start: Vector3 = e[0]
+		var dir: Vector3 = e[1]
+		car_gone = false
+		car.position = start
+		car.velocity = Vector3.ZERO
+		for step in 180:
+			car.velocity = Vector3(dir.x*14.0,car.velocity.y-0.4,dir.z*14.0)
+			car.move_and_slide()
+		assert(not _people_only(car.position),"v0.41: a car is stopped before %s (ended at %s)" % [str(start),str(car.position)])
+		psh.disabled = false
+		player.position = start
+		player.velocity = Vector3.ZERO
+		for step in 180:
+			player.velocity = Vector3(dir.x*9.0,player.velocity.y-0.4,dir.z*9.0)
+			player.move_and_slide()
+		assert((player.position-start).dot(dir) > 6.5,"v0.41: people walk through the bollards at %s (got %.1f m)" % [str(start),(player.position-start).dot(dir)])
+	psh.disabled = kd
+	for p in [GA_C+Vector3(0,0.8,-40),Vector3(SG_RAMP_X,SG_TOP+0.8,-636.0),_bio_dome_c(1)+Vector3(0,0.8,0)]:
+		player.position = p
+		assert(_call_block_reason().begins_with("Cars can't"),"v0.41: no CALL CAR at %s" % str(p))
+	driving = false
+	car_gone = false
+	car.position = GA_C+Vector3(0,0.8,-40)
+	_people_only_keep_cars_out()
+	assert(car_gone,"v0.41: a car left inside the mall is sent away")
+	driving = keep[0]
+	player.position = keep[1]
+	car.position = keep[2]
+	car.rotation = keep[3]
+	car_gone = keep[4]
+	car_speed = keep[5]
+	if not car_gone:
+		_car_back()
+
+func _smoke_sky_garden() -> void:
+	var keep := [sg_plots.duplicate(true),sg_bag.duplicate(),sg_codex,sg_mutseen,sg_all_done,cash,bonus_xp,sg_test_now,player.position,sg_bought.duplicate(),sg_bought_key]
+	sg_test_now = 2000000000
+	sg_plots = []
+	for k in sg_beds.size():
+		sg_plots.append([-1,0,0])
+	sg_bag = {}
+	sg_codex = 0
+	sg_all_done = false
+	# Commons are always in stock; buying and planting.
+	var stock := _sg_stock()
+	assert(int(stock[0][0]) == 0 and int(stock[1][0]) == 1,"v0.41: commons are always in stock")
+	cash = 1000
+	assert(_sg_buy(0) and cash == 1000-int(SG_PLANTS[0][2]) and int(sg_bag[0]) == 1,"v0.41: buying a seed")
+	for k in int(SG_RARITY[0][3]):
+		_sg_buy(0)
+	assert(int(sg_bag[0]) == int(SG_RARITY[0][3]),"v0.41: a restock sells out")
+	assert(_sg_plant(0,0) and int(sg_plots[0][0]) == 0,"v0.41: planting")
+	assert(not _sg_plant(0,0),"v0.41: one plant per bed")
+	# It grows in real time, even with the game closed (the save keeps the planting time).
+	assert(_sg_progress(0) == 0.0,"v0.41: a seed starts at 0%")
+	sg_test_now += int(SG_PLANTS[0][3])/2
+	assert(absf(_sg_progress(0)-0.5) < 0.02,"v0.41: halfway after half the time")
+	_save_progress()
+	var cf := ConfigFile.new()
+	cf.load(SAVE_PATH)
+	var saved_g = cf.get_value("progress","sky_garden",{})
+	assert(saved_g is Dictionary and int(saved_g["plots"][0][0]) == 0 and int(saved_g["plots"][0][1]) == int(sg_plots[0][1]),"v0.41: the garden and its planting time are saved")
+	sg_test_now += int(SG_PLANTS[0][3])
+	assert(_sg_ready_count() == 1,"v0.41: ready after its grow time (offline growth)")
+	var c0 := cash
+	var v := _sg_value(0)
+	_sg_harvest(0)
+	assert(cash == c0+v and int(sg_plots[0][0]) == -1 and (sg_codex & 1) != 0,"v0.41: harvest pays and fills the Codex")
+	# Mutations pay their multiplier.
+	sg_plots[1] = [4,sg_test_now-100000,3]
+	c0 = cash
+	_sg_harvest(1)
+	assert(cash == c0+int(SG_PLANTS[4][4])*10 and (sg_mutseen & 8) != 0,"v0.41: Rainbow pays 10x")
+	var counts := [0,0,0,0]
+	for t in 4000:
+		counts[_sg_mut_roll(t,3)] += 1
+	assert(counts[3] > 10 and counts[3] < 90 and counts[2] > 150 and counts[1] > 220,"v0.41: mutation odds roughly as shown (%s)" % str(counts))
+	# Every plant shape builds.
+	for si in SG_PLANTS.size():
+		for m in 4:
+			var pm := _sg_plant_model(si,m)
+			assert(pm.get_child_count() > 0,"v0.41: %s model builds" % SG_PLANTS[si][0])
+			pm.free()
+	# Walk up the ramp onto the terrace and stand at a bed and the stall.
+	var psh: CollisionShape3D = player.get_child(0) as CollisionShape3D
+	var kd := psh.disabled
+	psh.disabled = false
+	player.position = Vector3(SG_RAMP_X,0.8,SG_Z0+14.0)
+	player.velocity = Vector3.ZERO
+	for step in 240:
+		player.velocity = Vector3(0,player.velocity.y-0.4,-5.0)
+		player.move_and_slide()
+		if player.position.z < SG_Z0-2.0:
+			break
+	assert(player.position.y-0.7 > SG_TOP-0.1,"v0.41: the ramp leads up onto the Sky Garden (feet %.2f at %s, blocked by %s)" % [player.position.y-0.7,str(player.position),_blocker(player.position+Vector3(0,0,-0.4),0.36)])
+	psh.disabled = kd
+	player.position = Vector3(sg_beds[0].x,SG_TOP+0.7,sg_beds[0].z+1.6)
+	assert(_sg_near() == 0,"v0.41: standing at bed 1")
+	var ss := _sg_seed_spot()
+	player.position = ss+Vector3(0,0.7,0)
+	assert(_sg_near() == 100 and not _blocked_at(ss+Vector3(0,1.0,0),0.3),"v0.41: room at the Seed Stall (%s)" % _blocker(ss+Vector3(0,1.0,0),0.3))
+	_sg_open("shop",-1)
+	assert(sg_panel.visible,"v0.41: the Seed Stall opens")
+	_sg_close()
+	sg_plots = keep[0]
+	sg_bag = keep[1]
+	sg_codex = keep[2]
+	sg_mutseen = keep[3]
+	sg_all_done = keep[4]
+	cash = keep[5]
+	bonus_xp = keep[6]
+	sg_test_now = keep[7]
+	player.position = keep[8]
+	sg_bought = keep[9]
+	sg_bought_key = keep[10]
+	_sg_refresh_all()
+	_save_progress()
 
 # ---------- v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard") ----------
 var extra_panels: Array = []
@@ -26283,6 +27179,8 @@ func _smoke_v27() -> void:
 	_smoke_feet()
 	_smoke_biosphere()
 	_smoke_style()
+	_smoke_sky_garden()
+	_smoke_car_barriers()
 	# Nobody stands in a road, and a car stuck behind someone in its lane moves on after a few seconds.
 	for p in peds:
 		if bool(p["idle"]):

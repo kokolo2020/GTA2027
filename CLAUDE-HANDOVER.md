@@ -506,3 +506,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - New airplane.glb from blender-src/make_real.py `build_jet()` (run with HARBOR_JET_ONLY=1): lofted fuselage, wraparound cockpit, swept wings with winglets, glowing nacelles, swept fin. Same frame as the old model, so `_ap_plane` and the North airfield are unchanged.
 - Release commit 3273f2a, tag v0.34.9, versionCode 59. APK SHA256 fdf6204aa5f64b1a75d2e4784ef877578de4c574f21d57cb83d210e22de5aeb6 (43421264 bytes), same certificate. Bench about 51 fps.
 - Verified: release.json, page edition, live /play/index.pck hash matches, downloaded APK hash matches.
+
+## v0.35.0 (released 2026-11-20)
+
+- New animated people: game/models/kperson.glb built by blender-src/make_kenney_people.py from Kenney Animated Characters (CC0; skins in game/models/people/, credit in LICENSE-Kenney.txt). 11 clips: Idle, Walk, Run, Jump, Sit, Wave, Talk, Cheer, Sip, Phone, Look.
+- main.gd: `_make_person` uses `_make_kperson` when the model loads (old person_%d.glb fallback). One ShaderMaterial per person (game/people.gdshader tints shirt/pants/shoes/skin regions of the "T" skins); `mats` proxies synced with `_ksync`. `_kpeople_tick` advances AnimationPlayers manually by distance (every frame <14 m, 2nd <25 m, 4th <40 m, none beyond). Hats/gear scale 1.9 via `_hat_y`/`_sit_drop`; back gear counter-scaled in `_gear_piece`.
+- Release commit 6ba1e5a, tag v0.35.0, versionCode 60. APK SHA256 1e0f66119b58025154ff6f2a742366f9d73e5ca85eab39ef14224ee840625cde (43869707 bytes), same certificate. Bench about 46 fps (was 51).
+- Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches.

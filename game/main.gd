@@ -233,6 +233,7 @@ const ONLINE_TOPIC := "realtime:harbor-city-lobby"
 const ONLINE_MAX_PEERS := 12
 const ONLINE_TIMEOUT := 6.0
 var online_on := false
+var online_pref := true   # v0.36.1: online by default; turning it off is remembered
 var online_state := 0
 var online_ws: WebSocketPeer
 var online_config := {}
@@ -338,8 +339,9 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.36: Harbor Commons park, a daily puzzle and nearby chat everywhere!")
+	_show_toast("Harbor City 0.36.1: the original Harbor City people are back, and you start online!")
 	booted = true
+	_online_autostart()
 	if not dev_mode and not crate_done:
 		_open_crate()
 	if "--smoke-test" in OS.get_cmdline_user_args():
@@ -892,6 +894,8 @@ func _material(color: Color) -> StandardMaterial3D:
 
 func _box(parent: Node3D, pos: Vector3, size: Vector3, color: Color, solid := false) -> MeshInstance3D:
 	_note_road(pos,size,0.0,color)
+	if not solid and (parent == self or parent.has_meta("static_floor")):
+		_floor_note(pos,size)
 	var mesh := MeshInstance3D.new()
 	var shape := BoxMesh.new()
 	shape.size = size
@@ -1870,11 +1874,15 @@ func _online_load_config() -> bool:
 func _online_toggle() -> void:
 	if online_on:
 		_online_stop()
-		_show_toast("Online play off. Back to single player.")
+		online_pref = false
+		_save_progress()
+		_show_toast("Online play off. Back to single player. (Menu > Online to come back.)")
 	else:
 		if not _online_load_config():
 			_show_toast("Online play is not set up in this build.")
 			return
+		online_pref = true
+		_save_progress()
 		online_on = true
 		# v0.32: the same id every time, so friends recognise you.
 		online_id = _uid()
@@ -1887,6 +1895,25 @@ func _online_toggle() -> void:
 			nick_from_online = true
 			_toggle_menu()
 			_open_nick()
+	_online_refresh_button()
+
+func _online_autostart() -> void:
+	# v0.36.1: join online play when the game starts (unless you turned it off), quietly, without
+	# opening the nickname box; tests, screenshots and the benchmark stay offline.
+	var args := OS.get_cmdline_user_args()
+	if not online_pref or online_on or legacy_rules:
+		return
+	for a in args:
+		if String(a).begins_with("--"):
+			return   # any developer mode (tests, shots, bench) stays offline
+	if not _online_load_config():
+		return
+	online_on = true
+	online_id = _uid()
+	if online_name == "":
+		online_name = "Driver%d" % (100+randi() % 900)
+	online_retry = 0.0
+	_online_connect()
 	_online_refresh_button()
 
 func _online_connect() -> void:
@@ -2232,6 +2259,22 @@ func _online_update_peers(delta: float) -> void:
 		else:
 			node.position = node.position.lerp(target,minf(1.0,delta*8.0))
 		node.rotation.y = lerp_angle(node.rotation.y,float(peer["yaw"]),minf(1.0,delta*8.0))
+		if not peer["driving"]:
+			# v0.36.1: other players walk with their legs instead of gliding, and stand on raised floors.
+			var pp: Dictionary = peer.get("person",{})
+			if not pp.is_empty():
+				var prev: Vector3 = peer.get("prev",node.position)
+				var spd := Vector2(node.position.x-prev.x,node.position.z-prev.z).length()/maxf(delta,0.001)
+				peer["prev"] = node.position
+				peer["spd"] = lerpf(float(peer.get("spd",0.0)),minf(spd,8.0),minf(1.0,delta*6.0))
+				var sp := float(peer["spd"])
+				peer["phase"] = float(peer.get("phase",0.0))+delta*sp*6.2
+				peer["lt"] = float(peer.get("lt",0.0))-delta
+				if float(peer["lt"]) <= 0.0:
+					peer["lt"] = 0.3
+					_person_lift(pp)
+				if not hub_emotes.any(func(e): return e["person"] == pp):
+					_pose_person(pp,float(peer["phase"]),clampf(sp/1.6,0.0,1.35) if sp > 0.3 else 0.0)
 		(peer["car"] as Node3D).visible = peer["driving"]
 		(peer["foot"] as Node3D).visible = not peer["driving"]
 		var plab: Label3D = peer["label"]
@@ -4052,7 +4095,9 @@ func _make_person(parent: Node3D, variant: int, colors: Dictionary, tint := fals
 	# v0.35: rigged, animated people (Kenney CC0 body + Harbor City animations) when the model is there.
 	if not kperson_tried:
 		kperson_tried = true
-		if ResourceLoader.exists(KPERSON_PATH):
+		# v0.36.1: back to the original Harbor City people (person_N.glb) by request. The animated
+		# Kenney people stay in the project; set USE_KPERSON to bring them back.
+		if USE_KPERSON and ResourceLoader.exists(KPERSON_PATH):
 			kperson_scene = load(KPERSON_PATH) as PackedScene
 	if kperson_scene != null:
 		return _make_kperson(parent,variant,colors,tint)
@@ -4084,6 +4129,7 @@ func _make_person(parent: Node3D, variant: int, colors: Dictionary, tint := fals
 	return {"root":model,"mats":mats,"limbs":limbs}
 
 const KPERSON_PATH := "res://models/kperson.glb"
+const USE_KPERSON := false
 # Skins 0/1 are the plain outfits the game recolours (shirt, trousers, shoes, skin tone); the rest keep their look.
 const KSKINS := ["humanMaleAT","humanFemaleAT","skaterMaleA","skaterFemaleA","cyborgFemaleA","criminalMaleA","survivorMaleB","survivorFemaleA"]
 const KIDLES := ["Idle","Look","Talk","Idle","Phone","Sip","Look","Talk"]
@@ -4245,8 +4291,9 @@ func _kpeople_tick(delta: float) -> void:
 func _pose_person(person: Dictionary, phase: float, amount: float) -> void:
 	if person.is_empty():
 		return
+	person["sat"] = false
 	if person.has("ap"):
-		(person["root"] as Node3D).position.y = person.get("base_y",0.0) as float
+		(person["root"] as Node3D).position.y = (person.get("base_y",0.0) as float)+float(person.get("lift",0.0))
 		if person.get("busy",false):
 			return
 		if amount > 1.2:
@@ -4256,28 +4303,145 @@ func _pose_person(person: Dictionary, phase: float, amount: float) -> void:
 		else:
 			_kplay(person,String(person["idle"]))
 		return
+	_pose_limbs(person,phase,amount)
+
+func _pose_limbs(person: Dictionary, phase: float, amount: float) -> void:
+	# v0.36.1: a more natural walk and a living idle for the original Harbor City people.
+	# Walk: legs swing from the hip with a bent knee through the swing and a soft bend on landing,
+	# relaxed arms swing opposite the legs (a little away from the body, elbows bent more going
+	# forward), the head stays level and turns slightly against the step, the body bobs and sways.
+	# Idle (blends in as they slow down): breathing, a slow weight shift, gently moving arms and a
+	# head that looks around now and then, each person on their own timing.
 	var limbs: Dictionary = person["limbs"]
-	var swing := sin(phase)*amount
-	for part in ["LegL","ArmR"]:
-		if limbs[part] != null:
-			(limbs[part] as Node3D).rotation.x = swing*(0.6 if part.begins_with("Leg") else 0.5)
-	for part in ["LegR","ArmL"]:
-		if limbs[part] != null:
-			(limbs[part] as Node3D).rotation.x = -swing*(0.6 if part.begins_with("Leg") else 0.5)
-	# Knees bend while the foot swings through; elbows stay a little bent and swing forward.
+	var root: Node3D = person["root"]
+	if not person.has("seed"):
+		person["seed"] = float(root.get_instance_id() % 997)*0.731
+	var sd: float = person["seed"]
+	var amt := clampf(amount,0.0,1.5)
+	var w := clampf(amt,0.0,1.0)
+	var iw := 1.0-w
+	var t := clock+sd
+	var br := sin(t*1.7)
+	var s := sin(phase)
 	var k := 0
+	for part in ["LegL","LegR"]:
+		var leg: Node3D = limbs.get(part)
+		if leg != null:
+			var sgn := 1.0 if k == 0 else -1.0
+			leg.rotation.x = sgn*s*0.55*amt+0.04*w+iw*0.025*sin(t*0.45+float(k)*PI)
+		k += 1
+	k = 0
 	for part in ["ShinL","ShinR"]:
-		if limbs.get(part) != null:
-			var lift := maxf(0.0,-sin(phase+(0.0 if k == 0 else PI)-0.9))
-			(limbs[part] as Node3D).rotation.x = -(0.06+0.95*lift)*amount
+		var shin: Node3D = limbs.get(part)
+		if shin != null:
+			var ph := phase+(0.0 if k == 0 else PI)
+			var lift := maxf(0.0,-sin(ph-0.9))
+			var land := maxf(0.0,sin(ph+0.4))
+			shin.rotation.x = -(0.07+1.05*lift+0.12*land)*amt-iw*(0.03+0.03*maxf(0.0,sin(t*0.45+float(k)*PI)))
+		k += 1
+	k = 0
+	for part in ["ArmL","ArmR"]:
+		var arm: Node3D = limbs.get(part)
+		if arm != null:
+			var sgn := -1.0 if k == 0 else 1.0
+			var out := signf(arm.position.x) if absf(arm.position.x) > 0.001 else (1.0 if k == 1 else -1.0)
+			arm.rotation.x = sgn*s*0.42*amt+0.06*w+iw*(0.035*sin(t*0.9+float(k)))
+			arm.rotation.z = out*(0.085+0.02*w+0.012*br*iw)
 		k += 1
 	k = 0
 	for part in ["ForeArmL","ForeArmR"]:
-		if limbs.get(part) != null:
+		var fa: Node3D = limbs.get(part)
+		if fa != null:
 			var fwd := maxf(0.0,sin(phase+(PI if k == 0 else 0.0)))
-			(limbs[part] as Node3D).rotation.x = 0.12+(0.18+0.45*fwd)*amount
+			fa.rotation.x = 0.2+(0.18+0.5*fwd)*amt+iw*0.03*br
 		k += 1
-	(person["root"] as Node3D).position.y = (person.get("base_y",0.0) as float)+absf(cos(phase))*0.035*amount
+	var head: Node3D = limbs.get("Head")
+	if head != null:
+		var look := sin(t*0.21)*0.35*maxf(0.0,sin(t*0.13+1.0))
+		head.rotation.y = -s*0.06*amt+iw*look
+		head.rotation.x = 0.03*absf(s)*amt+iw*0.02*br
+	root.position.y = (person.get("base_y",0.0) as float)+float(person.get("lift",0.0))+absf(cos(phase))*0.03*amt+iw*0.004*br
+	root.rotation.z = s*0.03*amt+iw*0.018*sin(t*0.45)
+
+var life_i := 0
+var life_snapped := false
+var player_lift_t := 0.0
+
+func _person_lift(pp: Dictionary) -> void:
+	# Raise someone whose body follows physics (you, other players) onto raised floors that have no
+	# collider, so their shoes sit on the paving instead of in it.
+	if pp.is_empty():
+		return
+	var r: Node3D = pp["root"]
+	if not is_instance_valid(r) or not r.is_inside_tree():
+		return
+	var old := float(pp.get("lift",0.0))
+	var feet := r.global_position.y-old
+	var top := _floor_top(r.global_position.x,r.global_position.z,feet+0.4)
+	pp["lift"] = clampf(top-feet,0.0,0.35) if top != -INF else 0.0
+
+func _snap_crowd_feet() -> void:
+	# Once, after the world's colliders exist: lift standing crowds (Food Court, Harbor Commons,
+	# hub, people at spots) onto the real ground under them.
+	for lst in [fc_people,cm_people]:
+		for pp in lst:
+			if pp.is_empty() or bool(pp.get("sat",false)):
+				continue
+			var r: Node3D = pp["root"]
+			var h := r.get_parent() as Node3D
+			if h == null or not h.is_inside_tree():
+				continue
+			var gp := h.global_position
+			var g := _ground_at(gp.x,gp.z,gp.y)
+			if g > gp.y+0.005 and g < gp.y+0.45:
+				h.global_position.y = g
+
+func _people_life_tick() -> void:
+	# v0.36.1: people standing around keep breathing and looking about (original people only).
+	if not life_snapped and clock > 1.5:
+		life_snapped = true
+		_snap_crowd_feet()
+	if not player_person.is_empty() and not driving:
+		player_lift_t -= get_process_delta_time()
+		if player_lift_t <= 0.0:
+			player_lift_t = 0.25
+			_person_lift(player_person)
+	if kperson_scene != null or paused:
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var cp := cam.global_position
+	var busy := {}
+	for e in hub_emotes:
+		var r = (e["person"] as Dictionary).get("root")
+		if is_instance_valid(r):
+			busy[r] = true
+	life_i += 1
+	var lists: Array = [fc_people,cm_people]
+	var n := 0
+	for lst in lists:
+		for pp in lst:
+			n += 1
+			if (n+life_i) % 2 == 0:
+				continue
+			_life_one(pp,cp,busy)
+	for p in peds:
+		if bool(p.get("idle",false)):
+			n += 1
+			if (n+life_i) % 2 == 0:
+				continue
+			_life_one(p["person"],cp,busy)
+
+func _life_one(pp: Dictionary, cp: Vector3, busy: Dictionary) -> void:
+	if pp.is_empty() or bool(pp.get("sat",false)) or pp.has("ap"):
+		return
+	var r: Node3D = pp["root"]
+	if not is_instance_valid(r) or busy.has(r) or not r.is_visible_in_tree():
+		return
+	if r.global_position.distance_squared_to(cp) > 35.0*35.0:
+		return
+	_pose_limbs(pp,0.0,0.0)
 
 func _cull_person(node: Node, distance: float, shadows := false) -> void:
 	if node is GeometryInstance3D:
@@ -7840,6 +8004,7 @@ func _save_progress() -> void:
 	file.set_value("progress","best_times",best_times)
 	file.set_value("progress","radio",radio_station)
 	file.set_value("progress","online_name",online_name)
+	file.set_value("progress","online_pref",online_pref)
 	file.set_value("progress","nick_chosen",nick_chosen)
 	file.set_value("progress","chase_wins",chase_wins)
 	file.set_value("progress","marina_mask",marina_mask)
@@ -7955,6 +8120,7 @@ func _load_progress() -> void:
 		trial_done = int(file.get_value("progress","trial_done",0)) & ((1 << TRIALS.size())-1)
 		radio_station = clampi(int(file.get_value("progress","radio",0)),0,RADIO.size()-1)
 		online_name = String(file.get_value("progress","online_name",""))
+		online_pref = bool(file.get_value("progress","online_pref",true))
 		nick_chosen = bool(file.get_value("progress","nick_chosen",false))
 		if online_name != "" and _clean_nick(online_name) == "":
 			online_name = ""
@@ -8203,6 +8369,7 @@ func _process(delta: float) -> void:
 	_food_court_tick(delta)
 	_commons_tick(delta)
 	_chat_tick(delta)
+	_people_life_tick()
 	_cash_pill_tick()
 	_lb_tick(delta)
 	_market_tick(delta)
@@ -8364,6 +8531,14 @@ func _update_ped(p: Dictionary, delta: float, far: bool) -> void:
 		p["off"] = (p["off"] as Vector3).move_toward(target,7.0*delta)
 		var node: Node3D = p["node"]
 		node.position = base+(p["off"] as Vector3)
+		# v0.36.1: feet on the real ground (raised pavements, plazas, paving), checked a few times a second.
+		if not far:
+			p["gt"] = float(p.get("gt",0.0))-delta
+			if float(p["gt"]) <= 0.0:
+				p["gt"] = randf_range(0.25,0.4)
+				p["gy"] = _ground_at(node.position.x,node.position.z,base.y)
+		p["gys"] = move_toward(float(p.get("gys",base.y)),float(p.get("gy",base.y)),delta*1.6)
+		node.position.y = float(p["gys"])
 		if idle:
 			node.rotation.y = float(p["yaw"])
 			if not far and not bool(p.get("posed",false)):
@@ -10212,6 +10387,9 @@ func _discover_downtown(i: int) -> void:
 func _box_batch(color: Color, items: Array) -> MultiMeshInstance3D:
 	if items.is_empty():
 		return null
+	for it in items:
+		if it.size() >= 2 and it[0] is Vector3 and it[1] is Vector3:
+			_floor_note(it[0],it[1])
 	var multi := MultiMesh.new()
 	multi.transform_format = MultiMesh.TRANSFORM_3D
 	multi.mesh = BoxMesh.new()
@@ -12731,6 +12909,7 @@ func _sit_pose(person: Dictionary, h: float, base_y: float) -> void:
 		_kplay(person,"Sit")
 		(person["root"] as Node3D).position.y = base_y-(K_HIP-(h+0.06))
 		return
+	person["sat"] = true
 	var limbs: Dictionary = person["limbs"]
 	for part in ["LegL","LegR"]:
 		if limbs[part] != null:
@@ -17832,6 +18011,7 @@ func _fc_cone(top: float, bottom: float, h: float) -> CylinderMesh:
 func _build_food_court() -> void:
 	var root := Node3D.new()
 	root.name = "FoodCourt"
+	root.set_meta("static_floor",true)
 	add_child(root)
 	for st in FC_STANDS:
 		var sx := float(st["x"])
@@ -18057,6 +18237,13 @@ func _build_commons() -> void:
 	var root := Node3D.new()
 	root.name = "HarborCommons"
 	add_child(root)
+	# Its paths, plaza, playground floor, court and pavilion pad are raised a little: people stand on them.
+	_floor_note(Vector3(-93,0.04,-36),Vector3(78,0.08,4.2))
+	_floor_note(Vector3(-93,0.041,-35),Vector3(4.2,0.08,40))
+	_floor_disc(CM_C,11.0,0.09)
+	_floor_note(CM_PLAY+Vector3(0,0.06,0),Vector3(22,0.12,32))
+	_floor_note(CM_COURT+Vector3(0,0.06,0),Vector3(15,0.12,27))
+	_floor_disc(CM_PUZZLE,4.5,0.2)
 	var pave := Color("e6e1d6")
 	var line := Color("f4f1e8")
 	# Paths: a main walk east to west, one north to south, and a round plaza around the fountain.
@@ -18579,6 +18766,27 @@ func _smoke_chat() -> void:
 	crew_name = keep[0]
 	chat_lines = keep[1]
 	chat_last_say = keep[4]
+
+func _smoke_feet() -> void:
+	# v0.36.1: nobody's feet are buried. Raised floors are known, and standing crowds sit on them.
+	assert(absf(_ground_at(FC_BLOCK.x,FC_BLOCK.z+9.2,0.0)-0.12) < 0.02,"v0.36.1: Food Court paving height is known")
+	assert(absf(_ground_at(-100.0,-36.0,0.0)-0.09) < 0.02,"v0.36.1: Harbor Commons path height is known")
+	_snap_crowd_feet()
+	var low := 0
+	var total := 0
+	for lst in [fc_people,cm_people]:
+		for pp in lst:
+			if pp.is_empty() or bool(pp.get("sat",false)):
+				continue
+			var h := (pp["root"] as Node3D).get_parent() as Node3D
+			if h == null or not h.is_inside_tree():
+				continue
+			var gp := h.global_position
+			total += 1
+			if gp.y < _ground_at(gp.x,gp.z,gp.y)-0.02:
+				low += 1
+	print("FEET_CHECK standing=%d buried=%d" % [total,low])
+	assert(low == 0,"v0.36.1: %d standing people have buried feet" % low)
 
 func _smoke_commons() -> void:
 	assert(cm_spin != null and cm_jets.size() == 10,"v0.36: Harbor Commons is built")
@@ -20474,6 +20682,68 @@ func _smoke_findme() -> void:
 
 # ---------- v0.24.2: road map (for moving people off the road) ----------
 var road_rects: Array = []
+# v0.36.1: raised floors people stand on that have no collider (pavement boxes, plazas, paving),
+# by 8 m grid cell: [x0,z0,x1,z1,top] rects and [cx,cz,r,top] discs.
+var floor_grid := {}
+
+func _floor_note(pos: Vector3, size: Vector3) -> void:
+	if size.y > 0.45 or size.x*size.z < 2.5:
+		return
+	var top := pos.y+size.y/2.0
+	if top <= 0.015 or top > 0.6:
+		return
+	var e := [pos.x-size.x/2.0,pos.z-size.z/2.0,pos.x+size.x/2.0,pos.z+size.z/2.0,top]
+	for cx in range(floori(e[0]/8.0),floori(e[2]/8.0)+1):
+		for cz in range(floori(e[1]/8.0),floori(e[3]/8.0)+1):
+			var k := Vector2i(cx,cz)
+			if not floor_grid.has(k):
+				floor_grid[k] = []
+			floor_grid[k].append(e)
+
+func _floor_disc(c: Vector3, radius: float, top: float) -> void:
+	var e := [c.x,c.z,radius,top]
+	for cx in range(floori((c.x-radius)/8.0),floori((c.x+radius)/8.0)+1):
+		for cz in range(floori((c.z-radius)/8.0),floori((c.z+radius)/8.0)+1):
+			var k := Vector2i(cx,cz)
+			if not floor_grid.has(k):
+				floor_grid[k] = []
+			floor_grid[k].append(e)
+
+func _floor_top(x: float, z: float, below: float) -> float:
+	# Highest registered floor at (x, z) that is not above `below`; -INF when none.
+	var best := -INF
+	var cell: Array = floor_grid.get(Vector2i(floori(x/8.0),floori(z/8.0)),[])
+	for e in cell:
+		var top: float
+		if e.size() == 5:
+			if x < float(e[0]) or x > float(e[2]) or z < float(e[1]) or z > float(e[3]):
+				continue
+			top = float(e[4])
+		else:
+			if Vector2(x-float(e[0]),z-float(e[1])).length() > float(e[2]):
+				continue
+			top = float(e[3])
+		if top <= below and top > best:
+			best = top
+	return best
+
+func _ground_at(x: float, z: float, feet: float) -> float:
+	# Where someone standing near height `feet` should put their feet: the highest real surface
+	# (collider or registered floor) from a little below to half a metre above them.
+	var g := _floor_top(x,z,feet+0.5)
+	var space := get_world_3d().direct_space_state if is_inside_tree() else null
+	if space != null:
+		var q := PhysicsRayQueryParameters3D.create(Vector3(x,feet+0.6,z),Vector3(x,feet-0.4,z))
+		var ex: Array[RID] = []
+		if player != null:
+			ex.append(player.get_rid())
+		if car != null:
+			ex.append(car.get_rid())
+		q.exclude = ex
+		var hit := space.intersect_ray(q)
+		if not hit.is_empty() and float(hit["position"].y) <= feet+0.5:
+			g = maxf(g,float(hit["position"].y))
+	return feet if g == -INF else g
 
 func _note_road(pos: Vector3, size: Vector3, yaw: float, color: Color) -> void:
 	if size.y > 0.15 or size.x < 3.0 or size.z < 3.0:
@@ -22132,6 +22402,7 @@ func _smoke_v27() -> void:
 	_smoke_airport()
 	_smoke_commons()
 	_smoke_chat()
+	_smoke_feet()
 	# Nobody stands in a road, and a car stuck behind someone in its lane moves on after a few seconds.
 	for p in peds:
 		if bool(p["idle"]):

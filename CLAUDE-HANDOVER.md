@@ -534,3 +534,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Daytime default: day_mode 1, one-time migration flag day_default_v036. Pose fixes in make_people_motion.py (FOOT_YAW, FORE_TWIST 0.8, wider step).
 - Release commit 08b397e, tag v0.36.0, versionCode 63. APK SHA256 945d4f955337a654efbccdf674c12a4cf3e49ae1973fe0bf6febb24a5ab58f4c (43869707 bytes), same certificate.
 - Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches.
+
+## v0.36.1 (released 2026-11-20)
+
+- Original people back: USE_KPERSON := false (kperson.glb and the Kenney/motion scripts stay; flip it to bring them back).
+- `_pose_limbs`: natural procedural walk + idle (breathing, weight shift, look-around, per-person seed). `_people_life_tick` animates standing crowds (fc_people, cm_people, idle peds) within 35 m; `person["sat"]` marks seated people so idle leaves them alone.
+- Grounded feet: `floor_grid` registry of raised visual floors (`_floor_note` from non-solid `_box` on self or nodes with meta "static_floor", `_box_batch`, plus park floors) and `_ground_at` (registry + physics ray). Peds sample it every ~0.3 s; crowds snap once after 1.5 s; player/peers get `person["lift"]`. Smoke `_smoke_feet` asserts 0 buried.
+- Online players now walk (phase from their speed). Online by default: `online_pref` (saved), `_online_autostart` after boot; any `--` developer arg stays offline.
+- Release commit 01d643f, tag v0.36.1, versionCode 64. APK SHA256 dd2023288c24e2daac851dcbc14834807edf9b97b2124f695885a44fb054d89e (43877899 bytes), same certificate.
+- Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches. Live auto-connect not exercised from desktop.

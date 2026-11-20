@@ -340,7 +340,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.37.1: Menu > Travel > The Biosphere takes you straight to the domes!")
+	_show_toast("Harbor City 0.38: hexagon Biosphere domes with animal sections and skywalks. Take the ramps up!")
 	booted = true
 	_online_autostart()
 	if not dev_mode and not crate_done:
@@ -18835,53 +18835,72 @@ func _smoke_commons() -> void:
 	pz_built_for = ""
 	_pz_refresh_sign()
 
-# ---------- v0.37: THE BIOSPHERE ----------
-# Four giant geodesic domes (winter, spring, summer, autumn) joined by glass tunnels around a central
+# ---------- v0.37 / v0.38: THE BIOSPHERE ----------
+# Four giant glass domes (winter, spring, summer, autumn) joined by glass tunnels around a central
 # hub, on the empty land north-west of the Skyline District. Ideas from real biospheres:
-#   * geodesic glass domes: the Eden Project (Cornwall) and Montreal's Biosphere (Buckminster Fuller)
+#   * hexagon-and-triangle glass gridshells: the Eden Project biomes (Cornwall) and Montreal's
+#     Biosphere (Buckminster Fuller)
+#   * a rain vortex falling through an oculus, and walkways up in the canopy: Jewel Changi, Singapore
 #   * Winter: the sub-polar zone of the Biodome de Montreal (penguins on ice, polar animals)
-#   * Spring: the Cloud Forest and Flower Dome at Gardens by the Bay, Singapore (misty waterfall
-#     mountain, flower beds)
+#   * Spring: the Cloud Forest and Flower Dome at Gardens by the Bay, Singapore
 #   * Summer: Biosphere 2, Arizona (savanna and a coral ocean)
 #   * Autumn: the Laurentian maple forest of the Biodome de Montreal (maples, beavers, moose)
-# Visitors walk a ring path in each dome; the animals live in fenced habitats inside and outside the
-# ring. Spot all four species in a dome for a reward, all sixteen for the Biosphere Explorer badge.
+# v0.38 layout: every dome (and the hub) is a hexagon. A dome is six 60-degree sections round a fenced
+# central habitat. A visitor ring path circles the centre; the three far sections are separate fenced
+# enclosures (one animal each, each with its own landscape); the near sections (the entrance and the
+# tunnels) are gardens. A skywalk loops round over the enclosures 4 m up, reached by two ramps beside
+# the entrance, with a lookout deck reaching out over the far enclosure.
 const BIO_C := Vector3(-500,0,-600)
-const BIO_R := 30.0          # dome radius
-const BIO_OFF := 44.0        # dome centres sit at hub +/- 44 m on x and z
-const BIO_HUB_R := 12.0
-const BIO_RING := 17.0       # visitor ring path radius
+const BIO_A := 27.0           # dome apothem: centre to the middle of a wall
+const BIO_OFF := 44.0         # dome centres sit at hub +/- 44 m on x and z
+const BIO_HUB_A := 12.0       # hub apothem
+const BIO_IN := 9.6           # central habitat fence
+const BIO_RING := 12.0        # visitor ring path centre line (4 m wide)
+const BIO_FRONT := 14.4       # enclosure front fences
+const BIO_SKY_A := 17.75      # skywalk centre line
+const BIO_SKY_W := 2.6
+const BIO_SKY_H := 4.0
+const BIO_RAMP_A := 20.35     # the two entrance ramps run just outside the skywalk
+const BIO_POD := 23.5         # the lookout deck reaches out to here over the far enclosure
+const BIO_TAN := 0.57735      # tan 30 degrees: half a hexagon side per metre of apothem
+const BIO_HUB_D := {"glass":Color("e8fbff"),"frame":Color("f3f6fb"),"rib":Color("7dff9a"),"wall":4.0,"roof":6.5,"prof":1.0}
 const BIO_DOMES := [
-	{"name":"WINTER DOME","sub":"Polar ice and snow","dir":Vector2(-1,-1),"glass":Color("cfeeff"),"rib":Color("8fe3ff"),"ground":Color("f1f5f9"),"path":Color("b9c9d6"),
-		"inspired":"Inspired by the sub-polar zone of the Biodome de Montreal"},
-	{"name":"SPRING DOME","sub":"Cloud forest and flowers","dir":Vector2(1,-1),"glass":Color("ffe0f0"),"rib":Color("ff8fc8"),"ground":Color("86c96a"),"path":Color("e9dcc4"),
-		"inspired":"Inspired by the Cloud Forest at Gardens by the Bay, Singapore"},
-	{"name":"SUMMER DOME","sub":"Savanna and coral lagoon","dir":Vector2(1,1),"glass":Color("fff3c4"),"rib":Color("ffd23f"),"ground":Color("e6cd94"),"path":Color("f4e7cf"),
-		"inspired":"Inspired by the savanna and ocean of Biosphere 2, Arizona"},
-	{"name":"AUTUMN DOME","sub":"Maple forest","dir":Vector2(-1,1),"glass":Color("ffe0c4"),"rib":Color("ff8a3c"),"ground":Color("a8693e"),"path":Color("d9c3a2"),
-		"inspired":"Inspired by the Laurentian maple forest of the Biodome de Montreal"},
+	{"name":"WINTER DOME","sub":"Polar ice and snow","dir":Vector2(-1,-1),"glass":Color("cfeeff"),"rib":Color("8fe3ff"),"frame":Color("eef8ff"),
+		"ground":Color("dbe6ef"),"path":Color("8fa8bd"),"wall":6.0,"roof":21.0,"prof":1.6,"deck":Color("e3f4ff"),"rail":Color("bfe9ff"),
+		"sky":"GLACIER SKYWALK","look":"POLAR LOOKOUT","inspired":"Inspired by the sub-polar zone of the Biodome de Montreal"},
+	{"name":"SPRING DOME","sub":"Cloud forest and flowers","dir":Vector2(1,-1),"glass":Color("ffe0f0"),"rib":Color("ff8fc8"),"frame":Color("fff2f8"),
+		"ground":Color("86c96a"),"path":Color("e9dcc4"),"wall":5.0,"roof":21.0,"prof":0.9,"deck":Color("d9bf86"),"rail":Color("c8f0b0"),
+		"sky":"CLOUD WALK","look":"BUTTERFLY LOOKOUT","inspired":"Inspired by the Cloud Forest at Gardens by the Bay and the Jewel rain vortex, Singapore"},
+	{"name":"SUMMER DOME","sub":"Savanna and coral lagoon","dir":Vector2(1,1),"glass":Color("fff3c4"),"rib":Color("ffd23f"),"frame":Color("ffe08a"),
+		"ground":Color("e6cd94"),"path":Color("f4e7cf"),"wall":5.0,"roof":14.0,"prof":0.75,"deck":Color("e2c58f"),"rail":Color("fff0c0"),
+		"sky":"SAFARI SKYWALK","look":"MACAW LOOKOUT","inspired":"Inspired by the savanna and ocean of Biosphere 2, Arizona"},
+	{"name":"AUTUMN DOME","sub":"Maple forest","dir":Vector2(-1,1),"glass":Color("ffe0c4"),"rib":Color("ff8a3c"),"frame":Color("c8743a"),
+		"ground":Color("a8693e"),"path":Color("d9c3a2"),"wall":6.0,"roof":18.0,"prof":1.1,"deck":Color("8a5a36"),"rail":Color("ffd9b0"),
+		"sky":"CANOPY BOARDWALK","look":"MARSH LOOKOUT","inspired":"Inspired by the Laurentian maple forest of the Biodome de Montreal"},
 ]
 # Tunnels between neighbouring domes (the south side stays open for the entrance walk).
 const BIO_LINKS := [[0,1],[1,2],[3,0]]
-# zone: "in" = inside the ring fence, "out" = between the ring and the dome wall, "fly" = in the air,
-# "swim" = on the water inside the ring.
+# zone: "in"/"swim" = the central habitat (rmin = distance kept from its centrepiece), "out" = walks in
+# enclosure section `sec` (amin = nearest it comes to the centre, for tall animals under the skywalk),
+# "fly" = circles over enclosure 3, "flutter" = butterflies over the flower beds in enclosure 3.
+# Keep the order: bio_seen has one bit per species.
 const BIO_SPECIES := [
-	{"dome":0,"name":"Emperor Penguin","fact":"The biggest penguin: up to 1.2 m tall. Dads keep the egg warm on their feet.","kind":"penguin","n":6,"zone":"in"},
-	{"dome":0,"name":"Polar Bear","fact":"Its fur looks white, but its skin is black to soak up the sun.","kind":"polarbear","n":2,"zone":"out","part":0},
-	{"dome":0,"name":"Arctic Fox","fact":"Its fur turns from brown in summer to snow-white in winter.","kind":"arcticfox","n":2,"zone":"out","part":1},
-	{"dome":0,"name":"Snowy Owl","fact":"Hunts in daylight in the Arctic summer, when the sun never sets.","kind":"owl","n":2,"zone":"fly"},
-	{"dome":1,"name":"Spotted Deer","fact":"Fawns are born with white spots that help them hide.","kind":"deer","n":3,"zone":"out","part":0},
-	{"dome":1,"name":"Rabbit","fact":"Rabbits can turn their long ears to hear in every direction.","kind":"rabbit","n":5,"zone":"out","part":1},
-	{"dome":1,"name":"Mallard Duck","fact":"Only the male has the shiny green head.","kind":"duck","n":4,"zone":"swim"},
-	{"dome":1,"name":"Butterfly","fact":"Butterflies taste with their feet.","kind":"butterfly","n":10,"zone":"flutter"},
-	{"dome":2,"name":"Giraffe","fact":"The tallest animal: its tongue is about 50 cm long.","kind":"giraffe","n":2,"zone":"out","part":0},
-	{"dome":2,"name":"Zebra","fact":"No two zebras have the same stripes.","kind":"zebra","n":4,"zone":"out","part":1},
-	{"dome":2,"name":"Flamingo","fact":"Flamingos are pink because of the shrimp they eat.","kind":"flamingo","n":6,"zone":"swim"},
-	{"dome":2,"name":"Macaw Parrot","fact":"Macaws can live for 60 years.","kind":"parrot","n":3,"zone":"fly"},
-	{"dome":3,"name":"Moose","fact":"The biggest deer: a male's antlers can be 1.8 m wide.","kind":"moose","n":2,"zone":"out","part":0},
-	{"dome":3,"name":"Raccoon","fact":"Raccoons feel their food with their sensitive front paws.","kind":"raccoon","n":2,"zone":"out","part":1},
-	{"dome":3,"name":"Beaver","fact":"Beavers build dams and lodges, and their teeth never stop growing.","kind":"beaver","n":2,"zone":"swim"},
-	{"dome":3,"name":"Canada Goose","fact":"Geese fly south in a V shape to save energy.","kind":"goose","n":5,"zone":"fly"},
+	{"dome":0,"name":"Emperor Penguin","fact":"The biggest penguin: up to 1.2 m tall. Dads keep the egg warm on their feet.","kind":"penguin","n":6,"zone":"in","rmin":4.4,"hab":"Penguin Ice Pool"},
+	{"dome":0,"name":"Polar Bear","fact":"Its fur looks white, but its skin is black to soak up the sun.","kind":"polarbear","n":2,"zone":"out","sec":2,"hab":"Polar Coast"},
+	{"dome":0,"name":"Arctic Fox","fact":"Its fur turns from brown in summer to snow-white in winter.","kind":"arcticfox","n":2,"zone":"out","sec":4,"hab":"Arctic Tundra"},
+	{"dome":0,"name":"Snowy Owl","fact":"Hunts in daylight in the Arctic summer, when the sun never sets.","kind":"owl","n":2,"zone":"fly","sec":3,"hab":"Snowy Owl Woods"},
+	{"dome":1,"name":"Spotted Deer","fact":"Fawns are born with white spots that help them hide.","kind":"deer","n":3,"zone":"out","sec":2,"hab":"Blossom Meadow"},
+	{"dome":1,"name":"Rabbit","fact":"Rabbits can turn their long ears to hear in every direction.","kind":"rabbit","n":5,"zone":"out","sec":4,"hab":"Bunny Burrows"},
+	{"dome":1,"name":"Mallard Duck","fact":"Only the male has the shiny green head.","kind":"duck","n":4,"zone":"swim","rmin":4.4,"hab":"Rain Vortex Pool"},
+	{"dome":1,"name":"Butterfly","fact":"Butterflies taste with their feet.","kind":"butterfly","n":10,"zone":"flutter","sec":3,"hab":"Butterfly Garden"},
+	{"dome":2,"name":"Giraffe","fact":"The tallest animal: its tongue is about 50 cm long.","kind":"giraffe","n":2,"zone":"out","sec":2,"amin":20.2,"hab":"Acacia Plains"},
+	{"dome":2,"name":"Zebra","fact":"No two zebras have the same stripes.","kind":"zebra","n":4,"zone":"out","sec":4,"hab":"Zebra Grassland"},
+	{"dome":2,"name":"Flamingo","fact":"Flamingos are pink because of the shrimp they eat.","kind":"flamingo","n":6,"zone":"swim","rmin":4.4,"hab":"Coral Lagoon"},
+	{"dome":2,"name":"Macaw Parrot","fact":"Macaws can live for 60 years.","kind":"parrot","n":3,"zone":"fly","sec":3,"hab":"Macaw Aviary"},
+	{"dome":3,"name":"Moose","fact":"The biggest deer: a male's antlers can be 1.8 m wide.","kind":"moose","n":2,"zone":"out","sec":2,"amin":20.2,"hab":"Maple Forest"},
+	{"dome":3,"name":"Raccoon","fact":"Raccoons feel their food with their sensitive front paws.","kind":"raccoon","n":2,"zone":"out","sec":4,"hab":"Raccoon Hollow"},
+	{"dome":3,"name":"Beaver","fact":"Beavers build dams and lodges, and their teeth never stop growing.","kind":"beaver","n":2,"zone":"swim","rmin":3.9,"hab":"Beaver Pond"},
+	{"dome":3,"name":"Canada Goose","fact":"Geese fly south in a V shape to save energy.","kind":"goose","n":5,"zone":"out","sec":3,"hab":"Goose Marsh"},
 ]
 const BIO_DOME_PAY := 300
 const BIO_DOME_XP := 60
@@ -18892,9 +18911,11 @@ var bio_animals: Array = []
 var bio_people: Array = []
 var bio_fx: Array = []          # [particles, dome index]
 var bio_spin: Array = []
-var bio_falls: Array = []
 var bio_aurora: Array = []
+var bio_scroll: Array = []      # materials whose texture scrolls down (the rain vortex)
 var bio_mesh := {}
+var bio_batch := {}             # material -> [Transform3D]: boxes drawn as one MultiMesh per material
+var bio_cols: Array = []        # [Transform3D, size]: solid boxes (decks, ramps, railings, pillars)
 var bio_check_t := 0.0
 var bio_root: Node3D
 
@@ -18902,8 +18923,35 @@ func _bio_dome_c(i: int) -> Vector3:
 	var d: Vector2 = BIO_DOMES[i]["dir"]
 	return BIO_C+Vector3(d.x*BIO_OFF,0,d.y*BIO_OFF)
 
+func _bio_theta(i: int) -> float:
+	# Each hexagon faces the hub: section 0 (the entrance) points straight at it.
+	var c := _bio_dome_c(i)
+	return atan2(BIO_C.z-c.z,BIO_C.x-c.x)
+
+func _bio_sec_n(i: int, s: int) -> float:
+	return _bio_theta(i)+float(s)*PI/3.0
+
+func _bio_sec_of(i: int, a: float) -> int:
+	return posmod(roundi(angle_difference(_bio_theta(i),a)/(PI/3.0)),6)
+
+func _bio_pt(i: int, s: int, apo: float, t: float, y := 0.0) -> Vector3:
+	# A point in section s of dome i: `apo` metres out along the section's middle, `t` metres to the side.
+	var n := _bio_sec_n(i,s)
+	return _bio_dome_c(i)+Vector3(cos(n),0,sin(n))*apo+Vector3(-sin(n),0,cos(n))*t+Vector3(0,y,0)
+
+func _bio_hex_r(theta: float, apo: float, a: float) -> float:
+	# Centre-to-edge distance of a hexagon (sides facing theta + k*60 degrees) in direction a.
+	var off := fposmod(angle_difference(theta,a)+PI/6.0,PI/3.0)-PI/6.0
+	return apo/cos(off)
+
+func _bio_apo(i: int, p: Vector3) -> float:
+	# How far out p is, measured straight across the nearest side.
+	var c := _bio_dome_c(i)
+	var n := _bio_sec_n(i,_bio_sec_of(i,atan2(p.z-c.z,p.x-c.x)))
+	return (p.x-c.x)*cos(n)+(p.z-c.z)*sin(n)
+
 func _bio_open_angles(i: int) -> Array:
-	# Directions (radians, x = cos, z = sin) of the openings in dome i's wall.
+	# Directions (radians, x = cos, z = sin) of the doorways in dome i's wall: the hub first.
 	var c := _bio_dome_c(i)
 	var out: Array = [atan2(BIO_C.z-c.z,BIO_C.x-c.x)]
 	for l in BIO_LINKS:
@@ -18911,20 +18959,6 @@ func _bio_open_angles(i: int) -> Array:
 			var o := _bio_dome_c(int(l[1]) if int(l[0]) == i else int(l[0]))
 			out.append(atan2(o.z-c.z,o.x-c.x))
 	return out
-
-func _bio_free_arc(i: int) -> Array:
-	# The widest stretch of wall with no opening: [start, end] angles (end > start).
-	var a: Array = _bio_open_angles(i).map(func(v): return fposmod(float(v),TAU))
-	a.sort()
-	var best := [0.0,TAU]
-	var bw := -1.0
-	for k in a.size():
-		var s0: float = a[k]
-		var s1: float = a[(k+1) % a.size()]+(TAU if k == a.size()-1 else 0.0)
-		if s1-s0 > bw:
-			bw = s1-s0
-			best = [s0+0.42,s1-0.42]
-	return best
 
 func _bm(key: String, make: Callable) -> Mesh:
 	if not bio_mesh.has(key):
@@ -18970,6 +19004,188 @@ func _bio_water_mat(col: Color) -> StandardMaterial3D:
 		fc_mats[key] = m
 	return fc_mats[key]
 
+func _bio_mat(col: Color, metal := 0.4, rough := 0.35) -> StandardMaterial3D:
+	var key := "biom"+col.to_html(false)+"_%.2f_%.2f" % [metal,rough]
+	if not fc_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = col
+		m.metallic = metal
+		m.roughness = rough
+		fc_mats[key] = m
+	return fc_mats[key]
+
+# ---------------- building blocks ----------------
+func _bio_add(mat: Material, xf: Transform3D) -> void:
+	if not bio_batch.has(mat):
+		bio_batch[mat] = []
+	bio_batch[mat].append(xf)
+
+func _bio_flush() -> void:
+	# Everything queued with _bio_add becomes one MultiMesh of boxes per material.
+	for mat in bio_batch:
+		var xs: Array = bio_batch[mat]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = _bbox()
+		mm.instance_count = xs.size()
+		for k in xs.size():
+			mm.set_instance_transform(k,xs[k])
+		var inst := MultiMeshInstance3D.new()
+		inst.multimesh = mm
+		inst.material_override = mat
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bio_root.add_child(inst)
+	bio_batch.clear()
+
+func _bio_bar(a: Vector3, b: Vector3, w: float, mat: Material) -> void:
+	# A square bar from a to b.
+	var d := b-a
+	var L := d.length()
+	if L < 0.05:
+		return
+	var z := d/L
+	var x := z.cross(Vector3.UP)
+	if x.length() < 0.01:
+		x = Vector3.RIGHT
+	x = x.normalized()
+	_bio_add(mat,Transform3D(Basis(x*w,z.cross(x)*w,z*L),(a+b)/2.0))
+
+func _bio_slab(a: Vector3, b: Vector3, w: float, th: float, mat: Material, solid := true) -> void:
+	# A board from a to b (the centre line of its top face), w wide and th thick, tilted to follow
+	# a-b. Decks, ramps and (stood on edge, thin and tall) railing panels.
+	var d := b-a
+	var L := d.length()
+	if L < 0.02:
+		return
+	var X := d/L
+	var Z := X.cross(Vector3.UP).normalized()
+	var Y := Z.cross(X)
+	var ctr := (a+b)/2.0-Y*th/2.0
+	_bio_add(mat,Transform3D(Basis(X*L,Y*th,Z*w),ctr))
+	if solid:
+		bio_cols.append([Transform3D(Basis(X,Y,Z),ctr),Vector3(L,th,w)])
+
+func _bio_body() -> void:
+	var body := StaticBody3D.new()
+	body.collision_mask = 0
+	bio_root.add_child(body)
+	for it in bio_cols:
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = it[1]
+		shape.shape = box
+		shape.transform = it[0]
+		body.add_child(shape)
+	bio_cols.clear()
+
+func _bio_hexmesh(apo: float, th: float) -> Mesh:
+	var key := "hex%.2f_%.2f" % [apo,th]
+	if not bio_mesh.has(key):
+		var cm := CylinderMesh.new()
+		cm.top_radius = apo/cos(PI/6.0)
+		cm.bottom_radius = apo/cos(PI/6.0)
+		cm.height = th
+		cm.radial_segments = 6
+		cm.rings = 1
+		bio_mesh[key] = cm
+	return bio_mesh[key]
+
+func _bio_hexslab(c: Vector3, theta: float, apo: float, top: float, th: float, mat: Material) -> MeshInstance3D:
+	# A flat hexagon (floor, pool) with its sides facing theta + k*60 degrees.
+	var mi := _fc_part(bio_root,_bio_hexmesh(apo,th),c+Vector3(0,top-th/2.0,0),mat)
+	mi.rotation.y = -theta
+	return mi
+
+func _bio_band(c: Vector3, theta: float, a0: float, a1: float, top: float, mat: Material) -> void:
+	# A hexagonal ring of paving between apothems a0 and a1.
+	for k in 6:
+		var n := theta+float(k)*PI/3.0
+		var b := _fc_part(bio_root,_bbox(),c+Vector3(cos(n),0,sin(n))*(a0+a1)/2.0+Vector3(0,top-0.03,0),mat,Vector3(2.0*a1*BIO_TAN,0.06,a1-a0))
+		b.rotation.y = atan2(-cos(n),-sin(n))
+
+func _bio_hexpt(c: Vector3, theta: float, apo: float, u: float, y: float) -> Vector3:
+	# Point u round a hexagon (one unit per side; side 0 faces theta), y up.
+	var k := floori(u)
+	var a0 := theta-PI/6.0+float(k)*PI/3.0
+	var p := Vector3(cos(a0),0,sin(a0)).lerp(Vector3(cos(a0+PI/3.0),0,sin(a0+PI/3.0)),u-float(k))
+	return c+p*apo/cos(PI/6.0)+Vector3(0,y,0)
+
+func _bio_gridshell(c: Vector3, theta: float, apo: float, D: Dictionary, m: int, rings: int, open_pts: Array, walls: Array, oculus := 0.0) -> void:
+	# A hexagonal glass gridshell: straight glass walls, then a faceted roof of triangles (like the
+	# Eden Project biomes). m panels per side; open_pts are doorway points on the wall.
+	var wall_h: float = D["wall"]
+	var roof_h: float = D["roof"]
+	var levels: Array = [[1.0,0.0],[1.0,wall_h]]
+	for j in range(1,rings+1):
+		var ph := PI/2.0*float(j)/float(rings)
+		var s := pow(maxf(cos(ph),0.0),float(D["prof"])) if j < rings else oculus/apo
+		levels.append([s,wall_h+roof_h*sin(ph)])
+	var cols := 6*m
+	var colw := 2.0*apo*BIO_TAN/float(m)
+	var wh := minf(wall_h,6.0)
+	var door: Array = []
+	for k in cols:
+		var mid := _bio_hexpt(c,theta,apo,(float(k)+0.5)/float(m),0.0)
+		var o := false
+		for p in open_pts:
+			if Vector2(mid.x-(p as Vector3).x,mid.z-(p as Vector3).z).length() < 3.3+colw*0.5:
+				o = true
+		door.append(o)
+		if not o:
+			var a := _bio_hexpt(c,theta,apo,float(k)/float(m),0.0)
+			var b := _bio_hexpt(c,theta,apo,float(k+1)/float(m),0.0)
+			walls.append([(a+b)/2.0+Vector3(0,wh/2.0,0),Vector3(colw+0.3,wh,0.5),atan2(-(b-a).z,(b-a).x)])
+	var grid: Array = []
+	for j in levels.size():
+		var row: Array = []
+		for k in cols+1:
+			row.append(_bio_hexpt(c,theta,apo*float(levels[j][0]),float(k % cols)/float(m),float(levels[j][1])))
+		grid.append(row)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var fw := 0.15 if apo > 15.0 else 0.11
+	var fm := _bio_mat(D["frame"],0.5,0.3)
+	for j in levels.size()-1:
+		for k in cols:
+			if j == 0 and door[k]:
+				continue
+			var a: Vector3 = grid[j][k]
+			var b: Vector3 = grid[j][k+1]
+			var d: Vector3 = grid[j+1][k]
+			var e: Vector3 = grid[j+1][k+1]
+			if (j+k) % 2 == 0:
+				for v in [a,b,e,a,e,d]:
+					st.add_vertex(v)
+				_bio_bar(a,e,fw*0.75,fm)
+			else:
+				for v in [a,b,d,b,e,d]:
+					st.add_vertex(v)
+				_bio_bar(b,d,fw*0.75,fm)
+	for j in levels.size():
+		for k in cols:
+			if not (j == 0 and door[k]):
+				_bio_bar(grid[j][k],grid[j][k+1],fw*(1.7 if j == 1 else 1.0),fm)
+			if j < levels.size()-1 and not (j == 0 and door[k] and door[posmod(k-1,cols)]):
+				_bio_bar(grid[j][k],grid[j+1][k],fw*(1.7 if k % m == 0 else 1.0),fm)
+	st.generate_normals()
+	var g := MeshInstance3D.new()
+	g.mesh = st.commit()
+	g.material_override = _bio_glass_mat(D["glass"],0.13)
+	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	bio_root.add_child(g)
+	# A glowing sill round the base and a glowing band along the top of the walls.
+	var gm := _fc_glow(D["rib"])
+	for k in cols:
+		if not door[k]:
+			_bio_bar(grid[0][k]+Vector3(0,0.2,0),grid[0][k+1]+Vector3(0,0.2,0),0.1,gm)
+		_bio_bar(grid[1][k]-Vector3(0,0.25,0),grid[1][k+1]-Vector3(0,0.25,0),0.08,gm)
+		if oculus > 0.0:
+			_bio_bar(grid[levels.size()-1][k],grid[levels.size()-1][k+1],0.3,gm)
+
+func _bio_side(c: Vector3, theta: float, apo: float, k: int) -> Array:
+	# The two corners of side k of a hexagon.
+	return [_bio_hexpt(c,theta,apo,float(k),0.0),_bio_hexpt(c,theta,apo,float(k+1),0.0)]
+
 # ---------------- building ----------------
 func _build_biosphere() -> void:
 	bio_root = Node3D.new()
@@ -18979,7 +19195,7 @@ func _build_biosphere() -> void:
 	var walls: Array = []
 	# Entrance walk from the Skyline boulevard, with a gate.
 	var ez0 := -472.0
-	var ez1 := BIO_C.z+BIO_HUB_R-0.5
+	var ez1 := BIO_C.z+BIO_HUB_A-0.5
 	_bp(bio_root,_bbox(),Vector3(BIO_C.x,0.06,(ez0+ez1)/2.0),Color("e8e2d4"),Vector3(7,0.12,ez0-ez1))
 	_floor_note(Vector3(BIO_C.x,0.06,(ez0+ez1)/2.0),Vector3(7,0.12,ez0-ez1))
 	for sx: float in [-3.8,3.8]:
@@ -19003,14 +19219,14 @@ func _build_biosphere() -> void:
 		for sx: float in [-4.6,4.6]:
 			_fc_part(bio_root,_bcone(0.05,0.07,3.4),Vector3(BIO_C.x+sx,1.7,lz),_fc_chrome())
 			_fc_part(bio_root,_bsph(0.2),Vector3(BIO_C.x+sx,3.45,lz),_fc_glow(Color("bff6ff")))
-	# ---- Hub ----
-	var hub_open: Array = [PI/2.0]
+	# ---- Hub: a small hexagon with doorways to the walk and the four domes ----
+	var hub_open: Array = [BIO_C+Vector3(0,0,BIO_HUB_A)]
 	for i in BIO_DOMES.size():
-		var c := _bio_dome_c(i)
-		hub_open.append(atan2(c.z-BIO_C.z,c.x-BIO_C.x))
-	_bio_shell(BIO_C,BIO_HUB_R,9.5,Color("e8fbff"),Color("7dff9a"),hub_open,walls,4)
-	_bp(bio_root,_bcone(BIO_HUB_R-0.2,BIO_HUB_R-0.2,0.12),BIO_C+Vector3(0,0.06,0),Color("eef0ec"))
-	_floor_disc(BIO_C,BIO_HUB_R,0.12)
+		var dirv := (_bio_dome_c(i)-BIO_C).normalized()
+		hub_open.append(BIO_C+dirv*_bio_hex_r(PI/2.0,BIO_HUB_A,atan2(dirv.z,dirv.x)))
+	_bio_gridshell(BIO_C,PI/2.0,BIO_HUB_A,BIO_HUB_D,4,4,hub_open,walls)
+	_bio_hexslab(BIO_C,PI/2.0,BIO_HUB_A-0.15,0.12,0.12,_bio_mat(Color("eef0ec"),0.0,0.6))
+	_floor_disc(BIO_C,BIO_HUB_A,0.12)
 	_fc_part(bio_root,_fc_torus(4.0,4.3),BIO_C+Vector3(0,0.14,0),_fc_glow(Color("7dff9a")))
 	# Hologram globe over a pedestal.
 	_fc_part(bio_root,_bcone(1.2,1.6,1.0),BIO_C+Vector3(0,0.5,0),_fc_pearl())
@@ -19025,88 +19241,50 @@ func _build_biosphere() -> void:
 		r.rotation = Vector3(0.5+float(k)*0.4,float(k)*0.8,0.2)
 	var ht := _sign("THE BIOSPHERE",BIO_C+Vector3(0,6.4,0),Color("e9fff1"),56)
 	ht.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-	var hs := _sign("Spot all 16 animals!  Geodesic domes inspired by the Eden Project and Montreal's Biosphere",BIO_C+Vector3(0,5.6,0),Color("bff6ff"),22)
+	var hs := _sign("Spot all 16 animals!  Hexagon glass domes inspired by the Eden Project and Montreal's Biosphere",BIO_C+Vector3(0,5.6,0),Color("bff6ff"),22)
 	hs.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-	# Signposts at each tunnel mouth.
+	# Signposts and tunnels to each dome.
 	for i in BIO_DOMES.size():
 		var c := _bio_dome_c(i)
 		var dirv := (c-BIO_C).normalized()
-		var sp := BIO_C+dirv*(BIO_HUB_R-2.2)+Vector3(0,3.1,0)
+		var sp := BIO_C+dirv*(BIO_HUB_A-2.4)+Vector3(0,3.0,0)
 		var sl := _sign("%s\n%s" % [BIO_DOMES[i]["name"],BIO_DOMES[i]["sub"]],sp,BIO_DOMES[i]["rib"],30)
 		sl.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		sl.outline_modulate = Color("15202b")
-		_bio_tunnel(BIO_C+dirv*BIO_HUB_R,c-dirv*BIO_R,BIO_DOMES[i]["rib"],walls)
+		_bio_tunnel(hub_open[i+1],c-dirv*BIO_A,BIO_DOMES[i]["rib"],walls)
 	for l in BIO_LINKS:
-		var a := _bio_dome_c(int(l[0]))
-		var b := _bio_dome_c(int(l[1]))
+		var i0 := int(l[0])
+		var i1 := int(l[1])
+		var a := _bio_dome_c(i0)
+		var b := _bio_dome_c(i1)
 		var dv := (b-a).normalized()
-		_bio_tunnel(a+dv*BIO_R,b-dv*BIO_R,Color("e9fff1"),walls)
+		_bio_tunnel(a+dv*_bio_hex_r(_bio_theta(i0),BIO_A,atan2(dv.z,dv.x)),b-dv*_bio_hex_r(_bio_theta(i1),BIO_A,atan2(-dv.z,-dv.x)),Color("e9fff1"),walls)
+	_bio_flush()
 	# ---- Domes ----
 	for i in BIO_DOMES.size():
 		_bio_dome(i,walls)
+		_bio_flush()
 	_multi_collider(walls)
-	# A few visitors at the railings and in the hub.
-	var vrng := RandomNumberGenerator.new()
-	vrng.seed = 7700
+	_bio_body()
+	# Visitors at the enclosure fences, out on each lookout deck, and in the hub.
 	for i in BIO_DOMES.size():
-		var c := _bio_dome_c(i)
-		var arc := _bio_free_arc(i)
-		for k in 3:
-			var a := lerpf(float(arc[0]),float(arc[1]),0.2+0.3*float(k))
-			var p := c+Vector3(cos(a),0,sin(a))*(BIO_RING+1.2)
-			var pp := _cm_person(bio_root,p,atan2(cos(a),sin(a))+PI,i*5+k+50)
-			bio_people.append(pp)
+		for s in [2,3,4]:
+			var p := _bio_pt(i,s,BIO_RING+1.0,-2.5+2.5*float(s-3))
+			var n := _bio_sec_n(i,s)
+			bio_people.append(_cm_person(bio_root,p,atan2(cos(n),sin(n))+PI,i*5+s+50))
+		for t: float in [-1.6,1.4]:
+			var p := _bio_pt(i,3,BIO_POD-1.6,t,BIO_SKY_H)
+			var n := _bio_sec_n(i,3)
+			bio_people.append(_cm_person(bio_root,p,atan2(cos(n),sin(n))+PI,i*7+int(t*3.0)+80))
 	for k in 3:
 		var a := PI/2.0+0.9*float(k-1)
-		var pp := _cm_person(bio_root,BIO_C+Vector3(cos(a),0,sin(a))*6.5,atan2(cos(a),sin(a)),k+70)
-		bio_people.append(pp)
+		bio_people.append(_cm_person(bio_root,BIO_C+Vector3(cos(a),0,sin(a))*6.5,atan2(cos(a),sin(a)),k+70))
 	for pp in bio_people:
 		cm_people.erase(pp)
+	bio_people = bio_people.filter(func(pp): return not (pp as Dictionary).is_empty())
 	_cull_person(bio_root,230.0)
 	for pp in bio_people:
 		_cull_person(pp["root"],70.0)
-
-func _bio_shell(c: Vector3, r: float, h: float, glass: Color, rib: Color, open: Array, walls: Array, meridians: int) -> void:
-	# A geodesic-style dome: faint glass, pearl ribs and glowing rings, and a wall collider with gaps
-	# at the openings.
-	var frame := Node3D.new()
-	frame.position = c
-	frame.scale = Vector3(1,h/r,1)
-	bio_root.add_child(frame)
-	var sm := SphereMesh.new()
-	sm.radius = r
-	sm.height = r
-	sm.is_hemisphere = true
-	sm.radial_segments = 32
-	sm.rings = 10
-	var g := MeshInstance3D.new()
-	g.mesh = sm
-	g.material_override = _bio_glass_mat(glass,0.12)
-	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	frame.add_child(g)
-	var tor := _fc_torus(r-0.14,r+0.14)
-	for k in meridians*2:
-		var m := _fc_part(frame,tor,Vector3.ZERO,_fc_pearl())
-		m.rotation = Vector3(PI/2.0,float(k)*PI/float(meridians*2),0)
-	for f: float in [0.3,0.55,0.78]:
-		var hh: float = r*float(f)
-		var rr := sqrt(r*r-hh*hh)
-		_fc_part(frame,_fc_torus(rr-0.12,rr+0.12),Vector3(0,hh,0),_fc_glow(rib))
-	# Extra meridians tilted both ways cross the rings in triangles, for the geodesic look.
-	for k in meridians:
-		for tilt: float in [0.5,-0.5]:
-			var m2 := _fc_part(frame,tor,Vector3.ZERO,_fc_pearl())
-			m2.rotation = Vector3(PI/2.0+tilt*0.35,float(k)*TAU/float(meridians)+0.25,tilt)
-	_fc_part(bio_root,_fc_torus(r-0.25,r+0.35),c+Vector3(0,0.15,0),_fc_glow(rib))
-	var segs := int(r*1.4)
-	for k in segs:
-		var a := TAU*(float(k)+0.5)/float(segs)
-		var blocked := true
-		for o in open:
-			if absf(angle_difference(a,float(o))) < 3.8/r:
-				blocked = false
-		if blocked:
-			walls.append([c+Vector3(cos(a),0,sin(a))*r+Vector3(0,2.5,0),Vector3(TAU*r/float(segs)+0.3,5.0,0.5),-a-PI/2.0])
 
 func _bio_tunnel(a: Vector3, b: Vector3, rib: Color, walls: Array) -> void:
 	var d := b-a
@@ -19147,81 +19325,140 @@ func _bio_tunnel(a: Vector3, b: Vector3, rib: Color, walls: Array) -> void:
 func _bio_dome(i: int, walls: Array) -> void:
 	var D: Dictionary = BIO_DOMES[i]
 	var c := _bio_dome_c(i)
+	var th := _bio_theta(i)
 	var open := _bio_open_angles(i)
-	_bio_shell(c,BIO_R,24.0,D["glass"],D["rib"],open,walls,6)
-	# Ground, the visitor ring and the spokes from each opening to the ring.
-	_bp(bio_root,_bcone(BIO_R-0.3,BIO_R-0.3,0.1),c+Vector3(0,0.05,0),D["ground"])
-	_floor_disc(c,BIO_R-0.3,0.1)
-	var ring := _bp(bio_root,_fc_torus(BIO_RING-2.1,BIO_RING+2.1),c+Vector3(0,0.12,0),D["path"],Vector3(1,0.03,1))
-	ring.scale = Vector3(1,0.02,1)
-	_floor_disc(c,BIO_RING+2.1,0.12)
+	var open_pts: Array = []
+	for o in open:
+		var a: float = o
+		open_pts.append(c+Vector3(cos(a),0,sin(a))*_bio_hex_r(th,BIO_A,a))
+	_bio_gridshell(c,th,BIO_A,D,8,7,open_pts,walls,3.4 if i == 1 else 0.0)
+	# Ground, the visitor ring round the central habitat and a path from each doorway to the ring.
+	_bio_hexslab(c,th,BIO_A-0.2,0.1,0.1,_bio_mat(D["ground"],0.0,0.9))
+	_floor_disc(c,BIO_A-0.2,0.1)
+	var pm := _bio_mat(D["path"],0.0,0.7)
+	_bio_band(c,th,BIO_RING-2.0,BIO_RING+2.0,0.13,pm)
+	_floor_disc(c,BIO_RING+2.0,0.13)
 	for o in open:
 		var a: float = o
 		var dirv := Vector3(cos(a),0,sin(a))
-		var sl_len := BIO_R-BIO_RING
-		var sp := _bp(bio_root,_bbox(),c+dirv*(BIO_RING+sl_len/2.0)+Vector3(0,0.11,0),D["path"],Vector3(4.2,0.06,sl_len+1.0))
+		var r0 := _bio_hex_r(th,BIO_RING+1.5,a)
+		var r1 := _bio_hex_r(th,BIO_A,a)
+		var sp := _fc_part(bio_root,_bbox(),c+dirv*(r0+r1)/2.0+Vector3(0,0.1,0),pm,Vector3(4.2,0.06,r1-r0+0.6))
 		sp.rotation.y = atan2(dirv.x,dirv.z)
-	# Fences: a full circle inside the ring, one outside with gaps for the spokes, and both sides of
-	# each spoke out to the wall. Posts and rails are batched; colliders keep visitors on the path.
+	# Fences: round the central habitat, along the front of the three enclosures and between them
+	# out to the wall. Posts and rails are batched; colliders keep visitors on the paths.
 	var posts: Array = []
 	var rails: Array = []
 	var fence_cols: Array = []
-	_bio_fence_circle(c,BIO_RING-2.3,[],posts,rails,fence_cols)
-	_bio_fence_circle(c,BIO_RING+2.3,open,posts,rails,fence_cols)
-	for o in open:
-		var a: float = o
-		var dirv := Vector3(cos(a),0,sin(a))
-		var side := Vector3(-dirv.z,0,dirv.x)
-		for s: float in [-2.4,2.4]:
-			_bio_fence_line(c+dirv*(BIO_RING+2.3)+side*s,c+dirv*(BIO_R-0.4)+side*s,posts,rails,fence_cols)
+	for k in 6:
+		var sd := _bio_side(c,th,BIO_IN,k)
+		_bio_fence_line(sd[0],sd[1],posts,rails,fence_cols)
+	for s in [2,3,4]:
+		var sd := _bio_side(c,th,BIO_FRONT,s)
+		_bio_fence_line(sd[0],sd[1],posts,rails,fence_cols)
+	for s in [1,2,3,4]:
+		var a := th+(float(s)+0.5)*PI/3.0
+		var dv := Vector3(cos(a),0,sin(a))/cos(PI/6.0)
+		_bio_fence_line(c+dv*BIO_FRONT,c+dv*(BIO_A-0.5),posts,rails,fence_cols)
 	_cyl_batch(Color("f4efe6"),posts,1.0)
 	_box_batch_rot(D["rib"].darkened(0.15),rails)
 	for fc in fence_cols:
 		walls.append(fc)
-	# Dome name sign over the main entrance spoke, and the inspiration line.
-	var ha: float = open[0]
-	var hp := c+Vector3(cos(ha),0,sin(ha))*(BIO_R-3.0)
-	var nm := _sign(D["name"],hp+Vector3(0,5.6,0),D["rib"],56)
+	_bio_skywalk(i)
+	# Dome name and inspiration over the entrance, and a sign at each ramp.
+	var nm := _sign(D["name"],_bio_pt(i,0,BIO_A-2.0,0.0,6.6),D["rib"],56)
 	nm.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 	nm.outline_modulate = Color("15202b")
-	var ins := _sign(String(D["inspired"]),hp+Vector3(0,4.8,0),Color("f4f8fb"),24)
+	var ins := _sign(String(D["inspired"]),_bio_pt(i,0,BIO_A-2.0,0.0,5.8),Color("f4f8fb"),24)
 	ins.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	for sg: float in [-1.0,1.0]:
+		var rs := _sign("▲ %s" % D["sky"],_bio_pt(i,0,BIO_RAMP_A,sg*2.2,2.3),Color("fff6d8"),26)
+		rs.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		rs.outline_modulate = Color("15202b")
+	var ls := _sign(String(D["look"]),_bio_pt(i,3,BIO_POD-0.3,0.0,6.2),D["rib"],34)
+	ls.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	ls.outline_modulate = Color("15202b")
 	match i:
-		0: _bio_winter(c)
-		1: _bio_spring(c)
-		2: _bio_summer(c)
-		3: _bio_autumn(c)
-	# Animals and their signs.
+		0: _bio_winter(i)
+		1: _bio_spring(i)
+		2: _bio_summer(i)
+		3: _bio_autumn(i)
+	# Animals, and a sign at the front of each habitat.
 	for si in BIO_SPECIES.size():
 		var S: Dictionary = BIO_SPECIES[si]
 		if int(S["dome"]) != i:
 			continue
 		for k in int(S["n"]):
 			bio_animals.append(_bio_spawn(si,k,c))
-		var sa := _bio_species_angle(si,c)
-		var sr := BIO_RING+2.3 if String(S["zone"]) == "out" else BIO_RING-2.3
-		var sign_p := c+Vector3(cos(sa),0,sin(sa))*sr+Vector3(0,1.75,0)
-		var lab := _sign("%s\n%s" % [String(S["name"]).to_upper(),S["fact"]],sign_p+Vector3(0,0.3,0),Color("fff6d8"),28)
+		var sign_p := _bio_pt(i,0,BIO_IN+0.1,4.0*(1.0 if si % 2 == 0 else -1.0)) if not S.has("sec") else _bio_pt(i,int(S["sec"]),BIO_FRONT+0.1,0.0)
+		var lab := _sign("%s  ·  %s\n%s" % [String(S["name"]).to_upper(),S["hab"],S["fact"]],sign_p+Vector3(0,2.05,0),Color("fff6d8"),28)
 		lab.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		lab.outline_modulate = Color("15202b")
-		lab.width = 520
+		lab.width = 560
 		lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
-func _bio_fence_circle(c: Vector3, r: float, open: Array, posts: Array, rails: Array, cols: Array) -> void:
-	var n := int(TAU*r/2.6)
-	for k in n:
-		var a0 := TAU*float(k)/float(n)
-		var a1 := TAU*float(k+1)/float(n)
-		var am := (a0+a1)/2.0
-		var gap := false
-		for o in open:
-			if absf(angle_difference(am,float(o))) < 2.5/r:
-				gap = true
-		if gap:
-			continue
-		var p0 := c+Vector3(cos(a0),0,sin(a0))*r
-		var p1 := c+Vector3(cos(a1),0,sin(a1))*r
-		_bio_fence_seg(p0,p1,posts,rails,cols)
+func _bio_skywalk(i: int) -> void:
+	# The raised walkway: a hexagonal loop over the enclosures, open over the entrance path, where two
+	# ramps climb from the path to it. Glass balustrades with a glowing handrail; a lookout deck with
+	# a glass floor reaches out over the far enclosure.
+	var D: Dictionary = BIO_DOMES[i]
+	var h := BIO_SKY_H
+	var deck := _bio_mat(D["deck"],0.1,0.55)
+	var panel := _bio_glass_mat(D["rail"],0.42)
+	var cap := _fc_glow(D["rib"])
+	var post := _bio_mat(D["frame"],0.5,0.3)
+	var ai := BIO_SKY_A-BIO_SKY_W/2.0
+	var ao := BIO_SKY_A+BIO_SKY_W/2.0
+	var lo := ao*BIO_TAN
+	var rail := func(a: Vector3, b: Vector3) -> void:
+		_bio_slab(a+Vector3(0,1.05,0),b+Vector3(0,1.05,0),0.06,1.0,panel)
+		_bio_bar(a+Vector3(0,1.1,0),b+Vector3(0,1.1,0),0.09,cap)
+	for s in range(1,6):
+		_bio_slab(_bio_pt(i,s,BIO_SKY_A,-lo,h),_bio_pt(i,s,BIO_SKY_A,lo,h),BIO_SKY_W,0.3,deck)
+		rail.call(_bio_pt(i,s,ai,-ai*BIO_TAN,h),_bio_pt(i,s,ai,ai*BIO_TAN,h))
+		if s == 3:
+			rail.call(_bio_pt(i,s,ao,-lo,h),_bio_pt(i,s,ao,-4.0,h))
+			rail.call(_bio_pt(i,s,ao,4.0,h),_bio_pt(i,s,ao,lo,h))
+		else:
+			rail.call(_bio_pt(i,s,ao,-lo,h),_bio_pt(i,s,ao,lo,h))
+	var pillars: Array = []
+	for s in 6:
+		pillars.append([_bio_pt(i,s,BIO_SKY_A,BIO_SKY_A*BIO_TAN),h-0.3])
+		if s > 0:
+			pillars.append([_bio_pt(i,s,BIO_SKY_A,0.0),h-0.3])
+	for sg: float in [-1.0,1.0]:
+		# The skywalk stops either side of the entrance path...
+		_bio_slab(_bio_pt(i,0,BIO_SKY_A,sg*2.6,h),_bio_pt(i,0,BIO_SKY_A,sg*lo,h),BIO_SKY_W,0.3,deck)
+		rail.call(_bio_pt(i,0,ai,sg*2.6,h),_bio_pt(i,0,ai,sg*ai*BIO_TAN,h))
+		rail.call(_bio_pt(i,0,ai,sg*2.6,h),_bio_pt(i,0,ao,sg*2.6,h))
+		rail.call(_bio_pt(i,0,ao,sg*2.6,h),_bio_pt(i,0,ao,sg*9.4,h))
+		pillars.append([_bio_pt(i,0,BIO_SKY_A,sg*6.0),h-0.3])
+		# ...and a ramp beside it climbs from the path, ending in a level landing that joins it.
+		var ro := BIO_RAMP_A+1.3
+		# (The foot sits at the real ground collider, 5 cm below zero, so there is no step onto it.)
+		_bio_slab(_bio_pt(i,0,BIO_RAMP_A,sg*2.3,-0.04),_bio_pt(i,0,BIO_RAMP_A,sg*9.4,h),2.6,0.3,deck)
+		_bio_slab(_bio_pt(i,0,BIO_RAMP_A,sg*9.4,h),_bio_pt(i,0,BIO_RAMP_A,sg*11.0,h),2.6,0.3,deck)
+		rail.call(_bio_pt(i,0,ao,sg*2.3,-0.04),_bio_pt(i,0,ao,sg*9.4,h))
+		rail.call(_bio_pt(i,0,ro,sg*2.3,-0.04),_bio_pt(i,0,ro,sg*9.4,h))
+		rail.call(_bio_pt(i,0,ro,sg*9.4,h),_bio_pt(i,0,ro,sg*11.0,h))
+		rail.call(_bio_pt(i,0,ao,sg*11.0,h),_bio_pt(i,0,ro,sg*11.0,h))
+		pillars.append([_bio_pt(i,0,BIO_RAMP_A,sg*6.4),-0.04+(h+0.04)*4.1/7.1-0.3])
+		pillars.append([_bio_pt(i,0,BIO_RAMP_A,sg*10.2),h-0.3])
+	# The lookout deck: a glass floor in a frame.
+	var pa := _bio_pt(i,3,ao-0.4,0.0,h)
+	var pb := _bio_pt(i,3,BIO_POD,0.0,h)
+	_bio_slab(pa,pb,8.0,0.12,_bio_glass_mat(D["rail"],0.35))
+	for t: float in [-3.9,3.9]:
+		_bio_bar(_bio_pt(i,3,ao-0.4,t,h-0.08),_bio_pt(i,3,BIO_POD,t,h-0.08),0.22,post)
+		rail.call(_bio_pt(i,3,ao,t*4.0/3.9,h),_bio_pt(i,3,BIO_POD,t*4.0/3.9,h))
+		pillars.append([_bio_pt(i,3,BIO_POD-0.4,t*0.92),h-0.15])
+	_bio_bar(_bio_pt(i,3,BIO_POD-0.1,-4.0,h-0.08),_bio_pt(i,3,BIO_POD-0.1,4.0,h-0.08),0.22,post)
+	rail.call(_bio_pt(i,3,BIO_POD,-4.0,h),_bio_pt(i,3,BIO_POD,4.0,h))
+	for pl in pillars:
+		var p: Vector3 = pl[0]
+		var ph: float = pl[1]
+		_bio_bar(p,p+Vector3(0,ph,0),0.4,post)
+		bio_cols.append([Transform3D(Basis(),p+Vector3(0,ph/2.0,0)),Vector3(0.45,ph,0.45)])
 
 func _bio_fence_line(a: Vector3, b: Vector3, posts: Array, rails: Array, cols: Array) -> void:
 	var n := maxi(1,int(a.distance_to(b)/2.6))
@@ -19238,16 +19475,35 @@ func _bio_fence_seg(p0: Vector3, p1: Vector3, posts: Array, rails: Array, cols: 
 		rails.append([mid+Vector3(0,h,0),Vector3(L,0.07,0.07),yaw])
 	cols.append([mid+Vector3(0,0.75,0),Vector3(L+0.1,1.5,0.25),yaw])
 
-func _bio_species_angle(si: int, c: Vector3) -> float:
-	var S: Dictionary = BIO_SPECIES[si]
-	var arc := _bio_free_arc(int(S["dome"]))
-	if String(S["zone"]) == "out":
-		var part := int(S.get("part",0))
-		return lerpf(float(arc[0]),float(arc[1]),0.25+0.5*float(part))
-	# Inside-the-ring animals and the flyers share the inner fence: two signs, side by side.
-	return lerpf(float(arc[0]),float(arc[1]),0.36 if String(S["zone"]) in ["in","swim"] else 0.64)
-
 # ---------------- dome scenery ----------------
+func _bio_rnd(rng: RandomNumberGenerator, i: int, s: int, a0: float, a1: float, edge := 1.4) -> Vector3:
+	# A random spot in section s between apothems a0 and a1, `edge` metres in from its side lines.
+	var ap := rng.randf_range(a0,a1)
+	var lim := maxf(ap*BIO_TAN-edge,0.0)
+	return _bio_pt(i,s,ap,rng.randf_range(-lim,lim))
+
+func _bio_garden_spot(rng: RandomNumberGenerator, i: int) -> Vector3:
+	# A spot in a garden section that is clear of the paths and the ramps.
+	var c := _bio_dome_c(i)
+	var open := _bio_open_angles(i)
+	for tries in 40:
+		var s: int = [0,1,5][rng.randi() % 3]
+		var p := _bio_rnd(rng,i,s,BIO_RING+3.2,BIO_A-1.4,1.6)
+		var ok := true
+		for o in open:
+			var dv := Vector3(cos(float(o)),0,sin(float(o)))
+			var rel := p-c
+			if rel.dot(dv) > 0.0 and (rel-dv*rel.dot(dv)).length() < 3.6:
+				ok = false
+		var ap := _bio_apo(i,p)
+		if s == 0 and ap > BIO_SKY_A-2.0 and ap < BIO_RAMP_A+2.2:
+			ok = false
+		if s != 0 and ap > BIO_SKY_A-1.8 and ap < BIO_SKY_A+1.8:
+			ok = false
+		if ok:
+			return p
+	return _bio_pt(i,0,BIO_A-2.0,-8.0)
+
 func _bio_pine(p: Vector3, h: float, snow: bool) -> void:
 	_bp(bio_root,_bcone(0.16,0.22,h*0.3),p+Vector3(0,h*0.15,0),Color("5a3c26"))
 	for k in 3:
@@ -19266,14 +19522,18 @@ func _bio_tree(p: Vector3, h: float, cols: Array, rng: RandomNumberGenerator) ->
 func _bio_rock(p: Vector3, s: float, col: Color) -> void:
 	_bp(bio_root,_bsph(1.0),p+Vector3(0,s*0.35,0),col,Vector3(s*1.2,s*0.75,s))
 
-func _bio_particles(c: Vector3, col: Color, amount: int, size: float, fall: float, spread: float, i: int, sway := 0.6) -> void:
+func _bio_pond(p: Vector3, r: float, col: Color) -> void:
+	_fc_part(bio_root,_bcone(r,r,0.06),p+Vector3(0,0.13,0),_bio_water_mat(col))
+	_bp(bio_root,_bcone(r+0.35,r+0.35,0.04),p+Vector3(0,0.11,0),Color("8a8f86"))
+
+func _bio_particles(c: Vector3, col: Color, amount: int, size: float, fall: float, spread: float, i: int, top := 19.0) -> void:
 	var p := CPUParticles3D.new()
 	p.amount = amount
 	p.lifetime = 9.0
 	p.preprocess = 9.0
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	p.emission_box_extents = Vector3(spread,0.5,spread)
-	p.position = c+Vector3(0,19.0,0)
+	p.position = c+Vector3(0,top,0)
 	p.direction = Vector3(0,-1,0)
 	p.spread = 25.0
 	p.gravity = Vector3(0,-fall,0)
@@ -19294,98 +19554,14 @@ func _bio_particles(c: Vector3, col: Color, amount: int, size: float, fall: floa
 	bio_root.add_child(p)
 	bio_fx.append([p,i])
 
-func _bio_winter(c: Vector3) -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 9100
-	# Frozen lake with ice floes inside the ring, a penguin slide and a little iceberg.
-	_fc_part(bio_root,_bcone(BIO_RING-3.0,BIO_RING-3.0,0.06),c+Vector3(0,0.13,0),_bio_water_mat(Color("bfe6f5")))
-	for k in 5:
-		var a := float(k)*1.3
-		var r := 4.0+float(k % 3)*3.0
-		_bp(bio_root,_bcone(1.6+rng.randf()*1.2,1.8+rng.randf()*1.2,0.35),c+Vector3(cos(a)*r,0.2,sin(a)*r),Color("f7fbff"))
-	_bp(bio_root,_bcone(0.6,3.6,4.5),c+Vector3(0,2.2,0),Color("dff4ff"))
-	_bp(bio_root,_bcone(0.0,1.2,1.6),c+Vector3(0.6,5.0,0.3),Color("eefaff"))
-	var slide := _bp(bio_root,_bbox(),c+Vector3(2.6,1.2,0),Color("bfe9ff"),Vector3(1.2,0.15,5.0))
-	slide.rotation = Vector3(0.45,1.2,0)
-	# Snowy pines, boulders and an igloo in the outer habitats.
-	var arc := _bio_free_arc(0)
-	for k in 14:
-		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
-		var r := rng.randf_range(21.5,28.0)
-		_bio_pine(c+Vector3(cos(a),0,sin(a))*r,rng.randf_range(4.0,7.5),true)
-	for k in 6:
-		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
-		_bio_rock(c+Vector3(cos(a),0,sin(a))*rng.randf_range(21,27),rng.randf_range(0.8,1.8),Color("c9d3dc"))
-	var ia := lerpf(float(arc[0]),float(arc[1]),0.62)
-	var ip := c+Vector3(cos(ia),0,sin(ia))*24.0
-	var ig := MeshInstance3D.new()
-	var ism := SphereMesh.new()
-	ism.radius = 2.2
-	ism.height = 2.2
-	ism.is_hemisphere = true
-	ig.mesh = ism
-	ig.position = ip
-	ig.material_override = _fc_pearl()
-	bio_root.add_child(ig)
-	_bp(bio_root,_bbox(),ip+Vector3(0,0.6,0)+Vector3(-cos(ia),0,-sin(ia))*2.2,Color("2a3a4a"),Vector3(0.9,1.1,0.6),Vector3(0,-ia+PI/2.0,0))
-	# Northern lights drift across the top of the dome, and snow falls.
-	for k in 3:
-		var q := QuadMesh.new()
-		q.size = Vector2(34,4.5)
-		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-		m.cull_mode = BaseMaterial3D.CULL_DISABLED
-		m.albedo_color = [Color(0.3,1.0,0.6,0.35),Color(0.5,0.4,1.0,0.3),Color(0.2,0.9,1.0,0.3)][k]
-		var au := MeshInstance3D.new()
-		au.mesh = q
-		au.material_override = m
-		au.position = c+Vector3(-4.0+4.0*float(k),17.0+float(k)*1.2,-6.0+5.0*float(k))
-		au.rotation = Vector3(-1.2,0.5*float(k),0.15)
-		au.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		bio_root.add_child(au)
-		bio_aurora.append(au)
-	_bio_particles(c,Color(1,1,1,0.95),220,0.12,0.35,BIO_R*0.65,0)
-
-func _bio_spring(c: Vector3) -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 9200
-	# Cloud forest mountain with a waterfall into a pond, wrapped in mist.
-	_fc_part(bio_root,_bcone(BIO_RING-3.0,BIO_RING-3.0,0.06),c+Vector3(0,0.13,0),_bio_water_mat(Color("5fc9d8")))
-	_bp(bio_root,_bcone(2.6,6.2,7.0),c+Vector3(0,3.5,0),Color("6a7f5c"))
-	_bp(bio_root,_bcone(1.2,3.0,6.0),c+Vector3(0,9.5,0),Color("5f7a52"))
-	_bp(bio_root,_bcone(0.2,1.5,3.0),c+Vector3(0,14.0,0),Color("6c8a5c"))
-	_collider(bio_root,c+Vector3(0,4,0),Vector3(9,8,9))
-	# Ferns and mossy ledges hug the mountain (Cloud Forest style), with a few orchids.
-	for k in 30:
-		var a := float(k)*2.39
-		var y := 1.0+float(k)*0.42
-		var rad := 6.2-y*0.36
-		if absf(angle_difference(a,PI/2.0)) < 0.35:
-			continue
-		var g: Color = [Color("2f7d45"),Color("3f9450"),Color("4fa85a"),Color("2a6b3c")][k % 4]
-		_bp(bio_root,_bsph(0.55+0.2*float(k % 3)),c+Vector3(cos(a)*rad,y,sin(a)*rad),g,Vector3(1.4,0.55,1.4))
-		if k % 5 == 0:
-			_bp(bio_root,_bsph(0.16),c+Vector3(cos(a)*(rad+0.4),y+0.35,sin(a)*(rad+0.4)),[Color("e85fa6"),Color("c254ff"),Color("ffffff")][k % 3])
-	var wm := StandardMaterial3D.new()
-	wm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	wm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	wm.albedo_color = Color(0.85,0.97,1.0,0.75)
-	wm.cull_mode = BaseMaterial3D.CULL_DISABLED
-	for w in 3:
-		var fall := _fc_part(bio_root,QuadMesh.new(),c+Vector3(-0.35+0.35*float(w),7.0,3.0+0.25*float(w)),wm,Vector3(0.45,12.5,1))
-		fall.rotation.x = -0.12
-		fall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		bio_falls.append(fall)
-	_bp(bio_root,_bsph(1.0),c+Vector3(0,0.3,5.0),Color("ffffff"),Vector3(2.2,0.5,1.4),Vector3.ZERO,true)
+func _bio_mist(p: Vector3, ext: Vector3, amount: int, i: int, col := Color(1,1,1,0.16)) -> void:
 	var mist := CPUParticles3D.new()
-	mist.amount = 40
+	mist.amount = amount
 	mist.lifetime = 5.0
 	mist.preprocess = 5.0
-	mist.position = c+Vector3(0,1.2,5.0)
+	mist.position = p
 	mist.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	mist.emission_box_extents = Vector3(2.5,0.4,1.5)
+	mist.emission_box_extents = ext
 	mist.direction = Vector3(0,1,0)
 	mist.gravity = Vector3(0,0.15,0)
 	mist.initial_velocity_min = 0.2
@@ -19400,99 +19576,299 @@ func _bio_spring(c: Vector3) -> void:
 	var mm := StandardMaterial3D.new()
 	mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mm.albedo_color = Color(1,1,1,0.16)
+	mm.albedo_color = col
 	mq.material = mm
 	mist.mesh = mq
 	mist.emitting = false
 	bio_root.add_child(mist)
-	bio_fx.append([mist,1])
-	# Lily pads.
+	bio_fx.append([mist,i])
+
+func _bio_planter(p: Vector3, flower: Color, leaf: Color) -> void:
+	_bp(bio_root,_bio_hexmesh(0.9,0.5),p+Vector3(0,0.25,0),Color("f3f6fb"))
+	_bp(bio_root,_bsph(0.7),p+Vector3(0,0.55,0),leaf,Vector3(1.1,0.55,1.1))
+	for k in 5:
+		var a := float(k)*1.26
+		_bp(bio_root,_bsph(0.13),p+Vector3(cos(a)*0.45,0.85,sin(a)*0.45),flower)
+
+func _bio_winter(i: int) -> void:
+	var c := _bio_dome_c(i)
+	var th := _bio_theta(i)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9100
+	# Penguin Ice Pool (centre): ice floes round an iceberg with a penguin slide.
+	_bio_hexslab(c,th,BIO_IN-0.25,0.16,0.06,_bio_water_mat(Color("5fb4dc")))
+	for k in 6:
+		var a := float(k)*1.05+0.4
+		var r := 5.6+float(k % 3)*1.0
+		_bp(bio_root,_bcone(1.0+rng.randf()*0.5,1.2+rng.randf()*0.5,0.3),c+Vector3(cos(a)*r,0.2,sin(a)*r),Color("f7fbff"))
+	_bp(bio_root,_bcone(0.6,3.2,4.5),c+Vector3(0,2.2,0),Color("dff4ff"))
+	_bp(bio_root,_bcone(0.0,1.2,1.6),c+Vector3(0.6,5.0,0.3),Color("eefaff"))
+	var slide := _bp(bio_root,_bbox(),c+Vector3(2.6,1.2,0),Color("bfe9ff"),Vector3(1.2,0.15,5.0))
+	slide.rotation = Vector3(0.45,1.2,0)
+	# Polar Coast (section 2): a deep plunge pool with floes, rocky shore and snow drifts.
+	var pc := _bio_pt(i,2,22.0,2.0)
+	_bio_pond(pc,4.2,Color("5aa9d6"))
+	for k in 3:
+		_bp(bio_root,_bcone(0.9,1.1,0.25),pc+Vector3(rng.randf_range(-2,2),0.2,rng.randf_range(-2,2)),Color("f7fbff"))
 	for k in 9:
-		var a := float(k)*0.7+0.3
-		var r := 8.0+float(k % 3)*1.8
+		_bio_rock(_bio_rnd(rng,i,2,16.0,25.5),rng.randf_range(0.8,1.9),[Color("c9d3dc"),Color("e9f1f7"),Color("aab6c2")][k % 3])
+	# Arctic Tundra (section 4): low shrubs, lichen rocks, a few pines and a fox den.
+	for k in 22:
+		_bp(bio_root,_bsph(0.35),_bio_rnd(rng,i,4,15.8,25.5)+Vector3(0,0.15,0),[Color("6f7f5a"),Color("8a8f6a"),Color("b7a888")][k % 3],Vector3(1.3,0.5,1.3))
+	for k in 5:
+		_bio_pine(_bio_rnd(rng,i,4,20.5,25.5),rng.randf_range(3.5,5.5),true)
+	var den := _bio_pt(i,4,22.5,-4.0)
+	_bp(bio_root,_bsph(1.6),den,Color("e9f1f7"),Vector3(1.4,0.7,1.2))
+	_bp(bio_root,_bsph(0.45),den+Vector3(0,0.35,0)+(c-den).normalized()*1.7,Color("2a3440"),Vector3(1,0.8,0.5))
+	# Snowy Owl Woods (section 3): snowy pines and bare perch trees round a frozen log.
+	for k in 9:
+		_bio_pine(_bio_rnd(rng,i,3,19.8,25.8),rng.randf_range(4.5,7.5),true)
+	for k in 3:
+		var p := _bio_rnd(rng,i,3,15.5,18.5)
+		_bp(bio_root,_bcone(0.08,0.14,3.2),p+Vector3(0,1.6,0),Color("6b5a4a"))
+		var br := _bp(bio_root,_bcone(0.04,0.06,1.4),p+Vector3(0.3,2.6,0),Color("6b5a4a"))
+		br.rotation.z = -0.9
+	var lg := _bp(bio_root,_bcone(0.3,0.3,3.0),_bio_pt(i,3,21.0,5.5,0.3),Color("7a6a58"))
+	lg.rotation = Vector3(0,0.4,PI/2.0)
+	# Gardens: an igloo, snowmen and lantern posts.
+	var ip := _bio_pt(i,0,24.4,-7.2)
+	var ig := MeshInstance3D.new()
+	var ism := SphereMesh.new()
+	ism.radius = 2.0
+	ism.height = 2.0
+	ism.is_hemisphere = true
+	ig.mesh = ism
+	ig.position = ip
+	ig.material_override = _fc_pearl()
+	bio_root.add_child(ig)
+	for k in 3:
+		var sp := _bio_garden_spot(rng,i)
+		_bp(bio_root,_bsph(0.5),sp+Vector3(0,0.5,0),Color("ffffff"))
+		_bp(bio_root,_bsph(0.36),sp+Vector3(0,1.2,0),Color("ffffff"))
+		_bp(bio_root,_bsph(0.25),sp+Vector3(0,1.7,0),Color("ffffff"))
+		_bp(bio_root,_bcone(0.0,0.06,0.3),sp+Vector3(0,1.7,-0.3),Color("ff8a1c"),Vector3.ONE,Vector3(-PI/2.0,0,0))
+	for k in 6:
+		var sp := _bio_garden_spot(rng,i)
+		_fc_part(bio_root,_bcone(0.05,0.07,2.6),sp+Vector3(0,1.3,0),_fc_chrome())
+		_fc_part(bio_root,_bsph(0.22),sp+Vector3(0,2.7,0),_fc_glow(Color("bff6ff")))
+	# Northern lights drift across the top of the dome, and snow falls.
+	for k in 3:
+		var q := QuadMesh.new()
+		q.size = Vector2(34,4.5)
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.albedo_color = [Color(0.3,1.0,0.6,0.35),Color(0.5,0.4,1.0,0.3),Color(0.2,0.9,1.0,0.3)][k]
+		var au := MeshInstance3D.new()
+		au.mesh = q
+		au.material_override = m
+		au.position = c+Vector3(-4.0+4.0*float(k),18.0+float(k)*1.2,-6.0+5.0*float(k))
+		au.rotation = Vector3(-1.2,0.5*float(k),0.15)
+		au.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bio_root.add_child(au)
+		bio_aurora.append(au)
+	_bio_particles(c,Color(1,1,1,0.95),240,0.12,0.35,BIO_A*0.7,i,20.0)
+
+func _bio_spring(i: int) -> void:
+	var c := _bio_dome_c(i)
+	var th := _bio_theta(i)
+	var D: Dictionary = BIO_DOMES[i]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9200
+	# Rain Vortex Pool (centre): water falls from the oculus at the top of the dome into a round basin
+	# in the duck pond, wrapped in mist.
+	_bio_hexslab(c,th,BIO_IN-0.25,0.16,0.06,_bio_water_mat(Color("5fc9d8")))
+	_fc_part(bio_root,_fc_torus(3.0,3.5),c+Vector3(0,0.35,0),_fc_pearl())
+	_bp(bio_root,_bcone(3.0,3.0,0.1),c+Vector3(0,0.3,0),Color("dff8ff"),Vector3.ONE,Vector3.ZERO,true)
+	var top := float(D["wall"])+float(D["roof"])
+	var nt := NoiseTexture2D.new()
+	nt.width = 64
+	nt.height = 256
+	nt.seamless = true
+	var fnl := FastNoiseLite.new()
+	fnl.frequency = 0.05
+	nt.noise = fnl
+	var ramp := Gradient.new()
+	ramp.set_color(0,Color(0.62,0.86,1.0,0.25))
+	ramp.set_color(1,Color(1,1,1,0.95))
+	nt.color_ramp = ramp
+	var vm := StandardMaterial3D.new()
+	vm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	vm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	vm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	vm.albedo_color = Color(1,1,1,0.8)
+	vm.albedo_texture = nt
+	vm.uv1_scale = Vector3(3,1,1)
+	bio_scroll.append(vm)
+	for k in 2:
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 3.0-0.5*float(k)
+		cyl.bottom_radius = 1.7-0.4*float(k)
+		cyl.height = top-0.4
+		cyl.radial_segments = 24
+		cyl.rings = 4
+		cyl.cap_top = false
+		cyl.cap_bottom = false
+		_fc_part(bio_root,cyl,c+Vector3(0,0.4+(top-0.4)/2.0,0),vm)
+	_bio_mist(c+Vector3(0,0.9,0),Vector3(2.4,0.4,2.4),46,i)
+	for k in 10:
+		var a := float(k)*0.63+0.3
+		var r := 5.0+float(k % 3)*1.3
 		_bp(bio_root,_bcone(0.55,0.55,0.03),c+Vector3(cos(a)*r,0.18,sin(a)*r),Color("3e9a4a"))
 		if k % 3 == 0:
 			_bp(bio_root,_bsph(0.18),c+Vector3(cos(a)*r,0.27,sin(a)*r),Color("ff9ad0"))
-	# Cherry blossom trees, tulip beds and falling petals in the meadow outside the ring.
-	var arc := _bio_free_arc(1)
-	for k in 10:
-		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
-		_bio_tree(c+Vector3(cos(a),0,sin(a))*rng.randf_range(21.5,27.5),rng.randf_range(4.0,6.0),[Color("ffb7d9"),Color("ffd1e6"),Color("ff9ccc")],rng)
+	# Blossom Meadow (section 2): cherry trees over long grass and a little stream.
+	for k in 9:
+		_bio_tree(_bio_rnd(rng,i,2,20.2,25.6),rng.randf_range(4.0,6.0),[Color("ffb7d9"),Color("ffd1e6"),Color("ff9ccc")],rng)
+	for k in 30:
+		_bp(bio_root,_bcone(0.0,0.14,0.55),_bio_rnd(rng,i,2,15.6,25.6)+Vector3(0,0.35,0),Color("5fae4a"))
+	var st := _fc_part(bio_root,_bbox(),_bio_pt(i,2,18.5,0.0,0.14),_bio_water_mat(Color("6fd0e0")),Vector3(1.4,0.04,18.0))
+	st.rotation.y = -_bio_sec_n(i,2)
+	# Bunny Burrows (section 4): tulip beds, burrow mounds and a hutch.
 	var tulips := [Color("ff4f6a"),Color("ffd23f"),Color("c254ff"),Color("ff8a1c"),Color("ffffff")]
-	for bed in 6:
-		var a := lerpf(float(arc[0]),float(arc[1]),(float(bed)+0.5)/6.0)
-		var bc := c+Vector3(cos(a),0,sin(a))*23.0
-		for t in 14:
-			var tp := bc+Vector3(rng.randf_range(-1.6,1.6),0,rng.randf_range(-1.6,1.6))
+	for bed in 5:
+		var bc := _bio_pt(i,4,21.0+2.0*float(bed % 2),-7.0+3.5*float(bed))
+		for t in 12:
+			var tp := bc+Vector3(rng.randf_range(-1.3,1.3),0,rng.randf_range(-1.3,1.3))
 			_bp(bio_root,_bcone(0.02,0.02,0.45),tp+Vector3(0,0.3,0),Color("3e8a3a"))
 			_bp(bio_root,_bsph(0.13),tp+Vector3(0,0.58,0),tulips[bed % tulips.size()],Vector3(1,1.3,1))
-	_bio_particles(c,Color("ffc2df"),90,0.16,0.25,BIO_R*0.6,1)
+	for k in 5:
+		var mp := _bio_rnd(rng,i,4,16.0,19.5)
+		_bp(bio_root,_bsph(0.7),mp,Color("8a6a4a"),Vector3(1.2,0.6,1.2))
+		_bp(bio_root,_bsph(0.22),mp+Vector3(0,0.2,0)+(c-mp).normalized()*0.75,Color("2a1f18"),Vector3(1,0.9,0.5))
+	var hp := _bio_pt(i,4,24.5,5.0)
+	_bp(bio_root,_bbox(),hp+Vector3(0,0.5,0),Color("d8b27a"),Vector3(1.8,1.0,1.2))
+	_bp(bio_root,_bcone(0.0,1.3,0.7),hp+Vector3(0,1.35,0),Color("b0473a"),Vector3(1,1,0.75))
+	# Butterfly Garden (section 3): round flower beds (the butterflies' feeding spots) and an arbour.
+	var flowers := [Color("ff7ab8"),Color("ffd23f"),Color("c254ff"),Color("ffffff"),Color("ff8a1c")]
+	for k in 10:
+		var bc := _bio_pt(i,3,20.5+2.5*float(k % 2),-6.0+3.0*float(k % 5))
+		_bp(bio_root,_bcone(1.0,1.0,0.25),bc+Vector3(0,0.12,0),Color("6a4a32"))
+		for f in 7:
+			var a := float(f)*0.9+float(k)
+			_bp(bio_root,_bsph(0.16),bc+Vector3(cos(a)*0.6,0.38,sin(a)*0.6),flowers[(k+f) % flowers.size()])
+	for t: float in [-2.0,2.0]:
+		var ap := _bio_pt(i,3,16.4,t)
+		_bp(bio_root,_bcone(0.08,0.08,2.6),ap+Vector3(0,1.3,0),Color("f3f6fb"))
+	var arb := _fc_part(bio_root,_fc_torus(1.9,2.1),_bio_pt(i,3,16.4,0.0,1.4),_fc_glow(Color("ff8fc8")))
+	arb.rotation = Vector3(0,-_bio_sec_n(i,3),PI/2.0)
+	# Gardens: fern and orchid planters.
+	for k in 8:
+		_bio_planter(_bio_garden_spot(rng,i),[Color("e85fa6"),Color("c254ff"),Color("ffffff")][k % 3],[Color("2f7d45"),Color("4fa85a")][k % 2])
+	_bio_particles(c,Color("ffc2df"),100,0.16,0.25,BIO_A*0.65,i,21.0)
 
-func _bio_summer(c: Vector3) -> void:
+func _bio_summer(i: int) -> void:
+	var c := _bio_dome_c(i)
+	var th := _bio_theta(i)
+	var D: Dictionary = BIO_DOMES[i]
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 9300
-	# Coral lagoon with a sand island and a palm, under a warm "sun".
+	# Coral Lagoon (centre): corals under clear water, a sand island with a palm.
 	for k in 26:
 		var a := rng.randf()*TAU
-		var r := rng.randf_range(4.5,BIO_RING-3.6)
+		var r := rng.randf_range(4.2,BIO_IN-1.2)
 		var col: Color = [Color("ff6f61"),Color("ffb347"),Color("c254ff"),Color("4fe3ff"),Color("ffe36b"),Color("ff8fc8")][k % 6]
 		if k % 2 == 0:
 			_bp(bio_root,_bsph(0.45),c+Vector3(cos(a)*r,0.1,sin(a)*r),col,Vector3(1,0.7,1))
 		else:
 			_bp(bio_root,_bcone(0.05,0.25,0.9),c+Vector3(cos(a)*r,0.35,sin(a)*r),col)
-	_fc_part(bio_root,_bcone(BIO_RING-3.0,BIO_RING-3.0,0.06),c+Vector3(0,0.42,0),_bio_water_mat(Color("29c4c9")))
+	_bio_hexslab(c,th,BIO_IN-0.25,0.42,0.06,_bio_water_mat(Color("29c4c9")))
 	_bp(bio_root,_bcone(2.6,3.4,0.6),c+Vector3(0,0.35,0),Color("efd9a6"))
 	_model_batch("res://models/palm.glb",[[c+Vector3(0.4,0.6,0.2),0.4,1.0]])
-	var sun := _bp(bio_root,_bsph(2.2),c+Vector3(0,19.5,0),Color("ffcf4a"),Vector3.ONE,Vector3.ZERO,true)
+	var sun := _bp(bio_root,_bsph(2.2),c+Vector3(0,float(D["wall"])+float(D["roof"])-3.0,0),Color("ffcf4a"),Vector3.ONE,Vector3.ZERO,true)
 	sun.material_override = _fc_glow(Color("ffd85a"))
 	bio_spin.append(sun)
-	# Savanna: acacias, tall grass and termite mounds; palms near the wall.
-	var arc := _bio_free_arc(2)
-	for k in 8:
-		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
-		var p := c+Vector3(cos(a),0,sin(a))*rng.randf_range(22,27.5)
+	# Acacia Plains (section 2): flat-topped acacias over golden grass.
+	for k in 6:
+		var p := _bio_rnd(rng,i,2,20.5,25.5)
 		_bp(bio_root,_bcone(0.15,0.22,3.4),p+Vector3(0,1.7,0),Color("6b4a2c"))
 		_bp(bio_root,_bsph(1.0),p+Vector3(0,3.6,0),Color("6f9a3a"),Vector3(2.8,0.5,2.8))
-	var palms: Array = []
-	for k in 6:
-		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
-		palms.append([c+Vector3(cos(a),0,sin(a))*28.0,rng.randf()*TAU,rng.randf_range(0.8,1.1)])
-	_model_batch("res://models/palm.glb",palms)
-	for k in 40:
-		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
-		var p := c+Vector3(cos(a),0,sin(a))*rng.randf_range(20.5,28)
-		_bp(bio_root,_bcone(0.0,0.18,0.7),p+Vector3(0,0.4,0),Color("c9b25a"))
+	for k in 30:
+		_bp(bio_root,_bcone(0.0,0.18,0.7),_bio_rnd(rng,i,2,15.6,25.6)+Vector3(0,0.4,0),Color("c9b25a"))
+	# Zebra Grassland (section 4): a waterhole, termite mounds and grass.
+	_bio_pond(_bio_pt(i,4,21.5,-3.0),3.0,Color("6aa9b0"))
 	for k in 3:
-		var a := lerpf(float(arc[0]),float(arc[1]),0.15+0.35*float(k))
-		_bp(bio_root,_bcone(0.25,0.9,2.2),c+Vector3(cos(a),0,sin(a))*25.5+Vector3(0,1.1,0),Color("b0784a"))
+		_bp(bio_root,_bcone(0.25,0.9,2.2),_bio_rnd(rng,i,4,20.0,25.0)+Vector3(0,1.1,0),Color("b0784a"))
+	for k in 34:
+		_bp(bio_root,_bcone(0.0,0.18,0.6),_bio_rnd(rng,i,4,15.6,25.6)+Vector3(0,0.35,0),Color("b8a84a"))
+	# Macaw Aviary (section 3): palms, red rocks and perch poles.
+	var palms: Array = []
+	for k in 5:
+		palms.append([_bio_rnd(rng,i,3,20.5,25.5),rng.randf()*TAU,rng.randf_range(0.8,1.05)])
+	_model_batch("res://models/palm.glb",palms)
+	for k in 5:
+		_bio_rock(_bio_rnd(rng,i,3,15.8,24.0),rng.randf_range(0.7,1.5),Color("c0603a"))
+	for k in 4:
+		var p := _bio_rnd(rng,i,3,15.8,18.6)
+		_bp(bio_root,_bcone(0.07,0.09,3.0),p+Vector3(0,1.5,0),Color("8a5a32"))
+		var bar := _bp(bio_root,_bcone(0.05,0.05,1.4),p+Vector3(0,2.9,0),Color("8a5a32"))
+		bar.rotation.z = PI/2.0
+	# Gardens: palms and cactus planters.
+	var gp: Array = []
+	for k in 6:
+		gp.append([_bio_garden_spot(rng,i),rng.randf()*TAU,rng.randf_range(0.75,1.0)])
+	_model_batch("res://models/palm.glb",gp)
+	for k in 6:
+		var p := _bio_garden_spot(rng,i)
+		_bp(bio_root,_bio_hexmesh(0.8,0.45),p+Vector3(0,0.22,0),Color("e9d3a6"))
+		_bp(bio_root,_bcone(0.22,0.26,1.6),p+Vector3(0,1.2,0),Color("4f8a3a"))
+		var arm := _bp(bio_root,_bcone(0.14,0.16,0.8),p+Vector3(0.35,1.4,0),Color("4f8a3a"))
+		arm.rotation.z = -0.6
+	_bio_particles(c,Color(1.0,0.9,0.55,0.7),60,0.07,0.05,BIO_A*0.6,i,12.0)
 
-func _bio_autumn(c: Vector3) -> void:
+func _bio_autumn(i: int) -> void:
+	var c := _bio_dome_c(i)
+	var th := _bio_theta(i)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 9400
-	# Pond with a beaver lodge and dam inside the ring.
-	_fc_part(bio_root,_bcone(BIO_RING-3.0,BIO_RING-3.0,0.06),c+Vector3(0,0.13,0),_bio_water_mat(Color("4f8fa0")))
-	_bp(bio_root,_bcone(0.4,2.6,2.2),c+Vector3(-2.0,1.1,1.0),Color("5c3b24"))
+	# Beaver Pond (centre): a stick lodge in the middle and a dam along one side.
+	_bio_hexslab(c,th,BIO_IN-0.25,0.16,0.06,_bio_water_mat(Color("4f8fa0")))
+	_bp(bio_root,_bcone(0.4,2.6,2.2),c+Vector3(0,1.1,0),Color("5c3b24"))
 	for k in 16:
 		var a := rng.randf()*TAU
-		var lg := _bp(bio_root,_bcone(0.12,0.12,2.6),c+Vector3(-2.0,0.9,1.0)+Vector3(cos(a),0,sin(a))*1.3,Color("6b4a2c"))
+		var lg := _bp(bio_root,_bcone(0.12,0.12,2.6),c+Vector3(0,0.9,0)+Vector3(cos(a),0,sin(a))*1.3,Color("6b4a2c"))
 		lg.rotation = Vector3(rng.randf_range(0.6,1.2),a,0)
 	for k in 9:
-		var lg := _bp(bio_root,_bcone(0.15,0.15,2.0),c+Vector3(3.5+float(k)*0.9-4.0,0.35,-7.5),Color("7a5434"))
-		lg.rotation = Vector3(0,0.2*float(k % 2),PI/2.0)
-	# Maple forest: red, orange and gold trees, mushrooms and a pumpkin patch; leaves drift down.
-	var arc := _bio_free_arc(3)
-	for k in 16:
-		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
-		_bio_tree(c+Vector3(cos(a),0,sin(a))*rng.randf_range(21.5,28.0),rng.randf_range(4.5,7.0),[Color("d8392b"),Color("ff8a1c"),Color("ffc53d"),Color("b3261e")],rng)
-	for k in 12:
-		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
-		var p := c+Vector3(cos(a),0,sin(a))*rng.randf_range(20.5,27.0)
+		var dp := _bio_pt(i,3,7.6,-4.0+float(k)*1.0,0.35)
+		var lg := _bp(bio_root,_bcone(0.15,0.15,2.0),dp,Color("7a5434"))
+		lg.rotation = Vector3(0,-_bio_sec_n(i,3)+PI/2.0+0.2*float(k % 2),PI/2.0)
+	# Maple Forest (section 2): red, orange and gold maples over drifts of leaves.
+	for k in 10:
+		_bio_tree(_bio_rnd(rng,i,2,20.2,25.6),rng.randf_range(4.5,7.0),[Color("d8392b"),Color("ff8a1c"),Color("ffc53d"),Color("b3261e")],rng)
+	for k in 14:
+		_bp(bio_root,_bcone(0.9,1.1,0.05),_bio_rnd(rng,i,2,15.6,25.6)+Vector3(0,0.12,0),[Color("e0602c"),Color("f2a33a"),Color("c43a26")][k % 3])
+	# Raccoon Hollow (section 4): fallen logs, a hollow stump, mushrooms and a pumpkin patch.
+	for k in 4:
+		var lg := _bp(bio_root,_bcone(0.3,0.3,2.6),_bio_rnd(rng,i,4,16.0,25.0)+Vector3(0,0.3,0),Color("6b4a2c"))
+		lg.rotation = Vector3(0,rng.randf()*TAU,PI/2.0)
+	var sp := _bio_pt(i,4,22.5,4.0)
+	_bp(bio_root,_bcone(1.0,1.2,1.6),sp+Vector3(0,0.8,0),Color("5c3b24"))
+	_bp(bio_root,_bcone(0.75,0.75,0.05),sp+Vector3(0,1.61,0),Color("2a1a10"))
+	for k in 14:
+		var p := _bio_rnd(rng,i,4,15.6,25.6)
 		_bp(bio_root,_bcone(0.05,0.05,0.25),p+Vector3(0,0.2,0),Color("f4efe6"))
 		_bp(bio_root,_bsph(0.18),p+Vector3(0,0.34,0),Color("d8392b"),Vector3(1,0.55,1))
 	for k in 10:
-		var p := c+Vector3(cos(PI*0.75),0,sin(PI*0.75))*(BIO_RING+3.4)+Vector3(rng.randf_range(-1.5,1.5),0,rng.randf_range(-1.5,1.5))
-		_bp(bio_root,_bsph(0.32),p+Vector3(0,0.3,0),Color("ff8a1c"),Vector3(1.2,0.85,1.2))
-	_bio_particles(c,Color("ff8a2c"),110,0.22,0.3,BIO_R*0.65,3)
+		_bp(bio_root,_bsph(0.32),_bio_pt(i,4,24.0,-6.0)+Vector3(rng.randf_range(-1.6,1.6),0.3,rng.randf_range(-1.6,1.6)),Color("ff8a1c"),Vector3(1.2,0.85,1.2))
+	# Goose Marsh (section 3): a reedy pond.
+	var mp := _bio_pt(i,3,21.5,0.0)
+	_bio_pond(mp,4.0,Color("5f8f8a"))
+	for k in 40:
+		var a := rng.randf()*TAU
+		var r := rng.randf_range(3.6,5.0)
+		var rp := mp+Vector3(cos(a)*r,0,sin(a)*r)
+		_bp(bio_root,_bcone(0.0,0.04,1.3),rp+Vector3(0,0.65,0),Color("7a8a3a"))
+		if k % 4 == 0:
+			_bp(bio_root,_bcone(0.05,0.05,0.25),rp+Vector3(0,1.3,0),Color("5a3a22"))
+	# Gardens: hay bales and pumpkins.
+	for k in 6:
+		var p := _bio_garden_spot(rng,i)
+		var hb := _bp(bio_root,_bcone(0.6,0.6,1.1),p+Vector3(0,0.6,0),Color("e0b75a"))
+		hb.rotation = Vector3(0,rng.randf()*TAU,PI/2.0)
+		_bp(bio_root,_bsph(0.3),p+Vector3(1.1,0.28,0.3),Color("ff8a1c"),Vector3(1.2,0.85,1.2))
+	_bio_particles(c,Color("ff8a2c"),120,0.22,0.3,BIO_A*0.7,i,18.0)
 
 # ---------------- animals ----------------
 func _bio_spawn(si: int, k: int, c: Vector3) -> Dictionary:
@@ -19502,7 +19878,6 @@ func _bio_spawn(si: int, k: int, c: Vector3) -> Dictionary:
 	bio_root.add_child(n)
 	var A := {"node":n,"si":si,"kind":kind,"c":c,"legs":[],"wings":[],"phase":randf()*TAU,"speed":1.0,"wait":randf()*3.0,"target":Vector3.ZERO,"head":null,"k":k}
 	var zone := String(S["zone"])
-	var sa := _bio_species_angle(si,c)
 	match kind:
 		"penguin": _bio_make_penguin(A)
 		"polarbear":
@@ -19541,43 +19916,45 @@ func _bio_spawn(si: int, k: int, c: Vector3) -> Dictionary:
 			A["speed"] = 0.6
 		"owl": _bio_make_bird(A,{"body":Color("f6f7f4"),"head":Color("f6f7f4"),"beak":Color("2a2a2a"),"size":0.45,"neck":0.05,"wing":Color("e9ece6"),"fly":true})
 		"parrot": _bio_make_bird(A,{"body":[Color("e0302c"),Color("2f6fd8"),Color("2faa4a")][k % 3],"head":[Color("e0302c"),Color("2f6fd8"),Color("2faa4a")][k % 3],"beak":Color("f4efe6"),"size":0.35,"neck":0.05,"wing":[Color("2f6fd8"),Color("ffd23f"),Color("e0302c")][k % 3],"fly":true,"tail":true})
-		"goose": _bio_make_bird(A,{"body":Color("8a7d6c"),"head":Color("1b1b1f"),"beak":Color("1b1b1f"),"size":0.5,"neck":0.35,"wing":Color("6f6455"),"fly":true})
+		"goose":
+			_bio_make_bird(A,{"body":Color("8a7d6c"),"head":Color("1b1b1f"),"beak":Color("1b1b1f"),"size":0.5,"neck":0.35,"wing":Color("6f6455")})
+			A["speed"] = 0.8
 		"butterfly": _bio_make_butterfly(A)
+	var dome := int(S["dome"])
 	match zone:
-		"in":
-			A["rmin"] = 3.0
-			A["rmax"] = BIO_RING-3.5
+		"in","swim":
+			A["rmin"] = float(S.get("rmin",4.4))
+			A["rmax"] = BIO_IN-1.2
 			A["a0"] = 0.0
 			A["a1"] = TAU
+			var a := randf()*TAU
+			n.position = c+Vector3(cos(a),0,sin(a))*randf_range(float(A["rmin"]),float(A["rmax"]))
 		"out":
-			var arc := _bio_free_arc(int(S["dome"]))
-			var part := int(S.get("part",0))
-			A["rmin"] = BIO_RING+3.0
-			A["rmax"] = BIO_R-2.0
-			A["a0"] = lerpf(float(arc[0]),float(arc[1]),0.5*float(part))
-			A["a1"] = lerpf(float(arc[0]),float(arc[1]),0.5*float(part)+0.5)
-		"swim":
-			A["rmin"] = 6.5
-			A["rmax"] = BIO_RING-3.6
-			A["a0"] = 0.0
-			A["a1"] = TAU
+			# Its own fenced section: a convex slice of the hexagon, so straight walks stay inside.
+			var sn := _bio_sec_n(dome,int(S["sec"]))
+			A["sn"] = sn
+			A["a0"] = sn-PI/6.0+0.1
+			A["a1"] = sn+PI/6.0-0.1
+			A["amin"] = float(S.get("amin",BIO_FRONT+1.5))
+			A["amax"] = BIO_A-1.8
+			n.position = _bio_out_pick(A)
 		"fly":
-			A["fr"] = 9.0+float(k)*3.5
-			A["fh"] = 11.0+float(k % 3)*2.0
-			A["fs"] = (0.32 if kind != "goose" else 0.22)*(1.0 if k % 2 == 0 else -1.0)
-			if kind == "goose":
-				A["fr"] = 16.0
-				A["fh"] = 15.0
-				A["fs"] = 0.22
+			A["fc"] = _bio_pt(dome,int(S["sec"]),21.0,0.0)
+			A["fr"] = 1.8+float(k)*1.2
+			A["fh"] = 6.5+float(k % 3)*1.0
+			A["fs"] = 0.5*(1.0 if k % 2 == 0 else -1.0)
+			n.position = A["fc"]
 		"flutter":
-			A["a0"] = 0.0
-	if zone == "in" and kind == "penguin":
-		A["rmin"] = 6.0
-	var start_a := lerpf(float(A.get("a0",0.0)),float(A.get("a1",TAU)),randf()) if zone != "fly" and zone != "flutter" else sa
-	var start_r := lerpf(float(A.get("rmin",10.0)),float(A.get("rmax",12.0)),randf())
-	n.position = c+Vector3(cos(start_a),0,sin(start_a))*start_r
+			A["fc"] = _bio_pt(dome,int(S["sec"]),20.5+2.5*float(k % 2),-6.0+3.0*float(k % 5))
+			n.position = A["fc"]
 	A["target"] = n.position
 	return A
+
+func _bio_out_pick(A: Dictionary) -> Vector3:
+	# A random spot in an animal's enclosure section.
+	var a := randf_range(float(A["a0"]),float(A["a1"]))
+	var ap := randf_range(float(A["amin"]),float(A["amax"]))
+	return (A["c"] as Vector3)+Vector3(cos(a),0,sin(a))*ap/cos(angle_difference(float(A["sn"]),a))
 
 func _bio_make_quad(A: Dictionary, p: Dictionary) -> void:
 	var n: Node3D = A["node"]
@@ -19741,10 +20118,9 @@ func _biosphere_tick(delta: float) -> void:
 		return
 	for s in bio_spin:
 		(s as Node3D).rotation.y += delta*0.5
-	for k in bio_falls.size():
-		# The waterfall shimmers: the strands sway and brighten in turn.
-		var f: MeshInstance3D = bio_falls[k]
-		f.scale.x = 0.45+0.08*sin(clock*6.0+float(k)*2.1)
+	for m in bio_scroll:
+		# The rain vortex pours down.
+		(m as StandardMaterial3D).uv1_offset.y -= delta*0.9
 	for k in bio_aurora.size():
 		var au: MeshInstance3D = bio_aurora[k]
 		au.rotation.y = 0.5*float(k)+sin(clock*0.15+float(k))*0.35
@@ -19766,31 +20142,22 @@ func _bio_animate(A: Dictionary, delta: float) -> void:
 	A["phase"] = float(A["phase"])+delta
 	var ph: float = A["phase"]
 	if zone == "fly":
-		var ang: float = ph*float(A["fs"])+float(A["k"])*(0.35 if kind == "goose" else 2.1)
+		# Loops over its own enclosure.
+		var ang: float = ph*float(A["fs"])+float(A["k"])*2.1
 		var r: float = A["fr"]
 		var h: float = A["fh"]
-		if kind == "goose":
-			# V formation: the leader first, the others behind and to each side.
-			var k := int(A["k"])
-			var row := float((k+1)/2)
-			var sidev := 1.0 if k % 2 == 1 else -1.0
-			ang = ph*float(A["fs"])-row*0.09
-			r = 16.0+sidev*row*1.4
-			h = 15.0+row*0.2
-		var p := c+Vector3(cos(ang)*r,h+sin(ph*0.9+float(A["k"]))*0.8,sin(ang)*r)
+		var p := (A["fc"] as Vector3)+Vector3(cos(ang)*r,h+sin(ph*0.9+float(A["k"]))*0.6,sin(ang)*r)
 		var dir := Vector3(-sin(ang),0,cos(ang))*signf(float(A["fs"]))
 		n.position = p
 		n.rotation.y = atan2(-dir.x,-dir.z)
 		for wi in (A["wings"] as Array).size():
 			var w: Node3D = A["wings"][wi]
-			w.rotation.z = sin(ph*(9.0 if kind != "goose" else 6.0))*0.7*(1.0 if wi == 0 else -1.0)
+			w.rotation.z = sin(ph*9.0)*0.7*(1.0 if wi == 0 else -1.0)
 		return
 	if zone == "flutter":
 		var k := int(A["k"])
-		var arc := _bio_free_arc(1)
-		var a := lerpf(float(arc[0]),float(arc[1]),(float(k % 6)+0.5)/6.0)+sin(ph*0.4+float(k))*0.06
-		var bc := c+Vector3(cos(a),0,sin(a))*23.0
-		n.position = bc+Vector3(sin(ph*0.9+float(k)*1.3)*1.8,1.0+0.5*sin(ph*1.7+float(k)),cos(ph*0.7+float(k))*1.8)
+		var bc: Vector3 = A["fc"]
+		n.position = bc+Vector3(sin(ph*0.9+float(k)*1.3)*1.5,0.9+0.5*sin(ph*1.7+float(k)),cos(ph*0.7+float(k))*1.5)
 		n.rotation.y = ph*0.8+float(k)
 		for wi in (A["wings"] as Array).size():
 			(A["wings"][wi] as Node3D).rotation.z = sin(ph*22.0)*1.1*(1.0 if wi == 0 else -1.0)
@@ -19806,17 +20173,15 @@ func _bio_animate(A: Dictionary, delta: float) -> void:
 		d.y = 0
 		if d.length() < 0.3:
 			A["wait"] = randf_range(1.5,5.0) if zone != "swim" else randf_range(0.5,2.5)
-			# Next spot: a little way round from here, so the straight walk stays inside a ring-shaped
-			# habitat instead of cutting across the middle or the visitor path.
-			var cur := atan2(n.position.z-c.z,n.position.x-c.x)
-			var a0 := float(A["a0"])
-			var a1 := float(A["a1"])
-			var a := cur+randf_range(-0.7,0.7)
-			if a1-a0 < TAU-0.01:
-				var rel := fposmod(cur-a0,TAU)
-				a = a0+clampf(rel+randf_range(-0.7,0.7),0.0,a1-a0)
-			var r := lerpf(float(A["rmin"]),float(A["rmax"]),randf())
-			A["target"] = c+Vector3(cos(a),0,sin(a))*r
+			# Next spot: anywhere in an enclosure section (it is convex); in the ring-shaped central
+			# habitat, a little way round from here so the walk doesn't cut across the centrepiece.
+			if A.has("sn"):
+				A["target"] = _bio_out_pick(A)
+			else:
+				var cur := atan2(n.position.z-c.z,n.position.x-c.x)
+				var a := cur+randf_range(-0.7,0.7)
+				var r := lerpf(float(A["rmin"]),float(A["rmax"]),randf())
+				A["target"] = c+Vector3(cos(a),0,sin(a))*r
 		else:
 			moving = true
 			var step := minf(d.length(),float(A["speed"])*delta)
@@ -19888,31 +20253,72 @@ func _bio_spotted(si: int) -> void:
 
 func _smoke_biosphere() -> void:
 	assert(bio_root != null and bio_animals.size() >= 50,"v0.37: the Biosphere has its animals (%d)" % bio_animals.size())
+	var rc := BIO_A/cos(PI/6.0)
 	for i in BIO_DOMES.size():
 		var c := _bio_dome_c(i)
-		assert(c.distance_to(BIO_C) > BIO_R+BIO_HUB_R,"v0.37: domes don't overlap the hub")
+		assert(c.distance_to(BIO_C) > rc+BIO_HUB_A/cos(PI/6.0)+5.0,"v0.38: domes don't overlap the hub")
 		for j in range(i+1,BIO_DOMES.size()):
-			assert(c.distance_to(_bio_dome_c(j)) > 2.0*BIO_R+10.0,"v0.37: domes don't overlap each other")
+			assert(c.distance_to(_bio_dome_c(j)) > 2.0*rc+10.0,"v0.38: domes don't overlap each other")
+		# The far three sections are enclosures; the doorways are all in the near ones.
+		for o in _bio_open_angles(i):
+			assert(_bio_sec_of(i,float(o)) in [0,1,5],"v0.38: %s doorway in a garden section" % BIO_DOMES[i]["name"])
 	# You can walk in: entrance walk, the hub, each tunnel and onto each ring are open.
-	for p in [Vector3(BIO_C.x,1.0,-480.0),Vector3(BIO_C.x,1.0,BIO_C.z+BIO_HUB_R+2.0),BIO_C+Vector3(0,1,6)]:
+	for p in [Vector3(BIO_C.x,1.0,-480.0),Vector3(BIO_C.x,1.0,BIO_C.z+BIO_HUB_A+2.0),BIO_C+Vector3(0,1,6)]:
 		assert(not _blocked_at(p,0.3),"v0.37: Biosphere path blocked at %s by %s" % [str(p),_blocker(p,0.3)])
+	var space := get_world_3d().direct_space_state
+	var ray := func(a: Vector3, b: Vector3) -> Dictionary:
+		var q := PhysicsRayQueryParameters3D.create(a,b)
+		q.exclude = [player.get_rid(),car.get_rid()]
+		return space.intersect_ray(q)
 	for i in BIO_DOMES.size():
 		var c := _bio_dome_c(i)
-		var dirv := (BIO_C-c).normalized()
-		for r in [BIO_RING,BIO_RING+5.0,BIO_R-1.0,BIO_R+3.0]:
-			var p := c+dirv*float(r)+Vector3(0,1,0)
-			assert(not _blocked_at(p,0.3),"v0.37: %s entrance blocked at r=%.0f by %s" % [BIO_DOMES[i]["name"],r,_blocker(p,0.3)])
-		# The habitats are fenced: a point inside the ring fence and one in the outer habitat are cut off.
-		var arc := _bio_free_arc(i)
-		var am := lerpf(float(arc[0]),float(arc[1]),0.5)
-		var ring_p := c+Vector3(cos(am),0,sin(am))*BIO_RING+Vector3(0,1,0)
-		assert(not _blocked_at(ring_p,0.3),"v0.37: the ring path is open")
-		var space := get_world_3d().direct_space_state
-		for target_r in [BIO_RING-5.0,BIO_RING+5.0]:
-			var tp := c+Vector3(cos(am),0,sin(am))*float(target_r)+Vector3(0,0.8,0)
-			var q := PhysicsRayQueryParameters3D.create(ring_p+Vector3(0,-0.2,0),tp)
-			q.exclude = [player.get_rid(),car.get_rid()]
-			assert(not space.intersect_ray(q).is_empty(),"v0.37: %s habitat is fenced" % BIO_DOMES[i]["name"])
+		var nm: String = BIO_DOMES[i]["name"]
+		for r in [BIO_RING,BIO_SKY_A,BIO_RAMP_A,BIO_A-1.0,BIO_A+3.0]:
+			var p := _bio_pt(i,0,float(r),0.0,1.0)
+			assert(not _blocked_at(p,0.3),"v0.38: %s entrance blocked at %.1f by %s" % [nm,r,_blocker(p,0.3)])
+		for o in _bio_open_angles(i):
+			var dv := Vector3(cos(float(o)),0,sin(float(o)))
+			for r in [BIO_RING+2.5,BIO_SKY_A,BIO_A-1.0]:
+				var p := c+dv*_bio_hex_r(_bio_theta(i),float(r),float(o))+Vector3(0,1,0)
+				assert(not _blocked_at(p,0.3),"v0.38: %s doorway path blocked at %.1f by %s" % [nm,r,_blocker(p,0.3)])
+		# Each enclosure is fenced off from the ring path and from its neighbours, and so is the centre.
+		for s in [2,3,4]:
+			var ring_p := _bio_pt(i,s,BIO_RING,0.0,1.0)
+			assert(not _blocked_at(ring_p,0.3),"v0.38: the ring path is open")
+			assert(not (ray.call(ring_p,_bio_pt(i,s,BIO_RING+6.0,0.0,0.8)) as Dictionary).is_empty(),"v0.38: %s section %d is fenced" % [nm,s])
+			assert(not (ray.call(ring_p,_bio_pt(i,s,BIO_IN-3.0,0.0,0.8)) as Dictionary).is_empty(),"v0.38: %s centre is fenced" % nm)
+			if s < 4:
+				var a := _bio_pt(i,s,23.0,6.0,0.8)
+				var b := _bio_pt(i,s+1,23.0,-6.0,0.8)
+				assert(not (ray.call(a,b) as Dictionary).is_empty(),"v0.38: %s sections %d and %d are fenced apart" % [nm,s,s+1])
+		# The skywalk and lookout are solid 4 m up.
+		for p in [_bio_pt(i,2,BIO_SKY_A,0.0,BIO_SKY_H+1.0),_bio_pt(i,3,BIO_POD-1.0,0.0,BIO_SKY_H+1.0),_bio_pt(i,0,BIO_SKY_A,6.0,BIO_SKY_H+1.0)]:
+			var hit: Dictionary = ray.call(p,p-Vector3(0,2,0))
+			assert(not hit.is_empty() and absf(float(hit["position"].y)-BIO_SKY_H) < 0.05,"v0.38: %s skywalk deck at %s" % [nm,str(p)])
+	# Walk it for real: from the entrance path, up the ramp, onto the skywalk.
+	var keep_p := player.position
+	var keep_v := player.velocity
+	var pshape: CollisionShape3D = null
+	for ch in player.get_children():
+		if ch is CollisionShape3D:
+			pshape = ch
+	var keep_dis := pshape.disabled
+	pshape.disabled = false
+	for sg: float in [-1.0,1.0]:
+		var i := 2
+		var n := _bio_sec_n(i,0)
+		var tv := Vector3(-sin(n),0,cos(n))*sg
+		player.position = _bio_pt(i,0,BIO_RAMP_A,sg*0.6,0.85)
+		player.velocity = Vector3.ZERO
+		for step in 260:
+			var v := tv*4.5 if step < 210 else -Vector3(cos(n),0,sin(n))*4.5
+			player.velocity = Vector3(v.x,player.velocity.y-24.0/60.0,v.z)
+			player.move_and_slide()
+		var top := player.position.y-0.7
+		assert(top > BIO_SKY_H-0.1 and _bio_apo(i,player.position) < BIO_SKY_A+1.3,"v0.38: the ramp leads up onto the skywalk (feet %.2f, apothem %.1f)" % [top,_bio_apo(i,player.position)])
+	pshape.disabled = keep_dis
+	player.position = keep_p
+	player.velocity = keep_v
 	# Spotting: one species, a full dome and all sixteen pay once each.
 	var keep := [bio_seen,cash,bonus_xp]
 	bio_seen = 0
@@ -19933,11 +20339,18 @@ func _smoke_biosphere() -> void:
 	for A in bio_animals:
 		var S: Dictionary = BIO_SPECIES[int(A["si"])]
 		var z := String(S["zone"])
-		if z == "fly" or z == "flutter":
-			continue
 		var p := (A["node"] as Node3D).position
-		var r := Vector2(p.x-(A["c"] as Vector3).x,p.z-(A["c"] as Vector3).z).length()
-		assert(r >= float(A["rmin"])-0.6 and r <= float(A["rmax"])+0.6,"v0.37: %s stays in its habitat (r=%.1f)" % [S["name"],r])
+		var dome := int(S["dome"])
+		if z == "fly" or z == "flutter":
+			assert(_bio_sec_of(dome,atan2(p.z-(A["c"] as Vector3).z,p.x-(A["c"] as Vector3).x)) == int(S["sec"]) and _bio_apo(dome,p) > BIO_FRONT+0.5,"v0.38: %s stays over its enclosure" % S["name"])
+		elif A.has("sn"):
+			var a := atan2(p.z-(A["c"] as Vector3).z,p.x-(A["c"] as Vector3).x)
+			var rel := angle_difference(float(A["sn"]),a)
+			var ap := Vector2(p.x-(A["c"] as Vector3).x,p.z-(A["c"] as Vector3).z).dot(Vector2(cos(float(A["sn"])),sin(float(A["sn"]))))
+			assert(absf(rel) < PI/6.0-0.05 and ap > float(A["amin"])-0.3 and ap < float(A["amax"])+0.3,"v0.38: %s stays in its section (%.2f rad, %.1f m)" % [S["name"],rel,ap])
+		else:
+			var r := Vector2(p.x-(A["c"] as Vector3).x,p.z-(A["c"] as Vector3).z).length()
+			assert(r >= float(A["rmin"])-0.6 and r <= float(A["rmax"])+0.6,"v0.37: %s stays in its habitat (r=%.1f)" % [S["name"],r])
 
 # ---------- v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard") ----------
 var extra_panels: Array = []

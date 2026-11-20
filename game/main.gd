@@ -313,6 +313,7 @@ func _ready() -> void:
 	_build_future()
 	_build_food_court()
 	_build_commons()
+	_build_biosphere()
 	_build_market()
 	_build_display()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
@@ -339,7 +340,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.36.1: the original Harbor City people are back, and you start online!")
+	_show_toast("Harbor City 0.37: the Biosphere opens! Four season domes north-west of Skyline. Spot all 16 animals!")
 	booted = true
 	_online_autostart()
 	if not dev_mode and not crate_done:
@@ -4383,7 +4384,7 @@ func _person_lift(pp: Dictionary) -> void:
 func _snap_crowd_feet() -> void:
 	# Once, after the world's colliders exist: lift standing crowds (Food Court, Harbor Commons,
 	# hub, people at spots) onto the real ground under them.
-	for lst in [fc_people,cm_people]:
+	for lst in [fc_people,cm_people,bio_people]:
 		for pp in lst:
 			if pp.is_empty() or bool(pp.get("sat",false)):
 				continue
@@ -4418,7 +4419,7 @@ func _people_life_tick() -> void:
 		if is_instance_valid(r):
 			busy[r] = true
 	life_i += 1
-	var lists: Array = [fc_people,cm_people]
+	var lists: Array = [fc_people,cm_people,bio_people]
 	var n := 0
 	for lst in lists:
 		for pp in lst:
@@ -6923,6 +6924,8 @@ const ACH_TIERS := {
 # [id, name, what to do, value it tracks, goal, tier]
 const ACH := [
 	["lv2","First Steps","Reach level 2","level",2,"b"],
+	["bio4","Animal Spotter","Spot 4 animals in the Biosphere","bio",4,"b"],
+	["bio16","Biosphere Explorer","Spot all 16 animals in the Biosphere","bio",16,"g"],
 	["lv5","Getting Around","Reach level 5","level",5,"b"],
 	["lv10","City Regular","Reach level 10","level",10,"s"],
 	["lv15","Local Hero","Reach level 15","level",15,"g"],
@@ -7048,6 +7051,8 @@ func _ach_value(key: String) -> float:
 			return float(_level())
 		"cash":
 			return float(cash)
+		"bio":
+			return float(_bits(bio_seen))
 		"deliveries":
 			return float(deliveries)
 		"quests":
@@ -8028,6 +8033,7 @@ func _save_progress() -> void:
 	file.set_value("progress","day_mode",day_mode)
 	file.set_value("progress","day_default_v036",true)
 	file.set_value("progress","pz_day",pz_day)
+	file.set_value("progress","bio_seen",bio_seen)
 	file.set_value("progress","pz_streak",pz_streak)
 	file.set_value("progress","pz_total",pz_total)
 	file.set_value("progress","hud_clean",hud_clean)
@@ -8068,6 +8074,7 @@ func _load_progress() -> void:
 		if not bool(file.get_value("progress","day_default_v036",false)) and day_mode == 0:
 			day_mode = 1
 		pz_day = String(file.get_value("progress","pz_day",""))
+		bio_seen = int(file.get_value("progress","bio_seen",0)) & ((1 << BIO_SPECIES.size())-1)
 		pz_streak = maxi(0,int(file.get_value("progress","pz_streak",0)))
 		pz_total = maxi(0,int(file.get_value("progress","pz_total",0)))
 		hud_clean = bool(file.get_value("progress","hud_clean",true))
@@ -8368,6 +8375,7 @@ func _process(delta: float) -> void:
 	_auto_collect_tick()
 	_food_court_tick(delta)
 	_commons_tick(delta)
+	_biosphere_tick(delta)
 	_chat_tick(delta)
 	_people_life_tick()
 	_cash_pill_tick()
@@ -11372,7 +11380,7 @@ const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["BIOSPHERE",Vector2(-500,-600)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -11792,6 +11800,12 @@ func _hide_labels(node: Node) -> void:
 			(child as Label3D).hide()
 		_hide_labels(child)
 
+func _unfade(node: Node) -> void:
+	if node is GeometryInstance3D:
+		(node as GeometryInstance3D).visibility_range_end = 0.0
+	for child in node.get_children():
+		_unfade(child)
+
 func _bake_map() -> void:
 	# Developer-only: renders the whole world from straight above into res://map/world_map.png.
 	# Run with a square window:  Godot --path game --resolution 1024x1024 -- --bake-map
@@ -11820,6 +11834,8 @@ func _bake_map() -> void:
 	for g in [gate_body,bay_gate_body,north_gate_body,marina_gate_body]:
 		if g != null:
 			g.hide()
+	# v0.37: draw everything, however far (parks and the Biosphere fade out past 140-230 m in play).
+	_unfade(self)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = MAP_SIZE
 	camera.near = 1.0
@@ -18812,6 +18828,1110 @@ func _smoke_commons() -> void:
 	pz_built_for = ""
 	_pz_refresh_sign()
 
+# ---------- v0.37: THE BIOSPHERE ----------
+# Four giant geodesic domes (winter, spring, summer, autumn) joined by glass tunnels around a central
+# hub, on the empty land north-west of the Skyline District. Ideas from real biospheres:
+#   * geodesic glass domes: the Eden Project (Cornwall) and Montreal's Biosphere (Buckminster Fuller)
+#   * Winter: the sub-polar zone of the Biodome de Montreal (penguins on ice, polar animals)
+#   * Spring: the Cloud Forest and Flower Dome at Gardens by the Bay, Singapore (misty waterfall
+#     mountain, flower beds)
+#   * Summer: Biosphere 2, Arizona (savanna and a coral ocean)
+#   * Autumn: the Laurentian maple forest of the Biodome de Montreal (maples, beavers, moose)
+# Visitors walk a ring path in each dome; the animals live in fenced habitats inside and outside the
+# ring. Spot all four species in a dome for a reward, all sixteen for the Biosphere Explorer badge.
+const BIO_C := Vector3(-500,0,-600)
+const BIO_R := 30.0          # dome radius
+const BIO_OFF := 44.0        # dome centres sit at hub +/- 44 m on x and z
+const BIO_HUB_R := 12.0
+const BIO_RING := 17.0       # visitor ring path radius
+const BIO_DOMES := [
+	{"name":"WINTER DOME","sub":"Polar ice and snow","dir":Vector2(-1,-1),"glass":Color("cfeeff"),"rib":Color("8fe3ff"),"ground":Color("f1f5f9"),"path":Color("b9c9d6"),
+		"inspired":"Inspired by the sub-polar zone of the Biodome de Montreal"},
+	{"name":"SPRING DOME","sub":"Cloud forest and flowers","dir":Vector2(1,-1),"glass":Color("ffe0f0"),"rib":Color("ff8fc8"),"ground":Color("86c96a"),"path":Color("e9dcc4"),
+		"inspired":"Inspired by the Cloud Forest at Gardens by the Bay, Singapore"},
+	{"name":"SUMMER DOME","sub":"Savanna and coral lagoon","dir":Vector2(1,1),"glass":Color("fff3c4"),"rib":Color("ffd23f"),"ground":Color("e6cd94"),"path":Color("f4e7cf"),
+		"inspired":"Inspired by the savanna and ocean of Biosphere 2, Arizona"},
+	{"name":"AUTUMN DOME","sub":"Maple forest","dir":Vector2(-1,1),"glass":Color("ffe0c4"),"rib":Color("ff8a3c"),"ground":Color("a8693e"),"path":Color("d9c3a2"),
+		"inspired":"Inspired by the Laurentian maple forest of the Biodome de Montreal"},
+]
+# Tunnels between neighbouring domes (the south side stays open for the entrance walk).
+const BIO_LINKS := [[0,1],[1,2],[3,0]]
+# zone: "in" = inside the ring fence, "out" = between the ring and the dome wall, "fly" = in the air,
+# "swim" = on the water inside the ring.
+const BIO_SPECIES := [
+	{"dome":0,"name":"Emperor Penguin","fact":"The biggest penguin: up to 1.2 m tall. Dads keep the egg warm on their feet.","kind":"penguin","n":6,"zone":"in"},
+	{"dome":0,"name":"Polar Bear","fact":"Its fur looks white, but its skin is black to soak up the sun.","kind":"polarbear","n":2,"zone":"out","part":0},
+	{"dome":0,"name":"Arctic Fox","fact":"Its fur turns from brown in summer to snow-white in winter.","kind":"arcticfox","n":2,"zone":"out","part":1},
+	{"dome":0,"name":"Snowy Owl","fact":"Hunts in daylight in the Arctic summer, when the sun never sets.","kind":"owl","n":2,"zone":"fly"},
+	{"dome":1,"name":"Spotted Deer","fact":"Fawns are born with white spots that help them hide.","kind":"deer","n":3,"zone":"out","part":0},
+	{"dome":1,"name":"Rabbit","fact":"Rabbits can turn their long ears to hear in every direction.","kind":"rabbit","n":5,"zone":"out","part":1},
+	{"dome":1,"name":"Mallard Duck","fact":"Only the male has the shiny green head.","kind":"duck","n":4,"zone":"swim"},
+	{"dome":1,"name":"Butterfly","fact":"Butterflies taste with their feet.","kind":"butterfly","n":10,"zone":"flutter"},
+	{"dome":2,"name":"Giraffe","fact":"The tallest animal: its tongue is about 50 cm long.","kind":"giraffe","n":2,"zone":"out","part":0},
+	{"dome":2,"name":"Zebra","fact":"No two zebras have the same stripes.","kind":"zebra","n":4,"zone":"out","part":1},
+	{"dome":2,"name":"Flamingo","fact":"Flamingos are pink because of the shrimp they eat.","kind":"flamingo","n":6,"zone":"swim"},
+	{"dome":2,"name":"Macaw Parrot","fact":"Macaws can live for 60 years.","kind":"parrot","n":3,"zone":"fly"},
+	{"dome":3,"name":"Moose","fact":"The biggest deer: a male's antlers can be 1.8 m wide.","kind":"moose","n":2,"zone":"out","part":0},
+	{"dome":3,"name":"Raccoon","fact":"Raccoons feel their food with their sensitive front paws.","kind":"raccoon","n":2,"zone":"out","part":1},
+	{"dome":3,"name":"Beaver","fact":"Beavers build dams and lodges, and their teeth never stop growing.","kind":"beaver","n":2,"zone":"swim"},
+	{"dome":3,"name":"Canada Goose","fact":"Geese fly south in a V shape to save energy.","kind":"goose","n":5,"zone":"fly"},
+]
+const BIO_DOME_PAY := 300
+const BIO_DOME_XP := 60
+const BIO_ALL_PAY := 1000
+const BIO_ALL_XP := 200
+var bio_seen := 0               # bit per species in BIO_SPECIES
+var bio_animals: Array = []
+var bio_people: Array = []
+var bio_fx: Array = []          # [particles, dome index]
+var bio_spin: Array = []
+var bio_falls: Array = []
+var bio_aurora: Array = []
+var bio_mesh := {}
+var bio_check_t := 0.0
+var bio_root: Node3D
+
+func _bio_dome_c(i: int) -> Vector3:
+	var d: Vector2 = BIO_DOMES[i]["dir"]
+	return BIO_C+Vector3(d.x*BIO_OFF,0,d.y*BIO_OFF)
+
+func _bio_open_angles(i: int) -> Array:
+	# Directions (radians, x = cos, z = sin) of the openings in dome i's wall.
+	var c := _bio_dome_c(i)
+	var out: Array = [atan2(BIO_C.z-c.z,BIO_C.x-c.x)]
+	for l in BIO_LINKS:
+		if int(l[0]) == i or int(l[1]) == i:
+			var o := _bio_dome_c(int(l[1]) if int(l[0]) == i else int(l[0]))
+			out.append(atan2(o.z-c.z,o.x-c.x))
+	return out
+
+func _bio_free_arc(i: int) -> Array:
+	# The widest stretch of wall with no opening: [start, end] angles (end > start).
+	var a: Array = _bio_open_angles(i).map(func(v): return fposmod(float(v),TAU))
+	a.sort()
+	var best := [0.0,TAU]
+	var bw := -1.0
+	for k in a.size():
+		var s0: float = a[k]
+		var s1: float = a[(k+1) % a.size()]+(TAU if k == a.size()-1 else 0.0)
+		if s1-s0 > bw:
+			bw = s1-s0
+			best = [s0+0.42,s1-0.42]
+	return best
+
+func _bm(key: String, make: Callable) -> Mesh:
+	if not bio_mesh.has(key):
+		bio_mesh[key] = make.call()
+	return bio_mesh[key]
+
+func _bsph(r: float) -> Mesh:
+	return _bm("s%.3f" % r,func(): return _fc_sphere(r))
+
+func _bcone(t: float, b: float, h: float) -> Mesh:
+	return _bm("c%.3f_%.3f_%.3f" % [t,b,h],func(): return _fc_cone(t,b,h))
+
+func _bbox() -> Mesh:
+	return _bm("box",func(): return BoxMesh.new())
+
+func _bp(parent: Node3D, mesh: Mesh, pos: Vector3, col: Color, sc := Vector3.ONE, rot := Vector3.ZERO, glow := false) -> MeshInstance3D:
+	var m := _fc_mesh(parent,mesh,pos,col,sc,glow)
+	m.rotation = rot
+	return m
+
+func _bio_glass_mat(col: Color, alpha: float) -> StandardMaterial3D:
+	var key := "bioglass"+col.to_html(false)+str(alpha)
+	if not fc_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(col.r,col.g,col.b,alpha)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.metallic = 0.2
+		m.roughness = 0.06
+		m.metallic_specular = 0.9
+		fc_mats[key] = m
+	return fc_mats[key]
+
+func _bio_water_mat(col: Color) -> StandardMaterial3D:
+	var key := "biowater"+col.to_html(false)
+	if not fc_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(col.r,col.g,col.b,0.72)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.metallic = 0.3
+		m.roughness = 0.04
+		m.metallic_specular = 1.0
+		fc_mats[key] = m
+	return fc_mats[key]
+
+# ---------------- building ----------------
+func _build_biosphere() -> void:
+	bio_root = Node3D.new()
+	bio_root.name = "Biosphere"
+	bio_root.set_meta("static_floor",true)
+	add_child(bio_root)
+	var walls: Array = []
+	# Entrance walk from the Skyline boulevard, with a gate.
+	var ez0 := -472.0
+	var ez1 := BIO_C.z+BIO_HUB_R-0.5
+	_bp(bio_root,_bbox(),Vector3(BIO_C.x,0.06,(ez0+ez1)/2.0),Color("e8e2d4"),Vector3(7,0.12,ez0-ez1))
+	_floor_note(Vector3(BIO_C.x,0.06,(ez0+ez1)/2.0),Vector3(7,0.12,ez0-ez1))
+	for sx: float in [-3.8,3.8]:
+		_fc_part(bio_root,_bbox(),Vector3(BIO_C.x+sx,0.14,(ez0+ez1)/2.0),_fc_glow(Color("7dff9a")),Vector3(0.12,0.05,ez0-ez1))
+	for gx: float in [-5.0,5.0]:
+		_fc_part(bio_root,_bcone(0.3,0.38,7.0),Vector3(BIO_C.x+gx,3.5,ez0-3.0),_fc_pearl())
+		_fc_part(bio_root,_bbox(),Vector3(BIO_C.x+gx,3.5,ez0-2.66),_fc_glow(Color("7dff9a")),Vector3(0.06,6.4,0.05))
+		_collider(bio_root,Vector3(BIO_C.x+gx,3.5,ez0-3.0),Vector3(0.7,7,0.7))
+	_fc_part(bio_root,_bbox(),Vector3(BIO_C.x,7.3,ez0-3.0),_fc_pearl(),Vector3(11.4,1.2,0.6))
+	var gate := _sign("THE BIOSPHERE",Vector3(BIO_C.x,7.3,ez0-2.65),Color("1b5a3a"),64)
+	gate.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	gate.outline_modulate = Color("e9fff1")
+	gate.pixel_size = 0.012
+	var tag := _sign("Four seasons under glass",Vector3(BIO_C.x,8.5,ez0-3.0),Color("e9fff1"),34)
+	tag.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	# Lamps along the walk.
+	for k in 8:
+		var lz := ez0-8.0-float(k)*12.0
+		if lz < ez1+4.0:
+			break
+		for sx: float in [-4.6,4.6]:
+			_fc_part(bio_root,_bcone(0.05,0.07,3.4),Vector3(BIO_C.x+sx,1.7,lz),_fc_chrome())
+			_fc_part(bio_root,_bsph(0.2),Vector3(BIO_C.x+sx,3.45,lz),_fc_glow(Color("bff6ff")))
+	# ---- Hub ----
+	var hub_open: Array = [PI/2.0]
+	for i in BIO_DOMES.size():
+		var c := _bio_dome_c(i)
+		hub_open.append(atan2(c.z-BIO_C.z,c.x-BIO_C.x))
+	_bio_shell(BIO_C,BIO_HUB_R,9.5,Color("e8fbff"),Color("7dff9a"),hub_open,walls,4)
+	_bp(bio_root,_bcone(BIO_HUB_R-0.2,BIO_HUB_R-0.2,0.12),BIO_C+Vector3(0,0.06,0),Color("eef0ec"))
+	_floor_disc(BIO_C,BIO_HUB_R,0.12)
+	_fc_part(bio_root,_fc_torus(4.0,4.3),BIO_C+Vector3(0,0.14,0),_fc_glow(Color("7dff9a")))
+	# Hologram globe over a pedestal.
+	_fc_part(bio_root,_bcone(1.2,1.6,1.0),BIO_C+Vector3(0,0.5,0),_fc_pearl())
+	_collider(bio_root,BIO_C+Vector3(0,0.5,0),Vector3(2.8,1.0,2.8))
+	var globe := Node3D.new()
+	globe.position = BIO_C+Vector3(0,3.4,0)
+	bio_root.add_child(globe)
+	bio_spin.append(globe)
+	_fc_part(globe,_bsph(1.6),Vector3.ZERO,_fc_ghost(Color("6fd3ff")))
+	for k in 4:
+		var r := _fc_part(globe,_fc_torus(1.9+0.15*float(k),1.98+0.15*float(k)),Vector3.ZERO,_fc_glow([Color("bfe9ff"),Color("ff8fc8"),Color("ffd23f"),Color("ff8a3c")][k]))
+		r.rotation = Vector3(0.5+float(k)*0.4,float(k)*0.8,0.2)
+	var ht := _sign("THE BIOSPHERE",BIO_C+Vector3(0,6.4,0),Color("e9fff1"),56)
+	ht.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	var hs := _sign("Spot all 16 animals!  Geodesic domes inspired by the Eden Project and Montreal's Biosphere",BIO_C+Vector3(0,5.6,0),Color("bff6ff"),22)
+	hs.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	# Signposts at each tunnel mouth.
+	for i in BIO_DOMES.size():
+		var c := _bio_dome_c(i)
+		var dirv := (c-BIO_C).normalized()
+		var sp := BIO_C+dirv*(BIO_HUB_R-2.2)+Vector3(0,3.1,0)
+		var sl := _sign("%s\n%s" % [BIO_DOMES[i]["name"],BIO_DOMES[i]["sub"]],sp,BIO_DOMES[i]["rib"],30)
+		sl.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		sl.outline_modulate = Color("15202b")
+		_bio_tunnel(BIO_C+dirv*BIO_HUB_R,c-dirv*BIO_R,BIO_DOMES[i]["rib"],walls)
+	for l in BIO_LINKS:
+		var a := _bio_dome_c(int(l[0]))
+		var b := _bio_dome_c(int(l[1]))
+		var dv := (b-a).normalized()
+		_bio_tunnel(a+dv*BIO_R,b-dv*BIO_R,Color("e9fff1"),walls)
+	# ---- Domes ----
+	for i in BIO_DOMES.size():
+		_bio_dome(i,walls)
+	_multi_collider(walls)
+	# A few visitors at the railings and in the hub.
+	var vrng := RandomNumberGenerator.new()
+	vrng.seed = 7700
+	for i in BIO_DOMES.size():
+		var c := _bio_dome_c(i)
+		var arc := _bio_free_arc(i)
+		for k in 3:
+			var a := lerpf(float(arc[0]),float(arc[1]),0.2+0.3*float(k))
+			var p := c+Vector3(cos(a),0,sin(a))*(BIO_RING+1.2)
+			var pp := _cm_person(bio_root,p,atan2(cos(a),sin(a))+PI,i*5+k+50)
+			bio_people.append(pp)
+	for k in 3:
+		var a := PI/2.0+0.9*float(k-1)
+		var pp := _cm_person(bio_root,BIO_C+Vector3(cos(a),0,sin(a))*6.5,atan2(cos(a),sin(a)),k+70)
+		bio_people.append(pp)
+	for pp in bio_people:
+		cm_people.erase(pp)
+	_cull_person(bio_root,230.0)
+	for pp in bio_people:
+		_cull_person(pp["root"],70.0)
+
+func _bio_shell(c: Vector3, r: float, h: float, glass: Color, rib: Color, open: Array, walls: Array, meridians: int) -> void:
+	# A geodesic-style dome: faint glass, pearl ribs and glowing rings, and a wall collider with gaps
+	# at the openings.
+	var frame := Node3D.new()
+	frame.position = c
+	frame.scale = Vector3(1,h/r,1)
+	bio_root.add_child(frame)
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r
+	sm.is_hemisphere = true
+	sm.radial_segments = 32
+	sm.rings = 10
+	var g := MeshInstance3D.new()
+	g.mesh = sm
+	g.material_override = _bio_glass_mat(glass,0.12)
+	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	frame.add_child(g)
+	var tor := _fc_torus(r-0.14,r+0.14)
+	for k in meridians*2:
+		var m := _fc_part(frame,tor,Vector3.ZERO,_fc_pearl())
+		m.rotation = Vector3(PI/2.0,float(k)*PI/float(meridians*2),0)
+	for f: float in [0.3,0.55,0.78]:
+		var hh: float = r*float(f)
+		var rr := sqrt(r*r-hh*hh)
+		_fc_part(frame,_fc_torus(rr-0.12,rr+0.12),Vector3(0,hh,0),_fc_glow(rib))
+	# Extra meridians tilted both ways cross the rings in triangles, for the geodesic look.
+	for k in meridians:
+		for tilt: float in [0.5,-0.5]:
+			var m2 := _fc_part(frame,tor,Vector3.ZERO,_fc_pearl())
+			m2.rotation = Vector3(PI/2.0+tilt*0.35,float(k)*TAU/float(meridians)+0.25,tilt)
+	_fc_part(bio_root,_fc_torus(r-0.25,r+0.35),c+Vector3(0,0.15,0),_fc_glow(rib))
+	var segs := int(r*1.4)
+	for k in segs:
+		var a := TAU*(float(k)+0.5)/float(segs)
+		var blocked := true
+		for o in open:
+			if absf(angle_difference(a,float(o))) < 3.8/r:
+				blocked = false
+		if blocked:
+			walls.append([c+Vector3(cos(a),0,sin(a))*r+Vector3(0,2.5,0),Vector3(TAU*r/float(segs)+0.3,5.0,0.5),-a-PI/2.0])
+
+func _bio_tunnel(a: Vector3, b: Vector3, rib: Color, walls: Array) -> void:
+	var d := b-a
+	d.y = 0
+	var L := d.length()
+	if L < 0.5:
+		return
+	var mid := (a+b)/2.0
+	var yaw := atan2(d.x,d.z)
+	var n := Node3D.new()
+	n.position = Vector3(mid.x,0,mid.z)
+	n.rotation.y = yaw
+	bio_root.add_child(n)
+	_bp(n,_bbox(),Vector3(0,0.07,0),Color("eef0ec"),Vector3(5.0,0.14,L+1.0))
+	_fc_part(n,_bbox(),Vector3(-2.3,0.16,0),_fc_glow(rib),Vector3(0.1,0.04,L+1.0))
+	_fc_part(n,_bbox(),Vector3(2.3,0.16,0),_fc_glow(rib),Vector3(0.1,0.04,L+1.0))
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 3.4
+	cyl.bottom_radius = 3.4
+	cyl.height = L+0.6
+	cyl.radial_segments = 20
+	cyl.rings = 1
+	cyl.cap_top = false
+	cyl.cap_bottom = false
+	var glass := _fc_part(n,cyl,Vector3(0,0.2,0),_bio_glass_mat(Color("dff8ff"),0.14))
+	glass.rotation.x = PI/2.0
+	var steps := maxi(2,int(L/4.0))
+	var rt := _bm("tunring",func(): return _fc_torus(3.3,3.55))
+	for k in steps+1:
+		var z := -L/2.0+L*float(k)/float(steps)
+		var ring := _fc_part(n,rt,Vector3(0,0.2,z),_fc_pearl())
+		ring.rotation.x = PI/2.0
+		_floor_note(a.lerp(b,float(k)/float(steps))+Vector3(0,0.07,0),Vector3(4.6,0.14,4.6))
+	for sx: float in [-2.9,2.9]:
+		var wp := n.position+Vector3(cos(yaw),0,-sin(yaw))*sx+Vector3(0,2.0,0)
+		walls.append([wp,Vector3(0.4,4.0,L+0.4),yaw])
+
+func _bio_dome(i: int, walls: Array) -> void:
+	var D: Dictionary = BIO_DOMES[i]
+	var c := _bio_dome_c(i)
+	var open := _bio_open_angles(i)
+	_bio_shell(c,BIO_R,24.0,D["glass"],D["rib"],open,walls,6)
+	# Ground, the visitor ring and the spokes from each opening to the ring.
+	_bp(bio_root,_bcone(BIO_R-0.3,BIO_R-0.3,0.1),c+Vector3(0,0.05,0),D["ground"])
+	_floor_disc(c,BIO_R-0.3,0.1)
+	var ring := _bp(bio_root,_fc_torus(BIO_RING-2.1,BIO_RING+2.1),c+Vector3(0,0.12,0),D["path"],Vector3(1,0.03,1))
+	ring.scale = Vector3(1,0.02,1)
+	_floor_disc(c,BIO_RING+2.1,0.12)
+	for o in open:
+		var a: float = o
+		var dirv := Vector3(cos(a),0,sin(a))
+		var sl_len := BIO_R-BIO_RING
+		var sp := _bp(bio_root,_bbox(),c+dirv*(BIO_RING+sl_len/2.0)+Vector3(0,0.11,0),D["path"],Vector3(4.2,0.06,sl_len+1.0))
+		sp.rotation.y = atan2(dirv.x,dirv.z)
+	# Fences: a full circle inside the ring, one outside with gaps for the spokes, and both sides of
+	# each spoke out to the wall. Posts and rails are batched; colliders keep visitors on the path.
+	var posts: Array = []
+	var rails: Array = []
+	var fence_cols: Array = []
+	_bio_fence_circle(c,BIO_RING-2.3,[],posts,rails,fence_cols)
+	_bio_fence_circle(c,BIO_RING+2.3,open,posts,rails,fence_cols)
+	for o in open:
+		var a: float = o
+		var dirv := Vector3(cos(a),0,sin(a))
+		var side := Vector3(-dirv.z,0,dirv.x)
+		for s: float in [-2.4,2.4]:
+			_bio_fence_line(c+dirv*(BIO_RING+2.3)+side*s,c+dirv*(BIO_R-0.4)+side*s,posts,rails,fence_cols)
+	_cyl_batch(Color("f4efe6"),posts,1.0)
+	_box_batch_rot(D["rib"].darkened(0.15),rails)
+	for fc in fence_cols:
+		walls.append(fc)
+	# Dome name sign over the main entrance spoke, and the inspiration line.
+	var ha: float = open[0]
+	var hp := c+Vector3(cos(ha),0,sin(ha))*(BIO_R-3.0)
+	var nm := _sign(D["name"],hp+Vector3(0,5.6,0),D["rib"],56)
+	nm.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	nm.outline_modulate = Color("15202b")
+	var ins := _sign(String(D["inspired"]),hp+Vector3(0,4.8,0),Color("f4f8fb"),24)
+	ins.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	match i:
+		0: _bio_winter(c)
+		1: _bio_spring(c)
+		2: _bio_summer(c)
+		3: _bio_autumn(c)
+	# Animals and their signs.
+	for si in BIO_SPECIES.size():
+		var S: Dictionary = BIO_SPECIES[si]
+		if int(S["dome"]) != i:
+			continue
+		for k in int(S["n"]):
+			bio_animals.append(_bio_spawn(si,k,c))
+		var sa := _bio_species_angle(si,c)
+		var sr := BIO_RING+2.3 if String(S["zone"]) == "out" else BIO_RING-2.3
+		var sign_p := c+Vector3(cos(sa),0,sin(sa))*sr+Vector3(0,1.75,0)
+		var lab := _sign("%s\n%s" % [String(S["name"]).to_upper(),S["fact"]],sign_p+Vector3(0,0.3,0),Color("fff6d8"),28)
+		lab.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		lab.outline_modulate = Color("15202b")
+		lab.width = 520
+		lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+func _bio_fence_circle(c: Vector3, r: float, open: Array, posts: Array, rails: Array, cols: Array) -> void:
+	var n := int(TAU*r/2.6)
+	for k in n:
+		var a0 := TAU*float(k)/float(n)
+		var a1 := TAU*float(k+1)/float(n)
+		var am := (a0+a1)/2.0
+		var gap := false
+		for o in open:
+			if absf(angle_difference(am,float(o))) < 2.5/r:
+				gap = true
+		if gap:
+			continue
+		var p0 := c+Vector3(cos(a0),0,sin(a0))*r
+		var p1 := c+Vector3(cos(a1),0,sin(a1))*r
+		_bio_fence_seg(p0,p1,posts,rails,cols)
+
+func _bio_fence_line(a: Vector3, b: Vector3, posts: Array, rails: Array, cols: Array) -> void:
+	var n := maxi(1,int(a.distance_to(b)/2.6))
+	for k in n:
+		_bio_fence_seg(a.lerp(b,float(k)/float(n)),a.lerp(b,float(k+1)/float(n)),posts,rails,cols)
+
+func _bio_fence_seg(p0: Vector3, p1: Vector3, posts: Array, rails: Array, cols: Array) -> void:
+	var mid := (p0+p1)/2.0
+	var d := p1-p0
+	var L := d.length()
+	var yaw := atan2(-d.z,d.x)
+	posts.append([p0+Vector3(0,0.55,0),0.07,1.1])
+	for h: float in [0.55,1.02]:
+		rails.append([mid+Vector3(0,h,0),Vector3(L,0.07,0.07),yaw])
+	cols.append([mid+Vector3(0,0.75,0),Vector3(L+0.1,1.5,0.25),yaw])
+
+func _bio_species_angle(si: int, c: Vector3) -> float:
+	var S: Dictionary = BIO_SPECIES[si]
+	var arc := _bio_free_arc(int(S["dome"]))
+	if String(S["zone"]) == "out":
+		var part := int(S.get("part",0))
+		return lerpf(float(arc[0]),float(arc[1]),0.25+0.5*float(part))
+	# Inside-the-ring animals and the flyers share the inner fence: two signs, side by side.
+	return lerpf(float(arc[0]),float(arc[1]),0.36 if String(S["zone"]) in ["in","swim"] else 0.64)
+
+# ---------------- dome scenery ----------------
+func _bio_pine(p: Vector3, h: float, snow: bool) -> void:
+	_bp(bio_root,_bcone(0.16,0.22,h*0.3),p+Vector3(0,h*0.15,0),Color("5a3c26"))
+	for k in 3:
+		var y := h*(0.3+0.22*float(k))
+		var rad := h*(0.32-0.08*float(k))
+		_bp(bio_root,_bcone(0.0,rad,h*0.36),p+Vector3(0,y+h*0.12,0),Color("2f6b45"))
+		if snow:
+			_bp(bio_root,_bcone(0.0,rad*0.62,h*0.16),p+Vector3(0,y+h*0.24,0),Color("f6fbff"))
+
+func _bio_tree(p: Vector3, h: float, cols: Array, rng: RandomNumberGenerator) -> void:
+	_bp(bio_root,_bcone(0.18,0.28,h*0.55),p+Vector3(0,h*0.27,0),Color("5c3b24"))
+	for k in 4:
+		var off := Vector3(rng.randf_range(-0.9,0.9),h*0.62+rng.randf_range(-0.3,0.6),rng.randf_range(-0.9,0.9))
+		_bp(bio_root,_bsph(h*0.24),p+off,cols[rng.randi() % cols.size()])
+
+func _bio_rock(p: Vector3, s: float, col: Color) -> void:
+	_bp(bio_root,_bsph(1.0),p+Vector3(0,s*0.35,0),col,Vector3(s*1.2,s*0.75,s))
+
+func _bio_particles(c: Vector3, col: Color, amount: int, size: float, fall: float, spread: float, i: int, sway := 0.6) -> void:
+	var p := CPUParticles3D.new()
+	p.amount = amount
+	p.lifetime = 9.0
+	p.preprocess = 9.0
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	p.emission_box_extents = Vector3(spread,0.5,spread)
+	p.position = c+Vector3(0,19.0,0)
+	p.direction = Vector3(0,-1,0)
+	p.spread = 25.0
+	p.gravity = Vector3(0,-fall,0)
+	p.initial_velocity_min = 0.3
+	p.initial_velocity_max = 0.8
+	p.angular_velocity_min = -90.0
+	p.angular_velocity_max = 90.0
+	var q := QuadMesh.new()
+	q.size = Vector2(size,size)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = col
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	q.material = m
+	p.mesh = q
+	p.emitting = false
+	bio_root.add_child(p)
+	bio_fx.append([p,i])
+
+func _bio_winter(c: Vector3) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9100
+	# Frozen lake with ice floes inside the ring, a penguin slide and a little iceberg.
+	_fc_part(bio_root,_bcone(BIO_RING-3.0,BIO_RING-3.0,0.06),c+Vector3(0,0.13,0),_bio_water_mat(Color("bfe6f5")))
+	for k in 5:
+		var a := float(k)*1.3
+		var r := 4.0+float(k % 3)*3.0
+		_bp(bio_root,_bcone(1.6+rng.randf()*1.2,1.8+rng.randf()*1.2,0.35),c+Vector3(cos(a)*r,0.2,sin(a)*r),Color("f7fbff"))
+	_bp(bio_root,_bcone(0.6,3.6,4.5),c+Vector3(0,2.2,0),Color("dff4ff"))
+	_bp(bio_root,_bcone(0.0,1.2,1.6),c+Vector3(0.6,5.0,0.3),Color("eefaff"))
+	var slide := _bp(bio_root,_bbox(),c+Vector3(2.6,1.2,0),Color("bfe9ff"),Vector3(1.2,0.15,5.0))
+	slide.rotation = Vector3(0.45,1.2,0)
+	# Snowy pines, boulders and an igloo in the outer habitats.
+	var arc := _bio_free_arc(0)
+	for k in 14:
+		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
+		var r := rng.randf_range(21.5,28.0)
+		_bio_pine(c+Vector3(cos(a),0,sin(a))*r,rng.randf_range(4.0,7.5),true)
+	for k in 6:
+		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
+		_bio_rock(c+Vector3(cos(a),0,sin(a))*rng.randf_range(21,27),rng.randf_range(0.8,1.8),Color("c9d3dc"))
+	var ia := lerpf(float(arc[0]),float(arc[1]),0.62)
+	var ip := c+Vector3(cos(ia),0,sin(ia))*24.0
+	var ig := MeshInstance3D.new()
+	var ism := SphereMesh.new()
+	ism.radius = 2.2
+	ism.height = 2.2
+	ism.is_hemisphere = true
+	ig.mesh = ism
+	ig.position = ip
+	ig.material_override = _fc_pearl()
+	bio_root.add_child(ig)
+	_bp(bio_root,_bbox(),ip+Vector3(0,0.6,0)+Vector3(-cos(ia),0,-sin(ia))*2.2,Color("2a3a4a"),Vector3(0.9,1.1,0.6),Vector3(0,-ia+PI/2.0,0))
+	# Northern lights drift across the top of the dome, and snow falls.
+	for k in 3:
+		var q := QuadMesh.new()
+		q.size = Vector2(34,4.5)
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.albedo_color = [Color(0.3,1.0,0.6,0.35),Color(0.5,0.4,1.0,0.3),Color(0.2,0.9,1.0,0.3)][k]
+		var au := MeshInstance3D.new()
+		au.mesh = q
+		au.material_override = m
+		au.position = c+Vector3(-4.0+4.0*float(k),17.0+float(k)*1.2,-6.0+5.0*float(k))
+		au.rotation = Vector3(-1.2,0.5*float(k),0.15)
+		au.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bio_root.add_child(au)
+		bio_aurora.append(au)
+	_bio_particles(c,Color(1,1,1,0.95),220,0.12,0.35,BIO_R*0.65,0)
+
+func _bio_spring(c: Vector3) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9200
+	# Cloud forest mountain with a waterfall into a pond, wrapped in mist.
+	_fc_part(bio_root,_bcone(BIO_RING-3.0,BIO_RING-3.0,0.06),c+Vector3(0,0.13,0),_bio_water_mat(Color("5fc9d8")))
+	_bp(bio_root,_bcone(2.6,6.2,7.0),c+Vector3(0,3.5,0),Color("6a7f5c"))
+	_bp(bio_root,_bcone(1.2,3.0,6.0),c+Vector3(0,9.5,0),Color("5f7a52"))
+	_bp(bio_root,_bcone(0.2,1.5,3.0),c+Vector3(0,14.0,0),Color("6c8a5c"))
+	_collider(bio_root,c+Vector3(0,4,0),Vector3(9,8,9))
+	# Ferns and mossy ledges hug the mountain (Cloud Forest style), with a few orchids.
+	for k in 30:
+		var a := float(k)*2.39
+		var y := 1.0+float(k)*0.42
+		var rad := 6.2-y*0.36
+		if absf(angle_difference(a,PI/2.0)) < 0.35:
+			continue
+		var g: Color = [Color("2f7d45"),Color("3f9450"),Color("4fa85a"),Color("2a6b3c")][k % 4]
+		_bp(bio_root,_bsph(0.55+0.2*float(k % 3)),c+Vector3(cos(a)*rad,y,sin(a)*rad),g,Vector3(1.4,0.55,1.4))
+		if k % 5 == 0:
+			_bp(bio_root,_bsph(0.16),c+Vector3(cos(a)*(rad+0.4),y+0.35,sin(a)*(rad+0.4)),[Color("e85fa6"),Color("c254ff"),Color("ffffff")][k % 3])
+	var wm := StandardMaterial3D.new()
+	wm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	wm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	wm.albedo_color = Color(0.85,0.97,1.0,0.75)
+	wm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for w in 3:
+		var fall := _fc_part(bio_root,QuadMesh.new(),c+Vector3(-0.35+0.35*float(w),7.0,3.0+0.25*float(w)),wm,Vector3(0.45,12.5,1))
+		fall.rotation.x = -0.12
+		fall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bio_falls.append(fall)
+	_bp(bio_root,_bsph(1.0),c+Vector3(0,0.3,5.0),Color("ffffff"),Vector3(2.2,0.5,1.4),Vector3.ZERO,true)
+	var mist := CPUParticles3D.new()
+	mist.amount = 40
+	mist.lifetime = 5.0
+	mist.preprocess = 5.0
+	mist.position = c+Vector3(0,1.2,5.0)
+	mist.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	mist.emission_box_extents = Vector3(2.5,0.4,1.5)
+	mist.direction = Vector3(0,1,0)
+	mist.gravity = Vector3(0,0.15,0)
+	mist.initial_velocity_min = 0.2
+	mist.initial_velocity_max = 0.5
+	mist.scale_amount_min = 1.0
+	mist.scale_amount_max = 2.2
+	var mq := SphereMesh.new()
+	mq.radius = 0.6
+	mq.height = 1.2
+	mq.radial_segments = 8
+	mq.rings = 4
+	var mm := StandardMaterial3D.new()
+	mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mm.albedo_color = Color(1,1,1,0.16)
+	mq.material = mm
+	mist.mesh = mq
+	mist.emitting = false
+	bio_root.add_child(mist)
+	bio_fx.append([mist,1])
+	# Lily pads.
+	for k in 9:
+		var a := float(k)*0.7+0.3
+		var r := 8.0+float(k % 3)*1.8
+		_bp(bio_root,_bcone(0.55,0.55,0.03),c+Vector3(cos(a)*r,0.18,sin(a)*r),Color("3e9a4a"))
+		if k % 3 == 0:
+			_bp(bio_root,_bsph(0.18),c+Vector3(cos(a)*r,0.27,sin(a)*r),Color("ff9ad0"))
+	# Cherry blossom trees, tulip beds and falling petals in the meadow outside the ring.
+	var arc := _bio_free_arc(1)
+	for k in 10:
+		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
+		_bio_tree(c+Vector3(cos(a),0,sin(a))*rng.randf_range(21.5,27.5),rng.randf_range(4.0,6.0),[Color("ffb7d9"),Color("ffd1e6"),Color("ff9ccc")],rng)
+	var tulips := [Color("ff4f6a"),Color("ffd23f"),Color("c254ff"),Color("ff8a1c"),Color("ffffff")]
+	for bed in 6:
+		var a := lerpf(float(arc[0]),float(arc[1]),(float(bed)+0.5)/6.0)
+		var bc := c+Vector3(cos(a),0,sin(a))*23.0
+		for t in 14:
+			var tp := bc+Vector3(rng.randf_range(-1.6,1.6),0,rng.randf_range(-1.6,1.6))
+			_bp(bio_root,_bcone(0.02,0.02,0.45),tp+Vector3(0,0.3,0),Color("3e8a3a"))
+			_bp(bio_root,_bsph(0.13),tp+Vector3(0,0.58,0),tulips[bed % tulips.size()],Vector3(1,1.3,1))
+	_bio_particles(c,Color("ffc2df"),90,0.16,0.25,BIO_R*0.6,1)
+
+func _bio_summer(c: Vector3) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9300
+	# Coral lagoon with a sand island and a palm, under a warm "sun".
+	for k in 26:
+		var a := rng.randf()*TAU
+		var r := rng.randf_range(4.5,BIO_RING-3.6)
+		var col: Color = [Color("ff6f61"),Color("ffb347"),Color("c254ff"),Color("4fe3ff"),Color("ffe36b"),Color("ff8fc8")][k % 6]
+		if k % 2 == 0:
+			_bp(bio_root,_bsph(0.45),c+Vector3(cos(a)*r,0.1,sin(a)*r),col,Vector3(1,0.7,1))
+		else:
+			_bp(bio_root,_bcone(0.05,0.25,0.9),c+Vector3(cos(a)*r,0.35,sin(a)*r),col)
+	_fc_part(bio_root,_bcone(BIO_RING-3.0,BIO_RING-3.0,0.06),c+Vector3(0,0.42,0),_bio_water_mat(Color("29c4c9")))
+	_bp(bio_root,_bcone(2.6,3.4,0.6),c+Vector3(0,0.35,0),Color("efd9a6"))
+	_model_batch("res://models/palm.glb",[[c+Vector3(0.4,0.6,0.2),0.4,1.0]])
+	var sun := _bp(bio_root,_bsph(2.2),c+Vector3(0,19.5,0),Color("ffcf4a"),Vector3.ONE,Vector3.ZERO,true)
+	sun.material_override = _fc_glow(Color("ffd85a"))
+	bio_spin.append(sun)
+	# Savanna: acacias, tall grass and termite mounds; palms near the wall.
+	var arc := _bio_free_arc(2)
+	for k in 8:
+		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
+		var p := c+Vector3(cos(a),0,sin(a))*rng.randf_range(22,27.5)
+		_bp(bio_root,_bcone(0.15,0.22,3.4),p+Vector3(0,1.7,0),Color("6b4a2c"))
+		_bp(bio_root,_bsph(1.0),p+Vector3(0,3.6,0),Color("6f9a3a"),Vector3(2.8,0.5,2.8))
+	var palms: Array = []
+	for k in 6:
+		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
+		palms.append([c+Vector3(cos(a),0,sin(a))*28.0,rng.randf()*TAU,rng.randf_range(0.8,1.1)])
+	_model_batch("res://models/palm.glb",palms)
+	for k in 40:
+		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
+		var p := c+Vector3(cos(a),0,sin(a))*rng.randf_range(20.5,28)
+		_bp(bio_root,_bcone(0.0,0.18,0.7),p+Vector3(0,0.4,0),Color("c9b25a"))
+	for k in 3:
+		var a := lerpf(float(arc[0]),float(arc[1]),0.15+0.35*float(k))
+		_bp(bio_root,_bcone(0.25,0.9,2.2),c+Vector3(cos(a),0,sin(a))*25.5+Vector3(0,1.1,0),Color("b0784a"))
+
+func _bio_autumn(c: Vector3) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9400
+	# Pond with a beaver lodge and dam inside the ring.
+	_fc_part(bio_root,_bcone(BIO_RING-3.0,BIO_RING-3.0,0.06),c+Vector3(0,0.13,0),_bio_water_mat(Color("4f8fa0")))
+	_bp(bio_root,_bcone(0.4,2.6,2.2),c+Vector3(-2.0,1.1,1.0),Color("5c3b24"))
+	for k in 16:
+		var a := rng.randf()*TAU
+		var lg := _bp(bio_root,_bcone(0.12,0.12,2.6),c+Vector3(-2.0,0.9,1.0)+Vector3(cos(a),0,sin(a))*1.3,Color("6b4a2c"))
+		lg.rotation = Vector3(rng.randf_range(0.6,1.2),a,0)
+	for k in 9:
+		var lg := _bp(bio_root,_bcone(0.15,0.15,2.0),c+Vector3(3.5+float(k)*0.9-4.0,0.35,-7.5),Color("7a5434"))
+		lg.rotation = Vector3(0,0.2*float(k % 2),PI/2.0)
+	# Maple forest: red, orange and gold trees, mushrooms and a pumpkin patch; leaves drift down.
+	var arc := _bio_free_arc(3)
+	for k in 16:
+		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
+		_bio_tree(c+Vector3(cos(a),0,sin(a))*rng.randf_range(21.5,28.0),rng.randf_range(4.5,7.0),[Color("d8392b"),Color("ff8a1c"),Color("ffc53d"),Color("b3261e")],rng)
+	for k in 12:
+		var a := lerpf(float(arc[0]),float(arc[1]),rng.randf())
+		var p := c+Vector3(cos(a),0,sin(a))*rng.randf_range(20.5,27.0)
+		_bp(bio_root,_bcone(0.05,0.05,0.25),p+Vector3(0,0.2,0),Color("f4efe6"))
+		_bp(bio_root,_bsph(0.18),p+Vector3(0,0.34,0),Color("d8392b"),Vector3(1,0.55,1))
+	for k in 10:
+		var p := c+Vector3(cos(PI*0.75),0,sin(PI*0.75))*(BIO_RING+3.4)+Vector3(rng.randf_range(-1.5,1.5),0,rng.randf_range(-1.5,1.5))
+		_bp(bio_root,_bsph(0.32),p+Vector3(0,0.3,0),Color("ff8a1c"),Vector3(1.2,0.85,1.2))
+	_bio_particles(c,Color("ff8a2c"),110,0.22,0.3,BIO_R*0.65,3)
+
+# ---------------- animals ----------------
+func _bio_spawn(si: int, k: int, c: Vector3) -> Dictionary:
+	var S: Dictionary = BIO_SPECIES[si]
+	var kind := String(S["kind"])
+	var n := Node3D.new()
+	bio_root.add_child(n)
+	var A := {"node":n,"si":si,"kind":kind,"c":c,"legs":[],"wings":[],"phase":randf()*TAU,"speed":1.0,"wait":randf()*3.0,"target":Vector3.ZERO,"head":null,"k":k}
+	var zone := String(S["zone"])
+	var sa := _bio_species_angle(si,c)
+	match kind:
+		"penguin": _bio_make_penguin(A)
+		"polarbear":
+			_bio_make_quad(A,{"body":Vector3(1.1,1.0,2.2),"col":Color("f4f1e6"),"leg":0.75,"legr":0.17,"head":0.42,"neck":0.3,"necka":1.2,"ears":0.12,"tail":0.12,"snout":Color("2a2a2a")})
+			A["speed"] = 1.0
+		"arcticfox":
+			_bio_make_quad(A,{"body":Vector3(0.32,0.32,0.75),"col":Color("f7f9fb"),"leg":0.3,"legr":0.05,"head":0.17,"neck":0.15,"necka":0.9,"ears":0.1,"tail":0.3,"snout":Color("2a2a2a")})
+			A["speed"] = 2.0
+		"deer":
+			_bio_make_quad(A,{"body":Vector3(0.55,0.6,1.3),"col":Color("b5713b"),"leg":0.85,"legr":0.06,"head":0.22,"neck":0.6,"necka":0.45,"ears":0.12,"tail":0.12,"spots":Color("f6efe0"),"antlers":0.5,"snout":Color("2a2a2a")})
+			A["speed"] = 1.4
+		"rabbit":
+			_bio_make_quad(A,{"body":Vector3(0.28,0.28,0.45),"col":Color("a08670"),"leg":0.1,"legr":0.05,"head":0.14,"neck":0.08,"necka":0.6,"ears":0.28,"tail":0.08,"snout":Color("f2b8c6")})
+			A["speed"] = 1.8
+			A["hop"] = true
+		"giraffe":
+			_bio_make_quad(A,{"body":Vector3(0.8,0.95,1.8),"col":Color("e3b45b"),"leg":1.9,"legr":0.1,"head":0.32,"neck":2.3,"necka":0.3,"ears":0.12,"tail":0.4,"spots":Color("8a5226"),"ossicones":true,"snout":Color("7a5a3a")})
+			A["speed"] = 1.0
+		"zebra":
+			_bio_make_quad(A,{"body":Vector3(0.6,0.7,1.5),"col":Color("f4f4f2"),"leg":0.9,"legr":0.08,"head":0.26,"neck":0.6,"necka":0.6,"ears":0.12,"tail":0.4,"stripes":Color("1b1b1f"),"snout":Color("1b1b1f")})
+			A["speed"] = 1.5
+		"moose":
+			_bio_make_quad(A,{"body":Vector3(0.9,1.05,2.1),"col":Color("4a3122"),"leg":1.25,"legr":0.1,"head":0.36,"neck":0.55,"necka":0.75,"ears":0.14,"tail":0.12,"palm_antlers":true,"snout":Color("3a2418")})
+			A["speed"] = 1.0
+		"raccoon":
+			_bio_make_quad(A,{"body":Vector3(0.36,0.32,0.65),"col":Color("8c8c90"),"leg":0.22,"legr":0.05,"head":0.17,"neck":0.1,"necka":0.9,"ears":0.08,"tail":0.38,"tailrings":Color("2a2a2e"),"mask":Color("1f1f22"),"snout":Color("1f1f22")})
+			A["speed"] = 1.6
+		"duck":
+			_bio_make_bird(A,{"body":Color("8a7a66"),"head":Color("1f7a3a"),"beak":Color("ffb000"),"size":0.35,"neck":0.18})
+			A["speed"] = 0.7
+		"flamingo":
+			_bio_make_flamingo(A)
+			A["speed"] = 0.5
+		"beaver":
+			_bio_make_quad(A,{"body":Vector3(0.45,0.38,0.8),"col":Color("6b4426"),"leg":0.12,"legr":0.06,"head":0.2,"neck":0.08,"necka":0.9,"ears":0.05,"flat_tail":true,"snout":Color("2a1a10")})
+			A["speed"] = 0.6
+		"owl": _bio_make_bird(A,{"body":Color("f6f7f4"),"head":Color("f6f7f4"),"beak":Color("2a2a2a"),"size":0.45,"neck":0.05,"wing":Color("e9ece6"),"fly":true})
+		"parrot": _bio_make_bird(A,{"body":[Color("e0302c"),Color("2f6fd8"),Color("2faa4a")][k % 3],"head":[Color("e0302c"),Color("2f6fd8"),Color("2faa4a")][k % 3],"beak":Color("f4efe6"),"size":0.35,"neck":0.05,"wing":[Color("2f6fd8"),Color("ffd23f"),Color("e0302c")][k % 3],"fly":true,"tail":true})
+		"goose": _bio_make_bird(A,{"body":Color("8a7d6c"),"head":Color("1b1b1f"),"beak":Color("1b1b1f"),"size":0.5,"neck":0.35,"wing":Color("6f6455"),"fly":true})
+		"butterfly": _bio_make_butterfly(A)
+	match zone:
+		"in":
+			A["rmin"] = 3.0
+			A["rmax"] = BIO_RING-3.5
+			A["a0"] = 0.0
+			A["a1"] = TAU
+		"out":
+			var arc := _bio_free_arc(int(S["dome"]))
+			var part := int(S.get("part",0))
+			A["rmin"] = BIO_RING+3.0
+			A["rmax"] = BIO_R-2.0
+			A["a0"] = lerpf(float(arc[0]),float(arc[1]),0.5*float(part))
+			A["a1"] = lerpf(float(arc[0]),float(arc[1]),0.5*float(part)+0.5)
+		"swim":
+			A["rmin"] = 6.5
+			A["rmax"] = BIO_RING-3.6
+			A["a0"] = 0.0
+			A["a1"] = TAU
+		"fly":
+			A["fr"] = 9.0+float(k)*3.5
+			A["fh"] = 11.0+float(k % 3)*2.0
+			A["fs"] = (0.32 if kind != "goose" else 0.22)*(1.0 if k % 2 == 0 else -1.0)
+			if kind == "goose":
+				A["fr"] = 16.0
+				A["fh"] = 15.0
+				A["fs"] = 0.22
+		"flutter":
+			A["a0"] = 0.0
+	if zone == "in" and kind == "penguin":
+		A["rmin"] = 6.0
+	var start_a := lerpf(float(A.get("a0",0.0)),float(A.get("a1",TAU)),randf()) if zone != "fly" and zone != "flutter" else sa
+	var start_r := lerpf(float(A.get("rmin",10.0)),float(A.get("rmax",12.0)),randf())
+	n.position = c+Vector3(cos(start_a),0,sin(start_a))*start_r
+	A["target"] = n.position
+	return A
+
+func _bio_make_quad(A: Dictionary, p: Dictionary) -> void:
+	var n: Node3D = A["node"]
+	var b: Vector3 = p["body"]
+	var col: Color = p["col"]
+	var leg: float = p["leg"]
+	var body_y := leg+b.y*0.5
+	var body := Node3D.new()
+	body.position = Vector3(0,body_y,0)
+	n.add_child(body)
+	A["body"] = body
+	_bp(body,_bm("cap%.2f_%.2f" % [b.y*0.5,b.z],func(): return _fc_capsule(b.y*0.5,maxf(b.z,b.y+0.01))),Vector3.ZERO,col,Vector3(b.x/b.y,1,1),Vector3(PI/2.0,0,0))
+	if p.has("spots"):
+		for k in 10:
+			var sx := -1.0 if k % 2 == 0 else 1.0
+			_bp(body,_bsph(b.y*0.12),Vector3(sx*b.x*0.46,(float(k % 3)-1.0)*b.y*0.2,(float(k)/9.0-0.5)*b.z*0.75),p["spots"],Vector3(0.4,1,1))
+	if p.has("stripes"):
+		for k in 7:
+			_bp(body,_bm("strip%.2f" % b.y,func(): return _fc_torus(b.y*0.48,b.y*0.53)),Vector3(0,0,(float(k)/6.0-0.5)*b.z*0.8),p["stripes"],Vector3(b.x/b.y,1,1),Vector3(PI/2.0,0,0))
+	# Legs hang from hips (front at -z, back at +z), animated by rotation.x.
+	for fx: float in [-1.0,1.0]:
+		for fz: float in [-1.0,1.0]:
+			var hip := Node3D.new()
+			hip.position = Vector3(fx*b.x*0.32,leg,fz*b.z*0.32)
+			n.add_child(hip)
+			_bp(hip,_bcone(p["legr"],float(p["legr"])*0.8,leg+b.y*0.25),Vector3(0,-leg*0.5+b.y*0.12,0),col.darkened(0.08))
+			if p.has("stripes"):
+				_bp(hip,_bcone(float(p["legr"])*1.05,float(p["legr"])*0.85,leg*0.12),Vector3(0,-leg*0.5,0),p["stripes"])
+			A["legs"].append(hip)
+	# Neck and head at the front.
+	var neck := Node3D.new()
+	neck.position = Vector3(0,body_y+b.y*0.2,-b.z*0.45)
+	neck.rotation.x = -float(p["necka"])
+	n.add_child(neck)
+	var nl: float = p["neck"]
+	_bp(neck,_bcone(b.y*0.18,b.y*0.26,nl+0.05),Vector3(0,nl*0.5,0),col)
+	var head := Node3D.new()
+	head.position = Vector3(0,nl,0)
+	head.rotation.x = float(p["necka"])
+	neck.add_child(head)
+	A["head"] = neck
+	var hr: float = p["head"]
+	_bp(head,_bsph(hr),Vector3(0,0,-hr*0.3),col,Vector3(0.85,0.85,1.35))
+	_bp(head,_bsph(hr*0.35),Vector3(0,-hr*0.15,-hr*1.55),p.get("snout",Color("2a2a2a")))
+	for ex: float in [-1.0,1.0]:
+		_bp(head,_bsph(hr*0.14),Vector3(ex*hr*0.55,hr*0.25,-hr*0.75),Color("111114"))
+		if float(p["ears"]) > 0.0:
+			_bp(head,_bcone(0.0,float(p["ears"])*0.45,float(p["ears"])*(1.6 if String(A["kind"]) == "rabbit" else 1.0)),Vector3(ex*hr*0.5,hr*0.8+float(p["ears"])*0.4,0),col.darkened(0.05),Vector3.ONE,Vector3(0,0,-ex*0.25))
+	if p.has("mask"):
+		_bp(head,_bbox(),Vector3(0,hr*0.2,-hr*0.75),p["mask"],Vector3(hr*1.6,hr*0.35,hr*0.4))
+	if p.has("antlers"):
+		for ex: float in [-1.0,1.0]:
+			var an := _bp(head,_bcone(0.02,0.04,float(p["antlers"])),Vector3(ex*hr*0.4,hr+float(p["antlers"])*0.4,0),Color("d9c09a"),Vector3.ONE,Vector3(0,0,-ex*0.45))
+			_bp(an,_bcone(0.015,0.03,0.25),Vector3(ex*0.06,0.12,-0.06),Color("d9c09a"),Vector3.ONE,Vector3(-0.6,0,0))
+	if p.get("palm_antlers",false):
+		for ex: float in [-1.0,1.0]:
+			_bp(head,_bbox(),Vector3(ex*hr*1.6,hr*1.1,0),Color("cdb48c"),Vector3(0.9,0.08,0.5),Vector3(0,0,ex*0.35))
+	if p.get("ossicones",false):
+		for ex: float in [-1.0,1.0]:
+			_bp(head,_bcone(0.04,0.04,0.22),Vector3(ex*hr*0.35,hr*1.05,0.05),Color("6b4a2c"))
+	# Tail.
+	if p.get("flat_tail",false):
+		var tl := _bp(n,_bbox(),Vector3(0,body_y-b.y*0.3,b.z*0.75),Color("3a2a1c"),Vector3(0.32,0.06,0.55))
+		A["tail"] = tl
+	elif float(p.get("tail",0.0)) > 0.0:
+		var tn := Node3D.new()
+		tn.position = Vector3(0,body_y+b.y*0.15,b.z*0.5)
+		tn.rotation.x = 0.9
+		n.add_child(tn)
+		var t: float = p["tail"]
+		_bp(tn,_bcone(0.02,b.y*0.12+0.02,t),Vector3(0,t*0.5,0),col)
+		if p.has("tailrings"):
+			for r in 3:
+				_bp(tn,_bcone(b.y*0.13,b.y*0.13,0.05),Vector3(0,t*(0.25+0.25*float(r)),0),p["tailrings"])
+		A["tail"] = tn
+
+func _bio_make_penguin(A: Dictionary) -> void:
+	var n: Node3D = A["node"]
+	var body := Node3D.new()
+	n.add_child(body)
+	A["body"] = body
+	_bp(body,_bm("peng",func(): return _fc_capsule(0.28,1.0)),Vector3(0,0.55,0),Color("1d2130"))
+	_bp(body,_bsph(0.25),Vector3(0,0.5,-0.1),Color("f7f6f0"),Vector3(0.9,1.55,0.6))
+	_bp(body,_bsph(0.07),Vector3(0.12,0.9,-0.18),Color("ffc23d"),Vector3(1,1.4,0.6))
+	_bp(body,_bsph(0.07),Vector3(-0.12,0.9,-0.18),Color("ffc23d"),Vector3(1,1.4,0.6))
+	_bp(body,_bcone(0.0,0.05,0.18),Vector3(0,0.86,-0.3),Color("ff8a1c"),Vector3.ONE,Vector3(-PI/2.0,0,0))
+	for ex: float in [-1.0,1.0]:
+		_bp(body,_bsph(0.035),Vector3(ex*0.09,0.95,-0.2),Color("111114"))
+		var fl := Node3D.new()
+		fl.position = Vector3(ex*0.27,0.7,0)
+		body.add_child(fl)
+		_bp(fl,_bbox(),Vector3(ex*0.03,-0.2,0),Color("1d2130"),Vector3(0.05,0.42,0.16))
+		A["wings"].append(fl)
+		_bp(n,_bsph(0.08),Vector3(ex*0.1,0.03,-0.08),Color("ff8a1c"),Vector3(1,0.4,1.6))
+	A["waddle"] = true
+
+func _bio_make_bird(A: Dictionary, p: Dictionary) -> void:
+	var n: Node3D = A["node"]
+	var s: float = p["size"]
+	var body := Node3D.new()
+	n.add_child(body)
+	A["body"] = body
+	_bp(body,_bsph(s*0.5),Vector3(0,s*0.5,0),p["body"],Vector3(0.8,0.75,1.3))
+	var hd := _bp(body,_bsph(s*0.28),Vector3(0,s*0.75+float(p["neck"]),-s*0.5),p["head"])
+	_bp(hd,_bcone(0.0,s*0.09,s*0.3),Vector3(0,-s*0.02,-s*0.3),p["beak"],Vector3.ONE,Vector3(-PI/2.0,0,0))
+	for ex: float in [-1.0,1.0]:
+		_bp(hd,_bsph(s*0.05),Vector3(ex*s*0.15,s*0.06,-s*0.17),Color("111114"))
+	if float(p["neck"]) > 0.1:
+		_bp(body,_bcone(s*0.08,s*0.1,float(p["neck"])),Vector3(0,s*0.6+float(p["neck"])*0.5,-s*0.45),p["head"])
+	if p.get("tail",false):
+		_bp(body,_bbox(),Vector3(0,s*0.45,s*0.85),p.get("wing",p["body"]),Vector3(s*0.25,s*0.06,s*0.9),Vector3(0.3,0,0))
+	for ex: float in [-1.0,1.0]:
+		var w := Node3D.new()
+		w.position = Vector3(ex*s*0.32,s*0.6,0)
+		body.add_child(w)
+		_bp(w,_bbox(),Vector3(ex*s*(0.55 if p.get("fly",false) else 0.1),0,0),p.get("wing",p["body"]),Vector3(s*(1.1 if p.get("fly",false) else 0.2),s*0.06,s*0.55))
+		A["wings"].append(w)
+
+func _bio_make_flamingo(A: Dictionary) -> void:
+	var n: Node3D = A["node"]
+	var pink := Color("ff8fb1")
+	var body := Node3D.new()
+	n.add_child(body)
+	A["body"] = body
+	_bp(body,_bsph(0.3),Vector3(0,1.15,0),pink,Vector3(0.8,0.75,1.35))
+	_bp(body,_bcone(0.04,0.05,0.55),Vector3(0,1.45,-0.22),pink,Vector3.ONE,Vector3(-0.35,0,0))
+	_bp(body,_bcone(0.04,0.04,0.45),Vector3(0,1.85,-0.22),pink,Vector3.ONE,Vector3(0.4,0,0))
+	var hd := _bp(body,_bsph(0.09),Vector3(0,2.08,-0.32),pink)
+	_bp(hd,_bcone(0.02,0.04,0.18),Vector3(0,-0.04,-0.12),Color("1b1b1f"),Vector3.ONE,Vector3(-1.9,0,0))
+	for ex: float in [-1.0,1.0]:
+		var hip := Node3D.new()
+		hip.position = Vector3(ex*0.07,0.95,0.02)
+		n.add_child(hip)
+		_bp(hip,_bcone(0.015,0.015,0.95),Vector3(0,-0.47,0),Color("ff6f91"))
+		A["legs"].append(hip)
+	A["flamingo"] = true
+
+func _bio_make_butterfly(A: Dictionary) -> void:
+	var n: Node3D = A["node"]
+	var col: Color = [Color("ff8a1c"),Color("4fb8ff"),Color("ffd23f"),Color("c254ff"),Color("ff4f6a")][int(A["k"]) % 5]
+	var body := Node3D.new()
+	n.add_child(body)
+	A["body"] = body
+	_bp(body,_bcone(0.01,0.015,0.12),Vector3.ZERO,Color("1b1b1f"),Vector3.ONE,Vector3(PI/2.0,0,0))
+	for ex: float in [-1.0,1.0]:
+		var w := Node3D.new()
+		body.add_child(w)
+		_bp(w,_bbox(),Vector3(ex*0.07,0,0),col,Vector3(0.14,0.01,0.12))
+		A["wings"].append(w)
+
+# ---------------- animation, spotting and rewards ----------------
+func _biosphere_tick(delta: float) -> void:
+	if bio_root == null or player == null or paused:
+		return
+	var me: Node3D = car if driving else player
+	var near := me.position.distance_to(BIO_C) < 170.0
+	for f in bio_fx:
+		var c := _bio_dome_c(int(f[1]))
+		(f[0] as CPUParticles3D).emitting = me.position.distance_to(c) < 70.0
+	if not near:
+		return
+	for s in bio_spin:
+		(s as Node3D).rotation.y += delta*0.5
+	for k in bio_falls.size():
+		# The waterfall shimmers: the strands sway and brighten in turn.
+		var f: MeshInstance3D = bio_falls[k]
+		f.scale.x = 0.45+0.08*sin(clock*6.0+float(k)*2.1)
+	for k in bio_aurora.size():
+		var au: MeshInstance3D = bio_aurora[k]
+		au.rotation.y = 0.5*float(k)+sin(clock*0.15+float(k))*0.35
+		var m := au.material_override as StandardMaterial3D
+		m.albedo_color.a = 0.22+0.14*sin(clock*0.7+float(k)*1.7)
+	for A in bio_animals:
+		_bio_animate(A,delta)
+	bio_check_t -= delta
+	if bio_check_t <= 0.0:
+		bio_check_t = 0.4
+		_bio_spot_check(me)
+
+func _bio_animate(A: Dictionary, delta: float) -> void:
+	var n: Node3D = A["node"]
+	var c: Vector3 = A["c"]
+	var kind := String(A["kind"])
+	var S: Dictionary = BIO_SPECIES[int(A["si"])]
+	var zone := String(S["zone"])
+	A["phase"] = float(A["phase"])+delta
+	var ph: float = A["phase"]
+	if zone == "fly":
+		var ang: float = ph*float(A["fs"])+float(A["k"])*(0.35 if kind == "goose" else 2.1)
+		var r: float = A["fr"]
+		var h: float = A["fh"]
+		if kind == "goose":
+			# V formation: the leader first, the others behind and to each side.
+			var k := int(A["k"])
+			var row := float((k+1)/2)
+			var sidev := 1.0 if k % 2 == 1 else -1.0
+			ang = ph*float(A["fs"])-row*0.09
+			r = 16.0+sidev*row*1.4
+			h = 15.0+row*0.2
+		var p := c+Vector3(cos(ang)*r,h+sin(ph*0.9+float(A["k"]))*0.8,sin(ang)*r)
+		var dir := Vector3(-sin(ang),0,cos(ang))*signf(float(A["fs"]))
+		n.position = p
+		n.rotation.y = atan2(-dir.x,-dir.z)
+		for wi in (A["wings"] as Array).size():
+			var w: Node3D = A["wings"][wi]
+			w.rotation.z = sin(ph*(9.0 if kind != "goose" else 6.0))*0.7*(1.0 if wi == 0 else -1.0)
+		return
+	if zone == "flutter":
+		var k := int(A["k"])
+		var arc := _bio_free_arc(1)
+		var a := lerpf(float(arc[0]),float(arc[1]),(float(k % 6)+0.5)/6.0)+sin(ph*0.4+float(k))*0.06
+		var bc := c+Vector3(cos(a),0,sin(a))*23.0
+		n.position = bc+Vector3(sin(ph*0.9+float(k)*1.3)*1.8,1.0+0.5*sin(ph*1.7+float(k)),cos(ph*0.7+float(k))*1.8)
+		n.rotation.y = ph*0.8+float(k)
+		for wi in (A["wings"] as Array).size():
+			(A["wings"][wi] as Node3D).rotation.z = sin(ph*22.0)*1.1*(1.0 if wi == 0 else -1.0)
+		return
+	# Walkers and swimmers wander between random spots in their habitat, pausing now and then.
+	var wait: float = A["wait"]
+	var moving := false
+	if wait > 0.0:
+		A["wait"] = wait-delta
+	else:
+		var tgt: Vector3 = A["target"]
+		var d := tgt-n.position
+		d.y = 0
+		if d.length() < 0.3:
+			A["wait"] = randf_range(1.5,5.0) if zone != "swim" else randf_range(0.5,2.5)
+			# Next spot: a little way round from here, so the straight walk stays inside a ring-shaped
+			# habitat instead of cutting across the middle or the visitor path.
+			var cur := atan2(n.position.z-c.z,n.position.x-c.x)
+			var a0 := float(A["a0"])
+			var a1 := float(A["a1"])
+			var a := cur+randf_range(-0.7,0.7)
+			if a1-a0 < TAU-0.01:
+				var rel := fposmod(cur-a0,TAU)
+				a = a0+clampf(rel+randf_range(-0.7,0.7),0.0,a1-a0)
+			var r := lerpf(float(A["rmin"]),float(A["rmax"]),randf())
+			A["target"] = c+Vector3(cos(a),0,sin(a))*r
+		else:
+			moving = true
+			var step := minf(d.length(),float(A["speed"])*delta)
+			n.position += d.normalized()*step
+			n.rotation.y = lerp_angle(n.rotation.y,atan2(-d.x,-d.z),minf(1.0,delta*4.0))
+	# Swimmers float on the water (top 0.16); flamingos wade on the lagoon floor; penguins stand on the ice.
+	var base_y := 0.16 if (zone == "swim" and kind != "flamingo") or zone == "in" else 0.1
+	var gait := ph*float(A["speed"])*5.0
+	var legs: Array = A["legs"]
+	for li in legs.size():
+		var lg: Node3D = legs[li]
+		var sgn := 1.0 if li == 0 or li == 3 else -1.0
+		if A.get("flamingo",false):
+			lg.rotation.x = (sin(gait)*0.4*sgn) if moving else (0.0 if li == 0 else 1.6+0.0*sin(ph))
+		else:
+			lg.rotation.x = sin(gait)*0.45*sgn if moving else lerpf(lg.rotation.x,0.0,minf(1.0,delta*5.0))
+	var body: Node3D = A.get("body")
+	if A.get("hop",false) and moving:
+		n.position.y = base_y+absf(sin(gait*0.8))*0.25
+	elif A.get("waddle",false):
+		n.position.y = base_y
+		if body != null:
+			body.rotation.z = sin(gait*1.2)*0.12 if moving else sin(ph*1.3)*0.03
+			for wi in (A["wings"] as Array).size():
+				(A["wings"][wi] as Node3D).rotation.z = (0.25+0.15*sin(ph*3.0))*(1.0 if wi == 0 else -1.0)
+	else:
+		n.position.y = base_y+(sin(ph*2.0)*0.03 if zone == "swim" else 0.0)
+	var head = A.get("head")
+	if head != null and not moving:
+		(head as Node3D).rotation.y = sin(ph*0.6+float(A["k"]))*0.35
+	var tail = A.get("tail")
+	if tail != null:
+		(tail as Node3D).rotation.z = sin(ph*4.0)*0.3
+
+func _bio_spot_check(me: Node3D) -> void:
+	if camera == null:
+		return
+	for A in bio_animals:
+		var si: int = A["si"]
+		if bio_seen & (1 << si):
+			continue
+		var p := (A["node"] as Node3D).global_position+Vector3(0,0.6,0)
+		if p.distance_to(me.position) > 18.0 or not camera.is_position_in_frustum(p):
+			continue
+		_bio_spotted(si)
+
+func _bio_spotted(si: int) -> void:
+	bio_seen |= 1 << si
+	var S: Dictionary = BIO_SPECIES[si]
+	var dome := int(S["dome"])
+	var in_dome := 0
+	for k in BIO_SPECIES.size():
+		if int(BIO_SPECIES[k]["dome"]) == dome and (bio_seen & (1 << k)):
+			in_dome += 1
+	_show_toast("SPOTTED: %s!  (%d/4 in the %s)" % [S["name"],in_dome,String(BIO_DOMES[dome]["name"]).capitalize()])
+	if in_dome == 4:
+		cash += BIO_DOME_PAY
+		bonus_xp += BIO_DOME_XP
+		_feed_add("%s complete: +$%d  +%d XP" % [String(BIO_DOMES[dome]["name"]).capitalize(),BIO_DOME_PAY,BIO_DOME_XP],"")
+		_show_toast("%s COMPLETE!  +$%d  +%d XP" % [BIO_DOMES[dome]["name"],BIO_DOME_PAY,BIO_DOME_XP])
+	if _bits(bio_seen) == BIO_SPECIES.size():
+		cash += BIO_ALL_PAY
+		bonus_xp += BIO_ALL_XP
+		_show_toast("BIOSPHERE EXPLORER!  All 16 animals spotted: +$%d  +%d XP" % [BIO_ALL_PAY,BIO_ALL_XP])
+		_feed_add("Biosphere Explorer: all 16 animals spotted!","")
+	if not ("--smoke-test" in OS.get_cmdline_user_args()):
+		_play_coin()
+	_save_progress()
+
+func _smoke_biosphere() -> void:
+	assert(bio_root != null and bio_animals.size() >= 50,"v0.37: the Biosphere has its animals (%d)" % bio_animals.size())
+	for i in BIO_DOMES.size():
+		var c := _bio_dome_c(i)
+		assert(c.distance_to(BIO_C) > BIO_R+BIO_HUB_R,"v0.37: domes don't overlap the hub")
+		for j in range(i+1,BIO_DOMES.size()):
+			assert(c.distance_to(_bio_dome_c(j)) > 2.0*BIO_R+10.0,"v0.37: domes don't overlap each other")
+	# You can walk in: entrance walk, the hub, each tunnel and onto each ring are open.
+	for p in [Vector3(BIO_C.x,1.0,-480.0),Vector3(BIO_C.x,1.0,BIO_C.z+BIO_HUB_R+2.0),BIO_C+Vector3(0,1,6)]:
+		assert(not _blocked_at(p,0.3),"v0.37: Biosphere path blocked at %s by %s" % [str(p),_blocker(p,0.3)])
+	for i in BIO_DOMES.size():
+		var c := _bio_dome_c(i)
+		var dirv := (BIO_C-c).normalized()
+		for r in [BIO_RING,BIO_RING+5.0,BIO_R-1.0,BIO_R+3.0]:
+			var p := c+dirv*float(r)+Vector3(0,1,0)
+			assert(not _blocked_at(p,0.3),"v0.37: %s entrance blocked at r=%.0f by %s" % [BIO_DOMES[i]["name"],r,_blocker(p,0.3)])
+		# The habitats are fenced: a point inside the ring fence and one in the outer habitat are cut off.
+		var arc := _bio_free_arc(i)
+		var am := lerpf(float(arc[0]),float(arc[1]),0.5)
+		var ring_p := c+Vector3(cos(am),0,sin(am))*BIO_RING+Vector3(0,1,0)
+		assert(not _blocked_at(ring_p,0.3),"v0.37: the ring path is open")
+		var space := get_world_3d().direct_space_state
+		for target_r in [BIO_RING-5.0,BIO_RING+5.0]:
+			var tp := c+Vector3(cos(am),0,sin(am))*float(target_r)+Vector3(0,0.8,0)
+			var q := PhysicsRayQueryParameters3D.create(ring_p+Vector3(0,-0.2,0),tp)
+			q.exclude = [player.get_rid(),car.get_rid()]
+			assert(not space.intersect_ray(q).is_empty(),"v0.37: %s habitat is fenced" % BIO_DOMES[i]["name"])
+	# Spotting: one species, a full dome and all sixteen pay once each.
+	var keep := [bio_seen,cash,bonus_xp]
+	bio_seen = 0
+	var c0 := cash
+	for si in 4:
+		_bio_spotted(si)
+	assert(cash == c0+BIO_DOME_PAY,"v0.37: a complete dome pays once")
+	for si in range(4,BIO_SPECIES.size()):
+		_bio_spotted(si)
+	assert(cash == c0+BIO_DOME_PAY*4+BIO_ALL_PAY and _ach_value("bio") == 16.0,"v0.37: all 16 animals pay the explorer bonus")
+	bio_seen = keep[0]
+	cash = keep[1]
+	bonus_xp = keep[2]
+	# Animals stay in their habitats while they wander.
+	for t in 120:
+		for A in bio_animals:
+			_bio_animate(A,0.1)
+	for A in bio_animals:
+		var S: Dictionary = BIO_SPECIES[int(A["si"])]
+		var z := String(S["zone"])
+		if z == "fly" or z == "flutter":
+			continue
+		var p := (A["node"] as Node3D).position
+		var r := Vector2(p.x-(A["c"] as Vector3).x,p.z-(A["c"] as Vector3).z).length()
+		assert(r >= float(A["rmin"])-0.6 and r <= float(A["rmax"])+0.6,"v0.37: %s stays in its habitat (r=%.1f)" % [S["name"],r])
+
 # ---------- v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard") ----------
 var extra_panels: Array = []
 var cash_pill: Button
@@ -22403,6 +23523,7 @@ func _smoke_v27() -> void:
 	_smoke_commons()
 	_smoke_chat()
 	_smoke_feet()
+	_smoke_biosphere()
 	# Nobody stands in a road, and a car stuck behind someone in its lane moves on after a few seconds.
 	for p in peds:
 		if bool(p["idle"]):
@@ -22800,6 +23921,10 @@ const AP_TAXI_Z := -612.0
 const AP_GATES := [-40.0,10.0,60.0,110.0,165.0]
 const AP_PLANE_Z := -548.0
 const AP_PLANE_SCALE := 3.0
+# v0.37: parked jets are a little smaller so neighbouring wings (17.9 m model span) don't touch at
+# 50 m gates: 17.9 x 2.5 = 44.8 m, leaving about 5 m between wing tips.
+const AP_PARK_SCALE := 2.5
+const AP_JET_SPAN := 17.9
 const AP_PLANE_FIX := PI   # the airplane model faces +Z; turn it so its nose points along -Z
 # Moving airliner: [seconds, from, to, easing]  (0 linear, 1 slow down, 2 speed up)
 const AP_FLIGHT := [
@@ -22917,7 +24042,7 @@ func _build_airport() -> void:
 		_sign("GATE %d" % (i+1),Vector3(gx,8.2,-506),Color("ffe9a8"),48)
 	# Parked airliners at the gates, nose to the terminal.
 	for i in AP_GATES.size():
-		_ap_plane(Vector3(AP_GATES[i],0,AP_PLANE_Z),PI if i % 2 == 0 else PI,Color("f3f5f2") if i != 2 else Color("e7eef5"),true)
+		_ap_plane(Vector3(AP_GATES[i],0,AP_PLANE_Z),PI if i % 2 == 0 else PI,Color("f3f5f2") if i != 2 else Color("e7eef5"),true,AP_PARK_SCALE)
 	# Control tower, hangars, cargo, fuel farm.
 	var tw := _prop("res://models/tower.glb",Vector3(205,0,-488),Vector3(8.4,26,8.4),0.0,Color("d8dcd8"),false)
 	tw.scale = Vector3(1.7,1.7,1.7)
@@ -23163,6 +24288,8 @@ func _airport_ped_plan() -> Array:
 	return plan
 
 func _smoke_airport() -> void:
+	for i in range(1,AP_GATES.size()):
+		assert(float(AP_GATES[i])-float(AP_GATES[i-1]) > AP_JET_SPAN*AP_PARK_SCALE+3.0,"v0.37: parked jets' wings don't touch")
 	assert(ap_plane != null and ap_vehicles.size() == 5,"Airport planes and vehicles built")
 	for p in [Vector3(-200,0,AP_ROAD_Z),Vector3(300,0,AP_ROAD_Z),Vector3(0,0,-447),Vector3(197,0,-440)]:
 		assert(_on_road(p),"Airport road missing at %s" % str(p))

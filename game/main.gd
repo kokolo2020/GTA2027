@@ -342,7 +342,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.41: the Sky Garden is open! Grow exotic plants that keep growing while you are away. Travel > Sky Garden.")
+	_show_toast("Harbor City 0.42: new realistic zoo animals in the Biosphere, and futuristic kiosks on the waterfront!")
 	booted = true
 	_sg_boot_note()
 	_online_autostart()
@@ -1015,8 +1015,8 @@ func _build_world() -> void:
 	var tree_vis: Array = []
 	var tree_pts: Array = []
 	for x in [-45.0,-15.0,15.0,45.0]:
-		_box(self, Vector3(x,1.8,40), Vector3(8,3.6,6), Color("e1b486"), true)
-		_box(self, Vector3(x,3.8,40), Vector3(8.6,0.4,6.7), Color("c36658"))
+		# v0.42: futuristic glass pavilions instead of the old box kiosks.
+		_future_kiosk(Vector3(x,0,40),int(x+45.0)/30)
 		for z in [-4.0,26.0]:
 			tree_vis.append(_box(self, Vector3(x+7,1.4,z), Vector3(0.5,2.8,0.5), Color("866743")))
 			tree_vis.append(_box(self, Vector3(x+7,3.3,z), Vector3(3.7,2.6,3.7), Color("547c58")))
@@ -1037,6 +1037,34 @@ func _build_world() -> void:
 	ring.mesh = torus
 	ring.material_override = _material(Color("f4d06c"))
 	marker.add_child(ring)
+
+const KIOSKS := [["NOODLE BAR",Color("ff7a5c")],["HOLO NEWS",Color("4fe3ff")],["SMOOTHIE LAB",Color("7dff9a")],["GADGET HUB",Color("c88bff")]]
+
+func _future_kiosk(c: Vector3, i: int) -> void:
+	# A glass pavilion with a floating oval roof, chrome columns, a neon band and a lit counter.
+	var K: Array = KIOSKS[i % KIOSKS.size()]
+	var col: Color = K[1]
+	var root := Node3D.new()
+	root.position = c
+	add_child(root)
+	_collider(self,c+Vector3(0,1.8,0),Vector3(8,3.6,6))
+	_fc_part(root,_bcone(4.6,4.8,0.3),Vector3(0,0.15,0),_fc_pearl(),Vector3(1,1,0.8))
+	var glass := _fc_part(root,_bcone(3.9,3.9,3.0),Vector3(0,1.8,0),_bio_glass_mat(Color("cfefff"),0.28),Vector3(1,1,0.72))
+	glass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_fc_part(root,_bbox(),Vector3(0,1.6,-1.2),_bio_mat(col.darkened(0.55),0.2,0.5),Vector3(5.6,2.6,0.2))
+	_fc_part(root,_bbox(),Vector3(0,0.55,1.0),_fc_pearl(),Vector3(4.6,1.1,0.6))
+	_fc_part(root,_bbox(),Vector3(0,1.12,1.0),_fc_glow(col),Vector3(4.7,0.06,0.65))
+	for k in 6:
+		var a := float(k)*TAU/6.0+PI/6.0
+		_fc_part(root,_bcone(0.09,0.12,3.3),Vector3(cos(a)*4.1,1.8,sin(a)*4.1*0.72),_fc_chrome())
+	_fc_part(root,_bcone(4.6,4.3,0.35),Vector3(0,3.55,0),_bio_mat(Color("f4f6f8"),0.3,0.3),Vector3(1,1,0.8))
+	var band := _fc_part(root,_fc_torus(4.45,4.65),Vector3(0,3.5,0),_fc_glow(col))
+	band.scale = Vector3(1,0.6,0.8)
+	_fc_part(root,_bsph(0.6),Vector3(0,4.0,0),_fc_glow(col.lightened(0.3)),Vector3(1,0.35,1))
+	var t := _sign(String(K[0]),c+Vector3(0,4.7,0),col.lightened(0.25),46)
+	t.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	t.pixel_size = 0.009
+	t.outline_size = 6
 
 func _build_collectibles() -> void:
 	for find in FINDS:
@@ -20684,7 +20712,32 @@ func _bio_spawn(si: int, k: int, c: Vector3) -> Dictionary:
 	A["target"] = n.position
 	return A
 
+var animal_scenes := {}
+
+func _bio_load_animal(A: Dictionary) -> bool:
+	# v0.42: the Blender zoo animals (models/animals/animal_<kind>.glb, blender-src/make_animals.py).
+	var kind := String(A["kind"])
+	var path := "res://models/animals/animal_%s.glb" % kind
+	if not animal_scenes.has(kind):
+		animal_scenes[kind] = load(path) if ResourceLoader.exists(path) else null
+	var ps = animal_scenes[kind]
+	if not (ps is PackedScene):
+		return false
+	var m := (ps as PackedScene).instantiate() as Node3D
+	(A["node"] as Node3D).add_child(m)
+	for nm in ["LegFL","LegBL","LegFR","LegBR"]:
+		var lg := m.find_child(nm,true,false) as Node3D
+		if lg != null:
+			A["legs"].append(lg)
+	A["head"] = m.find_child("Head",true,false)
+	A["tail"] = m.find_child("Tail",true,false)
+	A["body"] = m.find_child("Body",true,false)
+	_cull_person(m,90.0)
+	return true
+
 func _bio_make_quad(A: Dictionary, p: Dictionary) -> void:
+	if _bio_load_animal(A):
+		return
 	var n: Node3D = A["node"]
 	var b: Vector3 = p["body"]
 	var col: Color = p["col"]

@@ -588,3 +588,11 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 
 - Harbor Galleria enclosed: `_ga_shell` builds solid walls on GA_X0/GA_X1/GA_Z0/GA_ZN up to GA_WALL_H with roofs over the store rows; doors are the arch (half-width GA_DOOR_S) and the west Sky Run door (GA_DOOR_W). `_ga_inside` tells inside from outside; smoke test ray-checks every wall metre and walks into each wall and out of each door at hoverboard speed.
 - Commit a40b256, versionCode 70, APK SHA256 a3d402381eb58dbdfb42cd7748c649fda98dc18cf3e8fa560103b908689fcc0c (46,431,777 bytes), same certificate. Workflow run 44736976191 passed; release.json, page button, web pck (18,065,976) and downloaded APK hash verified.
+
+## v0.41.0 released and verified (2026-11-20)
+
+- Sky Garden (`_build_sky_garden`, terrace SG_X0..SG_X1 / SG_Z0..SG_Z1 at SG_TOP, ramp at SG_RAMP_X): 12 plants in SG_PLANTS, rarity SG_RARITY (restock odds and quantities), mutations SG_MUTS rolled at planting (deterministic from planting time and bed). Offline growth uses unix timestamps (`_sg_now`, test override `sg_test_now`). Saved as `sky_garden` {plots, bag, codex, muts, all, bk, bought}. Panel `sg_panel` (shop / plant / codex). Dev screenshots: HC_GARDEN_DEMO=1 with --city-shots.
+- Cars: `_car_barrier` puts bollards on HUB_CAR_LAYER (car-only collision) at the Biosphere entrance, both Galleria doors and the Sky Garden ramp; `_people_only` + `_people_only_keep_cars_out` sends cars inside away; `_call_block_reason` refuses inside the mall and garden.
+- Galleria: muted GA_TOY palette, darker floor; GA_EXTRA adds 5 shops (Sneaker Lab -> Thread & Co shoes tab, Neon Outfitters -> market 0, Pet Palace -> market 1, Seed & Bloom -> garden seed shop, Harbor Sweets decor), interaction via `_extra_near`.
+- Note: untracked research output lives in reports/ and research_notes/ (not committed). scripts/publish-release.py needs a clean tree, so move them aside while publishing.
+- Commit 2014713, versionCode 71, APK SHA256 4d6350cebce2e0cdee01f259bc673bfd70bf151973a3a8762d7a8fa297e85cee (46,468,641 bytes), same certificate. Workflow run 44741649075 passed; release.json, page button, web pck (18,101,400) and downloaded APK hash verified. Not verified on a phone.

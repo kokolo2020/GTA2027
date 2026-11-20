@@ -318,6 +318,9 @@ func _ready() -> void:
 	_build_sky_garden()
 	_build_market()
 	_build_display()
+	_build_grand_central()
+	_build_fill()
+	_build_signposts()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
 	radio_player = AudioStreamPlayer.new()
 	radio_player.volume_db = -6.0
@@ -330,7 +333,7 @@ func _ready() -> void:
 	_refresh_time_button()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--style-shots"]:
+	for flag in ["--smoke-test","--nav-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--style-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -342,7 +345,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.43: Harbor Album, a free Season Pass, Harbor Night on Saturdays and daily check-ins. Menu > Album & Pass!")
+	_show_toast("Harbor City 0.44: Grand Central, 10 sky train stations, Harbor Gardens, new lofts and people out walking. Lost? Menu > Directions!")
 	booted = true
 	_sg_boot_note()
 	_online_autostart()
@@ -400,6 +403,12 @@ func _ready() -> void:
 		await get_tree().create_timer(14.0).timeout
 		_online_pill_tick()
 		print("WATCH_COUNT ",_watch_count()," PILL ",online_pill.text if online_pill != null else "none")
+		get_tree().quit()
+	elif "--nav-check" in OS.get_cmdline_user_args():
+		# Developer check: build every walk grid and run the v0.44 checks on their own.
+		var t0 := Time.get_ticks_msec()
+		await _smoke_strollers()
+		print("NAV_CHECK_OK %d ms" % (Time.get_ticks_msec()-t0))
 		get_tree().quit()
 	elif "--city-shots" in OS.get_cmdline_user_args():
 		await _city_shots()
@@ -4444,7 +4453,7 @@ func _snap_crowd_feet() -> void:
 	# hub, people at spots) onto the real ground under them.
 	for lst in [fc_people,cm_people,bio_people]:
 		for pp in lst:
-			if pp.is_empty() or bool(pp.get("sat",false)):
+			if pp.is_empty() or bool(pp.get("sat",false)) or pp.has("walk"):
 				continue
 			var r: Node3D = pp["root"]
 			var h := r.get_parent() as Node3D
@@ -4493,7 +4502,7 @@ func _people_life_tick() -> void:
 			_life_one(p["person"],cp,busy)
 
 func _life_one(pp: Dictionary, cp: Vector3, busy: Dictionary) -> void:
-	if pp.is_empty() or bool(pp.get("sat",false)) or pp.has("ap"):
+	if pp.is_empty() or bool(pp.get("sat",false)) or pp.has("ap") or pp.has("walk"):
 		return
 	var r: Node3D = pp["root"]
 	if not is_instance_valid(r) or busy.has(r) or not r.is_visible_in_tree():
@@ -4690,6 +4699,7 @@ func _build_hud() -> void:
 	_build_style_panel(root)
 	_build_sg_panel(root)
 	_build_hp_panel(root)
+	_build_dir_panel(root)
 	_build_puzzle_panel(root)
 	_build_streamer(root)
 	_build_ach(root)
@@ -4749,7 +4759,7 @@ func _build_hud() -> void:
 	var row2 := HBoxContainer.new()
 	row2.add_theme_constant_override("separation",10)
 	items.add_child(row2)
-	for e in [[row1,"Map",_open_map],[row1,"Quests",_open_quests],[row1,"Travel",_open_travel],[row1,"Call car",_menu_call_car],[row2,"Chat",_toggle_chat],[row2,"Wardrobe",_open_wardrobe],[row2,"Album & Pass",_open_pass]]:
+	for e in [[row1,"Map",_open_map],[row1,"Quests",_open_quests],[row1,"Travel",_open_travel],[row1,"Directions",_open_dir],[row1,"Call car",_menu_call_car],[row2,"Chat",_toggle_chat],[row2,"Wardrobe",_open_wardrobe],[row2,"Album & Pass",_open_pass]]:
 		var b := _button(String(e[1]),_menu_go.bind(e[2]))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		(e[0] as HBoxContainer).add_child(b)
@@ -8531,6 +8541,9 @@ func _process(delta: float) -> void:
 	_biosphere_tick(delta)
 	_chat_tick(delta)
 	_people_life_tick()
+	_strollers_tick(delta)
+	_dir_tick(delta)
+	_gc_tick(delta)
 	_cash_pill_tick()
 	_lb_tick(delta)
 	_market_tick(delta)
@@ -10890,7 +10903,7 @@ func _build_downtown() -> void:
 	var plan := [["shops",0,0],["tower_2",1,0],["tower_0",3,0],
 		["police",0,1],["tower_3",1,1],["tower_0",2,1],["tower_1",5,1],
 		["tower_1",0,2],["tower_4",1,2],["tower_2",2,2],["tower_3",5,2],
-		["garage",2,3],["tower_0",3,3],
+		# v0.44: blocks (2,3) and (3,3) are Grand Central now (see _build_grand_central).
 		["tower_3",0,4],["shops",1,4],["tower_1",2,4],["tower_2",3,4]]
 	var billboards := []
 	for entry in plan:
@@ -11533,7 +11546,7 @@ const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["BIOSPHERE",Vector2(-500,-600)],["GALLERIA",Vector2(-330,-600)],["SKY GARDEN",Vector2(-402,-636)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["BIOSPHERE",Vector2(-500,-600)],["GALLERIA",Vector2(-330,-600)],["SKY GARDEN",Vector2(-402,-636)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)],["GRAND CENTRAL",Vector2(-380,-340)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -12554,6 +12567,8 @@ func _build_guidance(root: Control) -> void:
 func _guide_target() -> Variant:
 	if bus_riding or sky_riding or online_role != 0 or chase_mode == 1:
 		return null
+	if dir_target >= 0 and not race_car and trial_active < 0 and chase_mode == 0:
+		return _dir_pos(dir_target)
 	var tp = _track_pos()
 	if tp != null:
 		return tp
@@ -18449,6 +18464,7 @@ func _cm_bench(root: Node3D, pos: Vector3, face: float) -> void:
 	b.position = pos
 	b.rotation.y = face
 	root.add_child(b)
+	nav_blocks.append([Vector2(pos.x,pos.z),Vector2(0.9,0.3),face])
 	_fc_part(b,BoxMesh.new(),Vector3(0,0.42,0.02),_fc_pearl(),Vector3(1.8,0.08,0.5))
 	_fc_part(b,BoxMesh.new(),Vector3(0,0.78,0.27),_fc_pearl(),Vector3(1.8,0.42,0.07))
 	_fc_part(b,BoxMesh.new(),Vector3(0,0.37,-0.22),_fc_glow(Color("4fe3ff")),Vector3(1.8,0.03,0.03))
@@ -18998,7 +19014,7 @@ func _smoke_feet() -> void:
 	var total := 0
 	for lst in [fc_people,cm_people]:
 		for pp in lst:
-			if pp.is_empty() or bool(pp.get("sat",false)):
+			if pp.is_empty() or bool(pp.get("sat",false)) or pp.has("walk"):
 				continue
 			var h := (pp["root"] as Node3D).get_parent() as Node3D
 			if h == null or not h.is_inside_tree():
@@ -19104,6 +19120,8 @@ const BIO_ALL_XP := 200
 var bio_seen := 0               # bit per species in BIO_SPECIES
 var bio_animals: Array = []
 var bio_people: Array = []
+var bio_nav: Dictionary = {}
+const BIO_WALKERS := 26
 var bio_fx: Array = []          # [particles, dome index]
 var bio_spin: Array = []
 var bio_aurora: Array = []
@@ -19723,6 +19741,7 @@ func _build_biosphere() -> void:
 	_bio_grounds(tubes,rng)
 	_bio_flush()
 	# ---- Domes ----
+	bio_nav = _nav_area("Biosphere",BIO_C.x-82.0,BIO_C.z-82.0,BIO_C.x+82.0,BIO_C.z+82.0,[BIO_C+Vector3(0,0,4)],_bio_inside)
 	for i in BIO_DOMES.size():
 		_bio_dome(i,walls)
 		_bio_flush()
@@ -19733,6 +19752,18 @@ func _build_biosphere() -> void:
 		var a := PI/2.0+0.9*float(k*2-1)
 		bio_people.append(_cm_person(bio_root,BIO_C+Vector3(cos(a),0,sin(a))*6.5,atan2(cos(a),sin(a)),k+70))
 	bio_people.append(_cm_person(bio_root,BIO_C+Vector3(-6.0,0,1.9),PI/2.0+0.4,72))
+	# v0.44: people walking round the hub and the domes.
+	for i in BIO_DOMES.size():
+		_nav_spot(bio_nav,_bio_lp(i,float(BIO_JOIN[i])-0.5,0.0),Vector3.ZERO,0.5,2.0,0.6)
+		(bio_nav["seeds"] as Array).append(_bio_lp(i,float(BIO_JOIN[i])-0.5,0.0))
+	for k in 4:
+		var a := float(k)*PI/2.0+PI/4.0
+		_nav_spot(bio_nav,BIO_C+Vector3(cos(a),0,sin(a))*4.0,Vector3.ZERO,1.0,4.0,0.4)
+	_nav_spot(bio_nav,BIO_C+Vector3(-5.6,0,4.0),Vector3(-1,0,0),3.0,7.0,0.6)
+	for k in BIO_WALKERS:
+		var W := _stroller(bio_nav,bio_root,300+k*7,k % 9 == 4)
+		if not W.is_empty():
+			bio_people.append(W["pp"])
 	for pp in bio_people:
 		cm_people.erase(pp)
 	bio_people = bio_people.filter(func(pp): return not (pp as Dictionary).is_empty())
@@ -19796,6 +19827,7 @@ func _bio_ticket_hall(hub_open: Array) -> void:
 		var dirv := (_bio_dome_c(i)-BIO_C).normalized()
 		var g: Vector3 = (hub_open[i+1] as Vector3)+dirv*1.6
 		var yaw := atan2(dirv.x,dirv.z)
+		nav_blocks.append([Vector2(g.x,g.z),Vector2(3.0,0.4),yaw])   # v0.44: walkers never pass the gates
 		var n := Node3D.new()
 		n.position = Vector3(g.x,0,g.z)
 		n.rotation.y = yaw
@@ -20077,7 +20109,10 @@ func _bio_dome(i: int, walls: Array) -> void:
 			out = out.normalized()
 			var side := Vector3(-out.z,0,out.x)
 			var vp := Vector3(sign_p.x,0,sign_p.z)+out*0.9+side*1.6
-			bio_people.append(_cm_person(bio_root,vp,atan2(-out.x,-out.z)+PI,i*9+vi+50))
+			# v0.44: visitors stroll from pen to pen and stop here to look in.
+			_nav_spot(bio_nav,vp,-out,4.0,10.0,1.0)
+			_nav_spot(bio_nav,Vector3(sign_p.x,0,sign_p.z)+out*0.9-side*1.8,-out,3.0,8.0,0.7)
+			(bio_nav["seeds"] as Array).append(vp)
 			vi += 1
 	for R in bio_routes:
 		if int(R[3]) == i:
@@ -22383,6 +22418,14 @@ const GA_TOY := [Color("9a6a74"),Color("a08a5a"),Color("5e7a92"),Color("66806a")
 var ga_root: Node3D
 var ga_spots: Array = []       # [store index, where you stand to shop]
 var ga_people: Array = []
+var ga_nav: Dictionary = {}
+const GA_WALKERS := 22
+
+func _ga_walkable(p: Vector3) -> bool:
+	# Inside the mall building, or on the walk up to the arch.
+	if p.x > GA_X0+0.4 and p.x < GA_X1-0.4 and p.z > GA_ZN+0.4 and p.z < GA_Z0+0.6:
+		return true
+	return absf(p.x-GA_C.x) < 3.4 and p.z >= GA_Z0 and p.z < -470.0
 
 func _ga_text(text: String, pos: Vector3, col: Color, size: int, near: float, yaw := 0.0, billboard := false) -> Label3D:
 	var l := Label3D.new()
@@ -22427,8 +22470,8 @@ func _build_galleria() -> void:
 	var dark := _bio_mat(Color("1d2a33"),0.3,0.4)
 	var gold := _fc_glow(Color("ffd27a"))
 	# Walk from the north road to the arch, and the promenade floor with an inlaid glowing line.
-	_ga_box(Vector3(GA_C.x,0.05,(-508.0+GA_Z0)/2.0),Vector3(8,0.1,GA_Z0+508.0),pave)
-	_floor_note(Vector3(GA_C.x,0.05,(-508.0+GA_Z0)/2.0),Vector3(8,0.1,GA_Z0+508.0))
+	_ga_box(Vector3(GA_C.x,0.05,(-469.0+GA_Z0)/2.0),Vector3(8,0.1,GA_Z0+469.0),pave)
+	_floor_note(Vector3(GA_C.x,0.05,(-469.0+GA_Z0)/2.0),Vector3(8,0.1,GA_Z0+469.0))
 	var plen := GA_Z0-GA_Z1
 	_ga_box(Vector3(GA_C.x,0.05,(GA_Z0+GA_Z1)/2.0),Vector3(GA_X1-GA_X0+2.0,0.1,plen+6.0),_bio_mat(Color("5a5650"),0.0,0.6))
 	# Terrazzo tiles in two tones down the promenade.
@@ -22454,8 +22497,8 @@ func _build_galleria() -> void:
 		# Chunky coloured kerbs along the promenade.
 		for k in int(plen/4.0):
 			_fc_part(ga_root,_bbox(),Vector3(GA_C.x+sx,0.2,GA_Z0-2.0-float(k)*4.0),_bio_mat(GA_TOY[k % GA_TOY.size()],0.0,0.25),Vector3(0.3,0.2,3.9))
-	for k in 6:
-		var lz := -512.0-float(k)*6.0
+	for k in 12:
+		var lz := -474.0-float(k)*6.0
 		if lz < GA_Z0+2.0:
 			break
 		for sx: float in [-4.6,4.6]:
@@ -22513,16 +22556,32 @@ func _build_galleria() -> void:
 		for sx: float in [-4.2,4.2]:
 			flowers.append(Transform3D(Basis().scaled(Vector3.ONE*1.2),Vector3(GA_C.x+sx,0.1,z)))
 	_ga_models("nature_bush_flower",flowers)
-	# Shoppers with all kinds of outfits.
-	var r := RandomNumberGenerator.new()
-	r.seed = 4040
-	for k in 14:
-		var p := Vector3(GA_C.x+r.randf_range(-4.8,4.8),0,r.randf_range(GA_Z1+16.0,GA_Z0-6.0))
-		if p.distance_to(fc) < 4.4:
-			continue
-		var pp := _cm_person(ga_root,p,r.randf()*TAU,900+k)
-		if not pp.is_empty():
-			ga_people.append(pp)
+	# v0.44: shoppers walk the promenade, stop at windows, go into shops and sit by the fountain.
+	ga_nav = _nav_area("Galleria",GA_X0-1.0,GA_ZN-1.0,GA_X1+1.0,-469.0,[Vector3(GA_C.x,0,-600.0),Vector3(GA_C.x,0,GA_Z0-3.0)],_ga_walkable)
+	var fronts: Array = []
+	for e in GA_STORES:
+		fronts.append([e[1],e[2]])
+	for e in GA_EXTRA:
+		fronts.append([e[1],e[2]])
+	for F in fronts:
+		var c: Vector3 = F[0]
+		var f: Vector3 = F[1]
+		var side := Vector3(-f.z,0,f.x)
+		for sd: float in [-1.0,1.0]:
+			_nav_spot(ga_nav,c+f*7.4+side*sd*4.9,-f,3.0,8.0,1.0)
+		_nav_spot(ga_nav,c+f*1.0+side*2.6,-f,4.0,10.0,0.6)
+		_nav_spot(ga_nav,c+f*1.0-side*2.6,-side,3.0,8.0,0.4)
+	for k in 6:
+		var a := float(k)*TAU/6.0
+		_nav_spot(ga_nav,fc+Vector3(cos(a),0,sin(a))*4.2,-Vector3(cos(a),0,sin(a)),3.0,9.0,0.5)
+	for z: float in [-563.0,-617.0]:
+		for sd: float in [-1.0,1.0]:
+			_nav_spot(ga_nav,Vector3(GA_C.x+sd*2.4,0,z+1.2),Vector3(-sd,0,-0.4).normalized(),3.0,7.0,0.5)
+	_nav_spot(ga_nav,Vector3(GA_C.x,0,-474.0),Vector3.ZERO,0.5,2.0,0.5)
+	for k in GA_WALKERS:
+		var W := _stroller(ga_nav,ga_root,900+k*11,k % 8 == 5)
+		if not W.is_empty():
+			ga_people.append(W["pp"])
 	_ga_shell()
 	_car_barrier([[Vector3(GA_C.x,0.9,GA_Z0+1.6),Vector3(GA_DOOR_S*2.0+1.0,1.8,0.5),0.0],[Vector3(GA_X0-1.6,0.9,GA_DOOR_W.x),Vector3(GA_DOOR_W.y*2.0+1.0,1.8,0.5),PI/2.0]])
 	_build_ga_fun()
@@ -26512,16 +26571,24 @@ const SKY_DWELL := 14.0
 const SKY_CARS := 3
 const SKY_CAR_LEN := 13.0
 const SKY_GAP := 0.7
-const SKY_TRAINS := 2
-const SKY_CORNERS := [Vector2(-95,32),Vector2(130,32),Vector2(130,150),Vector2(530,150),Vector2(530,-28),Vector2(197,-28),Vector2(197,-300),Vector2(-300,-300),Vector2(-300,72),Vector2(-95,72)]
+const SKY_TRAINS := 3
+# v0.44: the loop runs up Raceway Road to Airport Road, along it past the airport, the Galleria and
+# the Biosphere, down the west avenue by the stadium and back along the z -300 street through
+# Grand Central, so every part of town has a station.
+const SKY_CORNERS := [Vector2(-95,32),Vector2(130,32),Vector2(130,150),Vector2(530,150),Vector2(530,-28),Vector2(197,-28),Vector2(197,-458),Vector2(-620,-458),Vector2(-620,-300),Vector2(-300,-300),Vector2(-300,72),Vector2(-95,72)]
 const SKY_STATIONS := [
 	{"name":"Harbor Waterfront","at":Vector2(22,32)},
 	{"name":"Sunset Beach","at":Vector2(380,150)},
 	{"name":"Harbor Raceway","at":Vector2(197,-178)},
-	{"name":"Union Station","at":Vector2(-205,-300)},
+	{"name":"Harbor Airport","at":Vector2(30,-458)},
+	{"name":"Harbor Galleria","at":Vector2(-318,-458)},
+	{"name":"The Biosphere","at":Vector2(-512,-458)},
+	{"name":"Harbor Stadium","at":Vector2(-620,-385)},
+	{"name":"Grand Central","at":Vector2(-420,-300),"side":-1.0},
 	{"name":"Westside Market","at":Vector2(-300,46)},
+	{"name":"Civic Center","at":Vector2(-163,72)},
 ]
-const TOUR_BONUS := 750
+const TOUR_BONUS := 1200
 const TOUR_XP := 150
 
 var sky_pts: PackedVector3Array = PackedVector3Array()
@@ -26894,7 +26961,7 @@ func _sky_build_station(i: int) -> Dictionary:
 	var g := Vector3(p.x,0,p.z)
 	var side := 1.0
 	var ent := Vector3.INF
-	for sd in [1.0,-1.0]:
+	for sd in ([1.0,-1.0] if float(SKY_STATIONS[i].get("side",1.0)) > 0.0 else [-1.0,1.0]):
 		for e in [9.5,8.0,11.0,12.5]:
 			var q: Vector3 = g+nrm*sd*e
 			if not _on_road(q) and not _on_road(q+dir*3.6) and not _blocked_at(q+Vector3(0,1.0,0),1.0):
@@ -26979,7 +27046,7 @@ func _sky_enter(i: int) -> void:
 	player.rotation.y = atan2(-dir.x,-dir.z)
 	cam_yaw = player.rotation.y+PI
 	var wait := _sky_next_arrival(i)
-	_show_toast("Up on the platform at %s. %s  Ride to all 5 stations today for a $%d City Tour bonus." % [SKY_STATIONS[i]["name"],"A train is here, hop on!" if wait <= 0.0 else "Next train in %s." % _sky_fmt(wait),TOUR_BONUS])
+	_show_toast("Up on the platform at %s. %s  Ride to all %d stations today for a $%d City Tour bonus." % [SKY_STATIONS[i]["name"],"A train is here, hop on!" if wait <= 0.0 else "Next train in %s." % _sky_fmt(wait),SKY_STATIONS.size(),TOUR_BONUS])
 	_follow_camera(1.0)
 
 func _sky_leave_platform() -> void:
@@ -27536,9 +27603,12 @@ func _smoke_v27() -> void:
 	assert(car.position.y > -0.3 and car.position.distance_to(safe0) < 3.0 and absf(car.position.z-300.0) > 50.0,"Car in the sea is towed back (at %s)" % str(car.position))
 	driving = false
 	player.show()
-	# Sky train: a closed loop with 5 stations, clear of buildings, pillars off the crossings.
-	assert(sky_len > 2400.0 and sky_len < 3600.0,"Sky train loop length %d m" % int(sky_len))
-	assert(sky_st_s.size() == 5 and sky_period > 150.0,"Sky train timetable")
+	# Sky train: a closed loop with 10 stations, clear of buildings, pillars off the crossings.
+	assert(sky_len > 3300.0 and sky_len < 4000.0,"Sky train loop length %d m" % int(sky_len))
+	assert(sky_st_s.size() == SKY_STATIONS.size() and sky_period > 150.0,"Sky train timetable")
+	for i in sky_st_s.size():
+		# Stations follow each other round the loop in the order they are listed.
+		assert(i == 0 or float(sky_st_s[i]) > float(sky_st_s[i-1]) or float(sky_st_s[i-1])-float(sky_st_s[i]) > sky_len*0.8,"Sky station %d in loop order" % i)
 	assert(sky_pillars.size() > 40,"Sky train pillars: %d" % sky_pillars.size())
 	var s := 0.0
 	while s < sky_len:
@@ -27552,8 +27622,9 @@ func _smoke_v27() -> void:
 		var st := _sky_state(0)
 		assert(bool(st["dwell"]) and int(st["at"]) == i,"Train 0 stops at station %d" % i)
 		var other := _sky_state(1)
-		assert(absf(fposmod(float(other["s"])-float(st["s"]),sky_len)-sky_len/2.0) < sky_len*0.3,"Two trains are spread around the loop")
-	# Ride: board at Waterfront, get off at the next station, City Tour pays once after all 5.
+		var gap := fposmod(float(other["s"])-float(st["s"]),sky_len)
+		assert(gap > sky_len*0.15 and gap < sky_len*0.85,"Trains are spread around the loop")
+	# Ride: board at Waterfront, get off at the next station, City Tour pays once after all of them.
 	cash = 100
 	tour_test_day = "2027-02-01"
 	tour_day = ""
@@ -27578,7 +27649,7 @@ func _smoke_v27() -> void:
 	assert(action_button.text == "GET OFF NEXT","GET OFF NEXT while moving")
 	_interact()
 	assert(sky_getoff == 1,"Queued to get off at Sunset Beach")
-	for i in range(1,5):
+	for i in range(1,SKY_STATIONS.size()):
 		sky_time_override = _sky_time_at_station(0,i,1.0)
 		await get_tree().physics_frame
 		await get_tree().physics_frame
@@ -27589,7 +27660,7 @@ func _smoke_v27() -> void:
 			sky_time_override = _sky_time_at_station(0,1,3.0)
 			await get_tree().physics_frame
 			assert(sky_riding,"Boarded again at Sunset Beach")
-	assert(tour_got == 31 and cash == 100+TOUR_BONUS,"City Tour bonus paid once (cash %d, got %d)" % [cash,tour_got])
+	assert(tour_got == (1 << SKY_STATIONS.size())-1 and cash == 100+TOUR_BONUS,"City Tour bonus paid once (cash %d, got %d)" % [cash,tour_got])
 	sky_time_override = _sky_time_at_station(0,0,1.0)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
@@ -27630,6 +27701,7 @@ func _smoke_v27() -> void:
 	_smoke_sky_garden()
 	_smoke_car_barriers()
 	_smoke_pass()
+	await _smoke_strollers()
 	# Nobody stands in a road, and a car stuck behind someone in its lane moves on after a few seconds.
 	for p in peds:
 		if bool(p["idle"]):
@@ -27686,7 +27758,7 @@ func _city_shots() -> void:
 		day_hour_override = float(parts[3]) if parts.size() > 3 else 13.0
 		_daynight_apply(true)
 		player.position = Vector3(cp[0],0.9,cp[2]+2.0)
-		for i in 90:
+		for i in 90+(int(parts[4]) if parts.size() > 4 else 0):
 			await get_tree().physics_frame
 		if OS.get_environment("HC_PEERS") != "":
 			# Two pretend players beside you, to check name tags.
@@ -28436,3 +28508,1440 @@ func _smoke_airport() -> void:
 		if String(CHECKPOINTS[i]["name"]) == "Harbor Airport":
 			ci = i
 	assert(ci >= 0 and TRAVEL_AREA.size() == CHECKPOINTS.size(),"Harbor Airport fast travel")
+
+# ---------------- v0.44: people who walk around (Galleria, Biosphere, plazas) ----------------
+# Each place gets a walk grid: NAV_CELL cells free of anything solid (and of nav_blocks such as
+# benches), reachable from its start points. Every spot people like to visit (a shop window, a pen,
+# the fountain) gets a distance field over that grid, so a walker just steps downhill to get there,
+# stops to look for a while, then picks another spot. Grids are built a little at a time the first
+# time you come near, so loading the game is not slower.
+const NAV_CELL := 0.8
+const NAV_NEAR := 170.0          # build a place's grid once the camera is this close
+const STROLL_FAR := 140.0        # walkers further than this from the camera stand still
+var nav_areas: Array = []
+var nav_blocks: Array = []       # [centre Vector2, half size Vector2, yaw]: no-walk boxes with no collider
+var nav_busy := false
+var strollers: Array = []
+
+func _nav_area(nm: String, x0: float, z0: float, x1: float, z1: float, seeds: Array, inside := Callable()) -> Dictionary:
+	var A := {"name":nm,"x0":x0,"z0":z0,"w":int(ceil((x1-x0)/NAV_CELL)),"h":int(ceil((z1-z0)/NAV_CELL)),
+		"seeds":seeds,"inside":inside,"spots":[],"fields":[],"ready":false,"building":false,
+		"centre":Vector3((x0+x1)/2.0,0,(z0+z1)/2.0),"radius":Vector2(x1-x0,z1-z0).length()/2.0}
+	nav_areas.append(A)
+	return A
+
+func _nav_spot(A: Dictionary, p: Vector3, face := Vector3.ZERO, w0 := 2.0, w1 := 6.0, weight := 1.0) -> void:
+	# A place walkers go to. face: which way they look while there (zero: keep walking direction).
+	(A["spots"] as Array).append({"p":p,"face":face,"w0":w0,"w1":w1,"weight":weight})
+
+func _nav_idx(A: Dictionary, x: float, z: float) -> int:
+	var i := floori((x-float(A["x0"]))/NAV_CELL)
+	var j := floori((z-float(A["z0"]))/NAV_CELL)
+	if i < 0 or j < 0 or i >= int(A["w"]) or j >= int(A["h"]):
+		return -1
+	return j*int(A["w"])+i
+
+func _nav_pos(A: Dictionary, idx: int) -> Vector3:
+	var w := int(A["w"])
+	return Vector3(float(A["x0"])+(float(idx % w)+0.5)*NAV_CELL,(A["gy"] as PackedFloat32Array)[idx],float(A["z0"])+(float(idx/w)+0.5)*NAV_CELL)
+
+func _nav_blocked(x: float, z: float) -> bool:
+	for b in nav_blocks:
+		var d := Vector2(x,z)-(b[0] as Vector2)
+		if float(b[2]) != 0.0:
+			d = d.rotated(float(b[2]))
+		var h: Vector2 = b[1]
+		if absf(d.x) <= h.x+0.35 and absf(d.y) <= h.y+0.35:
+			return true
+	return false
+
+func _nav_nearest_free(A: Dictionary, p: Vector3) -> int:
+	var free: PackedByteArray = A["free"]
+	var c := _nav_idx(A,p.x,p.z)
+	if c >= 0 and free[c] == 1:
+		return c
+	var w := int(A["w"])
+	var h := int(A["h"])
+	var ci := floori((p.x-float(A["x0"]))/NAV_CELL)
+	var cj := floori((p.z-float(A["z0"]))/NAV_CELL)
+	for r in range(1,8):
+		var best := -1
+		var bd := INF
+		for dj in range(-r,r+1):
+			for di in range(-r,r+1):
+				if maxi(absi(di),absi(dj)) != r:
+					continue
+				var i := ci+di
+				var j := cj+dj
+				if i < 0 or j < 0 or i >= w or j >= h:
+					continue
+				var k := j*w+i
+				if free[k] == 1 and float(di*di+dj*dj) < bd:
+					bd = float(di*di+dj*dj)
+					best = k
+		if best >= 0:
+			return best
+	return -1
+
+func _nav_bfs(A: Dictionary, starts: Array) -> PackedInt32Array:
+	# Steps from the nearest start to every free cell (-1: can't get there). Diagonal steps only
+	# where both straight neighbours are free, so nobody cuts a corner through a wall.
+	var w := int(A["w"])
+	var h := int(A["h"])
+	var free: PackedByteArray = A["free"]
+	var dist := PackedInt32Array()
+	dist.resize(w*h)
+	dist.fill(-1)
+	var q := PackedInt32Array()
+	q.resize(w*h)
+	var qh := 0
+	var qt := 0
+	for s in starts:
+		if int(s) >= 0 and dist[int(s)] < 0:
+			dist[int(s)] = 0
+			q[qt] = int(s)
+			qt += 1
+	while qh < qt:
+		var c := q[qh]
+		qh += 1
+		var ci := c % w
+		var cj := c/w
+		var nd := dist[c]+1
+		for dj in [-1,0,1]:
+			var j: int = cj+dj
+			if j < 0 or j >= h:
+				continue
+			for di in [-1,0,1]:
+				if di == 0 and dj == 0:
+					continue
+				var i: int = ci+di
+				if i < 0 or i >= w:
+					continue
+				var k := j*w+i
+				if free[k] != 1 or dist[k] >= 0:
+					continue
+				if di != 0 and dj != 0 and (free[cj*w+i] != 1 or free[j*w+ci] != 1):
+					continue
+				dist[k] = nd
+				q[qt] = k
+				qt += 1
+	return dist
+
+func _nav_build(A: Dictionary) -> void:
+	# Spread over frames: about 500 cells per frame.
+	A["building"] = true
+	nav_busy = true
+	var w := int(A["w"])
+	var h := int(A["h"])
+	var free := PackedByteArray()
+	free.resize(w*h)
+	var gy := PackedFloat32Array()
+	gy.resize(w*h)
+	var space := get_world_3d().direct_space_state
+	var shape := CapsuleShape3D.new()
+	shape.radius = 0.3
+	shape.height = 1.3
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape
+	q.collision_mask = 1
+	var ex: Array[RID] = []
+	if player != null:
+		ex.append(player.get_rid())
+	if car != null:
+		ex.append(car.get_rid())
+	q.exclude = ex
+	var inside: Callable = A["inside"]
+	var n := 0
+	for j in h:
+		for i in w:
+			var k := j*w+i
+			var x := float(A["x0"])+(float(i)+0.5)*NAV_CELL
+			var z := float(A["z0"])+(float(j)+0.5)*NAV_CELL
+			if (inside.is_null() or bool(inside.call(Vector3(x,0,z)))) and not _nav_blocked(x,z):
+				var g := _ground_at(x,z,0.0)
+				if g > -0.15 and g < 0.6:
+					q.transform = Transform3D(Basis(),Vector3(x,g+1.05,z))
+					if space.intersect_shape(q,1).is_empty():
+						free[k] = 1
+						gy[k] = g
+			n += 1
+			if n % 500 == 0:
+				await get_tree().process_frame
+	A["free"] = free
+	A["gy"] = gy
+	# Keep only what can be walked to from the start points.
+	var seeds: Array = []
+	for s in A["seeds"]:
+		seeds.append(_nav_nearest_free(A,s))
+	var reach := _nav_bfs(A,seeds)
+	for k in w*h:
+		if reach[k] < 0:
+			free[k] = 0
+	A["free"] = free
+	await get_tree().process_frame
+	var fields: Array = []
+	var spots: Array = []
+	for S in A["spots"]:
+		var c := _nav_nearest_free(A,S["p"])
+		if c < 0:
+			continue
+		S["cell"] = c
+		spots.append(S)
+		fields.append(_nav_bfs(A,[c]))
+		await get_tree().process_frame
+	A["spots"] = spots
+	A["fields"] = fields
+	A["ready"] = true
+	A["building"] = false
+	nav_busy = false
+	for W in strollers:
+		if is_same(W["area"],A):
+			_stroll_place(W)
+
+func _stroller(A: Dictionary, parent: Node3D, seed_i: int, kid := false) -> Dictionary:
+	# Someone who walks around place A. Placed at a random spot once A's grid is ready.
+	var s0: Dictionary = (A["spots"] as Array)[seed_i % (A["spots"] as Array).size()]
+	var pp := _cm_person(parent,s0["p"],0.0,seed_i,kid)
+	if pp.is_empty():
+		return {}
+	pp["walk"] = true
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_i*7919+13
+	var W := {"pp":pp,"node":(pp["root"] as Node3D).get_parent(),"area":A,"spot":-1,"wait":r.randf_range(0.0,3.0),
+		"speed":r.randf_range(1.05,1.45)*(0.8 if kid else 1.0),"phase":r.randf()*TAU,"aim":-1,"aim_t":0.0,
+		"rng":r,"off":Vector3.ZERO,"y":0.0,"placed":false,"yaw":0.0}
+	strollers.append(W)
+	return W
+
+func _stroll_place(W: Dictionary) -> void:
+	var A: Dictionary = W["area"]
+	var spots: Array = A["spots"]
+	if spots.is_empty():
+		return
+	var r: RandomNumberGenerator = W["rng"]
+	# Start part-way along a walk: somewhere free on the grid near a random spot.
+	var S: Dictionary = spots[r.randi() % spots.size()]
+	var c: int = S["cell"]
+	var p := _nav_pos(A,c)
+	for t in 30:
+		var k := _nav_nearest_free(A,p+Vector3(r.randf_range(-6,6),0,r.randf_range(-6,6)))
+		if k >= 0:
+			p = _nav_pos(A,k)
+			break
+	var nd: Node3D = W["node"]
+	nd.global_position = p
+	W["y"] = p.y
+	W["placed"] = true
+	_stroll_next(W)
+
+func _stroll_next(W: Dictionary) -> void:
+	# Pick the next spot: any spot reachable from here other than the one just visited, by weight.
+	var A: Dictionary = W["area"]
+	var spots: Array = A["spots"]
+	var fields: Array = A["fields"]
+	var nd: Node3D = W["node"]
+	var here := _nav_idx(A,nd.global_position.x,nd.global_position.z)
+	var r: RandomNumberGenerator = W["rng"]
+	var total := 0.0
+	var ok: Array = []
+	for s in spots.size():
+		if s == int(W["spot"]) or here < 0:
+			continue
+		var d := (fields[s] as PackedInt32Array)[here]
+		if d < 2:
+			continue
+		ok.append(s)
+		total += float(spots[s]["weight"])
+	if ok.is_empty():
+		W["spot"] = -1
+		W["wait"] = 3.0
+		return
+	var pick := r.randf()*total
+	for s in ok:
+		pick -= float(spots[s]["weight"])
+		if pick <= 0.0:
+			W["spot"] = s
+			break
+	if pick > 0.0:
+		W["spot"] = ok[ok.size()-1]
+	W["aim"] = -1
+	W["aim_t"] = 0.0
+	W["moving"] = true
+
+func _nav_clear_line(A: Dictionary, a: Vector3, b: Vector3) -> bool:
+	var free: PackedByteArray = A["free"]
+	var d := Vector2(b.x-a.x,b.z-a.z)
+	var n := int(ceil(d.length()/(NAV_CELL*0.5)))
+	for k in range(1,n+1):
+		var t := float(k)/float(n)
+		var c := _nav_idx(A,a.x+d.x*t,a.z+d.y*t)
+		if c < 0 or free[c] != 1:
+			return false
+	return true
+
+func _stroll_aim(W: Dictionary, here: int) -> int:
+	# Up to 6 cells down the distance field, as far as there is a straight clear line to.
+	var A: Dictionary = W["area"]
+	var field: PackedInt32Array = (A["fields"] as Array)[int(W["spot"])]
+	var w := int(A["w"])
+	var h := int(A["h"])
+	var c := here
+	var best := here
+	var from := (W["node"] as Node3D).global_position
+	for step in 6:
+		var ci := c % w
+		var cj := c/w
+		var nc := c
+		var nv := field[c]
+		for dj in [-1,0,1]:
+			for di in [-1,0,1]:
+				var i: int = ci+di
+				var j: int = cj+dj
+				if i < 0 or j < 0 or i >= w or j >= h:
+					continue
+				var k := j*w+i
+				var v := field[k]
+				if v >= 0 and v < nv:
+					nv = v
+					nc = k
+		if nc == c:
+			break
+		c = nc
+		if step == 0 or _nav_clear_line(A,from,_nav_pos(A,c)):
+			best = c
+	return best
+
+func _strollers_tick(delta: float) -> void:
+	if strollers.is_empty() and nav_areas.is_empty():
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var cp := cam.global_position
+	if not nav_busy:
+		for A in nav_areas:
+			if not bool(A["ready"]) and not bool(A["building"]) and Vector2(cp.x-(A["centre"] as Vector3).x,cp.z-(A["centre"] as Vector3).z).length() < NAV_NEAR+float(A["radius"]):
+				_nav_build(A)
+				break
+	if paused:
+		return
+	var who := car.global_position if driving else player.global_position
+	for W in strollers:
+		if not bool(W["placed"]):
+			continue
+		var nd: Node3D = W["node"]
+		if not is_instance_valid(nd):
+			continue
+		var gp := nd.global_position
+		var far := gp.distance_squared_to(cp) > STROLL_FAR*STROLL_FAR
+		if far:
+			continue
+		var A: Dictionary = W["area"]
+		var pp: Dictionary = W["pp"]
+		var near := gp.distance_squared_to(cp) < 40.0*40.0
+		if float(W["wait"]) > 0.0:
+			W["wait"] = float(W["wait"])-delta
+			if near:
+				_pose_person(pp,float(W["phase"]),0.0)
+			if float(W["wait"]) <= 0.0:
+				_stroll_next(W)
+			continue
+		if int(W["spot"]) < 0:
+			_stroll_next(W)
+			continue
+		var S: Dictionary = (A["spots"] as Array)[int(W["spot"])]
+		var here := _nav_idx(A,gp.x,gp.z)
+		var field: PackedInt32Array = (A["fields"] as Array)[int(W["spot"])]
+		if here < 0 or field[here] < 0:
+			# Pushed off the grid somehow: step back onto the nearest free cell.
+			var k := _nav_nearest_free(A,gp)
+			if k >= 0:
+				nd.global_position = _nav_pos(A,k)
+			_stroll_next(W)
+			continue
+		if field[here] <= 1:
+			# Arrived: look the right way and stay a while.
+			var f: Vector3 = S["face"]
+			if f.length() > 0.1:
+				W["yaw"] = atan2(-f.x,-f.z)
+			var r: RandomNumberGenerator = W["rng"]
+			W["wait"] = r.randf_range(float(S["w0"]),float(S["w1"]))
+			continue
+		W["aim_t"] = float(W["aim_t"])-delta
+		if int(W["aim"]) < 0 or float(W["aim_t"]) <= 0.0 or int(W["aim"]) == here:
+			W["aim"] = _stroll_aim(W,here)
+			W["aim_t"] = 0.35
+		var tp := _nav_pos(A,int(W["aim"]))
+		var d := Vector3(tp.x-gp.x,0,tp.z-gp.z)
+		var sp := float(W["speed"])
+		# Make room for you (or your car) like the street pedestrians do.
+		var away := Vector3(gp.x-who.x,0,gp.z-who.z)
+		var room := 4.0 if driving else 1.3
+		var off := Vector3.ZERO
+		if away.length() < room and away.length() > 0.01:
+			off = away.normalized()*(room-away.length())*0.8
+		var step := Vector3.ZERO
+		if d.length() > 0.01:
+			step = d.normalized()*minf(sp*delta,d.length())
+		var np := gp+step+off*delta*2.0
+		var nk := _nav_idx(A,np.x,np.z)
+		if nk < 0 or (A["free"] as PackedByteArray)[nk] != 1:
+			np = gp+step
+		var ty := float((A["gy"] as PackedFloat32Array)[maxi(_nav_idx(A,np.x,np.z),0)])
+		W["y"] = move_toward(float(W["y"]),ty,delta*1.5)
+		np.y = float(W["y"])
+		nd.global_position = np
+		if d.length() > 0.05:
+			W["yaw"] = lerp_angle(float(W["yaw"]),atan2(-d.x,-d.z),minf(1.0,delta*6.0))
+		nd.rotation.y = float(W["yaw"])
+		W["phase"] = float(W["phase"])+delta*sp*4.5
+		if near:
+			_pose_person(pp,float(W["phase"]),1.0)
+		continue
+	for W in strollers:
+		if float(W["wait"]) > 0.0 and bool(W["placed"]):
+			var nd: Node3D = W["node"]
+			if is_instance_valid(nd):
+				nd.rotation.y = lerp_angle(nd.rotation.y,float(W["yaw"]),minf(1.0,delta*4.0))
+
+func _smoke_strollers() -> void:
+	# v0.44: walk grids are built, every cell on them is clear of anything solid, every spot can be
+	# reached, and the walkers actually walk.
+	for A in [ga_nav,bio_nav,gc_nav,hg_nav,fan_nav]:
+		if not bool(A["ready"]):
+			if not bool(A["building"]):
+				_nav_build(A)
+			for t in 4000:
+				if bool(A["ready"]):
+					break
+				await get_tree().process_frame
+		assert(bool(A["ready"]),"v0.44: %s walk grid built" % A["name"])
+		print("NAV %s ready at %d ms" % [A["name"],Time.get_ticks_msec()])
+		var free: PackedByteArray = A["free"]
+		var n := 0
+		var bad := ""
+		# People walk through car-only bollards (layer 2), so only check what blocks people.
+		var space := get_world_3d().direct_space_state
+		var q := PhysicsShapeQueryParameters3D.new()
+		var sph := SphereShape3D.new()
+		sph.radius = 0.25
+		q.shape = sph
+		q.collision_mask = 1
+		q.exclude = [player.get_rid(),car.get_rid()]
+		for k in free.size():
+			if free[k] == 1:
+				n += 1
+				if k % 7 == 0:
+					var p := _nav_pos(A,k)
+					q.transform = Transform3D(Basis(),p+Vector3(0,1.0,0))
+					if not space.intersect_shape(q,1).is_empty() and bad == "":
+						bad = "%s by %s" % [str(p),_blocker(p+Vector3(0,1.0,0),0.25)]
+		assert(bad == "","v0.44: %s walk grid cell in something solid at %s" % [A["name"],bad])
+		var spots: Array = A["spots"]
+		assert(n > 600 and spots.size() >= 10,"v0.44: %s has room to walk (%d cells, %d spots)" % [A["name"],n,spots.size()])
+		# From the first spot, most of the others can be walked to.
+		var reach := 0
+		var f0: PackedInt32Array = (A["fields"] as Array)[0]
+		for S in spots:
+			if f0[int(S["cell"])] >= 0:
+				reach += 1
+		assert(reach >= spots.size()/3,"v0.44: %s spots reachable (%d of %d)" % [A["name"],reach,spots.size()])
+	# Walkers move: put the camera in the mall for a while.
+	var keep_lock := cam_lock
+	var keep_cam := camera.global_transform
+	cam_lock = true
+	camera.global_position = Vector3(GA_C.x,4.0,-590.0)
+	var who: Array = []
+	var before: Array = []
+	for W in strollers:
+		if is_same(W["area"],ga_nav):
+			who.append(W)
+			before.append((W["node"] as Node3D).global_position)
+	for t in 240:
+		_strollers_tick(1.0/30.0)
+	var moved := 0
+	for k in who.size():
+		var gp: Vector3 = (who[k]["node"] as Node3D).global_position
+		if gp.distance_to(before[k]) > 1.0:
+			moved += 1
+		assert(_ga_walkable(gp),"v0.44: shopper stayed in the mall (%s)" % str(gp))
+	assert(who.size() >= 15 and moved >= who.size()/2,"v0.44: shoppers walk (%d of %d moved)" % [moved,who.size()])
+	cam_lock = keep_lock
+	camera.global_transform = keep_cam
+	# Signposts stand off the road and point somewhere; Directions guide you and stop when you arrive.
+	assert(signposts.size() >= 30,"v0.44: signposts at the junctions (%d)" % signposts.size())
+	for sp in signposts:
+		assert(not _on_road(sp[0]) and (sp[1] as Array).size() >= 2,"v0.44: signpost off the road at %s" % str(sp[0]))
+	var keep_dir := dir_target
+	dir_target = 12
+	var gt = _guide_target()
+	assert(gt != null and (gt as Vector3).distance_to(_dir_pos(12)) < 0.1,"v0.44: Directions set the guide arrow")
+	var keep_pos := player.position
+	var keep_drv := driving
+	driving = false
+	player.position = _dir_pos(12)+Vector3(0,0.9,5)
+	_dir_tick(0.1)
+	assert(dir_target == -1,"v0.44: Directions end when you arrive")
+	player.position = keep_pos
+	driving = keep_drv
+	dir_target = keep_dir
+	# Grand Central: its station opens onto the plaza (north side of the street), and the new
+	# buildings stand clear of the roads.
+	var gi := -1
+	for i in SKY_STATIONS.size():
+		if String(SKY_STATIONS[i]["name"]) == "Grand Central":
+			gi = i
+	assert(gi >= 0 and (sky_st_info[gi]["entrance"] as Vector3).z < -300.0,"v0.44: Grand Central station opens onto the plaza")
+	assert(lofts.size() >= 15,"v0.44: new lofts built (%d)" % lofts.size())
+	for L in lofts:
+		var c: Vector3 = L[0]
+		var h: Vector2 = L[1]
+		for sx: float in [-1.0,0.0,1.0]:
+			for sz: float in [-1.0,0.0,1.0]:
+				assert(not _on_road(c+Vector3(sx*h.x,0,sz*h.y)),"v0.44: loft at %s stands off the road" % str(c))
+
+# ---------------- v0.44: directions (signposts at junctions, Directions menu) ----------------
+# Places you can ask the way to. The Directions panel sets one as your target: the guide arrow
+# points there and a chip at the top shows how far it is. Signposts at the big junctions point
+# to the nearest few places with their distance.
+const DIR_DESTS := [
+	{"name":"Harbor Waterfront","pos":Vector3(10,0,27),"col":Color("5fd0ff")},
+	{"name":"Harbor Commons","pos":Vector3(-93,0,-36),"col":Color("7ad67a")},
+	{"name":"North Highway","pos":Vector3(12,0,-72),"col":Color("f0bd62")},
+	{"name":"Maple Suburbs","pos":Vector3(12,0,-206),"col":Color("f0bd62")},
+	{"name":"Harbor Airfield","pos":Vector3(13,0,-318),"col":Color("f0bd62")},
+	{"name":"Grand Central","pos":Vector3(-420,0,-286),"col":Color("ff8ad8")},
+	{"name":"Central Park","pos":Vector3(-430,0,-206),"col":Color("7ad67a")},
+	{"name":"Grand Mall","pos":Vector3(-540,0,-78),"col":Color("ff8ad8")},
+	{"name":"Harbor Stadium","pos":Vector3(-540,0,-381),"col":Color("ffd23f")},
+	{"name":"Union Station","pos":Vector3(-196,0,-317),"col":Color("5fd0ff")},
+	{"name":"Harbor Airport","pos":Vector3(52,0,-470),"col":Color("5fd0ff")},
+	{"name":"Harbor Galleria","pos":Vector3(-330,0,-514),"col":Color("ff8ad8")},
+	{"name":"The Biosphere","pos":Vector3(-500,0,-486),"col":Color("7dff9a")},
+	{"name":"Sky Garden","pos":Vector3(-403,0,-610),"col":Color("7dff9a")},
+	{"name":"Civic Center","pos":Vector3(-150,0,23),"col":Color("5fd0ff")},
+	{"name":"Westside Market","pos":Vector3(-330,0,111),"col":Color("f0bd62")},
+	{"name":"Marina Heights","pos":Vector3(-10,0,116),"col":Color("5fd0ff")},
+	{"name":"Harbor Dome","pos":Vector3(148,0,36),"col":Color("c89bff")},
+	{"name":"Harbor Raceway","pos":Vector3(170,0,-150),"col":Color("ff7a4a")},
+	{"name":"Sunset Beach","pos":Vector3(300,0,158),"col":Color("ffb25f")},
+]
+const DIR_ARRIVE := 28.0
+var dir_target := -1
+var dir_chip: Button
+var dir_panel: PanelContainer
+var dir_buttons: Array = []
+var dir_chip_t := 0.0
+var signposts: Array = []       # [where the post stands, [destination indexes]]
+
+func _dir_pos(i: int) -> Vector3:
+	return DIR_DESTS[i]["pos"]
+
+func _dir_fmt(d: float) -> String:
+	return "%d m" % int(roundf(d/10.0)*10.0) if d < 950.0 else "%.1f km" % (d/1000.0)
+
+func _signpost_spot(c: Vector3) -> Vector3:
+	# A corner of the junction just off the road, with nothing solid there.
+	var best := Vector3.INF
+	var best_r := INF
+	for sx: float in [1.0,-1.0]:
+		for sz: float in [1.0,-1.0]:
+			var r := 6.0
+			while r <= 18.0:
+				var p := c+Vector3(sx*r,0,sz*r)
+				if not _on_road(p) and not _on_road(p+Vector3(sx,0,sz)*0.0-Vector3(sx,0,sz)*1.2):
+					if not _blocked_at(p+Vector3(0,1.6,0),0.7) and r < best_r:
+						best = p
+						best_r = r
+					break
+				r += 1.0
+	return best
+
+func _build_signposts() -> void:
+	var root := Node3D.new()
+	root.name = "Signposts"
+	add_child(root)
+	var poles: Array = []
+	var blades: Array = []
+	var edges: Array = []
+	var caps: Array = []
+	var used: Array = []
+	var spots: Array = light_spots.duplicate()
+	# Station entrances get a signpost too.
+	for st in sky_st_info:
+		spots.append((st["entrance"] as Vector3)+Vector3(0,0,0))
+	for sp: Vector3 in spots:
+		var near := false
+		for u: Vector3 in used:
+			if Vector2(u.x-sp.x,u.z-sp.z).length() < 70.0:
+				near = true
+				break
+		if near:
+			continue
+		var p := _signpost_spot(sp)
+		if p == Vector3.INF:
+			continue
+		used.append(sp)
+		# The nearest places (not right here), pointing different ways.
+		var order: Array = []
+		for i in DIR_DESTS.size():
+			var d := Vector2(_dir_pos(i).x-p.x,_dir_pos(i).z-p.z).length()
+			if d > 60.0:
+				order.append([d,i])
+		order.sort_custom(func(a,b): return float(a[0]) < float(b[0]))
+		var pick: Array = []
+		for e in order:
+			var dv := _dir_pos(int(e[1]))-p
+			var ang := atan2(dv.x,dv.z)
+			var clash := false
+			for q in pick:
+				var qv := _dir_pos(int(q))-p
+				if absf(angle_difference(ang,atan2(qv.x,qv.z))) < deg_to_rad(20.0):
+					clash = true
+			if not clash:
+				pick.append(int(e[1]))
+			if pick.size() >= 4:
+				break
+		if pick.is_empty():
+			continue
+		signposts.append([p,pick])
+		poles.append([p+Vector3(0,2.2,0),0.08,4.4])
+		caps.append([p+Vector3(0,4.45,0),Vector3(0.24,0.1,0.24),0.0])
+		_collider(root,p+Vector3(0,1.2,0),Vector3(0.2,2.4,0.2))
+		for k in pick.size():
+			var di: int = pick[k]
+			var dv := _dir_pos(di)-p
+			dv.y = 0.0
+			var dn := dv.normalized()
+			var yaw := atan2(-dn.z,dn.x)        # the blade's long side (local x) points the way
+			var h := 3.95-float(k)*0.48
+			var c := p+dn*1.55+Vector3(0,h,0)
+			blades.append([c,Vector3(3.0,0.4,0.07),yaw])
+			edges.append([c-dn*1.47,Vector3(0.06,0.4,0.09),yaw])
+			var col: Color = DIR_DESTS[di]["col"]
+			var nrm := Vector3(sin(yaw),0,cos(yaw))
+			var txt := String(DIR_DESTS[di]["name"]).to_upper()
+			var dist := _dir_fmt(dv.length())
+			for side: float in [1.0,-1.0]:
+				var l := Label3D.new()
+				l.text = ("%s  %s  ▶" % [txt,dist]) if side > 0.0 else ("◀  %s  %s" % [txt,dist])
+				l.font_size = 26
+				l.pixel_size = 0.0062
+				l.outline_size = 0
+				l.modulate = Color("f4f8fb")
+				l.position = c+nrm*side*0.045
+				l.rotation.y = yaw if side > 0.0 else yaw+PI
+				l.visibility_range_end = 38.0
+				l.visibility_range_end_margin = 5.0
+				l.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+				root.add_child(l)
+				var stripe := Label3D.new()
+				stripe.text = "■"
+				stripe.font_size = 30
+				stripe.pixel_size = 0.0062
+				stripe.modulate = col
+				stripe.outline_size = 0
+				stripe.position = c-dn*1.33+nrm*side*0.046
+				stripe.rotation.y = l.rotation.y
+				stripe.visibility_range_end = 38.0
+				root.add_child(stripe)
+	var pm := _cyl_batch(Color("2b3640"),poles,1.0)
+	if pm != null:
+		pm.material_override = _fc_chrome()
+	var bm := _box_batch_rot(Color("1d3346"),blades)
+	if bm != null:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color("1d3346")
+		m.roughness = 0.45
+		m.metallic = 0.2
+		bm.material_override = m
+	var em := _box_batch_rot(NEON_CYAN,edges)
+	if em != null:
+		em.material_override = _neon_mat(NEON_CYAN)
+	_box_batch_rot(Color("eef2f5"),caps)
+
+# ---- the Directions panel and chip ----
+func _build_dir_panel(root: Control) -> void:
+	dir_panel = PanelContainer.new()
+	dir_panel.add_theme_stylebox_override("panel",_panel(Color("132b3a"),24))
+	dir_panel.custom_minimum_size = Vector2(780,0)
+	root.add_child(dir_panel)
+	extra_panels.append(dir_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",10)
+	dir_panel.add_child(col)
+	col.add_child(_label("DIRECTIONS",26,Color("f0bd62")))
+	var info := _label("Pick a place. An arrow shows the way, and signposts at the big junctions point there too. Sky train stations: look for the glass lift.",17,Color("cbd8de"))
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size.x = 720
+	col.add_child(info)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation",8)
+	grid.add_theme_constant_override("v_separation",8)
+	col.add_child(grid)
+	for i in DIR_DESTS.size():
+		var b := _button("",_dir_pick.bind(i))
+		b.custom_minimum_size = Vector2(250,46)
+		b.add_theme_font_size_override("font_size",16)
+		dir_buttons.append(b)
+		grid.add_child(b)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",10)
+	col.add_child(row)
+	var stop := _button("Stop directions",_dir_stop_and_close)
+	stop.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(stop)
+	var close := _button("Close",_dir_close)
+	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(close)
+	dir_panel.hide()
+	dir_chip = _button("",_dir_stop)
+	dir_chip.add_theme_font_size_override("font_size",18)
+	dir_chip.add_theme_stylebox_override("normal",_panel(Color(0.08,0.2,0.3,0.92),18))
+	dir_chip.custom_minimum_size = Vector2(0,44)
+	root.add_child(dir_chip)
+	dir_chip.hide()
+
+func _open_dir() -> void:
+	if not paused:
+		_toggle_menu()
+	var body: Node3D = car if driving else player
+	for i in DIR_DESTS.size():
+		var d := Vector2(_dir_pos(i).x-body.position.x,_dir_pos(i).z-body.position.z).length()
+		(dir_buttons[i] as Button).text = "%s%s · %s" % ["▶ " if i == dir_target else "",DIR_DESTS[i]["name"],_dir_fmt(d)]
+	_open_panel(dir_panel)
+
+func _dir_close() -> void:
+	if paused:
+		_toggle_menu()
+
+func _dir_pick(i: int) -> void:
+	dir_target = i
+	_dir_close()
+	_show_toast("Directions to %s: follow the arrow." % DIR_DESTS[i]["name"])
+
+func _dir_stop() -> void:
+	if dir_target >= 0:
+		_show_toast("Directions off.")
+	dir_target = -1
+
+func _dir_stop_and_close() -> void:
+	_dir_stop()
+	_dir_close()
+
+func _dir_tick(delta: float) -> void:
+	if dir_chip == null:
+		return
+	var show := dir_target >= 0 and not paused and not sky_riding and not bus_riding
+	dir_chip.visible = show
+	if dir_target < 0:
+		return
+	var body: Node3D = car if driving else player
+	var d := Vector2(_dir_pos(dir_target).x-body.position.x,_dir_pos(dir_target).z-body.position.z).length()
+	if d < DIR_ARRIVE:
+		_show_toast("You've arrived at %s!" % DIR_DESTS[dir_target]["name"])
+		dir_target = -1
+		dir_chip.hide()
+		return
+	dir_chip_t -= delta
+	if dir_chip_t <= 0.0 or not show:
+		dir_chip_t = 0.3
+		dir_chip.text = "  ➜ %s · %s    ✕  " % [DIR_DESTS[dir_target]["name"],_dir_fmt(d)]
+		dir_chip.reset_size()
+		var view := get_viewport().get_visible_rect().size
+		dir_chip.position = Vector2((view.x-dir_chip.size.x)/2.0,92.0)
+
+# ---------------- v0.44: Grand Central ----------------
+# The block across from Central Park becomes Grand Central Plaza (the sky train stops at its front),
+# and the block east of it gets two new towers on a shopping podium: Aurora Residences (homes) and
+# The Meridian (offices).
+const GC_C := Vector3(-420,0,-340)
+const GC_T := Vector3(-340,0,-340)
+const GC_WALKERS := 28
+const GC_SCREEN := ["GRAND CENTRAL\nThe heart of Harbor City","HARBOR LOOP\n10 stations · all of town","AURORA RESIDENCES\nSky homes now open","TONIGHT\nGame night at the stadium","CAFE ORBIT\nCold brew on the plaza","THE MERIDIAN\nOffices with a view","HARBOR GALLERIA\nNew looks every day","THE BIOSPHERE\nFour domes · one ticket"]
+const GC_SHOPS := ["MAISON LUMA","ATELIER NOVA","BLOOM & CO","VELVET","KAI SUSHI","NORTHWIND","PIXEL HOUSE","SOLENE","THE BAKERY","OPTIQUE","GREEN TABLE","HARBOR BOOKS","LUX TECH","GELATO 21","STUDIO MODA","CAFE ORBIT"]
+const GC_SHOP_COL := [Color("ff8ad8"),Color("5fd0ff"),Color("7ad67a"),Color("c89bff"),Color("ffb25f"),Color("8fe3ff"),Color("ff7a4a"),Color("f0bd62")]
+var gc_root: Node3D
+var gc_batch := {}
+var gc_models := {}
+var gc_mats := {}
+var gc_meshes := {}
+var gc_spin: Array = []
+var gc_screen: Label3D
+var gc_screen_t := 0.0
+var gc_screen_i := 0
+var gc_nav: Dictionary = {}
+var gb_root: Node3D             # where _gb_flush and friends put things
+
+func _gc_mesh(kind: String) -> Mesh:
+	if gc_meshes.has(kind):
+		return gc_meshes[kind]
+	var m: Mesh
+	match kind:
+		"box":
+			m = BoxMesh.new()
+		"cyl":
+			var c := CylinderMesh.new()
+			c.top_radius = 0.5
+			c.bottom_radius = 0.5
+			c.height = 1.0
+			c.radial_segments = 16
+			c.rings = 1
+			m = c
+		"cone":
+			var c2 := CylinderMesh.new()
+			c2.top_radius = 0.02
+			c2.bottom_radius = 0.5
+			c2.height = 1.0
+			c2.radial_segments = 12
+			c2.rings = 1
+			m = c2
+		_:
+			var s := SphereMesh.new()
+			s.radius = 0.5
+			s.height = 1.0
+			s.radial_segments = 16
+			s.rings = 8
+			m = s
+	gc_meshes[kind] = m
+	return m
+
+func _gc_mat(key: String, col: Color, metal := 0.0, rough := 0.5) -> StandardMaterial3D:
+	if not gc_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = col
+		m.metallic = metal
+		m.roughness = rough
+		gc_mats[key] = m
+	return gc_mats[key]
+
+func _gc_glass(key: String, col: Color) -> StandardMaterial3D:
+	# Tower glass with the city's window grid: reflective by day, a few lit windows at night.
+	if not gc_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.resource_name = "GlassGC"
+		m.albedo_color = col
+		_real_glass(m,true)
+		gc_mats[key] = m
+	return gc_mats[key]
+
+func _gb(kind: String, mat: Material, pos: Vector3, size: Vector3, yaw := 0.0) -> void:
+	var key := [kind,mat]
+	if not gc_batch.has(key):
+		gc_batch[key] = []
+	gc_batch[key].append(Transform3D(Basis(Vector3.UP,yaw)*Basis.from_scale(size),pos))
+
+func _gb_solid(kind: String, mat: Material, pos: Vector3, size: Vector3) -> void:
+	_gb(kind,mat,pos,size)
+	_collider(gb_root,pos,size)
+
+func _gb_flush() -> void:
+	for key in gc_batch:
+		var xs: Array = gc_batch[key]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = _gc_mesh(String(key[0]))
+		mm.instance_count = xs.size()
+		for k in xs.size():
+			mm.set_instance_transform(k,xs[k])
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		mi.material_override = key[1]
+		gb_root.add_child(mi)
+	gc_batch.clear()
+	for name in gc_models:
+		var mesh := _bio_nature_mesh(name)
+		var xs: Array = gc_models[name]
+		if mesh == null or xs.is_empty():
+			continue
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mesh
+		mm.instance_count = xs.size()
+		for k in xs.size():
+			mm.set_instance_transform(k,xs[k])
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		gb_root.add_child(mi)
+	gc_models.clear()
+
+func _gc_tree(name: String, pos: Vector3, s: float, yaw := 0.0) -> void:
+	if not gc_models.has(name):
+		gc_models[name] = []
+	gc_models[name].append(Transform3D(Basis(Vector3.UP,yaw).scaled(Vector3.ONE*s),pos))
+
+func _gc_text(text: String, pos: Vector3, yaw: float, col: Color, size: int, px: float, near: float) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = size
+	l.pixel_size = px
+	l.modulate = col
+	l.outline_size = 0
+	l.position = pos
+	l.rotation.y = yaw
+	l.visibility_range_end = near
+	l.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	l.visibility_range_end_margin = near*0.1
+	gb_root.add_child(l)
+	return l
+
+func _gc_planter(p: Vector3, tree: String, s: float) -> void:
+	var rim := _gc_mat("planter",Color("b9b2a6"),0.0,0.6)
+	_gb_solid("cyl",rim,p+Vector3(0,0.35,0),Vector3(2.6,0.7,2.6))
+	_gb("cyl",_gc_mat("soil",Color("4a6a38"),0.0,0.9),p+Vector3(0,0.71,0),Vector3(2.3,0.04,2.3))
+	_gc_tree(tree,p+Vector3(0,0.7,0),s,p.x*0.37+p.z)
+
+func _gc_kiosk(p: Vector3, yaw: float, name: String, col: Color) -> void:
+	# A glass-and-pearl kiosk with a striped awning; the counter faces local +z.
+	var b := Basis(Vector3.UP,yaw)
+	var pearl := _gc_mat("pearl",Color("eef2f5"),0.3,0.25)
+	_gb("box",pearl,p+Vector3(0,1.5,0),Vector3(5.0,3.0,3.0),yaw)
+	_collider(gb_root,p+Vector3(0,1.5,0),Vector3(5.0,3.0,3.0) if absf(sin(yaw)) < 0.5 else Vector3(3.0,3.0,5.0))
+	_gb("box",_gc_mat("warm",Color("ffe2b0"),0.0,0.4),p+b*Vector3(0,1.7,1.52),Vector3(4.4,1.2,0.04),yaw)
+	_gb("box",_gc_mat("wood",Color("9a6a42"),0.0,0.55),p+b*Vector3(0,1.05,1.75),Vector3(4.6,0.12,0.6),yaw)
+	for k in 5:
+		var c: Color = col if k % 2 == 0 else Color("f4f1ea")
+		_gb("box",_gc_mat("aw_%s" % c.to_html(false),c,0.0,0.6),p+b*Vector3(-2.0+float(k),2.85,2.05),Vector3(1.0,0.12,1.3),yaw)
+	_gb("box",_neon_mat(col),p+Vector3(0,3.05,0),Vector3(5.05,0.08,3.05),yaw)
+	_gc_text(name,p+b*Vector3(0,2.45,1.56),yaw,col.lightened(0.3),56,0.008,40.0)
+
+func _build_grand_central() -> void:
+	gc_root = Node3D.new()
+	gc_root.name = "GrandCentral"
+	gc_root.set_meta("static_floor",true)
+	add_child(gc_root)
+	gb_root = gc_root
+	var C := GC_C
+	var pearl := _gc_mat("pearl",Color("eef2f5"),0.3,0.25)
+	var chrome := _fc_chrome()
+	var stone := _gc_mat("stone",Color("e8e3d8"),0.0,0.55)
+	var stone2 := _gc_mat("stone2",Color("c9c1b2"),0.0,0.5)
+	# ---- the plaza floor: pale granite with darker squares and a glowing border ----
+	_gb("box",stone,C+Vector3(0,0.06,0),Vector3(50,0.12,50))
+	_floor_note(C+Vector3(0,0.06,0),Vector3(50,0.12,50))
+	for i in 10:
+		for j in 10:
+			if (i+j) % 2 == 0:
+				_gb("box",stone2,C+Vector3(-22.5+float(i)*5.0,0.122,-22.5+float(j)*5.0),Vector3(4.9,0.01,4.9))
+	var cyan := _neon_mat(NEON_CYAN)
+	var pink := _neon_mat(Color("ff7ad9"))
+	for s: float in [-1.0,1.0]:
+		_gb("box",cyan,C+Vector3(0,0.13,s*24.7),Vector3(49.6,0.02,0.18))
+		_gb("box",cyan,C+Vector3(s*24.7,0.13,0),Vector3(0.18,0.02,49.6))
+	# ---- the Harbor Ring: a reflecting pool with two great rings turning over it ----
+	var pc := C+Vector3(0,0,4)
+	var rim := _gc_mat("rim",Color("f4f1ea"),0.1,0.35)
+	for s: float in [-1.0,1.0]:
+		_gb_solid("box",rim,pc+Vector3(0,0.3,s*5.5),Vector3(18.0,0.5,0.6))
+		_gb_solid("box",rim,pc+Vector3(s*8.7,0.3,0),Vector3(0.6,0.5,10.4))
+	_gb("box",_gc_mat("pooltile",Color("2a5a6e"),0.0,0.4),pc+Vector3(0,0.13,0),Vector3(16.8,0.02,10.4))
+	_fc_part(gc_root,_bbox(),pc+Vector3(0,0.42,0),_bio_water_mat(Color("5fc9e8")),Vector3(16.8,0.04,10.4))
+	_collider(gc_root,pc+Vector3(0,0.3,0),Vector3(16.8,0.5,10.4))
+	var ring := Node3D.new()
+	ring.position = pc+Vector3(0,6.3,0)
+	gc_root.add_child(ring)
+	var r1 := _fc_part(ring,_fc_torus(5.0,5.6),Vector3.ZERO,chrome)
+	r1.rotation.x = PI/2.0
+	var spin := Node3D.new()
+	ring.add_child(spin)
+	var r2 := _fc_part(spin,_fc_torus(4.1,4.5),Vector3.ZERO,pink)
+	r2.rotation.z = PI/2.0
+	var r3 := _fc_part(spin,_fc_torus(3.2,3.5),Vector3.ZERO,cyan)
+	r3.rotation.x = PI/2.0
+	_fc_part(ring,_fc_sphere(0.9),Vector3.ZERO,_fc_glow(Color("bff6ff")))
+	gc_spin.append(spin)
+	for k in 10:
+		var jx := -7.0+float(k%5)*3.5
+		var jz := -4.2 if k < 5 else 4.2
+		var jh := 1.6+0.5*float(k % 3)
+		_gb("cyl",_fc_glow(Color("dff8ff")),pc+Vector3(jx,0.4+jh/2.0,jz),Vector3(0.14,jh,0.14))
+	# ---- the hall: a glass canopy on slim columns with GRAND CENTRAL on top ----
+	var hz := C.z-19.0
+	_gb("box",pearl,Vector3(C.x,7.3,hz),Vector3(44,0.4,10))
+	_gb("box",_bio_glass_mat(Color("e9f6ff"),0.3),Vector3(C.x,7.05,hz),Vector3(43,0.06,9))
+	_gb("box",cyan,Vector3(C.x,7.08,hz+5.02),Vector3(44,0.08,0.06))
+	for xx: float in [-20.0,-10.0,0.0,10.0,20.0]:
+		for zz: float in [-4.3,4.3]:
+			_gb("cyl",chrome,Vector3(C.x+xx,3.6,hz+zz),Vector3(0.45,7.2,0.45))
+			_collider(gc_root,Vector3(C.x+xx,3.6,hz+zz),Vector3(0.45,7.2,0.45))
+	var t1 := _gc_text("GRAND CENTRAL",Vector3(C.x,8.75,hz+4.6),0.0,Color("fff1c8"),150,0.02,260.0)
+	t1.outline_size = 10
+	t1.outline_modulate = Color(0.1,0.12,0.2,0.85)
+	var t1b := _gc_text("GRAND CENTRAL",Vector3(C.x,8.75,hz-4.6),PI,Color("fff1c8"),150,0.02,260.0)
+	t1b.outline_size = 10
+	t1b.outline_modulate = Color(0.1,0.12,0.2,0.85)
+	_gb("box",_gc_mat("signbar",Color("1d2a33"),0.3,0.4),Vector3(C.x,8.75,hz),Vector3(20,1.9,9.0))
+	var names := ["CAFE ORBIT","FLOWER BAR","GELATO 21","HARBOR NEWS"]
+	for k in 4:
+		_gc_kiosk(Vector3(C.x-15.0+float(k)*10.0,0.12,hz-1.0),0.0,names[k],GC_SHOP_COL[k*2 % GC_SHOP_COL.size()])
+	# ---- west: a cafe terrace under umbrellas ----
+	var tw := C.x-19.0
+	_gc_kiosk(Vector3(tw-3.0,0.12,C.z-6.0),PI/2.0,"TERRACE BAR",Color("ffb25f"))
+	var wood := _gc_mat("wood",Color("9a6a42"),0.0,0.55)
+	var k2 := 0
+	for tz: float in [2.0,8.0,14.0]:
+		for tx: float in [-2.2,2.6]:
+			var tp := Vector3(tw+tx,0.12,C.z+tz)
+			_gb("cyl",chrome,tp+Vector3(0,0.37,0),Vector3(0.12,0.74,0.12))
+			_gb("cyl",_gc_mat("tabletop",Color("f4f1ea"),0.1,0.3),tp+Vector3(0,0.76,0),Vector3(1.1,0.05,1.1))
+			_collider(gc_root,tp+Vector3(0,0.4,0),Vector3(1.0,0.8,1.0))
+			nav_blocks.append([Vector2(tp.x,tp.z),Vector2(1.1,1.1),0.0])
+			for sd: float in [-1.0,1.0]:
+				_gb("box",wood,tp+Vector3(sd*0.95,0.45,0),Vector3(0.45,0.06,0.45))
+				_gb("box",wood,tp+Vector3(sd*1.15,0.75,0),Vector3(0.05,0.6,0.45))
+			var uc: Color = [Color("f4f1ea"),Color("1d6f86"),Color("e26d5a")][k2 % 3]
+			_gb("cyl",chrome,tp+Vector3(0,1.4,0),Vector3(0.06,2.6,0.06))
+			_gb("cone",_gc_mat("umb_%d" % (k2 % 3),uc,0.0,0.7),tp+Vector3(0,2.75,0),Vector3(3.2,0.6,3.2))
+			k2 += 1
+	# ---- east: a big screen with seats in front ----
+	var sx := C.x+21.5
+	var sc := Vector3(sx,0,C.z+2.0)
+	_gb("box",_gc_mat("frame",Color("1b2026"),0.4,0.35),sc+Vector3(0,5.6,0),Vector3(0.7,7.4,14.6))
+	_collider(gc_root,sc+Vector3(0,5.6,0),Vector3(0.7,7.4,14.6))
+	_gb("box",_gc_mat("screen",Color("0a1830"),0.0,0.2),sc+Vector3(-0.37,5.6,0),Vector3(0.04,6.6,13.8))
+	for zz: float in [-5.0,5.0]:
+		_gb("box",chrome,sc+Vector3(0,1.0,zz),Vector3(0.5,2.0,0.5))
+	gc_screen = _gc_text(GC_SCREEN[0],sc+Vector3(-0.42,5.6,0),-PI/2.0,Color("e9fbff"),64,0.016,140.0)
+	gc_screen.outline_size = 6
+	gc_screen.outline_modulate = Color(0.2,0.1,0.5,0.8)
+	_gb("box",pink,sc+Vector3(-0.38,9.0,0),Vector3(0.06,0.12,14.0))
+	_gb("box",cyan,sc+Vector3(-0.38,2.2,0),Vector3(0.06,0.12,14.0))
+	for row in 2:
+		for zz: float in [-3.5,3.5]:
+			_cm_bench(gc_root,Vector3(sx-6.0-float(row)*2.4,0.12,C.z+2.0+zz),-PI/2.0)
+	# ---- trees, benches and lamps round the edges ----
+	for xx: float in [-19.0,-11.0,11.0,19.0]:
+		_gc_planter(Vector3(C.x+xx,0.12,C.z+21.0),"nature_oak",0.85)
+	for zz: float in [-16.0,20.0]:
+		_gc_planter(Vector3(C.x-22.5,0.12,C.z+zz),"nature_maple" if zz < 0 else "nature_oak",0.8)
+	_gc_planter(Vector3(C.x+15.0,0.12,C.z-9.0),"nature_cherry",0.85)
+	_gc_planter(Vector3(C.x-12.0,0.12,C.z-9.0),"nature_cherry",0.85)
+	for xx: float in [-6.0,6.0]:
+		_cm_bench(gc_root,Vector3(C.x+xx,0.12,C.z+12.8),PI)
+		_cm_bench(gc_root,Vector3(C.x+xx,0.12,C.z-4.6),0.0)
+	var lamps := []
+	for s: float in [-1.0,1.0]:
+		for t: float in [-16.0,0.0,16.0]:
+			lamps.append([C+Vector3(t,0.12,s*23.6),0.0 if s > 0.0 else PI])
+	_model_batch("res://models/lamp.glb",lamps)
+	# Little glowing bollards along the street edges.
+	for t in 13:
+		var bx := -24.0+float(t)*4.0
+		if absf(bx) < 5.0:
+			continue
+		_gb("cyl",pearl,C+Vector3(bx,0.55,24.3),Vector3(0.28,0.9,0.28))
+		_gb("cyl",cyan,C+Vector3(bx,1.02,24.3),Vector3(0.3,0.06,0.3))
+	_build_gc_towers()
+	_gb_flush()
+	# ---- people: lots of them walking about, and a few standing chatting ----
+	gc_nav = _nav_area("Grand Central",C.x-29.6,C.z-29.6,C.x+29.6,C.z+29.6,[C+Vector3(0,0,14),C+Vector3(-14,0,-10),C+Vector3(14,0,-10)],func(p: Vector3): return not _on_road(p))
+	for k in 6:
+		var a := float(k)*TAU/6.0+0.3
+		var e := pc+Vector3(cos(a)*10.2,0,sin(a)*6.9)
+		_nav_spot(gc_nav,e,(pc-e).normalized(),4.0,10.0,1.0)
+	for k in 4:
+		_nav_spot(gc_nav,Vector3(C.x-15.0+float(k)*10.0,0,hz+3.0),Vector3(0,0,-1),3.0,8.0,0.9)
+	for zz: float in [-4.0,0.0,4.0,8.0]:
+		_nav_spot(gc_nav,Vector3(sx-3.6,0,C.z+2.0+zz),Vector3(1,0,0),5.0,12.0,0.7)
+	_nav_spot(gc_nav,Vector3(tw+5.5,0,C.z+5.0),Vector3(-1,0,0),3.0,8.0,0.6)
+	_nav_spot(gc_nav,Vector3(tw+1.0,0,C.z-6.0),Vector3(-1,0,0),3.0,8.0,0.6)
+	_nav_spot(gc_nav,C+Vector3(0,0,27.0),Vector3.ZERO,0.5,2.0,1.0)
+	for s1: float in [-1.0,1.0]:
+		for s2: float in [-1.0,1.0]:
+			_nav_spot(gc_nav,C+Vector3(s1*27.0,0,s2*27.0),Vector3.ZERO,0.3,1.5,0.8)
+		_nav_spot(gc_nav,C+Vector3(s1*27.0,0,0),Vector3.ZERO,0.3,1.5,0.6)
+	_nav_spot(gc_nav,C+Vector3(0,0,-13.0),Vector3.ZERO,1.0,4.0,0.5)
+	for k in GC_WALKERS:
+		_stroller(gc_nav,gc_root,1300+k*13,k % 10 == 6)
+	for g in 3:
+		var gp: Vector3 = C+([Vector3(-8,0.12,-8),Vector3(9,0.12,16),Vector3(-14,0.12,19)][g] as Vector3)
+		for m in 2:
+			var off := Vector3(0.55 if m == 0 else -0.55,0,0)
+			_cm_person(gc_root,gp+off,PI/2.0 if m == 0 else -PI/2.0,1500+g*2+m)
+	_cull_person(gc_root,170.0)
+
+func _build_gc_towers() -> void:
+	var T := GC_T
+	var pearl := _gc_mat("pearl",Color("eef2f5"),0.3,0.25)
+	var cyan := _neon_mat(NEON_CYAN)
+	# ---- the shopping podium: 16 shops round the block, a garden on the roof ----
+	var pod := _gc_mat("podium",Color("d9d2c4"),0.05,0.5)
+	_gb("box",pod,T+Vector3(0,3.6,0),Vector3(46,7.2,46))
+	_collider(gc_root,T+Vector3(0,3.6,0),Vector3(46,7.2,46))
+	_gb("box",pearl,T+Vector3(0,7.35,0),Vector3(47,0.3,47))
+	_gb("box",_gc_mat("lawn",Color("4f7a3e"),0.0,0.9),T+Vector3(0,7.52,0),Vector3(45,0.06,45))
+	for k in 4:
+		var yaw := float(k)*PI/2.0
+		var b := Basis(Vector3.UP,yaw)
+		for j in 4:
+			var si := k*4+j
+			var col: Color = GC_SHOP_COL[si % GC_SHOP_COL.size()]
+			var lx := -16.5+float(j)*11.0
+			var fp := T+b*Vector3(lx,0,23.05)
+			_gb("box",_gc_mat("shopglass",Color("ffe7b8"),0.0,0.3),fp+Vector3(0,2.3,0),Vector3(9.6,3.8,0.08),yaw)
+			_gb("box",_gc_mat("signband",Color("1d2a33"),0.2,0.4),T+b*Vector3(lx,5.3,23.25),Vector3(10.6,1.3,0.4),yaw)
+			_gb("box",_neon_mat(col),T+b*Vector3(lx,4.6,23.47),Vector3(10.6,0.08,0.06),yaw)
+			_gb("box",_gc_mat("aw_%s" % col.to_html(false),col.darkened(0.15),0.0,0.6),T+b*Vector3(lx,4.25,24.0),Vector3(9.4,0.14,1.7),yaw)
+			_gc_text(GC_SHOPS[si],T+b*Vector3(lx,5.3,23.47),yaw,col.lightened(0.35),72,0.009,60.0)
+			if j < 3:
+				_gb("box",pearl,T+b*Vector3(lx+5.5,3.6,23.1),Vector3(1.0,7.2,0.5),yaw)
+	# Roof garden trees and a glass rail.
+	for xx: float in [-18.0,-6.0,6.0,18.0]:
+		for zz: float in [-18.0,18.0]:
+			if (xx < 0.0 and zz < 0.0) or (xx > 0.0 and zz > 0.0):
+				continue
+			_gc_tree("nature_oak",T+Vector3(xx,7.5,zz),0.7,xx)
+	# ---- Aurora Residences: champagne glass with white balconies all the way up ----
+	var ac := T+Vector3(-10.5,7.4,-10.5)
+	var ah := 88.0
+	var aglass := _gc_glass("aurora",Color("d8c3a0"))
+	_gb("box",aglass,ac+Vector3(0,ah/2.0,0),Vector3(17,ah,15))
+	var y := 3.4
+	while y < ah-6.0:
+		_gb("box",pearl,ac+Vector3(0,y,0),Vector3(18.4,0.28,16.4))
+		y += 3.4
+	for s1: float in [-1.0,1.0]:
+		for s2: float in [-1.0,1.0]:
+			_gb("box",pearl,ac+Vector3(s1*8.7,ah/2.0,s2*7.7),Vector3(0.9,ah,0.9))
+	_gb("box",aglass,ac+Vector3(0,ah+4.0,0),Vector3(12,8,10))
+	_gb("box",pearl,ac+Vector3(0,ah+8.2,0),Vector3(13,0.4,11))
+	var halo := _fc_part(gc_root,_fc_torus(5.4,5.9),ac+Vector3(0,ah+10.0,0),_neon_mat(Color("ffd27a")))
+	halo.scale = Vector3(1,0.6,1)
+	var at := _gc_text("AURORA",ac+Vector3(0,ah-3.0,8.25),0.0,Color("fff1c8"),120,0.03,400.0)
+	at.outline_size = 0
+	# ---- The Meridian: blue glass offices stepping back in three tiers, fins and a spire ----
+	var mc := T+Vector3(10.5,7.4,10.5)
+	var mglass := _gc_glass("meridian",Color("5f8fb8"))
+	var tiers := [[19.0,62.0],[15.0,40.0],[11.0,26.0]]
+	var y0 := 0.0
+	for t in tiers.size():
+		var w: float = tiers[t][0]
+		var h: float = tiers[t][1]
+		_gb("box",mglass,mc+Vector3(0,y0+h/2.0,0),Vector3(w,h,w))
+		var f := -w/2.0+1.2
+		while f < w/2.0-0.5:
+			for side in 4:
+				var b := Basis(Vector3.UP,float(side)*PI/2.0)
+				_gb("box",pearl,mc+Vector3(0,y0+h/2.0,0)+b*Vector3(f,0,w/2.0+0.2),Vector3(0.22,h,0.5),float(side)*PI/2.0)
+			f += 2.4
+		_gb("box",cyan,mc+Vector3(0,y0+h+0.1,0),Vector3(w+0.6,0.15,w+0.6))
+		_gb("box",pearl,mc+Vector3(0,y0+h,0),Vector3(w+0.4,0.4,w+0.4))
+		y0 += h
+	_gb("cone",pearl,mc+Vector3(0,y0+11.0,0),Vector3(1.6,22.0,1.6))
+	_gb("sph",_fc_glow(Color("ff5f6a")),mc+Vector3(0,y0+22.3,0),Vector3(0.7,0.7,0.7))
+	var mt := _gc_text("THE MERIDIAN",mc+Vector3(0,58.0,9.95),0.0,Color("dff3ff"),110,0.025,400.0)
+	mt.outline_size = 0
+
+func _gc_tick(delta: float) -> void:
+	if gc_root == null:
+		return
+	for s in gc_spin:
+		(s as Node3D).rotation.y += delta*0.35
+	if gc_screen != null:
+		gc_screen_t -= delta
+		if gc_screen_t <= 0.0:
+			gc_screen_t = 5.0
+			gc_screen_i = (gc_screen_i+1) % GC_SCREEN.size()
+			gc_screen.text = GC_SCREEN[gc_screen_i]
+			gc_screen.modulate = [Color("e9fbff"),Color("ffe2f4"),Color("fff1c8"),Color("dfffe9")][gc_screen_i % 4]
+
+# ---------------- v0.44: filling the empty land ----------------
+# Garden Lofts along Airport Road, Harbor Gardens (a park with a lake) between the Biosphere and the
+# Galleria, more lofts east of the Galleria and west of the Biosphere, and a fan plaza at the stadium.
+const LOFT_COLS := [Color("efe8dc"),Color("c9785a"),Color("9fb59a"),Color("3b4249"),Color("e4d3b8"),Color("7d93a8")]
+const HG_X0 := -428.0
+const HG_X1 := -362.0
+const HG_Z0 := -500.0
+const HG_Z1 := -660.0
+const HG_LAKE := Vector3(-398,0,-548)
+const HG_LAKE_R := Vector2(16.0,20.0)
+const HG_WALKERS := 16
+const FAN_WALKERS := 16
+var fill_root: Node3D
+var hg_nav: Dictionary = {}
+var fan_nav: Dictionary = {}
+var lofts: Array = []           # [centre, half size Vector2, yaw]: for tests
+
+func _loft(c: Vector3, w: float, d: float, floors: int, yaw: float, style: int, shop: String) -> void:
+	# A chic mid-rise: shop or lobby on the ground floor, glass and balconies up the front (local +z),
+	# a garden pergola on the roof.
+	var b := Basis(Vector3.UP,yaw)
+	var col: Color = LOFT_COLS[style % LOFT_COLS.size()]
+	var wall := _gc_mat("loftwall%d" % (style % LOFT_COLS.size()),col,0.0,0.7)
+	var pearl := _gc_mat("pearl",Color("eef2f5"),0.3,0.25)
+	var glass := _gc_glass("loftglass%d" % (style % 3),[Color("9ab8cc"),Color("b8c8c0"),Color("c8b89a")][style % 3])
+	var rail := _bio_glass_mat(Color("dff3ff"),0.35)
+	var fh := 3.3
+	var H := 4.6+float(floors)*fh
+	var size := Vector3(w,H,d) if absf(sin(yaw)) < 0.5 else Vector3(d,H,w)
+	_gb("box",wall,c+Vector3(0,H/2.0,0),Vector3(w,H,d),yaw)
+	_collider(gb_root,c+Vector3(0,H/2.0,0),size)
+	lofts.append([c,Vector2(size.x,size.z)/2.0,yaw])
+	# Ground floor: warm shop glass, a sign and an awning.
+	_gb("box",_gc_mat("shopglass",Color("ffe7b8"),0.0,0.3),c+b*Vector3(0,2.0,d/2.0+0.03),Vector3(w-2.0,3.2,0.06),yaw)
+	_gb("box",_gc_mat("signband",Color("1d2a33"),0.2,0.4),c+b*Vector3(0,4.0,d/2.0+0.15),Vector3(w-1.0,0.8,0.3),yaw)
+	var acol: Color = GC_SHOP_COL[style % GC_SHOP_COL.size()]
+	_gb("box",_gc_mat("aw_%s" % acol.to_html(false),acol.darkened(0.15),0.0,0.6),c+b*Vector3(0,3.45,d/2.0+0.9),Vector3(w-2.4,0.12,1.6),yaw)
+	if shop != "":
+		_gc_text(shop,c+b*Vector3(0,4.0,d/2.0+0.32),yaw,acol.lightened(0.35),64,0.009,55.0)
+	# Upper floors: a glass front with balconies on alternate bays.
+	_gb("box",glass,c+b*Vector3(0,4.6+float(floors)*fh/2.0,d/2.0+0.02),Vector3(w-1.6,float(floors)*fh-0.4,0.06),yaw)
+	_gb("box",glass,c+b*Vector3(0,4.6+float(floors)*fh/2.0,-d/2.0-0.02),Vector3(w-3.0,float(floors)*fh-0.4,0.06),yaw)
+	for f in floors:
+		_gb("box",pearl,c+b*Vector3(0,4.6+float(f)*fh,-d/2.0-0.1),Vector3(w-2.6,0.18,0.2),yaw)
+	for f in floors:
+		var y := 4.6+float(f)*fh
+		_gb("box",pearl,c+b*Vector3(0,y,d/2.0+0.6),Vector3(w-0.6,0.22,1.2),yaw)
+		if (f+style) % 2 == 0:
+			_gb("box",rail,c+b*Vector3(0,y+0.55,d/2.0+1.18),Vector3(w-0.8,0.9,0.04),yaw)
+	for sd: float in [-1.0,1.0]:
+		_gb("box",pearl,c+b*Vector3(sd*(w/2.0-0.4),H/2.0,d/2.0+0.1),Vector3(0.8,H,0.4),yaw)
+	# Roof: a parapet, a pergola and a few plants.
+	_gb("box",pearl,c+Vector3(0,H+0.2,0),Vector3(w+0.3,0.4,d+0.3),yaw)
+	_gb("box",_gc_mat("wood",Color("9a6a42"),0.0,0.55),c+b*Vector3(0,H+2.4,d/4.0),Vector3(w*0.6,0.18,d*0.35),yaw)
+	for sd: float in [-1.0,1.0]:
+		_gb("box",_gc_mat("wood",Color("9a6a42"),0.0,0.55),c+b*Vector3(sd*w*0.28,H+1.2,d/4.0),Vector3(0.18,2.4,0.18),yaw)
+	_gc_tree("nature_bush_flower",c+b*Vector3(-w*0.3,H+0.4,-d*0.25),1.0)
+	_gc_tree("nature_bush",c+b*Vector3(w*0.3,H+0.4,-d*0.25),1.0)
+
+func _fill_clear(p: Vector3, r: float) -> bool:
+	# Nothing solid in a box r metres each way, from knee height up (the ground itself doesn't count).
+	var q := PhysicsShapeQueryParameters3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(r*2.0,3.0,r*2.0)
+	q.shape = box
+	q.transform = Transform3D(Basis(),p+Vector3(0,1.95,0))
+	q.exclude = [player.get_rid(),car.get_rid()]
+	return get_world_3d().direct_space_state.intersect_shape(q,1).is_empty()
+
+func _build_fill() -> void:
+	fill_root = Node3D.new()
+	fill_root.name = "NewTown"
+	fill_root.set_meta("static_floor",true)
+	add_child(fill_root)
+	gb_root = fill_root
+	var names := ["NOOK CAFE","BLOOM & CO","THE CORNER","DAILY GREENS","PAPER & INK","YOGA LOFT","HARBOR DELI","STUDIO 9","PETAL","ROAST HOUSE","LITTLE ITALY","SPROUT"]
+	# ---- Garden Lofts: north side of Airport Road, fronts facing the road ----
+	var k := 0
+	var x := -648.0
+	while x < -262.0:
+		var keep := (x > -528.0 and x < -484.0) or (x > -346.0 and x < -305.0) or (x > -432.0 and x < -358.0)
+		if not keep:
+			var c := Vector3(x+11.0,0,-487.0)
+			if _fill_clear(c,7.0):
+				_loft(c,22.0,14.0,4+(k*7) % 4,0.0,k,names[k % names.size()])
+				k += 1
+		x += 28.0
+	# Pavement trees in front of them.
+	x = -646.0
+	while x < -262.0:
+		var tp := Vector3(x,0,-472.5)
+		if not (absf(x+500.0) < 6.0 or absf(x+330.0) < 6.0 or absf(x+512.0) < 5.0 or absf(x+318.0) < 5.0) and _fill_clear(tp,1.2):
+			_gc_tree("nature_oak" if int(x) % 3 == 0 else "nature_maple",tp,0.55,x)
+		x += 14.0
+	# ---- Galleria Lofts: east of the mall, facing it ----
+	for z: float in [-522.0,-552.0,-582.0]:     # the taxiway (z -612) runs west past here
+		var c := Vector3(-283,0,z)
+		if _fill_clear(c,7.0):
+			_loft(c,22.0,14.0,5+int(-z) % 3,-PI/2.0,k,names[k % names.size()])
+			k += 1
+	# ---- Westpark: lofts round a little green west of the Biosphere ----
+	_gb("box",_gc_mat("lawn2",Color("4e8f3e"),0.0,0.9),Vector3(-625,0.02,-580),Vector3(56,0.04,150))
+	for z: float in [-520.0,-552.0,-584.0,-616.0,-648.0]:
+		var c := Vector3(-640,0,z)
+		if _fill_clear(c,7.0):
+			_loft(c,22.0,14.0,3+int(-z/32.0) % 3,PI/2.0,k,"")
+			k += 1
+		_gc_tree("nature_cherry" if int(z) % 2 == 0 else "nature_oak2",Vector3(-614,0,z+12.0),0.7,z)
+	# ---- Harbor Gardens ----
+	_build_gardens()
+	# ---- Stadium fan plaza ----
+	_build_fan_plaza()
+	_gb_flush()
+	_cull_person(fill_root,170.0)
+
+func _hg_in_lake(p: Vector3, margin := 0.0) -> bool:
+	var d := Vector2((p.x-HG_LAKE.x)/(HG_LAKE_R.x+margin),(p.z-HG_LAKE.z)/(HG_LAKE_R.y+margin))
+	return d.length() < 1.0
+
+func _hg_path(a: Vector3, b: Vector3, w := 3.0) -> void:
+	var d := b-a
+	var l := Vector2(d.x,d.z).length()
+	var yaw := atan2(d.x,d.z)
+	var m := (a+b)/2.0
+	_gb("box",_gc_mat("gravel",Color("e6dcc6"),0.0,0.85),Vector3(m.x,0.05,m.z),Vector3(w,0.06,l+w*0.6),yaw)
+	_floor_note_rot(Vector3(m.x,0.05,m.z),Vector3(w,0.08,l+w*0.6),yaw)
+
+func _floor_note_rot(c: Vector3, size: Vector3, yaw: float) -> void:
+	# Rotated floors are noted as a few small squares along their length.
+	var dir := Vector3(sin(yaw),0,cos(yaw))
+	var n := maxi(1,int(ceil(size.z/size.x)))
+	for i in n:
+		var t := (float(i)+0.5)/float(n)-0.5
+		_floor_note(c+dir*t*size.z,Vector3(size.x,size.y,size.x))
+
+func _build_gardens() -> void:
+	var lawn := _gc_mat("lawn2",Color("4e8f3e"),0.0,0.9)
+	_gb("box",lawn,Vector3((HG_X0+HG_X1)/2.0,0.02,(HG_Z0+HG_Z1)/2.0),Vector3(HG_X1-HG_X0,0.04,HG_Z0-HG_Z1))
+	# The lake: a stone rim (you can't walk in), water, lily pads and a fountain.
+	var L := HG_LAKE
+	var rim := _gc_mat("rimstone",Color("cfc6b4"),0.0,0.6)
+	var n := 28
+	var cols: Array = []
+	for i in n:
+		var a := TAU*float(i)/float(n)
+		var a2 := TAU*float(i+1)/float(n)
+		var p1 := L+Vector3(cos(a)*HG_LAKE_R.x,0,sin(a)*HG_LAKE_R.y)
+		var p2 := L+Vector3(cos(a2)*HG_LAKE_R.x,0,sin(a2)*HG_LAKE_R.y)
+		var m := (p1+p2)/2.0
+		var d := p2-p1
+		var yaw := atan2(d.x,d.z)
+		_gb("box",rim,m+Vector3(0,0.25,0),Vector3(0.9,0.5,d.length()+0.5),yaw)
+		cols.append([m+Vector3(0,0.5,0),Vector3(0.9,1.0,d.length()+0.5),yaw])
+	_multi_collider(cols)
+	var water := _fc_part(fill_root,_fc_sphere(1.0),L+Vector3(0,0.06,0),_bio_water_mat(Color("4fb0d0")))
+	water.scale = Vector3(HG_LAKE_R.x,0.02,HG_LAKE_R.y)
+	_collider(fill_root,L+Vector3(0,0.4,0),Vector3(HG_LAKE_R.x*1.3,0.8,HG_LAKE_R.y*1.3))
+	var pad := _gc_mat("lily",Color("4f8a3e"),0.0,0.8)
+	var r := RandomNumberGenerator.new()
+	r.seed = 4404
+	for i in 14:
+		var a := r.randf()*TAU
+		var rr := r.randf_range(0.45,0.85)
+		_gb("cyl",pad,L+Vector3(cos(a)*HG_LAKE_R.x*rr,0.1,sin(a)*HG_LAKE_R.y*rr),Vector3(1.2,0.03,1.2))
+	_gb("cyl",_gc_mat("rim",Color("f4f1ea"),0.1,0.35),L+Vector3(0,0.3,0),Vector3(2.4,0.5,2.4))
+	for j in 5:
+		_gb("cyl",_fc_glow(Color("dff8ff")),L+Vector3(0,0.6+float(j)*0.7,0),Vector3(0.5-float(j)*0.08,0.7,0.5-float(j)*0.08))
+	# Paths: in from Airport Road, round the lake, out to the Galleria's west door and the Sky Garden.
+	var loop: Array = []
+	for i in 12:
+		var a := TAU*float(i)/12.0
+		loop.append(L+Vector3(cos(a)*(HG_LAKE_R.x+4.0),0,sin(a)*(HG_LAKE_R.y+4.0)))
+	for i in 12:
+		_hg_path(loop[i],loop[(i+1) % 12],2.8)
+	var north: Vector3 = L+Vector3(0,0,-(HG_LAKE_R.y+4.0))
+	var south: Vector3 = L+Vector3(0,0,HG_LAKE_R.y+4.0)
+	_hg_path(Vector3(L.x,0,-470.0),south,3.2)
+	_hg_path(north,Vector3(L.x,0,-604.0),3.0)
+	_hg_path(Vector3(L.x,0,-604.0),Vector3(SG_RAMP_X,0,-612.0),3.0)
+	_hg_path(Vector3(L.x,0,-604.0),Vector3(-364.0,0,-604.0),3.0)
+	_hg_path(L+Vector3(HG_LAKE_R.x+4.0,0,0),Vector3(-366.0,0,-548.0),3.0)
+	# A glass cafe pavilion by the lake, with umbrellas.
+	var cp := Vector3(-374,0,-520)
+	_gb("box",_gc_mat("deck",Color("b08a62"),0.0,0.6),cp+Vector3(0,0.1,0),Vector3(14,0.2,12))
+	_floor_note(cp+Vector3(0,0.1,0),Vector3(14,0.2,12))
+	_gb("box",_bio_glass_mat(Color("e9f6ff"),0.3),cp+Vector3(0,1.8,-3.0),Vector3(10,3.2,5))
+	_collider(fill_root,cp+Vector3(0,1.8,-3.0),Vector3(10,3.2,5))
+	_gb("box",_gc_mat("pearl",Color("eef2f5"),0.3,0.25),cp+Vector3(0,3.55,-3.0),Vector3(11,0.3,6))
+	_gc_text("LAKESIDE CAFE",cp+Vector3(0,3.55,-0.0+0.02),0.0,Color("ffd27a"),72,0.01,60.0)
+	for tx: float in [-4.0,0.0,4.0]:
+		var tp := cp+Vector3(tx,0.2,2.8)
+		_gb("cyl",_gc_mat("tabletop",Color("f4f1ea"),0.1,0.3),tp+Vector3(0,0.75,0),Vector3(1.0,0.05,1.0))
+		_gb("cyl",_fc_chrome(),tp+Vector3(0,1.3,0),Vector3(0.06,2.6,0.06))
+		_gb("cone",_gc_mat("umb_1",Color("1d6f86"),0.0,0.7),tp+Vector3(0,2.7,0),Vector3(3.0,0.55,3.0))
+		_collider(fill_root,tp+Vector3(0,0.4,0),Vector3(0.9,0.8,0.9))
+	# Trees and flower beds wherever there's open lawn.
+	var trees := ["nature_oak","nature_maple","nature_cherry","nature_oak2","nature_maple2","nature_cherry2"]
+	var z := HG_Z0-6.0
+	var i := 0
+	while z > HG_Z1+4.0:
+		var xx := HG_X0+5.0+fmod(float(i)*7.3,6.0)
+		while xx < HG_X1-4.0:
+			var p := Vector3(xx+r.randf_range(-2.0,2.0),0,z+r.randf_range(-2.0,2.0))
+			var ok := not _hg_in_lake(p,7.5) and p.distance_to(cp) > 11.0
+			for q in loop:
+				if Vector2(p.x-(q as Vector3).x,p.z-(q as Vector3).z).length() < 3.5:
+					ok = false
+			if absf(p.x-L.x) < 4.0 and (p.z > L.z or p.z < -600.0):
+				ok = false
+			if p.z < -598.0 and p.z > -608.0:
+				ok = false
+			if p.x > SG_X0-4.0 and p.x < SG_X1+4.0 and p.z < SG_Z0+10.0:
+				ok = false
+			if p.x > -390.0 and p.z < -578.0 and p.z > -604.0:
+				ok = false
+			if absf(p.z+548.0) < 3.0 and p.x > L.x:
+				ok = false
+			if ok and _fill_clear(p,1.0):
+				if r.randf() < 0.28:
+					_gc_tree("nature_bush_flower",p,1.3,r.randf()*TAU)
+				else:
+					_gc_tree(trees[r.randi() % trees.size()],p,r.randf_range(0.75,1.05),r.randf()*TAU)
+			xx += r.randf_range(5.5,8.5)
+		z -= r.randf_range(5.5,8.0)
+		i += 1
+	# Benches facing the lake.
+	for j in 6:
+		var a := TAU*float(j)/6.0+0.26
+		var bp := L+Vector3(cos(a)*(HG_LAKE_R.x+6.2),0.05,sin(a)*(HG_LAKE_R.y+6.2))
+		var f := (L-bp)
+		_cm_bench(fill_root,bp,atan2(-f.x,-f.z)+PI)
+	_gc_text("HARBOR GARDENS",Vector3(L.x,4.5,-472.0),0.0,Color("d8f5c8"),110,0.016,120.0).billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	# People strolling round the lake.
+	hg_nav = _nav_area("Harbor Gardens",HG_X0,HG_Z1,HG_X1,HG_Z0+32.0,[south+Vector3(0,0,3),north],func(p: Vector3): return not _on_road(p))
+	for j in 8:
+		var a := TAU*float(j)/8.0
+		var e := L+Vector3(cos(a)*(HG_LAKE_R.x+2.6),0,sin(a)*(HG_LAKE_R.y+2.6))
+		_nav_spot(hg_nav,e,(L-e).normalized(),4.0,10.0,1.0)
+	_nav_spot(hg_nav,cp+Vector3(0,0,5.0),Vector3(0,0,-1),3.0,8.0,0.8)
+	_nav_spot(hg_nav,Vector3(L.x,0,-474.0),Vector3.ZERO,0.5,2.0,0.6)
+	_nav_spot(hg_nav,Vector3(SG_RAMP_X,0,-614.0),Vector3.ZERO,0.5,2.0,0.5)
+	_nav_spot(hg_nav,Vector3(-366.0,0,-604.0),Vector3.ZERO,0.5,2.0,0.5)
+	for j in HG_WALKERS:
+		_stroller(hg_nav,fill_root,1700+j*17,j % 7 == 3)
+
+func _build_fan_plaza() -> void:
+	# The open pavement in front of the stadium (street side) and behind it.
+	var S := STADIUM_POS
+	var fz := S.z+56.0        # middle of the strip between the stadium and the z -300 street
+	var pearl := _gc_mat("pearl",Color("eef2f5"),0.3,0.25)
+	var names := ["STADIUM EATS","HOT DOG HQ","TACO TRUCK","FAN STORE","NOODLE BOX","SODA POP"]
+	var trucks := [-60.0,-44.0,-28.0,28.0,44.0,60.0]
+	for j in trucks.size():
+		var p := S+Vector3(trucks[j],0,56.0)
+		if not _fill_clear(p,3.0):
+			continue
+		var col: Color = GC_SHOP_COL[(j*3) % GC_SHOP_COL.size()]
+		# A food truck: a box van with a serving hatch and awning facing the stadium path (local -z).
+		_gb("box",_gc_mat("truck_%d" % j,col.lerp(Color.WHITE,0.35),0.2,0.4),p+Vector3(0,1.7,0),Vector3(7.0,2.8,2.6))
+		_gb("box",_gc_mat("cab",Color("2a3540"),0.3,0.3),p+Vector3(4.0,1.4,0),Vector3(1.6,2.2,2.5))
+		_collider(fill_root,p+Vector3(0.6,1.5,0),Vector3(8.6,3.0,2.6))
+		_gb("box",_gc_mat("warm",Color("ffe2b0"),0.0,0.4),p+Vector3(-0.5,2.1,-1.32),Vector3(4.0,1.0,0.04))
+		_gb("box",_gc_mat("aw_%s" % col.to_html(false),col.darkened(0.15),0.0,0.6),p+Vector3(-0.5,2.85,-1.9),Vector3(4.6,0.1,1.3))
+		for wx: float in [-2.4,2.6]:
+			for wz: float in [-1.3,1.3]:
+				_gb("cyl",_gc_mat("tyre",Color("1b1b1b"),0.0,0.8),p+Vector3(wx,0.42,wz),Vector3(0.84,0.3,0.84))
+		_gc_text(names[j],p+Vector3(-0.5,3.3,-1.35),PI,col.lightened(0.3),60,0.01,45.0)
+		nav_blocks.append([Vector2(p.x+0.6,p.z),Vector2(4.3,1.3),0.0])
+	# Flags in the team colours along the front, trees behind the trucks.
+	var flag_cols := [Color("e04a3a"),Color("f2f2f2"),Color("3f8fd2")]
+	for j in 15:
+		var fx := -70.0+float(j)*10.0
+		if absf(fx) < 18.0:
+			continue
+		var fp := S+Vector3(fx,0,50.5)
+		if not _fill_clear(fp,0.4):
+			continue
+		_gb("cyl",_fc_chrome(),fp+Vector3(0,4.0,0),Vector3(0.12,8.0,0.12))
+		_gb("box",_gc_mat("flag%d" % (j % 3),flag_cols[j % 3],0.0,0.7),fp+Vector3(0.9,7.1,0),Vector3(1.8,1.2,0.04))
+	for tx: float in [-66.0,-52.0,-36.0,36.0,52.0,66.0]:
+		var tp := S+Vector3(tx,0.0,64.5)
+		if _fill_clear(tp,1.2):
+			_gc_tree("nature_oak",tp,0.5,tx)
+	# Behind the stadium: a row of trees and benches.
+	for tx in 9:
+		var tp := S+Vector3(-64.0+float(tx)*16.0,0,-54.0)
+		if _fill_clear(tp,1.2):
+			_gc_tree("nature_maple",tp,0.55,tp.x)
+	# Fans walking about.
+	var c := Vector3(S.x,0,fz)
+	fan_nav = _nav_area("Fan Plaza",S.x-72.0,S.z+46.0,S.x+72.0,S.z+70.0,[c+Vector3(0,0,-2),c+Vector3(-40,0,-6),c+Vector3(40,0,-6)],func(p: Vector3): return not _on_road(p))
+	for j in trucks.size():
+		_nav_spot(fan_nav,S+Vector3(trucks[j]-0.5,0,52.6),Vector3(0,0,1),4.0,9.0,1.0)
+	for sx: float in [-1.0,1.0]:
+		_nav_spot(fan_nav,S+Vector3(sx*6.0,0,49.0),Vector3(0,0,-1),2.0,6.0,0.8)
+		_nav_spot(fan_nav,S+Vector3(sx*68.0,0,58.0),Vector3.ZERO,0.5,2.0,0.5)
+	_nav_spot(fan_nav,S+Vector3(0,0,62.0),Vector3.ZERO,1.0,3.0,0.6)
+	for j in FAN_WALKERS:
+		_stroller(fan_nav,fill_root,1900+j*19,j % 6 == 2)

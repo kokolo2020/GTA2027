@@ -620,3 +620,8 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Released and verified 2026-11-21: commit 0fe19f8 (tag v0.44.0), metadata 8ff9348, versionCode 74. APK SHA256 27517a60e9a087edb31c3d928a259376cd084404d478231b3d15d76c9957549b (49,654,460 bytes), same certificate. The first two Pages runs failed on GitHub's side ("No artifacts named github-pages", upload had succeeded); a fresh `gh workflow run pages.yml` run 44811160271 passed. Live release.json, page button, web pck (21,278,972) and downloaded APK hash verified.
 - Dev flag `--nav-check` builds every walk grid and runs the v0.44 checks alone (about 10 s). The full smoke test takes about a minute when nothing else is running.
 - Not verified on a phone: frame rate with ~100 extra walkers and the new buildings.
+
+## v0.45.0 (2026-11-21): new hover cars
+
+- blender-src/make_hovercars.py (`Blender --background --factory-startup --python blender-src/make_hovercars.py`, HARBOR_CAR_RENDER=<dir> for previews) replaces car_0..4 with original designs inspired by the user's reference pictures (style only): Lumen (retro hatch, arch covers), Solar Cab (wedge, rear pods), Interceptor (angular, rails, roof light), Vela (faceted wedge racer), Arc (roof arch over a glass bubble). Same frame and material names (Body, Cabin, Glass, Light, Tail, Jet, Dark, Chrome); every car needs a Cabin part for the smoke tint check. It execs helpers from make_real.py.
+- `_try_model` adds `_car_underglow` (additive cyan radial plane at y -0.5) to every res://models/car_* instance.

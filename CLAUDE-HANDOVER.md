@@ -558,3 +558,10 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Fast travel to the Biosphere: new last entry in CHECKPOINTS ("The Biosphere", (-500,0,-486) on the entrance walk) with TRAVEL_AREA 0 (always open); it is also a checkpoint. `_smoke_travel` checks the landing spot is open.
 - Release commit 38acfa9, tag v0.37.1, versionCode 66. APK SHA256 adc9b0106b62696cade6d3aa0fe2883cc6cbafa1c89d589bb22c244d01b7d6e0 (44049931 bytes), same certificate.
 - Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches.
+
+## v0.38.0 released and verified (2026-11-20)
+
+- Biosphere redesign: hexagonal glass gridshell domes and hub (`_bio_gridshell`), each dome six 60-degree sections (`_bio_pt(i, section, apothem, t)`, section 0 faces the hub). Central fenced habitat (BIO_IN), ring path (BIO_RING), far sections 2/3/4 are fenced enclosures (one species each, `"sec"` in BIO_SPECIES), near sections 0/1/5 are gardens with the doorways. Skywalk 4 m up (BIO_SKY_*) with two ramps in section 0 (foot at y -0.04 to meet the real ground collider) and a glass-floored lookout over section 3. Spring has a rain vortex through an oculus (`bio_scroll`). Boxes batch via `_bio_add/_bio_flush`, solids via `bio_cols/_bio_body`.
+- Smoke test checks fencing, open doorways, deck heights and walks a test player up a ramp (the player's collision shape is disabled at that point of the smoke run, so the test enables it temporarily).
+- Map re-baked. Commit f69e9a8, versionCode 67, APK SHA256 047456d326595b97e2b29d9b34fc277858cf325b0892ec98d372f582c05e8d2e (44,066,315 bytes), same certificate. Workflow run 44708984960 passed; live release.json, page button, web pck (15,734,072) and downloaded APK hash verified.
+- Not verified on a phone: frame rate with the new domes.

@@ -552,3 +552,9 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - `_bake_map` now calls `_unfade` so far-culled places show on the baked map; world_map.png re-baked.
 - Release commit 1dd9369, tag v0.37.0, versionCode 65. APK SHA256 dd23d5892b49ccd8ab43e16cafbc82db179e842cc4a5485e0fcabccbb1a7faf4 (44049931 bytes), same certificate. Bench about 54 fps.
 - Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches. Not checked on a phone.
+
+## v0.37.1 (released 2026-11-20)
+
+- Fast travel to the Biosphere: new last entry in CHECKPOINTS ("The Biosphere", (-500,0,-486) on the entrance walk) with TRAVEL_AREA 0 (always open); it is also a checkpoint. `_smoke_travel` checks the landing spot is open.
+- Release commit 38acfa9, tag v0.37.1, versionCode 66. APK SHA256 adc9b0106b62696cade6d3aa0fe2883cc6cbafa1c89d589bb22c244d01b7d6e0 (44049931 bytes), same certificate.
+- Verified: release.json, page edition, live /play/index.pck size matches, downloaded APK hash matches.

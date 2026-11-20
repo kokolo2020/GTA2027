@@ -565,3 +565,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Smoke test checks fencing, open doorways, deck heights and walks a test player up a ramp (the player's collision shape is disabled at that point of the smoke run, so the test enables it temporarily).
 - Map re-baked. Commit f69e9a8, versionCode 67, APK SHA256 047456d326595b97e2b29d9b34fc277858cf325b0892ec98d372f582c05e8d2e (44,066,315 bytes), same certificate. Workflow run 44708984960 passed; live release.json, page button, web pck (15,734,072) and downloaded APK hash verified.
 - Not verified on a phone: frame rate with the new domes.
+
+## v0.39.0 released and verified (2026-11-20)
+
+- Biosphere: each dome has its own layout (`_bio_winter/_spring/_summer/_autumn`): round fenced habitats (`_bio_pen` -> `bio_hab`), raised decks built from `_bio_slab`/`_bio_helix`/`_bio_ring_deck`/`_bio_disc_deck`, and `bio_routes` that the smoke test walks for real (player collision shape is disabled at that point of the smoke run, so the test enables it). Layout frame: `_bio_lp(i, x, z)` with x toward the hub entrance. `BIO_JOIN` = where doorway paths end; pens must stay clear of them.
+- Nature models: `blender-src/make_nature.py` (Blender -b -P) writes `game/models/nature_*.glb`; crowns use leaf cards whose `LeafCard_<kind>` material the game swaps for an alpha-scissor material with `game/models/tex/leaf_<kind>.png` (from `blender-src/make_leaf_textures.py`, Pillow). New GLBs need `Godot --headless --path . --import`. Placed via `_bio_model` (batched MultiMesh per model).
+- Tickets: hub TICKETS desk (`BIO_TICKET`), $50 `BIO_PASS_PRICE` day pass saved as `bio_pass_day` (date string, uses `_pz_today`). Gates toggle their StaticBody collision_layer (not shape.disabled, which only applies next physics step); shut only on the hub side, so the way out is always open.
+- Signs: `_bio_text` (small Label3D with visibility range) and `_bio_plaque` (zoo sign on a post). Facts moved into the SPOTTED toast.
+- Known flaky pre-existing smoke assert: "The robot blocks three in a row" (Connect Four robot randomness) failed once, passed on re-runs.
+- Commit cb895a4, versionCode 68, APK SHA256 3a5a27b70f9715056340c5ffff707ceaf9dfa848761ed0411f6e71f7af012322 (45,727,491 bytes), same certificate. Workflow run 44718566161 passed; release.json, page button, web pck (17,381,380) and downloaded APK hash verified. Not verified on a phone: frame rate in the Biosphere.

@@ -67,8 +67,19 @@ FOOT_PTS = {s: [head(s + 'HeelRoll'), head(s + 'Toes'), head(s + 'Toes_end'),
             for s in ('Left', 'Right')}
 GROUND = min(p.z for pts in FOOT_PTS.values() for p in pts)
 
-def aim(n, d):
-    return SEG[n].normalized().rotation_difference(d.normalized())
+def aim(n, d, twist=0.0):
+    q = SEG[n].normalized().rotation_difference(d.normalized())
+    return Quaternion(d.normalized(), twist) @ q if twist else q
+
+# 0.36: the Kenney rest pose turns the two feet out by different amounts. Turn each foot so both point
+# a little outward (10 degrees), the same on both sides.
+FOOT_YAW = {}
+for s, sx in (('Left', 1.0), ('Right', -1.0)):
+    f = head(s + 'Toes') - head(s + 'Foot'); f.z = 0
+    want = Vector((sx * math.sin(0.17), -math.cos(0.17), 0))
+    FOOT_YAW[s] = f.normalized().rotation_difference(want)
+ARM_TWIST = float(os.environ.get('HC_TW', '0.0'))
+FORE_TWIST = float(os.environ.get('HC_FTW', '0.8'))   # fists face the thighs, knuckles out
 
 def solve(P):
     """P: pose description -> {bone: armature-space matrix} for the driven bones."""
@@ -94,9 +105,10 @@ def solve(P):
     for s, sx in (('Left', 1.0), ('Right', -1.0)):
         L = P[s]
         a, k = L['a'], L['k']
-        place(s + 'UpLeg', aim(s + 'UpLeg', Vector((sx * 0.045, -math.sin(a), -math.cos(a)))))
-        place(s + 'Leg', aim(s + 'Leg', Vector((-sx * 0.02, -math.sin(a - k), -math.cos(a - k)))))
-        place(s + 'Foot', rx(-L['g']))
+        wx = P.get('width', 0.03)
+        place(s + 'UpLeg', aim(s + 'UpLeg', Vector((sx * wx, -math.sin(a), -math.cos(a)))))
+        place(s + 'Leg', aim(s + 'Leg', Vector((sx * 0.01, -math.sin(a - k), -math.cos(a - k)))))
+        place(s + 'Foot', rz(P['yaw'] * 0.5) @ rx(-L['g']) @ FOOT_YAW[s])
         follow(s + 'Toes')
         place(s + 'Shoulder', cq)
         A = P['arms'][s]
@@ -104,13 +116,13 @@ def solve(P):
         up = A.get('dir')
         d1 = up if up is not None else Vector((sx * math.sin(ab), -math.sin(sw) * math.cos(ab), -math.cos(sw) * math.cos(ab)))
         d1 = cq @ d1 if A.get('body', True) else d1
-        place(s + 'Arm', aim(s + 'Arm', d1))
+        place(s + 'Arm', aim(s + 'Arm', d1, sx * ARM_TWIST))
         fd = A.get('fdir')
         if fd is None:
             t = sw + e
             fd = Vector((sx * math.sin(ab) * 0.6 - sx * A.get('in', 0.0), -math.sin(t), -math.cos(t)))
             fd = cq @ fd
-        place(s + 'ForeArm', aim(s + 'ForeArm', fd))
+        place(s + 'ForeArm', aim(s + 'ForeArm', fd, sx * FORE_TWIST))
         follow(s + 'Hand')
     if P.get('ground', True):
         low = 1e9
@@ -202,10 +214,10 @@ def walk(p):
     return {
         'Left': {'a': cyc(HIP, pl), 'k': cyc(KNEE, pl), 'g': cyc(TOE, pl)},
         'Right': {'a': cyc(HIP, pr), 'k': cyc(KNEE, pr), 'g': cyc(TOE, pr)},
-        'yaw': -0.09 * c, 'roll': -0.045 * math.sin(TAU * p), 'sway': 0.025 * math.sin(TAU * p),
+        'yaw': -0.06 * c, 'roll': -0.045 * math.sin(TAU * p), 'sway': 0.025 * math.sin(TAU * p),
         'lean': 0.07, 'head_pitch': -0.04, 'head_yaw': 0.04 * c,
-        'arms': {'Left': {'s': -0.32 * c + 0.03, 'e': 0.28 + 0.22 * max(0.0, -c), 'ab': 0.17},
-                 'Right': {'s': 0.32 * c + 0.03, 'e': 0.28 + 0.22 * max(0.0, c), 'ab': 0.17}},
+        'arms': {'Left': {'s': -0.32 * c + 0.03, 'e': 0.28 + 0.22 * max(0.0, -c), 'ab': 0.25},
+                 'Right': {'s': 0.32 * c + 0.03, 'e': 0.28 + 0.22 * max(0.0, c), 'ab': 0.25}},
         'lift': 0.0}
 make('Walk', 26, walk)
 
@@ -218,8 +230,8 @@ def stance(p, w=1.0):
         'Right': {'a': -0.02 + 0.02 * sh, 'k': 0.05 + 0.04 * max(0.0, sh), 'g': 0.0},
         'yaw': 0.03 * sh * w, 'roll': 0.025 * sh * w, 'sway': 0.035 * sh * w, 'lean': 0.03,
         'breath': 0.018 * br, 'head_pitch': -0.02 + 0.01 * br, 'head_yaw': 0.06 * math.sin(TAU * p * 2 + 1),
-        'arms': {'Left': {'s': 0.04, 'e': 0.22 + 0.02 * br, 'ab': 0.15},
-                 'Right': {'s': 0.06, 'e': 0.25 + 0.02 * br, 'ab': 0.15}}}
+        'arms': {'Left': {'s': 0.04, 'e': 0.38 + 0.02 * br, 'ab': 0.22},
+                 'Right': {'s': 0.06, 'e': 0.42 + 0.02 * br, 'ab': 0.22}}}
 make('Idle', 96, stance)
 
 def gesture(name, frames, fn):

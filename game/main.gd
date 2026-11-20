@@ -311,6 +311,7 @@ func _ready() -> void:
 	_build_traffic()
 	_build_future()
 	_build_food_court()
+	_build_commons()
 	_build_market()
 	_build_display()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
@@ -337,7 +338,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.35.2: people walk and stand naturally now!")
+	_show_toast("Harbor City 0.36: Harbor Commons park, a daily puzzle and nearby chat everywhere!")
 	booted = true
 	if not dev_mode and not crate_done:
 		_open_crate()
@@ -1923,7 +1924,7 @@ func _online_pos_frame() -> Dictionary:
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
 		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
-		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on]}
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"qc":1 if my_bubble_crew else 0,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on]}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -2053,9 +2054,17 @@ func _online_peer_update(p: Dictionary) -> void:
 	var qn := int(p.get("qn",0))
 	var q := int(p.get("q",-1))
 	if qn != int(peer.get("qn",0)) and q >= 0 and q < HUB_PHRASES.size():
-		_bubble(peer["node"],HUB_PHRASES[q],3.0 if peer["driving"] else 2.6)
-		if int(peer.get("qn",0)) != 0 or qn == 1:
-			_feed_add("%s: %s" % [peer["name"],HUB_PHRASES[q]],"")
+		# v0.36: nearby chat. Bubbles and chat lines come from players near you; crew chat reaches the
+		# whole crew wherever they are, and nobody else.
+		var crew_msg := int(p.get("qc",0)) == 1
+		var mate := crew_name != "" and String(p.get("cr","")) == crew_name
+		var me: Node3D = car if driving else player
+		var near := me != null and Vector2(float(p.get("x",0.0))-me.position.x,float(p.get("z",0.0))-me.position.z).length() <= CHAT_NEAR
+		if (near and not crew_msg) or (crew_msg and mate):
+			if near:
+				_bubble(peer["node"],HUB_PHRASES[q],3.0 if peer["driving"] else 2.6)
+			if int(peer.get("qn",0)) != 0 or qn == 1:
+				_chat_log_add(String(peer["name"]),HUB_PHRASES[q],crew_msg)
 	peer["qn"] = qn
 	var en := int(p.get("en",0))
 	var e := int(p.get("e",-1))
@@ -4455,6 +4464,7 @@ func _build_hud() -> void:
 	_build_social(root)
 	_build_lb(root)
 	_build_market_panel(root)
+	_build_puzzle_panel(root)
 	_build_streamer(root)
 	_build_ach(root)
 	_build_quiz(root)
@@ -4505,7 +4515,7 @@ func _build_hud() -> void:
 	shop_row.add_child(chase_open)
 	mode_button = _button("Switch activity",_toggle_activity)
 	nick_button = _button("Nickname: (not set)",_open_nick)
-	time_button = _button("Time: Live day & night",_cycle_day_mode)
+	time_button = _button("Time: Always day",_cycle_day_mode)
 	# v0.29: with the clean screen, everything that used to sit on screen lives here.
 	var row1 := HBoxContainer.new()
 	row1.add_theme_constant_override("separation",10)
@@ -7488,6 +7498,9 @@ func _interact() -> void:
 	if shop >= 0:
 		_shop_open(shop)
 		return
+	if _puzzle_near():
+		_open_puzzle()
+		return
 	var mk := _market_near()
 	if mk >= 0:
 		_open_market(int(MARKET[mk]["kind"]))
@@ -7667,6 +7680,8 @@ func _refresh_hud() -> void:
 		action_button.text = "OPEN " + String(SHOPS[_nearest_shop()]["verb"])
 	elif _market_near() >= 0:
 		action_button.text = "OPEN " + String(MARKET[_market_near()]["name"])
+	elif _puzzle_near():
+		action_button.text = "DAILY PUZZLE ✓" if pz_day == _pz_today() else "DAILY PUZZLE"
 	elif _qt() and trial_active < 0 and distance < (6 if driving else 5):
 		action_button.text = "PICK UP  +$%d" % _quick_pay(quick_idx)
 	elif exploring and not quick_on and index >= 0 and distance < 5 and not driving:
@@ -7846,6 +7861,10 @@ func _save_progress() -> void:
 	file.set_value("progress","quick_day",quick_day)
 	file.set_value("progress","quick_got",quick_got)
 	file.set_value("progress","day_mode",day_mode)
+	file.set_value("progress","day_default_v036",true)
+	file.set_value("progress","pz_day",pz_day)
+	file.set_value("progress","pz_streak",pz_streak)
+	file.set_value("progress","pz_total",pz_total)
 	file.set_value("progress","hud_clean",hud_clean)
 	file.set_value("progress","quest_active",quest_active)
 	file.set_value("social","uid",player_uid)
@@ -7879,7 +7898,13 @@ func _load_progress() -> void:
 		quick_done = maxi(0,int(file.get_value("progress","quick_done",0)))
 		quick_day = String(file.get_value("progress","quick_day",""))
 		quick_got = int(file.get_value("progress","quick_got",0)) & ((1 << QUICK.size())-1)
-		day_mode = clampi(int(file.get_value("progress","day_mode",0)),0,DAY_MODES.size()-1)
+		day_mode = clampi(int(file.get_value("progress","day_mode",1)),0,DAY_MODES.size()-1)
+		# v0.36: daytime is the default. Saves that never chose a time move from live day & night to day once.
+		if not bool(file.get_value("progress","day_default_v036",false)) and day_mode == 0:
+			day_mode = 1
+		pz_day = String(file.get_value("progress","pz_day",""))
+		pz_streak = maxi(0,int(file.get_value("progress","pz_streak",0)))
+		pz_total = maxi(0,int(file.get_value("progress","pz_total",0)))
 		hud_clean = bool(file.get_value("progress","hud_clean",true))
 		quest_active = bool(file.get_value("progress","quest_active",false))
 		player_uid = String(file.get_value("social","uid",player_uid))
@@ -8176,6 +8201,8 @@ func _process(delta: float) -> void:
 	_quest_offer_tick()
 	_auto_collect_tick()
 	_food_court_tick(delta)
+	_commons_tick(delta)
+	_chat_tick(delta)
 	_cash_pill_tick()
 	_lb_tick(delta)
 	_market_tick(delta)
@@ -11167,7 +11194,7 @@ const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -12430,7 +12457,12 @@ const HUB_JOKE_PRICE := 5
 const HUB_JOKE_SET := 5
 const TTT_PRICE := 10
 const RPS_PRICE := 5
-const HUB_PHRASES := ["Hi!","Hello everyone!","Wanna play?","Good game!","Nice one!","Haha!","Thanks!","See you!"]
+const HUB_PHRASES := ["Hi!","Hello everyone!","Wanna play?","Good game!","Nice one!","Haha!","Thanks!","See you!",
+	"Follow me!","Race?","Meet at the Food Court","Nice car!","Come to Harbor Commons","Let's do the puzzle!","Where are you?","On my way!",
+	"Wait for me!","Join my crew!","Wow!","Bye!",
+	"♥","★","✋","✌","⚡","☀","⚽","✔"]
+const CHAT_SAY := 20        # HUB_PHRASES[0..19] are words, the rest are symbols
+const CHAT_NEAR := 40.0     # v0.36: you see bubbles and chat from players within 40 m (crew: anywhere)
 const HUB_EMOTES := ["Wave","Clap","Dance","Cheer"]
 const RPS_NAMES := ["ROCK","PAPER","SCISSORS"]
 const TTT_TABLES := [Vector3(194,0,14),Vector3(206,0,9),Vector3(218,0,14),Vector3(206,0,21)]
@@ -12756,18 +12788,52 @@ func _seat_of(kind: String, table: int, side: int, nth := 0) -> int:
 	return -1
 
 func _bubble(parent: Node3D, text: String, height: float) -> void:
+	# v0.36: a real speech bubble (white, rounded look, dark text) over the speaker for 6 seconds.
+	# A new message replaces the old one.
+	for b in hub_bubbles:
+		if is_instance_valid(b["label"]) and (b["label"] as Node).get_parent() == parent:
+			b["until"] = 0.0
+	var holder := Node3D.new()
+	holder.position = Vector3(0,height-1.05,0)   # just above the head
+	parent.add_child(holder)
+	var sym := text.length() <= 2
+	var w := (0.42 if sym else 0.118*float(text.length())+0.32)
+	var quad := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(w,0.36 if not sym else 0.42)
+	quad.mesh = qm
+	if bubble_mat == null:
+		bubble_mat = StandardMaterial3D.new()
+		bubble_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		bubble_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		bubble_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		bubble_mat.albedo_color = Color(1,1,1,0.93)
+		bubble_mat.no_depth_test = true
+		bubble_mat.render_priority = 1
+		bubble_tail_mat = bubble_mat.duplicate()
+	quad.material_override = bubble_mat
+	quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	holder.add_child(quad)
+	var tail := MeshInstance3D.new()
+	var tm := PrismMesh.new()
+	tm.size = Vector3(0.14,0.12,0.01)
+	tail.mesh = tm
+	tail.rotation.z = PI
+	tail.position = Vector3(0,-0.23 if not sym else -0.26,0)
+	tail.material_override = bubble_tail_mat
+	tail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	holder.add_child(tail)
 	var lab := Label3D.new()
 	lab.text = text
-	lab.font_size = 44
-	lab.pixel_size = 0.012
+	lab.font_size = 40 if not sym else 56
+	lab.pixel_size = 0.0055
 	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lab.outline_size = 12
-	lab.outline_modulate = Color("132b3a")
-	lab.modulate = Color("fff5dc")
-	lab.position = Vector3(0,height,0)
+	lab.outline_size = 0
+	lab.modulate = Color("e04a6a") if text == "♥" else Color("1b2a38")
 	lab.no_depth_test = true
-	parent.add_child(lab)
-	hub_bubbles.append({"label":lab,"until":clock+4.0})
+	lab.render_priority = 2
+	holder.add_child(lab)
+	hub_bubbles.append({"label":holder,"until":clock+6.0})
 
 func _emote(person: Dictionary, kind: int) -> void:
 	if person.is_empty():
@@ -13470,6 +13536,20 @@ func _play_rimshot() -> void:
 	fx_player.play()
 
 # ---------- quick chat and emotes ----------
+var my_bubble_crew := false
+var chat_to_crew := false
+var chat_last_say := -10.0
+var chat_pill: Button
+var chat_to_button: Button
+var chat_log_panel: PanelContainer
+var chat_log_title: Label
+var chat_log_box: VBoxContainer
+var chat_lines: Array = []      # {who, text, crew, t}
+var chat_preview := false       # developer screenshots only; never goes online
+var chat_log_t := 0.0
+var bubble_mat: StandardMaterial3D
+var bubble_tail_mat: StandardMaterial3D
+
 func _build_chat(root: Control) -> void:
 	chat_button = _button("Chat",_toggle_chat)
 	chat_button.custom_minimum_size = Vector2(170,48)
@@ -13477,50 +13557,194 @@ func _build_chat(root: Control) -> void:
 	root.add_child(chat_button)
 	chat_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	chat_button.position = Vector2(root.size.x-194,412)
+	# v0.36: a CHAT button under PLAYERS that works anywhere in the city, also on the clean screen.
+	chat_pill = _button("CHAT",_toggle_chat)
+	chat_pill.custom_minimum_size = Vector2(150,52)
+	chat_pill.add_theme_font_size_override("font_size",20)
+	chat_pill.add_theme_stylebox_override("normal",_panel(Color("3b4f9e"),18))
+	root.add_child(chat_pill)
+	chat_pill.hide()
 	chat_panel = PanelContainer.new()
-	chat_panel.add_theme_stylebox_override("panel",_panel(Color(0.07,0.15,0.2,0.94),18))
+	chat_panel.add_theme_stylebox_override("panel",_panel(Color(0.07,0.15,0.2,0.95),18))
 	root.add_child(chat_panel)
 	chat_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",8)
+	chat_panel.add_child(col)
+	col.add_child(_label("Say to players near you (40 m)",18,Color("9fd8e6")))
 	var grid := GridContainer.new()
-	grid.columns = 3
+	grid.columns = 4
 	grid.add_theme_constant_override("h_separation",8)
 	grid.add_theme_constant_override("v_separation",8)
-	chat_panel.add_child(grid)
-	for k in HUB_PHRASES.size():
+	col.add_child(grid)
+	for k in CHAT_SAY:
 		var b := _button(HUB_PHRASES[k],_say.bind(k))
-		b.custom_minimum_size = Vector2(170,50)
-		b.add_theme_font_size_override("font_size",18)
+		b.custom_minimum_size = Vector2(196,48)
+		b.add_theme_font_size_override("font_size",16 if HUB_PHRASES[k].length() > 14 else 18)
 		grid.add_child(b)
-	var lfp := _button("Looking for players!",_send_lfp)
-	lfp_button = lfp
-	lfp.custom_minimum_size = Vector2(170,50)
-	lfp.add_theme_font_size_override("font_size",16)
-	lfp.add_theme_stylebox_override("normal",_panel(Color("8a5a12"),18))
-	grid.add_child(lfp)
+	var syms := HBoxContainer.new()
+	syms.add_theme_constant_override("separation",8)
+	col.add_child(syms)
+	for k in range(CHAT_SAY,HUB_PHRASES.size()):
+		var b := _button(HUB_PHRASES[k],_say.bind(k))
+		b.custom_minimum_size = Vector2(92,52)
+		b.add_theme_font_size_override("font_size",28)
+		b.add_theme_stylebox_override("normal",_panel(Color("2f4f6a"),18))
+		syms.add_child(b)
+	var emo := HBoxContainer.new()
+	emo.add_theme_constant_override("separation",8)
+	col.add_child(emo)
 	for k in HUB_EMOTES.size():
 		var b := _button("★ "+HUB_EMOTES[k],_do_emote.bind(k))
-		b.custom_minimum_size = Vector2(170,50)
+		b.custom_minimum_size = Vector2(150,48)
 		b.add_theme_font_size_override("font_size",18)
 		b.add_theme_stylebox_override("normal",_panel(Color("4a3d7a"),18))
-		grid.add_child(b)
+		emo.add_child(b)
+	var bottom := HBoxContainer.new()
+	bottom.add_theme_constant_override("separation",8)
+	col.add_child(bottom)
+	chat_to_button = _button("To: Nearby",_chat_toggle_to)
+	chat_to_button.custom_minimum_size = Vector2(220,50)
+	chat_to_button.add_theme_font_size_override("font_size",18)
+	bottom.add_child(chat_to_button)
+	var lfp := _button("Looking for players!",_send_lfp)
+	lfp_button = lfp
+	lfp.custom_minimum_size = Vector2(250,50)
+	lfp.add_theme_font_size_override("font_size",16)
+	lfp.add_theme_stylebox_override("normal",_panel(Color("8a5a12"),18))
+	bottom.add_child(lfp)
+	var close := _button("Close",func(): chat_panel.hide())
+	close.custom_minimum_size = Vector2(150,50)
+	bottom.add_child(close)
 	chat_panel.reset_size()
-	chat_panel.position = Vector2(root.size.x-chat_panel.size.x-212,150)
+	chat_panel.position = Vector2((root.size.x-chat_panel.size.x)/2.0,120)
 	chat_panel.hide()
+	# The nearby chat log: the area you're in, how many players are near, and the last few lines.
+	chat_log_panel = PanelContainer.new()
+	chat_log_panel.add_theme_stylebox_override("panel",_panel(Color(0.05,0.1,0.16,0.72),14))
+	chat_log_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(chat_log_panel)
+	var lc := VBoxContainer.new()
+	lc.add_theme_constant_override("separation",2)
+	lc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chat_log_panel.add_child(lc)
+	chat_log_title = _label("",15,Color("9fd8e6"))
+	lc.add_child(chat_log_title)
+	chat_log_box = VBoxContainer.new()
+	chat_log_box.add_theme_constant_override("separation",1)
+	lc.add_child(chat_log_box)
+	chat_log_panel.custom_minimum_size = Vector2(380,0)
+	chat_log_panel.hide()
+
+func _chat_toggle_to() -> void:
+	if crew_name == "":
+		chat_to_crew = false
+		_show_toast("Join or start a crew (PLAYERS > Crew) to chat with your crew anywhere.")
+	else:
+		chat_to_crew = not chat_to_crew
+	chat_to_button.text = ("To: Crew %s (anywhere)" % crew_name) if chat_to_crew else "To: Nearby"
+
+func _chat_log_add(who: String, text: String, crew: bool) -> void:
+	chat_lines.append({"who":who,"text":text,"crew":crew,"t":clock})
+	while chat_lines.size() > 6:
+		chat_lines.remove_at(0)
+	chat_log_t = 0.0
+
+func _chat_area(at: Vector3) -> String:
+	# Where you are, for the chat header: special places first, then the nearest district on the map.
+	if at.distance_to(CM_C) < 48.0:
+		return "Harbor Commons"
+	if at.distance_to(FC_BLOCK) < 30.0:
+		return "Harbor Food Court"
+	if Vector2(at.x-HUB_C.x,at.z-HUB_C.z).length() < HUB_R+6.0:
+		return "Harbor Dome"
+	var best := "Harbor City"
+	var bd := INF
+	for m in MAP_LABELS:
+		var v: Vector2 = m[1]
+		var d := Vector2(at.x-v.x,at.z-v.y).length()
+		if d < bd:
+			bd = d
+			best = String(m[0]).capitalize()
+	return best
+
+func _chat_near_count() -> int:
+	var me: Node3D = car if driving else player
+	var n := 0
+	for id in online_peers:
+		var node: Node3D = online_peers[id]["node"]
+		if is_instance_valid(node) and node.visible and node.global_position.distance_to(me.position) <= CHAT_NEAR:
+			n += 1
+	return n
+
+func _chat_tick(delta: float) -> void:
+	if chat_pill == null or player == null:
+		return
+	chat_pill.visible = (online_on or chat_preview) and not paused and not race_car
+	if chat_pill.visible:
+		var above: Control = players_button if players_button != null and players_button.visible else quests_button
+		if above != null:
+			chat_pill.position = Vector2(above.position.x,above.position.y+above.size.y+10.0)
+	chat_log_t += delta
+	var recent: Array = []
+	for l in chat_lines:
+		if clock-float(l["t"]) < 30.0:
+			recent.append(l)
+	chat_log_panel.visible = (online_on or chat_preview) and not paused and not recent.is_empty() and not chat_panel.visible
+	if not chat_log_panel.visible:
+		return
+	var me: Node3D = car if driving else player
+	var n := _chat_near_count()
+	chat_log_title.text = "%s  ·  %d nearby" % [_chat_area(me.position),n] if n != 1 else "%s  ·  1 nearby" % _chat_area(me.position)
+	var kids := chat_log_box.get_children()
+	for i in maxi(kids.size(),recent.size()):
+		if i >= recent.size():
+			(kids[i] as Node).queue_free()
+			continue
+		var lab: Label
+		if i < kids.size():
+			lab = kids[i] as Label
+		else:
+			lab = _label("",17,Color.WHITE)
+			lab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			chat_log_box.add_child(lab)
+		var l: Dictionary = recent[i]
+		lab.text = "%s%s: %s" % ["[CREW] " if bool(l["crew"]) else "",String(l["who"]),String(l["text"])]
+		var age := clock-float(l["t"])
+		var c := Color("b6f5c8") if bool(l["crew"]) else (Color("ffe27a") if String(l["who"]) == "You" else Color("f4f8fb"))
+		c.a = clampf((30.0-age)/6.0,0.0,1.0)
+		lab.add_theme_color_override("font_color",c)
+	var top: Control = chat_pill if chat_pill.visible else quests_button
+	if top != null:
+		chat_log_panel.position = Vector2(top.position.x,top.position.y+top.size.y+10.0)
 
 func _toggle_chat() -> void:
 	if paused:
 		return
+	if not online_on:
+		_show_toast("Go online to chat with players near you.")
+		return
 	chat_panel.visible = not chat_panel.visible
+	if chat_panel.visible:
+		chat_panel.move_to_front()
 	if lfp_button != null:
 		var ok := _at_pvp_table()
 		lfp_button.disabled = not ok
 		lfp_button.text = "Looking for players!" if ok else "Invite: sit at a\nPvP table first"
 
 func _say(k: int) -> void:
+	if clock-chat_last_say < 1.2:
+		_show_toast("Slow down a little!")
+		return
+	chat_last_say = clock
 	chat_panel.hide()
 	my_bubble = k
 	my_bubble_n += 1
+	my_bubble_crew = chat_to_crew and crew_name != ""
 	_bubble(player if not driving else car,HUB_PHRASES[k],2.6 if not driving else 3.2)
+	_chat_log_add("You",HUB_PHRASES[k],my_bubble_crew)
+	if online_on and online_state >= 2 and online_ws != null:
+		_online_send(_online_pos_frame())
 
 func _do_emote(k: int) -> void:
 	chat_panel.hide()
@@ -13649,7 +13873,7 @@ func _smoke_hub() -> void:
 	_do_emote(0)
 	assert(hub_emotes.any(func(e): return e["person"] == player_person),"Our emote plays")
 	# Looking for players: an invite shows in the chat feed with ACCEPT, which teleports to the dome.
-	assert(feed.any(func(f): return String(f["text"]).begins_with("Mia: ")),"Peer quick chat shows in the main chat")
+	assert(chat_lines.any(func(l): return String(l["who"]) == "Mia"),"Peer quick chat shows in the nearby chat")
 	# Invites: Mia sits at player-vs-player tic-tac-toe table 3 and invites; ACCEPT seats us opposite her.
 	var her_seat := _seat_of("ttt",3,1)
 	var her_pos: Vector3 = hub_seats[her_seat]["pos"]
@@ -17779,6 +18003,607 @@ func _food_court_tick(delta: float) -> void:
 		return
 	_emote(fc_people[randi() % fc_people.size()],[0,1,3][randi() % 3])
 
+# ---------- v0.36: Harbor Commons, a modern park in the empty field by Bay Road ----------
+# Playground (swings, slide tower, climbing dome, spinning disc, seesaw), a fountain plaza, a basketball
+# court and the Puzzle Pavilion, home of the daily puzzle.
+const CM_C := Vector3(-93,0,-36)            # fountain plaza centre
+const CM_PLAY := Vector3(-120,0,-37)        # playground centre
+const CM_COURT := Vector3(-65,0,-36)        # basketball court centre
+const CM_PUZZLE := Vector3(-93,0,-50)       # puzzle pavilion
+const CM_TERMINAL := Vector3(-93,0,-46.2)   # where you stand to play
+var cm_swings: Array = []
+var cm_spin: Node3D
+var cm_seesaw: Node3D
+var cm_jets: Array = []
+var cm_ring: Node3D
+var cm_cube: Node3D
+var cm_cube2: Node3D
+var cm_runner: Dictionary = {}
+var cm_ball: Node3D
+var cm_people: Array = []
+var cm_cheer: Array = []
+var cm_emote_t := 3.0
+var cm_sign: Label3D
+
+func _cm_person(parent: Node3D, pos: Vector3, yaw: float, seed_i: int, kid := false) -> Dictionary:
+	var shirts := [Color("e04a3a"),Color("3f8fd2"),Color("5fbf7f"),Color("f2b24a"),Color("9b6bd6"),Color("f27fb2"),Color("2fb5a8"),Color("f2f2f2"),Color("ffd23f")]
+	var pants := [Color("263d54"),Color("38302a"),Color("4a4f57"),Color("23324a"),Color("7a6a55")]
+	var skins := [Color("f0c9a4"),Color("c68a60"),Color("8d5a3b"),Color("e2b48e"),Color("5c3a26")]
+	var hairs := [Color("2b1d14"),Color("1a1a1a"),Color("7a4a26"),Color("d9b26a"),Color("8a8a8a")]
+	var n := Node3D.new()
+	n.position = pos
+	n.rotation.y = yaw
+	if kid:
+		n.scale = Vector3.ONE*0.62
+	parent.add_child(n)
+	var pp := _make_person(n,seed_i % 4,{"Shirt":shirts[(seed_i*7) % shirts.size()],"Pants":pants[(seed_i*3) % pants.size()],"Skin":skins[(seed_i*5) % skins.size()],"Hair":hairs[(seed_i*2) % hairs.size()],"Shoes":Color("2b2b2b"),"Eye":Color("1c1c22")})
+	if not pp.is_empty():
+		cm_people.append(pp)
+	return pp
+
+func _cm_bench(root: Node3D, pos: Vector3, face: float) -> void:
+	# A modern park bench: pearl seat and back on chrome legs with a glowing strip. Sitters face `face`.
+	var b := Node3D.new()
+	b.position = pos
+	b.rotation.y = face
+	root.add_child(b)
+	_fc_part(b,BoxMesh.new(),Vector3(0,0.42,0.02),_fc_pearl(),Vector3(1.8,0.08,0.5))
+	_fc_part(b,BoxMesh.new(),Vector3(0,0.78,0.27),_fc_pearl(),Vector3(1.8,0.42,0.07))
+	_fc_part(b,BoxMesh.new(),Vector3(0,0.37,-0.22),_fc_glow(Color("4fe3ff")),Vector3(1.8,0.03,0.03))
+	for lx in [-0.75,0.75]:
+		_fc_part(b,BoxMesh.new(),Vector3(lx,0.2,0.05),_fc_chrome(),Vector3(0.07,0.4,0.45))
+
+func _build_commons() -> void:
+	var root := Node3D.new()
+	root.name = "HarborCommons"
+	add_child(root)
+	var pave := Color("e6e1d6")
+	var line := Color("f4f1e8")
+	# Paths: a main walk east to west, one north to south, and a round plaza around the fountain.
+	_fc_mesh(root,BoxMesh.new(),Vector3(-93,0.04,-36),Color("ddd6c7"),Vector3(78,0.08,4.2))
+	_fc_mesh(root,BoxMesh.new(),Vector3(-93,0.041,-35),Color("ddd6c7"),Vector3(4.2,0.08,40))
+	_fc_mesh(root,_fc_cone(11.0,11.0,0.09),CM_C+Vector3(0,0.045,0),pave)
+	_fc_part(root,_fc_torus(10.6,11.0),CM_C+Vector3(0,0.1,0),_fc_glow(Color("4fe3ff")))
+	# ---- Fountain: a pearl basin, glowing water, dancing jets and a spinning chrome ring ----
+	_fc_part(root,_fc_cone(4.6,4.8,0.55),CM_C+Vector3(0,0.28,0),_fc_pearl())
+	_fc_mesh(root,_fc_cone(4.25,4.25,0.06),CM_C+Vector3(0,0.56,0),Color("3fc8e8"),Vector3.ONE,true)
+	_fc_part(root,_fc_torus(4.25,4.75),CM_C+Vector3(0,0.56,0),_fc_glow(Color("8ff3ff")))
+	_fc_part(root,_fc_cone(0.7,1.0,1.1),CM_C+Vector3(0,1.1,0),_fc_pearl())
+	_collider(root,CM_C+Vector3(0,0.5,0),Vector3(8.4,1.0,8.4))
+	for k in 10:
+		var a := TAU*float(k)/10.0
+		var jet := _fc_part(root,_fc_cone(0.07,0.13,1.0),CM_C+Vector3(cos(a)*3.0,0.6,sin(a)*3.0),_fc_ghost(Color("9ff6ff")))
+		cm_jets.append(jet)
+	cm_ring = Node3D.new()
+	cm_ring.position = CM_C+Vector3(0,3.4,0)
+	root.add_child(cm_ring)
+	_fc_part(cm_ring,_fc_torus(1.5,1.72),Vector3.ZERO,_fc_chrome()).rotation.x = PI/2.0
+	_fc_part(cm_ring,_fc_torus(1.05,1.15),Vector3.ZERO,_fc_glow(Color("ff5fd2"))).rotation.z = PI/2.0
+	_fc_part(cm_ring,_fc_sphere(0.35),Vector3.ZERO,_fc_glow(Color("ffe27a")))
+	# Benches around the plaza (between the paths), people resting on three of them.
+	for k in 4:
+		var a := PI/4.0+PI/2.0*float(k)
+		var face := atan2(cos(a),sin(a))
+		for off: float in [-1.2,1.2]:
+			var tang := Vector3(-sin(a),0,cos(a))*off
+			var bp := CM_C+Vector3(cos(a)*8.6,0,sin(a)*8.6)+tang
+			_cm_bench(root,bp,face)
+			if (k+int(off > 0.0)) % 3 != 2:
+				var pp := _cm_person(root,bp,face,k*2+int(off > 0.0)+11)
+				_sit_pose(pp,0.45,0.0)
+	# ---- Playground ----
+	_fc_mesh(root,BoxMesh.new(),CM_PLAY+Vector3(0,0.05,0),Color("3a7266"),Vector3(22,0.1,32))
+	_fc_mesh(root,BoxMesh.new(),CM_PLAY+Vector3(0,0.06,0),Color("d9826f"),Vector3(18,0.1,6))
+	_fc_part(root,BoxMesh.new(),CM_PLAY+Vector3(11,0.12,0),_fc_glow(Color("ffd23f")),Vector3(0.12,0.06,32))
+	_fc_part(root,BoxMesh.new(),CM_PLAY+Vector3(-11,0.12,0),_fc_glow(Color("ffd23f")),Vector3(0.12,0.06,32))
+	# Swings: an arched pearl frame with three swings, two kids swinging.
+	var sw := CM_PLAY+Vector3(-3,0,-10)
+	for sx in [-4.2,4.2]:
+		for sz in [-0.9,0.9]:
+			var post := _fc_part(root,_fc_cone(0.08,0.1,2.95),sw+Vector3(sx,1.42,sz*0.5),_fc_pearl())
+			post.rotation.x = sz*0.33
+		_collider(root,sw+Vector3(sx,1.0,0),Vector3(0.3,2.0,1.6))
+	_fc_part(root,_fc_cone(0.1,0.1,8.6),sw+Vector3(0,2.85,0),_fc_chrome()).rotation.z = PI/2.0
+	_fc_part(root,BoxMesh.new(),sw+Vector3(0,3.0,0),_fc_glow(Color("ff5fd2")),Vector3(8.4,0.05,0.05))
+	for k in 3:
+		var piv := Node3D.new()
+		piv.position = sw+Vector3(-2.7+2.7*float(k),2.8,0)
+		root.add_child(piv)
+		for cx in [-0.28,0.28]:
+			_fc_part(piv,BoxMesh.new(),Vector3(cx,-1.15,0),_fc_chrome(),Vector3(0.025,2.3,0.025))
+		_fc_mesh(piv,BoxMesh.new(),Vector3(0,-2.32,0),[Color("ffd23f"),Color("ff6fb5"),Color("43c6db")][k],Vector3(0.75,0.07,0.32))
+		cm_swings.append(piv)
+		if k != 1:
+			var kid := _cm_person(piv,Vector3(0,-2.28,0.05),0.0,k*3+1,true)
+			_sit_pose(kid,0.0,0.0)
+	# Slide tower: a platform on four posts, steps up the back and a glossy slide down the front.
+	var sl := CM_PLAY+Vector3(5,0,-8)
+	for px in [-0.9,0.9]:
+		for pz in [-0.9,0.9]:
+			_fc_part(root,_fc_cone(0.09,0.09,3.0),sl+Vector3(px,1.5,pz),_fc_chrome())
+	_fc_mesh(root,BoxMesh.new(),sl+Vector3(0,1.8,0),Color("f4efe6"),Vector3(2.1,0.16,2.1))
+	_fc_part(root,BoxMesh.new(),sl+Vector3(0,1.9,0),_fc_glow(Color("4fe3ff")),Vector3(2.15,0.04,2.15))
+	_fc_part(root,_fc_cone(0.0,1.5,1.0),sl+Vector3(0,3.5,0),_fc_glow(Color("ff8a1c")))
+	_collider(root,sl+Vector3(0,1.0,0),Vector3(2.2,2.0,2.2))
+	for st in 6:
+		_fc_mesh(root,BoxMesh.new(),sl+Vector3(0,0.3*float(st)+0.15,-1.25-0.3*float(5-st)),Color("43c6db"),Vector3(1.0,0.08,0.3))
+	var slide := _fc_mesh(root,BoxMesh.new(),sl+Vector3(0,0.98,2.75),Color("ff6fb5"),Vector3(1.0,0.08,4.2))
+	slide.rotation.x = 0.42
+	for rx in [-0.52,0.52]:
+		var rail := _fc_mesh(root,BoxMesh.new(),sl+Vector3(rx,1.18,2.75),Color("ff9ad0"),Vector3(0.08,0.3,4.2))
+		rail.rotation.x = 0.42
+	_collider(root,sl+Vector3(0,0.5,3.3),Vector3(1.2,1.0,3.2))
+	var top_kid := _cm_person(root,sl+Vector3(0,1.88,0.2),0.0,5,true)
+	cm_cheer.append(top_kid)
+	# Climbing dome: a sphere of chrome hoops.
+	var dm := CM_PLAY+Vector3(-4,0,4)
+	for k in 4:
+		var hoop := _fc_part(root,_fc_torus(2.15,2.25),dm,_fc_chrome())
+		hoop.rotation = Vector3(PI/2.0,float(k)*PI/4.0,0)
+	for hy in [0.8,1.6]:
+		var r := sqrt(maxf(0.0,2.2*2.2-hy*hy))
+		_fc_part(root,_fc_torus(r-0.05,r+0.05),dm+Vector3(0,hy,0),_fc_glow(Color("ffd23f")))
+	_collider(root,dm+Vector3(0,1.0,0),Vector3(3.6,2.0,3.6))
+	var climber := _cm_person(root,dm+Vector3(0,2.12,0),0.6,8,true)
+	cm_cheer.append(climber)
+	# Spinning disc with two kids riding it.
+	cm_spin = Node3D.new()
+	cm_spin.position = CM_PLAY+Vector3(5,0,6)
+	root.add_child(cm_spin)
+	_fc_mesh(cm_spin,_fc_cone(1.7,1.7,0.18),Vector3(0,0.3,0),Color("ffd23f"))
+	_fc_part(cm_spin,_fc_torus(1.6,1.75),Vector3(0,0.42,0),_fc_glow(Color("ff5fd2")))
+	_fc_part(cm_spin,_fc_cone(0.05,0.05,1.1),Vector3(0,0.9,0),_fc_chrome())
+	for k in 3:
+		var a := TAU*float(k)/3.0
+		_fc_part(cm_spin,BoxMesh.new(),Vector3(cos(a)*0.75,0.95,sin(a)*0.75),_fc_chrome(),Vector3(1.5,0.05,0.05)).rotation.y = -a
+	for k in 2:
+		var a := PI*float(k)+0.5
+		var kid := _cm_person(cm_spin,Vector3(cos(a)*1.25,0.0,sin(a)*1.25),-a+PI,k*5+2,true)
+		_sit_pose(kid,0.39/0.62,0.0)
+	_collider(root,cm_spin.position+Vector3(0,0.3,0),Vector3(3.0,0.6,3.0))
+	# Seesaw.
+	var ss := CM_PLAY+Vector3(-4,0,12)
+	_fc_part(root,_fc_cone(0.2,0.35,0.6),ss+Vector3(0,0.3,0),_fc_pearl())
+	cm_seesaw = Node3D.new()
+	cm_seesaw.position = ss+Vector3(0,0.62,0)
+	root.add_child(cm_seesaw)
+	_fc_mesh(cm_seesaw,BoxMesh.new(),Vector3.ZERO,Color("43c6db"),Vector3(4.6,0.1,0.4))
+	for k in 2:
+		var kid := _cm_person(cm_seesaw,Vector3(-1.9+3.8*float(k),0.05,0),PI/2.0 if k == 0 else -PI/2.0,k*4+7,true)
+		_sit_pose(kid,0.0,0.0)
+	# Parents watching.
+	for spot in [[CM_PLAY+Vector3(9,0,-12),-PI/2.0],[CM_PLAY+Vector3(9.2,0,-10.8),-PI/2.0-0.4],[CM_PLAY+Vector3(9,0,8),-PI/2.0],[CM_PLAY+Vector3(-9,0,2),PI/2.0]]:
+		var pp := _cm_person(root,spot[0],spot[1],int((spot[0] as Vector3).z*3.0)+20)
+		cm_cheer.append(pp)
+	var label := _sign("PLAYGROUND",CM_PLAY+Vector3(0,4.4,-15.5),Color("ffe27a"),40)
+	label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	# ---- Basketball court ----
+	var ct := CM_COURT
+	_fc_mesh(root,BoxMesh.new(),ct+Vector3(0,0.05,0),Color("2a5fa8"),Vector3(15,0.1,27))
+	_fc_mesh(root,BoxMesh.new(),ct+Vector3(0,0.06,0),Color("e2733a"),Vector3(13,0.1,24))
+	var lines := [[Vector3(0,0,0),Vector3(13,0.02,0.1)],[Vector3(0,0,12),Vector3(13,0.02,0.1)],[Vector3(0,0,-12),Vector3(13,0.02,0.1)],[Vector3(6.5,0,0),Vector3(0.1,0.02,24)],[Vector3(-6.5,0,0),Vector3(0.1,0.02,24)],
+		[Vector3(0,0,9.6),Vector3(3.8,0.02,0.1)],[Vector3(0,0,-9.6),Vector3(3.8,0.02,0.1)],[Vector3(1.9,0,10.8),Vector3(0.1,0.02,2.4)],[Vector3(-1.9,0,10.8),Vector3(0.1,0.02,2.4)],[Vector3(1.9,0,-10.8),Vector3(0.1,0.02,2.4)],[Vector3(-1.9,0,-10.8),Vector3(0.1,0.02,2.4)]]
+	for ln in lines:
+		_fc_mesh(root,BoxMesh.new(),ct+(ln[0] as Vector3)+Vector3(0,0.12,0),line,ln[1])
+	_fc_part(root,_fc_torus(1.75,1.85),ct+Vector3(0,0.12,0),_fc_glow(Color("f4f1e8")))
+	for e in [-1.0,1.0]:
+		var hp := ct+Vector3(0,0,e*12.9)
+		_fc_part(root,_fc_cone(0.1,0.12,3.3),hp+Vector3(0,1.65,0),_fc_chrome())
+		_fc_part(root,BoxMesh.new(),hp+Vector3(0,3.2,-e*0.45),_fc_chrome(),Vector3(0.08,0.08,0.9))
+		_fc_part(root,BoxMesh.new(),hp+Vector3(0,3.45,-e*0.9),_fc_glass(),Vector3(1.8,1.05,0.06))
+		_fc_part(root,BoxMesh.new(),hp+Vector3(0,3.45,-e*0.93),_fc_glow(Color("4fe3ff")),Vector3(0.6,0.45,0.02))
+		_fc_part(root,_fc_torus(0.22,0.26),hp+Vector3(0,3.05,-e*1.2),_fc_glow(Color("ff8a1c")))
+		var net := _fc_part(root,_fc_cone(0.24,0.15,0.4),hp+Vector3(0,2.85,-e*1.2),_fc_ghost(Color("f4f1e8")))
+		net.mesh.set("cap_top",false)
+		_collider(root,hp+Vector3(0,1.6,0),Vector3(0.4,3.2,0.4))
+	var runner := _cm_person(root,ct,0.0,17)
+	if runner.has("ap"):
+		cm_runner = runner
+		_kplay(runner,"Run",1.0)
+	cm_ball = Node3D.new()
+	root.add_child(cm_ball)
+	_fc_mesh(cm_ball,_fc_sphere(0.13),Vector3.ZERO,Color("e2733a"))
+	for spot in [[ct+Vector3(-3,0,-6),0.4],[ct+Vector3(3.5,0,-8.5),-0.6],[ct+Vector3(7.8,0,2),-PI/2.0],[ct+Vector3(7.8,0,3.2),-PI/2.0]]:
+		cm_cheer.append(_cm_person(root,spot[0],spot[1],int((spot[0] as Vector3).z*5.0)+31))
+	_cm_bench(root,ct+Vector3(8.6,0,-4),-PI/2.0)
+	_cm_bench(root,ct+Vector3(8.6,0,6),-PI/2.0)
+	_sit_pose(_cm_person(root,ct+Vector3(8.6,0,6),-PI/2.0,44),0.45,0.0)
+	var cl := _sign("HARBOR HOOPS",ct+Vector3(0,5.2,-13.4),Color("ffb36b"),40)
+	cl.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	# ---- Puzzle Pavilion ----
+	var pz := CM_PUZZLE
+	_fc_mesh(root,_fc_cone(4.4,4.6,0.2),pz+Vector3(0,0.1,0),Color("eef0ec"))
+	_fc_part(root,_fc_torus(4.3,4.6),pz+Vector3(0,0.21,0),_fc_glow(Color("b48cff")))
+	for k in 6:
+		var a := TAU*float(k)/6.0+PI/6.0
+		_fc_part(root,_fc_cone(0.1,0.13,3.4),pz+Vector3(cos(a)*3.7,1.7,sin(a)*3.7),_fc_chrome())
+		_fc_part(root,BoxMesh.new(),pz+Vector3(cos(a)*3.7,1.7,sin(a)*3.7)+Vector3(cos(a),0,sin(a))*0.12,_fc_glow(Color("b48cff")),Vector3(0.04,3.0,0.04))
+	_fc_part(root,_fc_cone(4.3,4.0,0.22),pz+Vector3(0,3.5,0),_fc_pearl())
+	_fc_part(root,_fc_torus(4.15,4.4),pz+Vector3(0,3.45,0),_fc_glow(Color("4fe3ff")))
+	cm_cube = Node3D.new()
+	cm_cube.position = pz+Vector3(0,2.0,0)
+	root.add_child(cm_cube)
+	var cols := [Color("ff5fd2"),Color("4fe3ff"),Color("ffd23f"),Color("7dff9a")]
+	for ix in 2:
+		for iy in 2:
+			for iz in 2:
+				_fc_part(cm_cube,BoxMesh.new(),Vector3(float(ix)-0.5,float(iy)-0.5,float(iz)-0.5)*0.62,_fc_ghost(cols[(ix+iy*2+iz) % 4]),Vector3.ONE*0.56)
+	cm_cube2 = Node3D.new()
+	cm_cube2.position = pz+Vector3(0,2.0,0)
+	root.add_child(cm_cube2)
+	_fc_part(cm_cube2,_fc_torus(1.25,1.32),Vector3.ZERO,_fc_glow(Color("b48cff")))
+	_fc_part(cm_cube2,_fc_torus(1.4,1.46),Vector3.ZERO,_fc_glow(Color("4fe3ff"))).rotation.x = PI/2.0
+	# Terminal pedestal at the front, facing the path.
+	var tm := CM_TERMINAL
+	_fc_part(root,_fc_cone(0.28,0.4,1.0),tm+Vector3(0,0.5,-0.6),_fc_pearl())
+	var screen := _fc_part(root,BoxMesh.new(),tm+Vector3(0,1.12,-0.5),_fc_glow(Color("b48cff")),Vector3(0.9,0.55,0.05))
+	screen.rotation.x = -0.6
+	_collider(root,tm+Vector3(0,0.5,-0.6),Vector3(0.7,1.0,0.7))
+	var pt := _sign("DAILY PUZZLE",pz+Vector3(0,4.5,0),Color("e3d2ff"),46)
+	pt.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	cm_sign = _sign("",pz+Vector3(0,4.0,0),Color("ffe27a"),26)
+	cm_sign.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	_pz_refresh_sign()
+	# ---- Trees, lamps and the entrance arch ----
+	var trees := []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3600
+	for p in [Vector3(-104,0,-26),Vector3(-104,0,-46),Vector3(-82,0,-26),Vector3(-82,0,-46),Vector3(-100,0,-20),Vector3(-86,0,-20),Vector3(-106,0,-53),Vector3(-80,0,-53),Vector3(-77,0,-19),Vector3(-109,0,-19),
+			Vector3(-131,0,-55),Vector3(-131,0,-18),Vector3(-55,0,-55),Vector3(-55,0,-18),Vector3(-74,0,-55),Vector3(-112,0,-55)]:
+		trees.append([p,rng.randf()*TAU,rng.randf_range(0.9,1.2)])
+	_model_batch("res://models/tree_round.glb",trees)
+	for p in [Vector3(-110,0,-33.6),Vector3(-76,0,-33.6),Vector3(-110,0,-38.4),Vector3(-76,0,-38.4),Vector3(-90.6,0,-22),Vector3(-95.4,0,-22),Vector3(-90.6,0,-50.5),Vector3(-95.4,0,-50.5)]:
+		_fc_part(root,_fc_cone(0.05,0.07,3.6),p+Vector3(0,1.8,0),_fc_chrome())
+		_fc_part(root,_fc_sphere(0.2),p+Vector3(0,3.65,0),_fc_glow(Color("bff6ff")))
+	for ax in [-3.4,3.4]:
+		_fc_part(root,_fc_cone(0.18,0.22,4.4),Vector3(-93+ax,2.2,-16.2),_fc_pearl())
+		_fc_part(root,BoxMesh.new(),Vector3(-93+ax,2.2,-16.0),_fc_glow(Color("7dff9a")),Vector3(0.05,4.0,0.05))
+	_fc_part(root,BoxMesh.new(),Vector3(-93,4.5,-16.2),_fc_pearl(),Vector3(7.6,0.5,0.4))
+	_fc_part(root,BoxMesh.new(),Vector3(-93,4.22,-16.0),_fc_glow(Color("7dff9a")),Vector3(7.6,0.05,0.05))
+	var arch := _sign("HARBOR COMMONS",Vector3(-93,4.5,-15.98),Color("1b5a3a"),44)
+	arch.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	arch.outline_modulate = Color("e9fff1")
+	arch.pixel_size = 0.011
+	_cull_person(root,140.0)
+	for pp in cm_people:
+		_cull_person(pp["root"],60.0)
+
+func _commons_tick(delta: float) -> void:
+	if paused or player == null or cm_spin == null:
+		return
+	if player.position.distance_to(CM_C) > 130.0:
+		return
+	for i in cm_swings.size():
+		(cm_swings[i] as Node3D).rotation.x = sin(clock*1.9+float(i)*1.7)*(0.0 if i == 1 else 0.55)
+	cm_spin.rotation.y += delta*0.9
+	cm_seesaw.rotation.z = sin(clock*1.3)*0.22
+	for i in cm_jets.size():
+		var j: Node3D = cm_jets[i]
+		var h := 1.1+0.9*(0.5+0.5*sin(clock*2.4+float(i)*0.63))
+		j.scale.y = h
+		j.position.y = 0.6+0.5*h
+	cm_ring.rotation.y += delta*0.6
+	cm_ring.position.y = 3.4+sin(clock*1.2)*0.15
+	cm_cube.rotation.y += delta*0.7
+	cm_cube.rotation.x = sin(clock*0.5)*0.4
+	cm_cube2.rotation.y -= delta*1.1
+	cm_cube2.rotation.z = sin(clock*0.8)*0.5
+	if not cm_runner.is_empty():
+		# One player dribbles laps of the court.
+		var t := clock*0.5
+		var pos := CM_COURT+Vector3(sin(t)*4.0,0,cos(t)*9.0)
+		var vel := Vector3(cos(t)*4.0,0,-sin(t)*9.0)
+		var rn: Node3D = cm_runner["root"]
+		var holder := rn.get_parent() as Node3D
+		holder.position = pos
+		holder.rotation.y = atan2(-vel.x,-vel.z)
+		if cm_ball != null:
+			var side := holder.global_basis*Vector3(0.35,0,-0.45)
+			cm_ball.position = pos+side+Vector3(0,0.13+absf(sin(clock*7.0))*0.75,0)
+	cm_emote_t -= delta
+	if cm_emote_t <= 0.0:
+		cm_emote_t = randf_range(1.5,3.0)
+		if not cm_cheer.is_empty() and player.position.distance_to(CM_C) < 80.0:
+			var pp: Dictionary = cm_cheer[randi() % cm_cheer.size()]
+			if not pp.is_empty():
+				_emote(pp,[0,1,3][randi() % 3])
+	if int(clock*2.0) % 4 == 0:
+		_pz_refresh_sign()
+
+# ---------- v0.36: the daily puzzle ----------
+# One puzzle a day, the same for everyone (seeded from the date). Odd days: Neon Lights (tap a tile to
+# flip it and its neighbours; light them all). Even days: Slide 8 (put the tiles in order).
+# First solve each day pays; days in a row build a streak bonus.
+const PZ_PAY := 400
+const PZ_STREAK := 75
+const PZ_XP := 80
+var pz_day := ""          # last day you solved it
+var pz_streak := 0
+var pz_total := 0
+var pz_test_day := ""
+var pz_board: Array = []
+var pz_kind := 0
+var pz_moves := 0
+var pz_built_for := ""
+var pz_solved_now := false
+var pz_solution: Array = []
+var pz_panel: PanelContainer
+var pz_title: Label
+var pz_info: Label
+var pz_grid: GridContainer
+var pz_cells: Array = []
+
+func _pz_today() -> String:
+	return pz_test_day if pz_test_day != "" else Time.get_date_string_from_system()
+
+func _pz_new(day: String) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("harbor-puzzle-" + day)
+	pz_kind = int(Time.get_unix_time_from_datetime_string(day+"T00:00:00")/86400) % 2
+	pz_moves = 0
+	pz_solved_now = false
+	pz_solution = []
+	pz_built_for = day
+	if pz_kind == 0:
+		pz_board = []
+		for i in 16:
+			pz_board.append(true)
+		while true:
+			var picks: Array = []
+			while picks.size() < 6:
+				var c := rng.randi_range(0,15)
+				if not c in picks:
+					picks.append(c)
+			for c in picks:
+				_pz_flip(c)
+			if not _pz_done():
+				pz_solution = picks
+				break
+	else:
+		pz_board = [1,2,3,4,5,6,7,8,0]
+		var prev := -1
+		var path: Array = []
+		for step in 36:
+			var b := pz_board.find(0)
+			var opts := _pz_neighbours(b,3)
+			opts.erase(prev)
+			var pick: int = opts[rng.randi_range(0,opts.size()-1)]
+			pz_board[b] = pz_board[pick]
+			pz_board[pick] = 0
+			prev = b
+			path.append(b)
+		if _pz_done():
+			var b := pz_board.find(0)
+			var o: int = _pz_neighbours(b,3)[0]
+			pz_board[b] = pz_board[o]
+			pz_board[o] = 0
+			path.append(b)
+		path.reverse()
+		pz_solution = path
+
+func _pz_neighbours(i: int, n: int) -> Array:
+	var out: Array = []
+	var r := i/n
+	var c := i % n
+	if r > 0: out.append(i-n)
+	if r < n-1: out.append(i+n)
+	if c > 0: out.append(i-1)
+	if c < n-1: out.append(i+1)
+	return out
+
+func _pz_flip(i: int) -> void:
+	pz_board[i] = not pz_board[i]
+	for j in _pz_neighbours(i,4):
+		pz_board[j] = not pz_board[j]
+
+func _pz_done() -> bool:
+	if pz_kind == 0:
+		for v in pz_board:
+			if not v:
+				return false
+		return true
+	return pz_board == [1,2,3,4,5,6,7,8,0]
+
+func _pz_tap(i: int) -> void:
+	if pz_solved_now:
+		return
+	if pz_kind == 0:
+		_pz_flip(i)
+	else:
+		var b := pz_board.find(0)
+		if not i in _pz_neighbours(b,3):
+			return
+		pz_board[b] = pz_board[i]
+		pz_board[i] = 0
+	pz_moves += 1
+	if _pz_done():
+		_pz_win()
+	_pz_draw()
+
+func _pz_win() -> void:
+	pz_solved_now = true
+	var today := _pz_today()
+	if pz_day == today:
+		_show_toast("Solved again in %d moves! The reward is once a day. New puzzle tomorrow." % pz_moves)
+		return
+	var yesterday := Time.get_date_string_from_unix_time(int(Time.get_unix_time_from_datetime_string(today+"T00:00:00"))-86400)
+	pz_streak = pz_streak+1 if pz_day == yesterday else 1
+	pz_day = today
+	pz_total += 1
+	var pay := PZ_PAY+PZ_STREAK*mini(pz_streak-1,6)
+	cash += pay
+	bonus_xp += PZ_XP
+	_save_progress()
+	_show_toast("PUZZLE SOLVED in %d moves!  +$%d  +%d XP   Streak: %d day%s" % [pz_moves,pay,PZ_XP,pz_streak,"" if pz_streak == 1 else "s"])
+	_feed_add("Daily puzzle solved: +$%d (streak %d)" % [pay,pz_streak],"")
+	if not ("--smoke-test" in OS.get_cmdline_user_args()):
+		_play_coin()
+		_quick_fx(CM_PUZZLE+Vector3(0,1,0))
+	_pz_refresh_sign()
+
+func _pz_reset() -> void:
+	_pz_new(_pz_today())
+	_pz_draw()
+
+func _puzzle_near() -> bool:
+	if driving or player == null or paused:
+		return false
+	return Vector2(player.position.x-CM_TERMINAL.x,player.position.z-CM_TERMINAL.z).length() < 2.6
+
+func _open_puzzle() -> void:
+	if pz_built_for != _pz_today():
+		_pz_new(_pz_today())
+	if not paused:
+		_toggle_menu()
+	_pz_draw()
+	_open_panel(pz_panel)
+
+func _close_puzzle() -> void:
+	if paused:
+		_toggle_menu()
+
+func _pz_refresh_sign() -> void:
+	if cm_sign == null:
+		return
+	if pz_day == _pz_today():
+		cm_sign.text = "SOLVED TODAY ✓  ·  streak %d" % pz_streak
+	else:
+		cm_sign.text = "NEW PUZZLE TODAY  ·  +$%d" % (PZ_PAY+PZ_STREAK*mini(pz_streak,6))
+
+func _build_puzzle_panel(root: Control) -> void:
+	pz_panel = PanelContainer.new()
+	pz_panel.add_theme_stylebox_override("panel",_panel(Color("1d1638"),24))
+	root.add_child(pz_panel)
+	extra_panels.append(pz_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",12)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	pz_panel.add_child(col)
+	pz_title = _label("",28,Color("e3d2ff"))
+	pz_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(pz_title)
+	pz_info = _label("",18,Color("cbd8de"))
+	pz_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pz_info.custom_minimum_size.x = 560
+	pz_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(pz_info)
+	var center := CenterContainer.new()
+	col.add_child(center)
+	pz_grid = GridContainer.new()
+	pz_grid.add_theme_constant_override("h_separation",10)
+	pz_grid.add_theme_constant_override("v_separation",10)
+	center.add_child(pz_grid)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation",14)
+	row.add_child(_button("Start over",_pz_reset))
+	row.add_child(_button("Close",_close_puzzle))
+	col.add_child(row)
+	pz_panel.hide()
+
+func _pz_draw() -> void:
+	if pz_panel == null:
+		return
+	var n := 4 if pz_kind == 0 else 3
+	var want := n*n
+	if pz_cells.size() != want:
+		for c in pz_cells:
+			(c as Node).queue_free()
+		pz_cells = []
+		pz_grid.columns = n
+		for i in want:
+			var b := Button.new()
+			b.custom_minimum_size = Vector2(104,104) if n == 4 else Vector2(136,136)
+			b.add_theme_font_size_override("font_size",48)
+			b.pressed.connect(_pz_tap.bind(i))
+			touch_buttons.append(b)
+			pz_grid.add_child(b)
+			pz_cells.append(b)
+	for i in want:
+		var b: Button = pz_cells[i]
+		var col: Color
+		if pz_kind == 0:
+			b.text = ""
+			col = Color("ffd84d") if pz_board[i] else Color("2a2552")
+		else:
+			var v: int = pz_board[i]
+			b.text = "" if v == 0 else str(v)
+			col = Color("10101e") if v == 0 else (Color("7dff9a") if v == i+1 else Color("4fb8ff"))
+			b.add_theme_color_override("font_color",Color("10101e"))
+		for st in ["normal","hover","pressed","focus"]:
+			b.add_theme_stylebox_override(st,_panel(col,16))
+	var nm := "NEON LIGHTS" if pz_kind == 0 else "SLIDE 8"
+	pz_title.text = "DAILY PUZZLE  ·  %s" % nm
+	var how := "Tap a tile to flip it and the tiles next to it. Light up all 16." if pz_kind == 0 else "Tap a tile next to the gap to slide it. Put 1 to 8 in order, gap at the end."
+	var reward := ""
+	if pz_day == _pz_today():
+		reward = "You already solved today's puzzle (streak %d). Play for fun; a new one comes tomorrow." % pz_streak
+	else:
+		reward = "Reward: $%d and %d XP. Solve it on days in a row for a bigger streak bonus." % [PZ_PAY+PZ_STREAK*mini(pz_streak,6),PZ_XP]
+	pz_info.text = "%s\nMoves: %d%s\n%s" % [how,pz_moves,"   ✓ SOLVED!" if pz_solved_now else "",reward]
+
+func _smoke_chat() -> void:
+	# v0.36: nearby chat. Near players' messages show; far ones don't; crew chat reaches your crew anywhere.
+	var keep := [crew_name,chat_lines.duplicate(),hub_bubbles.size(),online_on,chat_last_say]
+	var me: Vector3 = (car if driving else player).position
+	chat_lines.clear()
+	crew_name = "Sunrise"
+	var base := {"y":0.9,"r":0.0,"c":0,"d":0,"t":0,"l":5,"s":-1,"q":-1,"qn":0,"e":-1,"en":0,"rc":0,"cr":"","cc":0,"k":0}
+	var mk := func(id: String, nm: String, x: float, z: float, cr: String, q: int, qn: int, qc: int) -> void:
+		var d: Dictionary = base.duplicate()
+		d.merge({"i":id,"n":nm,"x":x,"z":z,"cr":cr,"q":q,"qn":qn,"qc":qc},true)
+		_online_peer_update(d)
+	mk.call("cn1","Near",me.x+5.0,me.z,"",-1,0,0)
+	mk.call("cf1","Far",me.x+300.0,me.z,"",-1,0,0)
+	mk.call("cc1","Crewmate",me.x+300.0,me.z+10.0,"Sunrise",-1,0,0)
+	mk.call("cs1","Stranger",me.x+6.0,me.z,"Other",-1,0,0)
+	mk.call("cn1","Near",me.x+5.0,me.z,"",0,1,0)
+	mk.call("cf1","Far",me.x+300.0,me.z,"",0,1,0)
+	mk.call("cc1","Crewmate",me.x+300.0,me.z+10.0,"Sunrise",8,1,1)
+	mk.call("cs1","Stranger",me.x+6.0,me.z,"Other",9,1,1)
+	var who := chat_lines.map(func(l): return String(l["who"]))
+	assert("Near" in who,"v0.36: a nearby player's chat shows")
+	assert(not "Far" in who,"v0.36: a far player's chat stays in their area")
+	assert("Crewmate" in who,"v0.36: crew chat reaches the crew anywhere")
+	assert(not "Stranger" in who,"v0.36: other crews' chat is private")
+	assert(_chat_area(CM_C) == "Harbor Commons","v0.36: chat header names the area")
+	for ch in HUB_PHRASES.slice(CHAT_SAY):
+		var ok := ThemeDB.fallback_font.has_char(String(ch).unicode_at(0))
+		for fb in ThemeDB.fallback_font.fallbacks:
+			ok = ok or (fb as Font).has_char(String(ch).unicode_at(0))
+		assert(ok,"v0.36: chat symbol %s has a font" % ch)
+	for id in ["cn1","cf1","cc1","cs1"]:
+		if online_peers.has(id):
+			online_peers[id]["node"].queue_free()
+			online_peers.erase(id)
+	crew_name = keep[0]
+	chat_lines = keep[1]
+	chat_last_say = keep[4]
+
+func _smoke_commons() -> void:
+	assert(cm_spin != null and cm_jets.size() == 10,"v0.36: Harbor Commons is built")
+	assert(not _blocked_at(Vector3(-93,1.0,-30.5),0.3),"v0.36: the park path is open")
+	var keep := [cash,bonus_xp,pz_day,pz_streak,pz_total,pz_test_day]
+	for day in ["2026-11-20","2026-11-21"]:
+		pz_test_day = day
+		_pz_new(day)
+		assert(not _pz_done(),"v0.36: the puzzle starts unsolved")
+		var a := pz_board.duplicate()
+		_pz_new(day)
+		assert(a == pz_board,"v0.36: the same day gives the same puzzle")
+		for step in pz_solution:
+			_pz_tap(int(step))
+		assert(_pz_done() and pz_solved_now,"v0.36: the puzzle can be solved (%s)" % ("lights" if pz_kind == 0 else "slide"))
+	assert(pz_day == "2026-11-21" and pz_streak == 2,"v0.36: a second day in a row builds a streak")
+	var c := cash
+	_pz_new("2026-11-21")
+	for step in pz_solution:
+		_pz_tap(int(step))
+	assert(cash == c,"v0.36: the reward is once a day")
+	cash = keep[0]; bonus_xp = keep[1]; pz_day = keep[2]; pz_streak = keep[3]; pz_total = keep[4]; pz_test_day = keep[5]
+	pz_built_for = ""
+	_pz_refresh_sign()
+
 # ---------- v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard") ----------
 var extra_panels: Array = []
 var cash_pill: Button
@@ -20883,7 +21708,7 @@ void sky() {
 }
 """
 
-var day_mode := 0
+var day_mode := 1   # v0.36: always day by default (brighter); Menu > Time cycles the others
 var day_hour_override := -1.0
 var night_amt := 0.0
 var haze_now := HAZE
@@ -21305,6 +22130,8 @@ func _smoke_v27() -> void:
 	day_mode = 3
 	assert(_game_hour() > 21.0,"Always night mode")
 	_smoke_airport()
+	_smoke_commons()
+	_smoke_chat()
 	# Nobody stands in a road, and a car stuck behind someone in its lane moves on after a few seconds.
 	for p in peds:
 		if bool(p["idle"]):
@@ -21367,6 +22194,25 @@ func _city_shots() -> void:
 			# Two pretend players beside you, to check name tags.
 			_online_peer_update({"i":"shotp1","n":"NeonPanda30","x":cp[0]-2.5,"y":0.9,"z":cp[2]-3.0,"r":0.0,"d":0,"l":9,"k":2,"ac":13,"av":[3,0,0]})
 			_online_peer_update({"i":"shotp2","n":"Sokolo","x":cp[0]+3.0,"y":0.9,"z":cp[2]-6.0,"r":0.0,"d":0,"l":5,"ac":7,"av":[2,1,1]})
+		if OS.get_environment("HC_CHAT") != "":
+			# Developer-only preview of nearby chat: two pretend players near the camera talking, you
+			# answering. It never connects: chat_preview only shows the chat UI offline.
+			chat_preview = true
+			driving = false
+			player.position = Vector3(cp[0]-0.8,0.9,cp[2]-4.5)
+			player.rotation.y = 2.8
+			for id in ["shotp1","shotp2"]:
+				if not online_peers.has(id):
+					_online_peer_update({"i":id,"n":"NeonPanda30" if id == "shotp1" else "Sokolo","x":cp[0]-3.0 if id == "shotp1" else cp[0]+2.6,"y":0.9,"z":cp[2]-6.5 if id == "shotp1" else cp[2]-7.0,"r":0.0,"d":0,"l":9,"av":[3,0,0] if id == "shotp1" else [2,1,1],"qn":0,"q":-1})
+			_online_peer_update({"i":"shotp1","n":"NeonPanda30","x":cp[0]-3.0,"y":0.9,"z":cp[2]-6.5,"r":0.0,"d":0,"l":9,"av":[3,0,0],"qn":1,"q":12})
+			_online_peer_update({"i":"shotp2","n":"Sokolo","x":cp[0]+2.6,"y":0.9,"z":cp[2]-7.0,"r":0.0,"d":0,"l":5,"av":[2,1,1],"qn":1,"q":20})
+			chat_last_say = -10.0
+			_say(13)
+			if OS.get_environment("HC_CHAT") == "2":
+				chat_panel.show()
+				chat_panel.move_to_front()
+			for i in 20:
+				await get_tree().physics_frame
 		if OS.get_environment("HC_SHOWOFF") != "":
 			# Preview: your car beside you, riding the hoverboard with a jetpack and a pet.
 			driving = false

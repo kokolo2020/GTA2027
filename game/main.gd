@@ -308,18 +308,25 @@ func _ready() -> void:
 	_build_connect()
 	_build_airport()
 	_build_skytrain()
-	_build_peds()
-	_build_traffic()
+	if not OS.get_environment("HC_SKIP").contains("peds"):
+		_build_peds()
+	if not OS.get_environment("HC_SKIP").contains("traffic"):
+		_build_traffic()
 	_build_future()
 	_build_food_court()
 	_build_commons()
-	_build_biosphere()
-	_build_galleria()
-	_build_sky_garden()
+	if not OS.get_environment("HC_SKIP").contains("biosphere"):
+		_build_biosphere()
+	if not OS.get_environment("HC_SKIP").contains("galleria"):
+		_build_galleria()
+	if not OS.get_environment("HC_SKIP").contains("sky_garden"):
+		_build_sky_garden()
 	_build_market()
 	_build_display()
-	_build_grand_central()
-	_build_fill()
+	if not OS.get_environment("HC_SKIP").contains("grand_central"):
+		_build_grand_central()
+	if not OS.get_environment("HC_SKIP").contains("fill"):
+		_build_fill()
 	_build_signposts()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
 	radio_player = AudioStreamPlayer.new()
@@ -8567,6 +8574,7 @@ func _process(delta: float) -> void:
 	_strollers_tick(delta)
 	_dir_tick(delta)
 	_gc_tick(delta)
+	_ga_inner_tick()
 	_cash_pill_tick()
 	_lb_tick(delta)
 	_market_tick(delta)
@@ -8699,8 +8707,12 @@ func _build_peds() -> void:
 func _update_peds(delta: float) -> void:
 	# v0.26: people far from you move in coarse steps and don't animate (they're out of sight).
 	var me: Vector3 = car.position if driving else player.position
+	var frame := Engine.get_process_frames()
+	var k := 0
 	for p in peds:
-		var far := delta > 0.0 and absf((p["node"] as Node3D).position.x-me.x)+absf((p["node"] as Node3D).position.z-me.z) > 150.0
+		k += 1
+		var md := absf((p["node"] as Node3D).position.x-me.x)+absf((p["node"] as Node3D).position.z-me.z)
+		var far := delta > 0.0 and md > 150.0
 		var step := delta
 		if far:
 			p["acc"] = float(p.get("acc",0.0))+delta
@@ -8708,9 +8720,10 @@ func _update_peds(delta: float) -> void:
 				continue
 			step = float(p["acc"])
 		p["acc"] = 0.0
-		_update_ped(p,step,far)
+		# v0.48: people more than ~50 m away pose their arms and legs every third frame only.
+		_update_ped(p,step,far,delta <= 0.0 or md < 70.0 or (frame+k) % 3 == 0)
 
-func _update_ped(p: Dictionary, delta: float, far: bool) -> void:
+func _update_ped(p: Dictionary, delta: float, far: bool, pose := true) -> void:
 	if true:
 		var a: Vector3 = p["a"]
 		var b: Vector3 = p["b"]
@@ -8756,6 +8769,8 @@ func _update_ped(p: Dictionary, delta: float, far: bool) -> void:
 		if far:
 			return
 		p["phase"] = float(p["phase"])+delta*float(p["speed"])*4.5
+		if not pose:
+			return
 		var legs: Array = p["legs"]
 		if legs.size() == 2:
 			legs[0].rotation.x = sin(float(p["phase"]))*0.6
@@ -11355,10 +11370,13 @@ func _light_green(axis: int) -> bool:
 	var t := fposmod(clock,LIGHT_CYCLE)
 	return t < 9.0 if axis == 0 else (t >= 10.0 and t < 19.0)
 
-func _traffic_place(t: Dictionary, weight: float) -> void:
+func _traffic_place(t: Dictionary, weight: float, far := false) -> void:
 	var sample := _path_sample(traffic_paths[int(t["path"])],float(t["s"]))
 	t["pos"] = sample[0]
 	t["dir"] = sample[1]
+	if far:
+		# v0.48: out of sight (culled at 150 m): keep driving, but don't move the body (saves physics).
+		return
 	var node: Node3D = t["node"]
 	node.position = Vector3((sample[0] as Vector2).x,0,(sample[0] as Vector2).y)
 	var dir: Vector2 = sample[1]
@@ -11396,6 +11414,23 @@ func _traffic_tick(delta: float) -> void:
 	for u in chase_units:
 		var b: Node3D = u["node"]
 		others.append(Vector2(b.position.x,b.position.z))
+	# v0.48: bucket people and vehicles into 12 m cells once a frame, so each car only looks at
+	# its neighbours (it used to check all 272 people and all 66 vehicles every frame).
+	var me := Vector2(car.position.x,car.position.z) if driving else Vector2(player.position.x,player.position.z)
+	var ped_cells := {}
+	for pd in peds:
+		var pn: Node3D = pd["node"]
+		var cell := Vector2i(floori(pn.position.x/12.0),floori(pn.position.z/12.0))
+		if not ped_cells.has(cell):
+			ped_cells[cell] = []
+		(ped_cells[cell] as Array).append(Vector2(pn.position.x,pn.position.z))
+	var car_cells := {}
+	for j in traffic.size():
+		var tp: Vector2 = traffic[j]["pos"]
+		var cell := Vector2i(floori(tp.x/12.0),floori(tp.y/12.0))
+		if not car_cells.has(cell):
+			car_cells[cell] = []
+		(car_cells[cell] as Array).append(j)
 	for i in traffic.size():
 		var t: Dictionary = traffic[i]
 		var path: Dictionary = traffic_paths[int(t["path"])]
@@ -11412,15 +11447,19 @@ func _traffic_tick(delta: float) -> void:
 			pass
 		elif float(t.get("ped_skip",0.0)) > 0.0:
 			t["ped_skip"] = float(t["ped_skip"])-delta
+		elif pos.distance_squared_to(me) > 170.0*170.0:
+			# Far from you (and out of sight): don't bother waiting for people.
+			pass
 		else:
 			var ped_target := INF
-			for p in peds:
-				var pn: Node3D = p["node"]
-				var pp := Vector2(pn.position.x,pn.position.z)
-				if pp.distance_squared_to(pos) < 150.0:
-					var d := _traffic_blocked_by(pos,dir,pp)
-					if d < INF:
-						ped_target = minf(ped_target,maxf(0.0,(d-3.5)*1.6))
+			var pc := Vector2i(floori(pos.x/12.0),floori(pos.y/12.0))
+			for cx in range(pc.x-1,pc.x+2):
+				for cz in range(pc.y-1,pc.y+2):
+					for pp: Vector2 in ped_cells.get(Vector2i(cx,cz),[]):
+						if pp.distance_squared_to(pos) < 150.0:
+							var d := _traffic_blocked_by(pos,dir,pp)
+							if d < INF:
+								ped_target = minf(ped_target,maxf(0.0,(d-3.5)*1.6))
 			if ped_target < 0.5 and float(t["v"]) < 0.5:
 				t["ped_wait"] = float(t.get("ped_wait",0.0))+delta
 				if float(t["ped_wait"]) > TRAFFIC_PED_PATIENCE:
@@ -11429,7 +11468,12 @@ func _traffic_tick(delta: float) -> void:
 			else:
 				t["ped_wait"] = 0.0
 			target = minf(target,ped_target)
-		for j in traffic.size():
+		var near_cars: Array = []
+		var cc := Vector2i(floori(pos.x/12.0),floori(pos.y/12.0))
+		for cx in range(cc.x-1,cc.x+2):
+			for cz in range(cc.y-1,cc.y+2):
+				near_cars.append_array(car_cells.get(Vector2i(cx,cz),[]))
+		for j in near_cars:
 			if j == i:
 				continue
 			var o: Dictionary = traffic[j]
@@ -11454,7 +11498,7 @@ func _traffic_tick(delta: float) -> void:
 		v = move_toward(v,target,delta*(5.0 if target > v else 14.0))
 		t["v"] = v
 		t["s"] = fposmod(float(t["s"])+v*delta,total)
-		_traffic_place(t,delta*7.0)
+		_traffic_place(t,delta*7.0 if pos.distance_squared_to(me) < 185.0*185.0 else 1.0,pos.distance_squared_to(me) > 185.0*185.0 and traffic_test_path < 0)
 
 func _smoke_downtown() -> void:
 	assert(downtown_nodes.size() == DOWNTOWN.size(),"Skyline sites built")
@@ -11663,11 +11707,30 @@ const WEB_3D_PIXELS := 1100000.0
 func _web_perf_setup() -> void:
 	if "--bench" in OS.get_cmdline_user_args():
 		# Desktop check: average frame rate over 8 seconds of normal play, then quit.
+		var at := OS.get_environment("HC_BENCH_AT")
+		if at != "":
+			# Developer: stand somewhere else for the benchmark ("x,z,yaw").
+			var v := at.split_floats(",")
+			get_tree().create_timer(1.5).timeout.connect(func():
+				if crate_open:
+					crate_open = false
+					if crate_root != null:
+						crate_root.hide()
+				paused = false
+				menu.hide()
+				driving = false
+				player.position = Vector3(v[0],0.9,v[1])
+				player.rotation.y = v[2] if v.size() > 2 else 0.0
+				car.position = Vector3(v[0]+4.0,0.8,v[1]))
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+		Engine.max_fps = 0
 		get_tree().create_timer(4.0).timeout.connect(func():
 			var f0 := Engine.get_process_frames()
 			var t0 := Time.get_ticks_msec()
 			get_tree().create_timer(8.0).timeout.connect(func():
-				print("HC_BENCH fps=%.1f lite=%s scale=%.2f" % [float(Engine.get_process_frames()-f0)*1000.0/float(Time.get_ticks_msec()-t0),str(web_lite),get_viewport().scaling_3d_scale])
+				print("HC_BENCH fps=%.1f lite=%s scale=%.2f draws=%d prims=%d objs=%d proc_ms=%.2f phys_ms=%.2f nodes=%d at=%s" % [float(Engine.get_process_frames()-f0)*1000.0/float(Time.get_ticks_msec()-t0),str(web_lite),get_viewport().scaling_3d_scale,
+					int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)),int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)),
+					Performance.get_monitor(Performance.TIME_PROCESS)*1000.0,Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)*1000.0,int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),str(player.position.round())])
 				get_tree().quit()))
 	web_lite = OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()
 	if not web_lite:
@@ -19409,6 +19472,7 @@ func _bio_flush() -> void:
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.visibility_range_end = 150.0      # v0.48: dome planting is only drawn near the dome
 		bio_root.add_child(mi)
 	bio_models.clear()
 	# Everything queued with _bio_inst becomes one MultiMesh per mesh and material.
@@ -22660,7 +22724,37 @@ func _build_galleria() -> void:
 	_ga_shell()
 	_car_barrier([[Vector3(GA_C.x,0.9,GA_Z0+1.6),Vector3(GA_DOOR_S*2.0+1.0,1.8,0.5),0.0],[Vector3(GA_X0-1.6,0.9,GA_DOOR_W.x),Vector3(GA_DOOR_W.y*2.0+1.0,1.8,0.5),PI/2.0]])
 	_build_ga_fun()
-	_cull_person(ga_root,160.0)
+	_cull_people_in(ga_root,95.0)
+	# v0.48: the mall is closed all round, so its inside is only drawn when you're in it or at a door.
+	for c in ga_root.get_children():
+		if c is CollisionObject3D or not (c is Node3D):
+			continue
+		var gp := (c as Node3D).global_position
+		var inside := gp.x > GA_X0+0.5 and gp.x < GA_X1-0.5 and gp.z > GA_ZN+0.5 and gp.z < GA_Z0-1.2
+		if inside or c is MultiMeshInstance3D:
+			ga_inner.append(c)
+	for c in ga_inner:
+		ga_shell_nodes.erase(c)
+
+var ga_inner: Array = []         # v0.48: everything inside the mall (hidden while you're away)
+var ga_shell_nodes: Array = []
+var ga_inner_on := true
+
+func _ga_inner_tick() -> void:
+	if ga_inner.is_empty():
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var p := cam.global_position
+	var m := 14.0
+	var on := p.x > GA_X0-m and p.x < GA_X1+m and p.z > GA_ZN-m and p.z < GA_Z0+m
+	if on == ga_inner_on:
+		return
+	ga_inner_on = on
+	for c in ga_inner:
+		if is_instance_valid(c):
+			(c as Node3D).visible = on
 
 func _ga_shell() -> void:
 	# Solid outer walls up to the glass roof, in the mall's toy colours, with two doorways.
@@ -27795,6 +27889,10 @@ func _smoke_v27() -> void:
 	(blocker["node"] as Node3D).position = spot
 	tc["v"] = 0.0
 	var s0 := float(tc["s"])
+	# v0.48: cars far from you don't wait for people, so stand nearby for this check.
+	var keep_pp := [player.position,driving]
+	driving = false
+	player.position = Vector3(tpos.x-tdir.y*14.0,0.9,tpos.y+tdir.x*14.0)
 	for f in 60:
 		_traffic_tick(1.0/60.0)
 	assert(absf(float(tc["s"])-s0) < 0.5,"Car waits for a person in its lane")
@@ -27804,6 +27902,8 @@ func _smoke_v27() -> void:
 		if float(tc.get("ped_skip",0.0)) > 0.0:
 			gave_up = true
 	assert(gave_up,"Car doesn't wait forever behind a person standing in the lane")
+	player.position = keep_pp[0]
+	driving = keep_pp[1]
 	blocker["a"] = keep_ped[0]
 	blocker["b"] = keep_ped[1]
 	blocker["idle"] = keep_ped[2]
@@ -29765,7 +29865,7 @@ func _build_grand_central() -> void:
 		for m in 2:
 			var off := Vector3(0.55 if m == 0 else -0.55,0,0)
 			_cm_person(gc_root,gp+off,PI/2.0 if m == 0 else -PI/2.0,1500+g*2+m)
-	_cull_people_in(gc_root,170.0)
+	_cull_people_in(gc_root,95.0)
 
 func _build_gc_towers() -> void:
 	var T := GC_T
@@ -29994,7 +30094,7 @@ func _build_fill() -> void:
 	# ---- v0.47: street stalls on the wider downtown pavements ----
 	_build_street_stalls()
 	_gb_flush()
-	_cull_people_in(fill_root,170.0)
+	_cull_people_in(fill_root,95.0)
 
 func _hg_in_lake(p: Vector3, margin := 0.0) -> bool:
 	var d := Vector2((p.x-HG_LAKE.x)/(HG_LAKE_R.x+margin),(p.z-HG_LAKE.z)/(HG_LAKE_R.y+margin))

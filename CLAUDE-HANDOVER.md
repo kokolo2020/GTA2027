@@ -574,3 +574,12 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Signs: `_bio_text` (small Label3D with visibility range) and `_bio_plaque` (zoo sign on a post). Facts moved into the SPOTTED toast.
 - Known flaky pre-existing smoke assert: "The robot blocks three in a row" (Connect Four robot randomness) failed once, passed on re-runs.
 - Commit cb895a4, versionCode 68, APK SHA256 3a5a27b70f9715056340c5ffff707ceaf9dfa848761ed0411f6e71f7af012322 (45,727,491 bytes), same certificate. Workflow run 44718566161 passed; release.json, page button, web pck (17,381,380) and downloaded APK hash verified. Not verified on a phone: frame rate in the Biosphere.
+
+## v0.40.0 released and verified (2026-11-20)
+
+- Style system: `person_N.glb` bodies are now hairless (brows use the `Brow` material); `blender-src/make_wear.py` (Blender -b --factory-startup -P) writes `game/models/wear/*.glb` (hair_0-9, beard_1-4, top_*, bottom_*, shoes_*, acc_*). Each piece's meshes are named after the body node they ride on; `_dress(person, look)` hangs them using rest transforms from `_person_index`, recolours `Cloth`/`Trim`/`Hair`/`Stubble`, bares arms/legs per item, and scales nodes for builds. NPCs get `_npc_look(seed)` outfits (seeded by `npc_seq`).
+- Look data: `look` (keys in `LOOK_KEYS`), `look_own` bitmasks, saved as `look_v40`/`look_own_v40`; sent online as `"lk"` (old `"av"` kept for older phones). Old Style Shop colours map to `look.tc`/`look.pc`.
+- Harbor Galleria at `GA_C` (-330,0,-600): stores from `GA_STORES` (`_ga_store`, local frame), `ga_spots` counters, `STORES` panel (`_open_store`, catalog cards, fitting camera `_style_face_camera`), `_style_finish` drops unowned try-ons when the panel closes. Relics (`RELICS`, daily stock `_relic_stock`), deals (`_style_deal`), featured podiums and Sky Run (`SKY_PADS`, `_ga_fun_tick`, saved `sky_run`). Checkpoint "Harbor Galleria" is last in CHECKPOINTS.
+- Fixes included: Biosphere gate side test uses the gate plane (`along < 0`, within 20 m), doorway wall pieces stop 2.85 m from openings, `_on_foot_collision_guard`, CALL CAR blocked by `_bio_inside`.
+- Developer: `--style-shots` (outfit line-up and store screens; offline).
+- Commit be111ce, versionCode 69, APK SHA256 7d05370125750ea9fa8791f9e29f6a454817457816bc36a2c283db7b8a955fc9 (46,431,777 bytes), same certificate. Workflow run 44733051176 passed; release.json, page button, web pck (18,064,328) and downloaded APK hash verified. Desktop bench 55.8 fps. Not verified on a phone.

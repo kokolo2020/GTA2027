@@ -340,7 +340,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.37: the Biosphere opens! Four season domes north-west of Skyline. Spot all 16 animals!")
+	_show_toast("Harbor City 0.37.1: Menu > Travel > The Biosphere takes you straight to the domes!")
 	booted = true
 	_online_autostart()
 	if not dev_mode and not crate_done:
@@ -12339,6 +12339,7 @@ const CHECKPOINTS := [
 	{"name":"Sunset Beach","pos":Vector3(300,0,158)},
 	{"name":"Westside","pos":Vector3(-270,0,80)},
 	{"name":"Harbor Airport","pos":Vector3(52,0,-470)},
+	{"name":"The Biosphere","pos":Vector3(-500,0,-486)},
 ]
 var checkpoint_id := -1
 var checkpoint_nodes: Array = []
@@ -16417,7 +16418,7 @@ const RUN_SPEED := 9.0
 const WALK_SPEED := 5.0
 # Which area must be open before you can travel to each checkpoint (see _area_open):
 # 0 city, 1 ridge (east), 2 bay (west), 3 north, 4 marina, 5 skyline downtown.
-const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1,0,0,0]
+const TRAVEL_AREA := [0,1,2,3,3,3,5,5,4,1,2,1,0,0,0,0]   # v0.37.1: The Biosphere, always open
 const TRAVEL_COOL := 20.0
 var run_on := true
 var run_button: Button
@@ -16603,6 +16604,12 @@ func _smoke_travel() -> void:
 	for i in CHECKPOINTS.size():
 		assert(i == checkpoint_id or _travel_open(i) == _area_open(int(TRAVEL_AREA[i])),"Travel follows district locks")
 	assert(STOP_CLOCK.x > 4.5 and absf(STOP_WEST.x+32.0) > 4.5,"Job stops are beside the road, not on it")
+	travel_ready_at = 0.0
+	var bi := CHECKPOINTS.size()-1
+	assert(String(CHECKPOINTS[bi]["name"]) == "The Biosphere" and _travel_open(bi),"v0.37.1: fast travel to the Biosphere is open")
+	_travel_to(bi)
+	assert(Vector2(player.position.x-BIO_C.x,player.position.z+486.0).length() < 0.5 and not _blocked_at(player.position,0.3),"v0.37.1: fast travel lands on the Biosphere walk")
+	_car_back()
 	travel_ready_at = 0.0
 	driving = was_driving
 	player.position = was_p

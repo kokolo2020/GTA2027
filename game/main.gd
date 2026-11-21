@@ -28104,6 +28104,11 @@ func _city_shots() -> void:
 			_career_start(int(OS.get_environment("HC_CAREER")))
 			for i in 4:
 				await get_tree().physics_frame
+		if OS.get_environment("HC_NOHUD") != "":
+			# Developer-only: hide every on-screen control for a clean picture.
+			for c in get_children():
+				if c is CanvasLayer or c is Control:
+					c.visible = false
 		if OS.get_environment("HC_MENU") != "":
 			# Developer-only: show the Menu on a given tab for the screenshot.
 			_toggle_menu()

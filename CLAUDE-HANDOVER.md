@@ -648,3 +648,7 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - `_traffic_tick` buckets people and vehicles in 12 m cells; cars further than 170 m from you skip people; cars further than 185 m don't move their body (`_traffic_place(..., far)`). `_update_peds` poses people beyond 70 m every third frame. People in gc/fill/ga roots fade at 95 m (`_cull_people_in`). `ga_inner` (everything inside the mall) is hidden unless the camera is within 14 m of the building (`_ga_inner_tick`). Dome planting MultiMeshes have visibility_range_end 150.
 - PLACE_LOCKS: Galleria L4, Biosphere L7, Sky Garden L10. Locked: root hidden and PROCESS_MODE_DISABLED (colliders off), fenced sign shown, ticks and near-checks return early, `_travel_open` refuses. `_places_tick` re-checks once a second and announces openings. Tests/shots always unlocked; `place_test_level` or env HC_LEVEL to try a level.
 - Released and verified 2026-11-21: commit 623befb (tag v0.48.0), metadata d56223c, versionCode 78. APK SHA256 c53769c277e220edfa0440fb0a04674651d5bb4a8d1ac992407b04b20e232e2e (49,801,916 bytes), same certificate. Pages passed. Live release.json, page button, web pck (21,427,420) and downloaded APK hash verified. Not checked in a real browser or on a phone.
+
+## v0.49.0 (2026-11-21): 40 levels
+
+- LEVEL_XP has 40 entries: level n costs 50n XP up to 20 and 100n from 21 (level 40 at 71,450 XP). Peer levels clamp to 1-40; ACH gained lv25/lv30/lv40; `_level_color` gold at 20, pink at 30, white at 40.

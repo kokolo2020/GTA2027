@@ -353,7 +353,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.48: runs about twice as fast in busy places. The Galleria, Biosphere and Sky Garden open at levels 4, 7 and 10.")
+	_show_toast("Harbor City 0.49: levels now go up to 40! New achievements at levels 25, 30 and 40.")
 	booted = true
 	_sg_boot_note()
 	_online_autostart()

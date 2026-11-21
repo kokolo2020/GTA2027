@@ -22,6 +22,13 @@
 7. Watch the "Publish download page" workflow (`gh run list --workflow pages.yml`). It often fails with "No artifacts named github-pages": re-run it (`gh run rerun <id>` or `gh workflow run pages.yml --ref main`).
 8. Verify live: release.json version + sha256, page edition and button, /play/index.pck content-length, downloaded APK sha256. Append a "Released and verified" line here, commit, push, switch back to character-redesign.
 
+### Releasing from a cloud/phone chat (no Claude on the Mac)
+A cloud chat linked to the Mac (computer use / device_bash) cannot run Mac Godot, the signing key or gh, and cannot type into Terminal. So: when Koko says "Release", the chat itself does the file work, then Koko runs ONE command in Terminal on the Mac.
+1. In the repo on main (`git checkout main`; the folder is normally on character-redesign), edit: `version/code` + `version/name` in game/export_presets.cfg, the startup `_show_toast("Harbor City X.Y.Z: ...")` in game/main.gd, site/index.html (edition, "New in X.Y.Z:" lead, download link v-tag, button label, gameplay.png?v=), and write docs/releases/vX.Y.Z.md (no hashes; the script appends them).
+2. Tell Koko to run in Terminal on the Mac: `gh auth status` (if not logged in: `gh auth login`), then `bash ~/GTA2027/scripts/release.sh X.Y.Z CODE`.
+3. scripts/release.sh does: set aside untracked files, smoke test, import, export APK + Web, verify cert/version, append hash to notes, commit + push main, scripts/publish-release.py, Pages workflow check, live check, update this file, push, restore branch/save/files. It stops at the first problem; logs in /tmp/hc-aside.*/log.
+4. In a cloud chat, device_bash is a Linux VM: git commands there leave .lock files (deletion is off); never leave stale locks under .git.
+
 ### Developer tools in the game
 - `--city-shots` with HC_CAM="name;x,y,z;lx,ly,lz;hour[;extra frames]" and HC_SHOTS=<dir> saves one frame. Extras: HC_NOHUD=1 (no buttons), HC_PHOTO=1 (Photo mode), HC_VIEWERS=<n> (streamer viewer badge), HC_CAREER=<0-3> HC_CJ=<wait|pickup|mirror|dropoff|done|load|unload|radio|arrest|spray|fireout>[:seconds] (one frozen moment of a career job), HC_SJ=<name> (stream-join welcome banner), HC_FOLLOW=1 (Follow view, shows the screen arrow), HC_MENU=<tab>, HC_HOME=<i> (+HC_HOMETOP=1), HC_CAREER=<i>, HC_LEVEL=<n>, HC_SHOWOFF, HC_PEERS.
 - `--bench --web-lite` with HC_BENCH_AT="x,z,yaw" prints fps, draw calls, primitives, process/physics ms; HC_SKIP="biosphere,galleria,..." skips building parts.

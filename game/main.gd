@@ -342,7 +342,7 @@ func _ready() -> void:
 	_refresh_time_button()
 	_refresh_checkpoints()
 	var dev_mode := false
-	for flag in ["--smoke-test","--nav-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--style-shots"]:
+	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--style-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -412,6 +412,32 @@ func _ready() -> void:
 		await get_tree().create_timer(14.0).timeout
 		_online_pill_tick()
 		print("WATCH_COUNT ",_watch_count()," PILL ",online_pill.text if online_pill != null else "none")
+		get_tree().quit()
+	elif "--home-check" in OS.get_cmdline_user_args():
+		# Developer check: walk around inside a home with the stick.
+		await get_tree().create_timer(2.0).timeout
+		crate_open = false
+		if crate_root != null:
+			crate_root.hide()
+		paused = false
+		menu.hide()
+		driving = false
+		player.show()
+		homes_owned |= 1
+		home_layout["h0"] = _home_default_layout(0)
+		_home_enter(0)
+		for b in [false,true]:
+			board_on = b
+			var p0 := player.position
+			stick = Vector2(0.0,-1.0)
+			for i in 90:
+				await get_tree().physics_frame
+			print("HOME_CHECK board=%s moved=%.2f from %s to %s floor=%s home_in=%d paused=%s" % [str(b),player.position.distance_to(p0),str(p0.round()),str(player.position.round()),str(player.is_on_floor()),home_in,str(paused)])
+			stick = Vector2(1.0,0.0)
+			var p1 := player.position
+			for i in 60:
+				await get_tree().physics_frame
+			print("HOME_CHECK2 moved=%.2f at %s" % [player.position.distance_to(p1),str(player.position.round())])
 		get_tree().quit()
 	elif "--nav-check" in OS.get_cmdline_user_args():
 		# Developer check: build every walk grid and run the v0.44 checks on their own.
@@ -27927,7 +27953,7 @@ func _smoke_v27() -> void:
 	_smoke_car_barriers()
 	_smoke_pass()
 	await _smoke_strollers()
-	_smoke_careers_homes()
+	await _smoke_careers_homes()
 	# Nobody stands in a road, and a car stuck behind someone in its lane moves on after a few seconds.
 	for p in peds:
 		if bool(p["idle"]):
@@ -28050,7 +28076,7 @@ func _city_shots() -> void:
 			homes_owned |= 1 << hi
 			var lay := _home_default_layout(hi)
 			var fills := {"art":"art1","fun":"fun1","lamp":"lamp1","plant":"plant2"}
-			var sl: Array = HOME_SLOTS[int(HOMES[hi]["kind"])]
+			var sl: Array = _home_slots(int(HOMES[hi]["kind"]))
 			for k in sl.size():
 				if fills.has(String(sl[k][3])) and String(lay[k]) == "":
 					lay[k] = fills[String(sl[k][3])]
@@ -28060,8 +28086,15 @@ func _city_shots() -> void:
 			for i in 10:
 				await get_tree().physics_frame
 			var hz: Vector3 = HOME_ROOM[int(HOMES[hi]["kind"])]
-			camera.global_position = _home_origin(hi)+Vector3(hz.x*0.42,2.6,-hz.z*0.42)
-			camera.look_at(_home_origin(hi)+Vector3(-hz.x*0.1,1.0,hz.z*0.3))
+			if OS.get_environment("HC_HOMETOP") != "":
+				for c in (home_rooms[hi] as Node3D).get_children():
+					if c is Node3D and (c as Node3D).position.y > hz.y-0.3 and (c as Node3D).position.y < hz.y+1.0:
+						(c as Node3D).visible = false
+				camera.global_position = _home_origin(hi)+Vector3(0,hz.x*1.15,hz.z*0.55)
+				camera.look_at(_home_origin(hi)+Vector3(0,0,0.3))
+			else:
+				camera.global_position = _home_origin(hi)+Vector3(-hz.x*0.45,2.7,hz.z*0.38)
+				camera.look_at(_home_origin(hi)+Vector3(hz.x*0.3,1.0,-hz.z*0.15))
 		if OS.get_environment("HC_CAREER") != "":
 			_career_start(int(OS.get_environment("HC_CAREER")))
 			for i in 4:
@@ -30797,7 +30830,7 @@ func _career_block_reason() -> String:
 	return ""
 
 func _career_start(i: int) -> void:
-	if _level() < int(CAREERS[i]["level"]):
+	if _level() < int(CAREERS[i]["level"]) and not career_test:
 		_show_toast("%s opens at level %d." % [CAREERS[i]["name"],int(CAREERS[i]["level"])])
 		return
 	var why := _career_block_reason()
@@ -31133,14 +31166,6 @@ const FURNI := [
 	["rug0","rug","Round Rug",500],["rug1","rug","Pattern Rug",800],
 	["bed0","bed","Comfy Bed",2500],["bed1","bed","King Bed",5500],
 ]
-# Furniture spots per home kind: [local x, local z, yaw, category]. Room local frame: centre of the
-# floor, +z is the window wall, -z the door wall.
-const HOME_SLOTS := [
-	[[-3.0,1.5,PI,"sofa"],[-3.0,4.2,0.0,"tv"],[-3.0,2.8,0.0,"rug"],[5.5,-3.8,0.0,"plant"],[0.0,-4.85,0.0,"art"],[5.5,2.5,-PI/2.0,"fun"],[3.5,-1.0,0.0,"lamp"]],
-	[[-4.0,2.0,PI,"sofa"],[-4.0,5.2,0.0,"tv"],[-4.0,3.5,0.0,"rug"],[7.0,-4.8,0.0,"plant"],[-1.0,-5.85,0.0,"art"],[6.0,3.0,-PI/2.0,"fun"],[4.0,-3.0,0.0,"bed"],[2.0,1.0,0.0,"lamp"]],
-	[[-5.5,2.5,PI,"sofa"],[-5.5,6.2,0.0,"tv"],[-5.5,4.2,0.0,"rug"],[9.0,-5.8,0.0,"plant"],[-2.0,-6.85,0.0,"art"],[8.0,3.5,-PI/2.0,"fun"],[5.0,-3.5,0.0,"bed"],[2.0,2.0,0.0,"lamp"],[-9.0,-5.5,0.0,"plant"]],
-	[[-8.0,3.0,PI,"sofa"],[-8.0,8.2,0.0,"tv"],[-8.0,5.5,0.0,"rug"],[12.5,-7.8,0.0,"plant"],[-3.0,-8.85,0.0,"art"],[10.0,5.0,-PI/2.0,"fun"],[7.0,-4.5,0.0,"bed"],[1.0,3.0,0.0,"lamp"],[-12.5,-7.5,0.0,"plant"],[3.0,6.0,-PI/2.0,"fun"],[5.0,-8.85,0.0,"art"]],
-]
 var homes_owned := 0             # bit per home (saved)
 var home_layout := {}            # "h<i>" -> [item id or "" per slot] (saved)
 var furni_owned := {}            # item id -> true (saved): owned pieces can be placed again for free
@@ -31225,12 +31250,11 @@ func _home_origin(i: int) -> Vector3:
 func _home_slot_near() -> int:
 	if home_in < 0 or paused:
 		return -1
-	var slots: Array = HOME_SLOTS[int(HOMES[home_in]["kind"])]
+	var slots: Array = _home_slots(int(HOMES[home_in]["kind"]))
 	var o := _home_origin(home_in)
 	for k in slots.size():
-		var S: Array = slots[k]
-		var p := o+Vector3(float(S[0]),0,float(S[1]))
-		if Vector2(player.position.x-p.x,player.position.z-p.z).length() < 1.6:
+		var p := o+_home_ring(slots[k])
+		if Vector2(player.position.x-p.x,player.position.z-p.z).length() < 1.2:
 			return k
 	return -1
 
@@ -31290,9 +31314,9 @@ func _home_buy(i: int) -> void:
 func _home_default_layout(i: int) -> Array:
 	# Every home comes with a sofa, a TV, a rug, a plant and (in bigger homes) a bed.
 	var out: Array = []
-	for S in HOME_SLOTS[int(HOMES[i]["kind"])]:
+	for S in _home_slots(int(HOMES[i]["kind"])):
 		var cat := String(S[3])
-		out.append({"sofa":"sofa0","tv":"tv0","rug":"rug0","plant":"plant0","bed":"bed0"}.get(cat,""))
+		out.append({"sofa":"sofa0","tv":"tv0","rug":"rug0","plant":"plant0","bed":"bed0","lamp":"lamp0"}.get(cat,""))
 	return out
 
 func _home_enter(i: int) -> void:
@@ -31384,6 +31408,7 @@ func _home_build_room(i: int) -> void:
 	_hm(root,Vector3(-sz.x/2.0+0.5,0.45,-sz.z/2.0+3.0),Vector3(0.9,0.9,4.0),Color("f4f6f8"),true)
 	_hm(root,Vector3(-sz.x/2.0+0.5,0.92,-sz.z/2.0+3.0),Vector3(1.0,0.06,4.1),Color("3a3f45"))
 	_hm(root,Vector3(-sz.x/2.0+0.2,1.9,-sz.z/2.0+3.0),Vector3(0.4,0.8,3.6),Color("f4f6f8"))
+	_home_build_layout(root,kind)
 	var door := _hm(root,Vector3(0,1.1,-sz.z/2.0+0.12),Vector3(1.4,2.2,0.06),Color("6b4a32"))
 	var exit_ring := MeshInstance3D.new()
 	var tm := TorusMesh.new()
@@ -31429,7 +31454,7 @@ func _home_build_room(i: int) -> void:
 		root.add_child(tw)
 	# Furniture spots.
 	var nodes: Array = []
-	var slots: Array = HOME_SLOTS[kind]
+	var slots: Array = _home_slots(kind)
 	for k in slots.size():
 		var S: Array = slots[k]
 		var sn := Node3D.new()
@@ -31445,7 +31470,7 @@ func _home_build_room(i: int) -> void:
 		ring.position = Vector3(0,0.04,0)
 		ring.name = "SpotRing"
 		root.add_child(ring)
-		ring.position = sn.position+Vector3(0,0.04,0)
+		ring.position = _home_ring(S)+Vector3(0,0.04,0)
 		nodes.append(sn)
 	home_slot_nodes[i] = nodes
 	_home_refresh_room(i)
@@ -31453,6 +31478,7 @@ func _home_build_room(i: int) -> void:
 func _home_refresh_room(i: int) -> void:
 	if not home_slot_nodes.has(i):
 		return
+	_home_fix_layout(i)
 	var lay: Array = home_layout.get("h%d" % i,[])
 	var nodes: Array = home_slot_nodes[i]
 	for k in nodes.size():
@@ -31621,7 +31647,7 @@ func _home_panel_close() -> void:
 		_toggle_menu()
 
 func _deco_open(k: int) -> void:
-	var S: Array = HOME_SLOTS[int(HOMES[home_in]["kind"])][k]
+	var S: Array = _home_slots(int(HOMES[home_in]["kind"]))[k]
 	var cat := String(S[3])
 	deco_slot = k
 	for c in deco_list.get_children():
@@ -31658,7 +31684,7 @@ func _deco_pick(id: String) -> void:
 		furni_owned[id] = true
 	var key := "h%d" % home_in
 	var lay: Array = home_layout.get(key,_home_default_layout(home_in))
-	while lay.size() < HOME_SLOTS[int(HOMES[home_in]["kind"])].size():
+	while lay.size() < _home_slots(int(HOMES[home_in]["kind"])).size():
 		lay.append("")
 	lay[deco_slot] = id
 	home_layout[key] = lay
@@ -31670,7 +31696,6 @@ func _smoke_careers_homes() -> void:
 	# v0.50: every career job works start to finish, and a home can be bought, entered, decorated and left.
 	var keep := [cash,bonus_xp,career_jobs.duplicate(),career_earned.duplicate(),player.position,car.position,driving,homes_owned,home_layout.duplicate(true),furni_owned.duplicate(),car_speed]
 	career_test = true
-	bonus_xp = 200000
 	cash = 1000
 	_career_start(0)
 	assert(career == 0 and _model_key() == 200 and not cj.is_empty(),"v0.50: taxi shift starts")
@@ -31726,7 +31751,7 @@ func _smoke_careers_homes() -> void:
 	_home_interact()
 	assert(home_in == 0 and player.position.distance_to(_home_origin(0)) < 12.0 and (home_rooms[0] as Node3D).visible,"v0.50: inside the home")
 	var art := -1
-	var slots: Array = HOME_SLOTS[int(HOMES[0]["kind"])]
+	var slots: Array = _home_slots(int(HOMES[0]["kind"]))
 	for k in slots.size():
 		if String(slots[k][3]) == "art":
 			art = k
@@ -31735,6 +31760,25 @@ func _smoke_careers_homes() -> void:
 	_deco_pick("art1")
 	assert(cash == c0-1800 and String(home_layout["h0"][art]) == "art1" and (home_slot_nodes[0][art] as Node3D).get_child_count() > 0,"v0.50: decorating buys and places a piece")
 	assert(not paused,"v0.50: decorating closes the panel")
+	# v0.51: fill every spot, then check you can stand at each decorating ring (nothing solid there),
+	# and that the bedroom and bathroom are there.
+	var full: Array = []
+	for S in slots:
+		full.append({"sofa":"sofa2","tv":"tv1","rug":"rug1","plant":"plant1","art":"art2","fun":"fun1","lamp":"lamp0","bed":"bed1"}[String(S[3])])
+	home_layout["h0"] = full
+	_home_refresh_room(0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	for S in slots:
+		var rp := _home_origin(0)+_home_ring(S)+Vector3(0,1.0,0)
+		assert(not _blocked_at(rp,0.3),"v0.51: decorating spot for %s is clear (%s)" % [S[3],_blocker(rp,0.3)])
+	var cats := []
+	for S in slots:
+		cats.append(String(S[3]))
+	assert(cats.has("bed") and cats.has("sofa"),"v0.51: every home has a bed and a living room")
+	home_layout["h0"] = ["art1","sofa1"]
+	_home_fix_layout(0)
+	assert((home_layout["h0"] as Array).size() == slots.size() and (home_layout["h0"] as Array).has("art1") and (home_layout["h0"] as Array).has("sofa1"),"v0.51: old layouts keep their pieces")
 	var sz: Vector3 = HOME_ROOM[int(HOMES[0]["kind"])]
 	player.position = _home_origin(0)+Vector3(0,0.9,-sz.z/2.0+1.2)
 	assert(_home_btn() == "LEAVE HOME","v0.50: LEAVE HOME by the door")
@@ -31754,3 +31798,138 @@ func _smoke_careers_homes() -> void:
 	car_speed = keep[10]
 	_home_labels()
 	_apply_car()
+
+# ---- v0.51: home layout (living room, bedroom, bathroom) ----
+# Room frame: x across (the door is on the back wall at x 0, -z), +z is the window wall.
+# The living room (with the kitchen) is on the left; on the right a partition wall with two
+# doorways leads to the bathroom (back) and the bedroom (window side).
+func _home_zones(kind: int) -> Array:
+	var sz: Vector3 = HOME_ROOM[kind]
+	var hx := sz.x/2.0
+	var hz := sz.z/2.0
+	var px := hx-sz.x*0.43
+	var bz := -hz+sz.z*0.42
+	return [hx,hz,px,bz,(-hx+px)/2.0]
+
+func _home_slots(kind: int) -> Array:
+	# Furniture spots: [x, z, yaw, category]; each piece's front faces its local +z.
+	var Z := _home_zones(kind)
+	var hx: float = Z[0]
+	var hz: float = Z[1]
+	var px: float = Z[2]
+	var bz: float = Z[3]
+	var lx: float = Z[4]
+	var out := [
+		[lx,hz*0.05,0.0,"sofa"],
+		[lx,hz-0.45,PI,"tv"],
+		[lx,hz*0.5,0.0,"rug"],
+		[-hx+0.7,hz-0.7,PI/2.0,"plant"],
+		[lx,-hz+0.08,0.0,"art"],
+		[-hx+0.9,hz-2.6,PI/2.0,"fun"],
+		[px-0.6,hz*0.05,0.0,"lamp"],
+		[hx-1.4,(bz+hz)/2.0,-PI/2.0,"bed"],
+		[hx-0.7,hz-0.7,-PI/2.0,"plant"],
+	]
+	if kind >= 1:
+		out.append([px+0.1,(bz+hz)/2.0+2.0,PI/2.0,"art"])
+	if kind >= 2:
+		out.append([lx,-hz+2.4,0.0,"fun"])
+	if kind >= 3:
+		out.append([lx+3.2,hz*0.05,0.0,"lamp"])
+	return out
+
+func _home_ring(S: Array) -> Vector3:
+	# Where you stand to decorate a spot: in front of the piece, never on top of it.
+	var d: float = {"bed":2.0,"sofa":1.4,"tv":1.4,"rug":0.0,"plant":1.0,"fun":1.4,"lamp":0.9,"art":1.2}.get(String(S[3]),1.2)
+	var yaw := float(S[2])
+	return Vector3(float(S[0])+sin(yaw)*d,0,float(S[1])+cos(yaw)*d)
+
+func _furni_cat(id: String) -> String:
+	for F in FURNI:
+		if String(F[0]) == id:
+			return String(F[1])
+	return ""
+
+func _home_fix_layout(i: int) -> void:
+	# Saved layouts from an older room plan: keep every piece, moved to a spot of the same kind.
+	var key := "h%d" % i
+	if not home_layout.has(key):
+		return
+	var old: Array = home_layout[key]
+	var slots := _home_slots(int(HOMES[i]["kind"]))
+	var ok := old.size() == slots.size()
+	if ok:
+		for k in slots.size():
+			if String(old[k]) != "" and _furni_cat(String(old[k])) != String(slots[k][3]):
+				ok = false
+	if ok:
+		return
+	var pool: Array = old.duplicate()
+	var dflt := _home_default_layout(i)
+	var lay: Array = []
+	for k in slots.size():
+		var cat := String(slots[k][3])
+		var got := ""
+		for j in pool.size():
+			if String(pool[j]) != "" and _furni_cat(String(pool[j])) == cat:
+				got = String(pool[j])
+				pool[j] = ""
+				break
+		lay.append(got if got != "" else String(dflt[k]))
+	home_layout[key] = lay
+
+func _home_build_layout(root: Node3D, kind: int) -> void:
+	var sz: Vector3 = HOME_ROOM[kind]
+	var Z := _home_zones(kind)
+	var hx: float = Z[0]
+	var hz: float = Z[1]
+	var px: float = Z[2]
+	var bz: float = Z[3]
+	var wall := Color("f4f1ea")
+	var dh := 2.3
+	var bath_door := (-hz+bz)/2.0
+	var bed_door := (bz+hz)/2.0
+	# Partition with two doorways.
+	var cuts := [[-hz,bath_door-0.7],[bath_door+0.7,bed_door-0.7],[bed_door+0.7,hz]]
+	for c in cuts:
+		var a := float(c[0])
+		var b := float(c[1])
+		_hm(root,Vector3(px,sz.y/2.0,(a+b)/2.0),Vector3(0.16,sz.y,b-a),wall,true)
+	for dz: float in [bath_door,bed_door]:
+		_hm(root,Vector3(px,(dh+sz.y)/2.0,dz),Vector3(0.16,sz.y-dh,1.4),wall)
+		_hm(root,Vector3(px,dh,dz),Vector3(0.2,0.08,1.5),Color("9a6a42"))
+	# Wall between bathroom and bedroom.
+	_hm(root,Vector3((px+hx)/2.0,sz.y/2.0,bz),Vector3(hx-px,sz.y,0.16),wall,true)
+	# Floors: tiles in the bathroom, soft carpet in the bedroom.
+	_hm(root,Vector3((px+hx)/2.0,0.006,(-hz+bz)/2.0),Vector3(hx-px-0.1,0.012,bz+hz-0.1),Color("d6ecf5"))
+	_hm(root,Vector3((px+hx)/2.0,0.006,(bz+hz)/2.0),Vector3(hx-px-0.1,0.012,hz-bz-0.1),Color("d9cbe6"))
+	# Bathroom: toilet, sink with a mirror, and a glass shower.
+	var white := Color("f7f7f5")
+	var tz := -hz+1.1
+	_hm(root,Vector3(hx-0.5,0.22,tz),Vector3(0.62,0.44,0.46),white,true)
+	_hm(root,Vector3(hx-0.5,0.46,tz),Vector3(0.58,0.04,0.44),Color("e6e6e2"))
+	_hm(root,Vector3(hx-0.14,0.72,tz),Vector3(0.2,0.56,0.5),white)
+	_hm(root,Vector3(px+1.3,0.42,-hz+0.32),Vector3(1.0,0.84,0.5),Color("8a9aa6"),true)
+	_hm(root,Vector3(px+1.3,0.87,-hz+0.32),Vector3(0.8,0.06,0.4),white)
+	_hm(root,Vector3(px+1.3,1.1,-hz+0.22),Vector3(0.05,0.3,0.05),Color("c9d1d8"))
+	var mirror := _hm(root,Vector3(px+1.3,1.7,-hz+0.11),Vector3(0.9,0.8,0.02),Color.WHITE)
+	mirror.material_override = _gc_mat("mirror",Color("cfe6f2"),0.9,0.05)
+	var sx := hx-0.85
+	var sz2 := bz-0.85
+	_hm(root,Vector3(sx,0.03,sz2),Vector3(1.5,0.06,1.5),white)
+	for g in [[Vector3(sx-0.75,1.1,sz2),Vector3(0.04,2.2,1.5)],[Vector3(sx,1.1,sz2-0.75),Vector3(1.5,2.2,0.04)]]:
+		var gp := MeshInstance3D.new()
+		var gm := BoxMesh.new()
+		gm.size = g[1]
+		gp.mesh = gm
+		gp.material_override = _bio_glass_mat(Color("dff3ff"),0.25)
+		gp.position = g[0]
+		root.add_child(gp)
+	_hm(root,Vector3(hx-0.3,2.1,sz2),Vector3(0.3,0.06,0.3),Color("c9d1d8"))
+	_hm(root,Vector3(px+1.3,0.6,bz-0.12),Vector3(0.6,0.04,0.02),Color("c9d1d8"))
+	_hm(root,Vector3(px+1.3,0.35,bz-0.12),Vector3(0.5,0.5,0.04),Color("5fd0ff"))   # towel
+	# Kitchen extras: a fridge and a small dining table by the window.
+	_hm(root,Vector3(-hx+0.5,1.0,-hz+5.4),Vector3(0.9,2.0,0.9),Color("dfe4e8"),true)
+	_hm(root,Vector3(-hx+2.4,0.75,-hz+3.0),Vector3(1.2,0.06,1.2),Color("9a6a42"),true)
+	for c2 in [[-0.8,0.0],[0.8,0.0]]:
+		_hm(root,Vector3(-hx+2.4+float(c2[0]),0.45,-hz+3.0),Vector3(0.45,0.06,0.45),Color("3a3f45"))

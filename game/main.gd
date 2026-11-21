@@ -354,7 +354,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.51: Chapters (Menu > PLAY), quick chat chips and a Food Court start.")
+	_show_toast("Harbor City 0.51.1: chapter celebrations, and chat shows who joins and leaves.")
 	booted = true
 	_sg_boot_note()
 	_online_autostart()

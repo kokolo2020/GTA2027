@@ -1,5 +1,50 @@
 # Harbor City — current handover
 
+## START HERE (updated 2026-11-21, after v0.50.1)
+
+**Live version: 0.50.1, versionCode 81** (next is 82). Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
+
+- Repo: /Users/koko/GTA2027 (GitHub kokolo2020/GTA2027). Main script: game/main.gd (~32k lines, everything lives there; new systems are appended at the end with a `# ---- vX.Y: ...` banner). Blender generators: blender-src/*.py. Release notes: docs/releases/vX.Y.Z.md. Screenshots: docs/shots-X.Y.Z/.
+- Branches: develop and release on **main**. The folder is normally checked out on `character-redesign`, which belongs to another session: never merge or push it; `git checkout main` to work and switch back to `character-redesign` when done.
+- Untracked `reports/` and `research_notes/` are the user's; leave them. Move them aside while running the publisher (it needs a clean tree) and put them back.
+- Back up the desktop save before test runs and restore it after: ~/Library/Application Support/Godot/app_userdata/Harbor City/harbor_save.cfg.
+- Godot: ~/harbor-city/tools/Godot.app/Contents/MacOS/Godot. Blender: /Applications/Blender.app/Contents/MacOS/Blender. JDK for apksigner: ~/harbor-city/tools/jdk17/jdk-17.0.21+9/Contents/Home.
+
+### Release steps ("Release" from Koko)
+1. Bump `version/code` and `version/name` in game/export_presets.cfg; update the startup `_show_toast("Harbor City 0.xx: ...")` in main.gd.
+2. Smoke test: `Godot --headless --path game -- --smoke-test` (about 1 minute; run it with a time guard: an assert inside an awaited test function makes the run hang instead of failing). Expect HARBOR_SMOKE_OK and no SCRIPT ERROR.
+3. If the world changed: `Godot --path game --resolution 1024x1024 -- --bake-map`, then `Godot --headless --path game --import`.
+4. Export: `Godot --headless --path game --export-debug "Android" ../builds/Harbor-City-Android-debug.apk` (delete the .idsig), `Godot --headless --path game --export-release "Web" ../site/play/index.html`. Check `apksigner verify --print-certs` shows SHA-256 5168f1fa527ea9b9ea183d442285192de49dfe0d5b6cf0e0590421b84b5f547b, and `aapt dump badging` shows the new version.
+5. Write docs/releases/vX.Y.Z.md; update site/index.html (edition "NEO HARBOR / X", "New in X:" lead text, download button link + label, maybe the h1 and site/assets/gameplay.png). Commit and push main.
+6. `python3 scripts/publish-release.py builds/Harbor-City-Android-debug.apk --notes docs/releases/vX.Y.Z.md` (folders moved aside).
+7. Watch the "Publish download page" workflow (`gh run list --workflow pages.yml`). It often fails with "No artifacts named github-pages": re-run it (`gh run rerun <id>` or `gh workflow run pages.yml --ref main`).
+8. Verify live: release.json version + sha256, page edition and button, /play/index.pck content-length, downloaded APK sha256. Append a "Released and verified" line here, commit, push, switch back to character-redesign.
+
+### Developer tools in the game
+- `--city-shots` with HC_CAM="name;x,y,z;lx,ly,lz;hour[;extra frames]" and HC_SHOTS=<dir> saves one frame. Extras: HC_NOHUD=1 (no buttons), HC_MENU=<tab>, HC_HOME=<i> (+HC_HOMETOP=1), HC_CAREER=<i>, HC_LEVEL=<n>, HC_SHOWOFF, HC_PEERS.
+- `--bench --web-lite` with HC_BENCH_AT="x,z,yaw" prints fps, draw calls, primitives, process/physics ms; HC_SKIP="biosphere,galleria,..." skips building parts.
+- `--nav-check` (walk grids), `--home-check` (walking inside a home).
+
+### What is in the game now (newest first)
+- 0.50.x: careers (taxi/paramedic/police/firefighter, ranks; Menu > PLAY > Careers), homes $55k-$320k with living room, bedroom, bathroom and decorating (Menu > ME > My Home), entering the car switches to the driver's-seat camera.
+- 0.49: 40 levels (from 21, each level costs 100n XP). 0.48: performance work (spatial buckets for traffic, distant people pose less, mall interior hidden when away) and level-locked places (Galleria L4, Biosphere L7, Sky Garden L10).
+- 0.47: tabbed menu (GO / PLAY / ME / FRIENDS / SETTINGS), 15 m downtown roads with wide pavements, open street stalls. 0.46: Grand Central walk-in shops, kiosks with goods, busier traffic with police patrols. 0.45: Blender hover cars (make_hovercars.py) with cyan underglow. 0.44: walkers on walk grids, 10-station sky train, Directions + signposts, Grand Central plaza and towers, Harbor Gardens, lofts.
+- Older history is below, newest at the end of this file.
+
+### Known open items / ideas
+- Nothing has been checked on a real phone since ~0.43; ask Koko how it runs (frame rate downtown, homes, careers).
+- North Highway, Airport Road and Westside Boulevard are still 20 m roads (downtown is 15 m).
+- Ideas Koko liked but not built: crews and districts (weekly crew goals, daily gifts, see reports/), islands and boats, real flying hover cars, visiting friends' homes online, parked cars.
+- Thumbnail for livestreams: docs/stream/harbor-city-live-thumbnail.png.
+
+### Working style Koko asked for
+- Start a new conversation about every 10 updates (long conversations cost much more per message). Before that, refresh this START HERE section.
+- Batch several changes into one release when possible; release only when Koko says "Release".
+
+---
+
+## Older handover notes (history)
+
 Version 0.21.0, code 23 (see the v0.21.0 section at the end; 0.11 and 0.12 were never released on their own). Original single-player Android game, Godot 4.7.2 standard / Compatibility, Samsung Galaxy Z Fold5.
 
 The canonical project has moved to **/Users/koko/GTA2027**, repository **https://github.com/kokolo2020/GTA2027**. Read PUBLISHING.md for the new self-contained GitHub release process. The old /Users/koko/harbor-city folder is retained for toolchain and historical recovery; develop here going forward.

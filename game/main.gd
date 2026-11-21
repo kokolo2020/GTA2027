@@ -7917,6 +7917,11 @@ func _interact() -> void:
 		driving = true
 		player.hide()
 		player.get_child(0).set_deferred("disabled",true)
+		# v0.51: getting in puts the camera in the driver's seat (Menu > SETTINGS > View to change it).
+		if not legacy_rules:
+			view_mode = 2
+		_apply_view()
+		_follow_camera(1.0)
 		_show_toast("Steer with the stick. Release it to brake.")
 	else:
 		_call_car()
@@ -31798,6 +31803,24 @@ func _smoke_careers_homes() -> void:
 	car_speed = keep[10]
 	_home_labels()
 	_apply_car()
+	# v0.51: getting into your car puts the camera in the driver's seat.
+	var kv := [legacy_rules,view_mode,driving,player.position,car_gone]
+	legacy_rules = false
+	view_mode = 0
+	car_gone = false
+	driving = false
+	player.position = car.position+Vector3(2.0,0.1,0)
+	_interact()
+	assert(driving and view_mode == 2 and in_car_view,"v0.51: entering the car switches to the driver's seat view")
+	legacy_rules = kv[0]
+	view_mode = kv[1]
+	driving = kv[2]
+	player.position = kv[3]
+	car_gone = kv[4]
+	if not driving:
+		player.show()
+		player.get_child(0).set_deferred("disabled",false)
+	_apply_view()
 
 # ---- v0.51: home layout (living room, bedroom, bathroom) ----
 # Room frame: x across (the door is on the back wall at x 0, -z), +z is the window wall.

@@ -1,8 +1,8 @@
 # Harbor City — current handover
 
-## START HERE (updated 2026-11-21, after v0.51.3)
+## START HERE (updated 2026-11-21, after v0.52.0)
 
-**Live version: 0.51.3, versionCode 85** (next is 86). Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
+**Live version: 0.52.0, versionCode 86** (next is 87). Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
 
 - Repo: /Users/koko/GTA2027 (GitHub kokolo2020/GTA2027). Main script: game/main.gd (~32k lines, everything lives there; new systems are appended at the end with a `# ---- vX.Y: ...` banner). Blender generators: blender-src/*.py. Release notes: docs/releases/vX.Y.Z.md. Screenshots: docs/shots-X.Y.Z/.
 - Branches: develop and release on **main**. The folder is normally checked out on `character-redesign`, which belongs to another session: never merge or push it; `git checkout main` to work and switch back to `character-redesign` when done.
@@ -26,6 +26,7 @@
 - `--nav-check` (walk grids), `--home-check` (walking inside a home).
 
 ### What is in the game now (newest first)
+- 0.52.0: careers rebuilt as job loops (section `# ---------------- v0.52: careers as clear job loops`): step bar `cj_bar` in `_hud_top_stack`, cut scenes via `_cs_play(id,dur,tick,end)` (tap skips, HUD hidden, `_cs_cam` keeps the camera out of walls, `cs_freeze` for screenshots), JOB DONE through `_career_job_done` (+`_level_up_fx`), next job after `CJ_NEXT`. Career people are procedural (no AnimationPlayer): pose them with `_cj_anim(holder,"Idle|Walk|Wave|HandsUp")`; they face -z like the player. 20 career achievements (`job_<id>` keys + stats taxi_tip_best/medic_ontime/police_catches/fire_out). Police arrests on shift no longer pay the Chase prize too. Arrest scene's suspect car is still the simple red box (Koko: keep for now).
 - 0.51.3: short link kokolo2020.github.io/GTA2027/p (site/p, site/join redirect to /play/?join=1); ?join=1 = `_stream_join_check()`: online at once, crate after 2 min, lands next to the latest peer with the `st` (streaming) flag + welcome banner; streamer viewer badge (`_viewer_count`, flashes on join); web shell game/web_shell.html (loading screen; game calls window.hcReady when built; ?timing=1 posts load marks to /__timing for local measuring); export excludes: web drops textures/*_nor.jpg, both drop models/player.glb + models/tex/*. Web pck 17.8 MB (was 21.7). Safari on the Mac: ~11.6 s to playable, mostly building the city in _ready (the next lever if loading needs to be faster); halving web textures would save ~5 MB more.
 - 0.51.2: Photo mode (camera button under the minimap; hides HUD CanvasLayers as a whole and drops render layer 20 = UI3D_LAYER from the camera; name tags/rings/bubbles/arrows are put on it with `_ui3d()`; new 3D overlays must call it too), Restart chapters (ch_best saved, no double pay), `_hud_top_stack()` lays out quest bar > chapter bar > screen arrow, quick chat chips hidden when `web_build`.
 - 0.51.1: chapter step bursts/chimes and chapter-complete confetti banner, chapter arrow before daily quests, chapter bar under the arrow, quick chat bubble at head height, join/leave messages in chat log and feed.
@@ -730,3 +731,7 @@ https://github.com/kokolo2020/GTA2027/releases/tag/v0.51.2 · source commit 0e02
 ## v0.51.3 — Released and verified 2026-11-21
 
 https://github.com/kokolo2020/GTA2027/releases/tag/v0.51.3 · source commit 8351434 (tag v0.51.3) · APK SHA256 3e0d90c68813f4f1f70d6f8325acbfec239b961be4cd76e87bbf5d3f3afd783b (49633075 bytes, code 85, cert 5168f1fa...547b). Smoke test passed with a time guard. Live release.json, page edition/button, /play/index.pck size (17762560), new loading screen, /p redirect and downloaded APK hash verified. Joining a live stream from a second device not tested yet.
+
+## v0.52.0 — Released and verified 2026-11-21
+
+https://github.com/kokolo2020/GTA2027/releases/tag/v0.52.0 · source commit 5ec0330 (tag v0.52.0) · APK SHA256 c72c8b37a364ddc9d0f3a7f994d0fa9941692fcc4188c8ea2e05715414ba7ab9 (49665843 bytes, code 86, cert 5168f1fa...547b). Smoke test passed with a time guard (each career start to finish, achievements once). Live release.json, page edition/button, /play/index.pck size and downloaded APK hash verified. Cut scenes only checked in desktop screenshots (docs/shots-0.52.0); not played on a phone.

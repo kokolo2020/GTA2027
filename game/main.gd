@@ -12463,10 +12463,17 @@ func _fx_material(color: Color, alpha: float) -> StandardMaterial3D:
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
 
-func _level_up_fx(lv: int) -> void:
+func _level_up_fx(lv: int, title := "", sub := "", small := false) -> void:
+	# v0.51.1: also used for chapters: title/sub replace the level text, `small` is a quick burst
+	# (ring, sparks and a chime, no banner) for each chapter step.
 	# Banner.
-	if lvl_root != null:
-		lvl_sub.text = ("You reached Level %d (MAX)\nHarbor City legend!" % lv) if lv >= _level_table().size() else "You are now Level %d" % lv
+	if lvl_root != null and not small:
+		lvl_title.text = title if title != "" else "LEVEL UP!"
+		lvl_title.add_theme_font_size_override("font_size",76 if lvl_title.text.length() <= 12 else 54)
+		if sub != "":
+			lvl_sub.text = sub
+		else:
+			lvl_sub.text = ("You reached Level %d (MAX)\nHarbor City legend!" % lv) if lv >= _level_table().size() else "You are now Level %d" % lv
 		lvl_root.show()
 		lvl_root.scale = Vector2(0.25,0.25)
 		lvl_root.modulate = Color(1,1,1,0)
@@ -12485,7 +12492,7 @@ func _level_up_fx(lv: int) -> void:
 		lvl_tween.chain().tween_callback(lvl_root.hide)
 	# Sound.
 	if fx_player != null and "--smoke-test" not in OS.get_cmdline_user_args():
-		fx_player.stream = _level_sound()
+		fx_player.stream = _step_sound() if small else _level_sound()
 		fx_player.play()
 	# Light pillar, ground ring and confetti at the player (or the car).
 	var body: Node3D = car if driving else player
@@ -12507,7 +12514,7 @@ func _level_up_fx(lv: int) -> void:
 	pillar.scale = Vector3(1,0.05,1)
 	fx.add_child(pillar)
 	# From the driver's seat you would be standing inside the pillar, so it is left out there.
-	pillar.visible = not in_car_view
+	pillar.visible = not in_car_view and not small
 	var ring := MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 1.7
@@ -12522,8 +12529,8 @@ func _level_up_fx(lv: int) -> void:
 	var sparks := CPUParticles3D.new()
 	sparks.one_shot = true
 	sparks.explosiveness = 0.92
-	sparks.amount = 90
-	sparks.lifetime = 2.4
+	sparks.amount = 45 if small else 90
+	sparks.lifetime = 1.6 if small else 2.4
 	sparks.local_coords = false
 	var bit := BoxMesh.new()
 	bit.size = Vector3(0.22,0.22,0.06)
@@ -28156,6 +28163,16 @@ func _city_shots() -> void:
 			for c in get_children():
 				if c is CanvasLayer or c is Control:
 					c.visible = false
+		if OS.get_environment("HC_CHFX") != "":
+			# Developer-only: the chapter-complete celebration.
+			cam_lock = false
+			walk_view = 0
+			_apply_view()
+			for i in 20:
+				await get_tree().physics_frame
+			_level_up_fx(0,"CHAPTER 1 COMPLETE!","Welcome to Harbor\n+$1,000  ·  +150 XP")
+			for i in 22:
+				await get_tree().physics_frame
 		if OS.get_environment("HC_SAY") != "":
 			# Developer-only: say a quick chat line, seen from the normal follow camera.
 			cam_lock = false
@@ -32074,6 +32091,7 @@ const CH_ARRIVE := 28.0
 var ch_idx := 0                    # current chapter (CHAPTERS.size() = all done), saved
 var ch_step := 0                   # current step inside it, saved
 var ch_chip: Button
+var ch_fx_n := 0                 # celebrations played (for tests)
 var ch_panel: PanelContainer
 var ch_list: Label
 var ch_t := 0.0
@@ -32136,6 +32154,8 @@ func _ch_finish_chapter() -> void:
 	else:
 		nxt = "  You finished every chapter. You are a Harbor City legend!"
 	_show_toast("CHAPTER %d COMPLETE: %s  +%s  +%d XP.%s" % [ch_idx+1,C["name"],_money(int(C["pay"])),int(C["xp"]),nxt])
+	_level_up_fx(0,"CHAPTER %d COMPLETE!" % (ch_idx+1),"%s\n+%s  ·  +%d XP" % [C["name"],_money(int(C["pay"])),int(C["xp"])])
+	ch_fx_n += 1
 	ch_idx += 1
 	ch_step = 0
 	_save_progress()
@@ -32159,9 +32179,13 @@ func _chapters_tick(delta: float) -> void:
 			if String(steps[ch_step]["k"]) == "go":
 				_show_toast("%s reached!" % String(steps[ch_step]["t"]))
 			ch_step += 1
+			# v0.51.1: a little celebration for every step (the last one gets the big one below).
+			if ch_step < steps.size():
+				_level_up_fx(0,"","",true)
+				ch_fx_n += 1
 			continue
 		break
-	var show := ch_idx < CHAPTERS.size() and not paused and not sky_riding and not bus_riding
+	var show := ch_idx < CHAPTERS.size() and not paused and not sky_riding and not bus_riding and not (lvl_root != null and lvl_root.visible)
 	ch_chip.visible = show
 	if ch_idx >= CHAPTERS.size():
 		return
@@ -32266,12 +32290,15 @@ func _smoke_chapters() -> void:
 	ch_t = 0.0
 	_chapters_tick(1.0)
 	assert(ch_step == 1,"v0.51: arriving completes the step")
+	assert(ch_fx_n >= 1,"v0.51.1: every chapter step lights up")
+	var fx0 := ch_fx_n
 	ch_idx = CHAPTERS.size()-1
 	ch_step = (CHAPTERS[ch_idx]["steps"] as Array).size()
 	var before := cash
 	ch_t = 0.0
 	_chapters_tick(1.0)
 	assert(ch_idx == CHAPTERS.size() and cash == before+5000,"v0.51: a finished chapter pays out")
+	assert(ch_fx_n > fx0 and lvl_root.visible and lvl_title.text.begins_with("CHAPTER"),"v0.51.1: finishing a chapter celebrates with a banner")
 	assert(_chapters_text().contains("All chapters complete"),"v0.51: chapter list shows completion")
 	ch_idx = keep[0]
 	ch_step = keep[1]
@@ -32282,3 +32309,30 @@ func _smoke_chapters() -> void:
 	dir_custom = keep[6]
 	dir_target = keep[7]
 	quick_on = keep[8]
+
+var step_sound: AudioStreamWAV
+
+func _step_sound() -> AudioStreamWAV:
+	# v0.51.1: a short bright two-note chime for each chapter step.
+	if step_sound != null:
+		return step_sound
+	var sr := 22050
+	var total := int(sr*0.6)
+	var buf := PackedFloat32Array()
+	buf.resize(total)
+	for n in [[0.0,79.0],[0.11,86.0]]:
+		var start := int(float(n[0])*sr)
+		var freq := 440.0*pow(2.0,(float(n[1])-69.0)/12.0)
+		for i in range(total-start):
+			var t := float(i)/sr
+			var env := minf(1.0,t*80.0)*exp(-t*6.0)
+			buf[start+i] += (sin(TAU*freq*t)+0.3*sin(TAU*freq*2.0*t))*env*0.24
+	var data := PackedByteArray()
+	data.resize(total*2)
+	for i in total:
+		data.encode_s16(i*2,int(clampf(buf[i],-1.0,1.0)*32000.0))
+	step_sound = AudioStreamWAV.new()
+	step_sound.format = AudioStreamWAV.FORMAT_16_BITS
+	step_sound.mix_rate = sr
+	step_sound.data = data
+	return step_sound

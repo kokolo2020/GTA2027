@@ -1,12 +1,12 @@
 # Harbor City — current handover
 
-## START HERE (updated 2026-11-21, after v0.50.1)
+## START HERE (updated 2026-11-21, after v0.51.0)
 
-**Live version: 0.50.1, versionCode 81** (next is 82). Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
+**Live version: 0.51.0, versionCode 82** (next is 83). Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
 
 - Repo: /Users/koko/GTA2027 (GitHub kokolo2020/GTA2027). Main script: game/main.gd (~32k lines, everything lives there; new systems are appended at the end with a `# ---- vX.Y: ...` banner). Blender generators: blender-src/*.py. Release notes: docs/releases/vX.Y.Z.md. Screenshots: docs/shots-X.Y.Z/.
 - Branches: develop and release on **main**. The folder is normally checked out on `character-redesign`, which belongs to another session: never merge or push it; `git checkout main` to work and switch back to `character-redesign` when done.
-- Untracked `reports/` and `research_notes/` are the user's; leave them. Move them aside while running the publisher (it needs a clean tree) and put them back.
+- Untracked `reports/` and `research_notes/` are the user's; leave them. Also untracked (from the character-redesign work, not released): blender-src/make_player.py, game/models/player.glb(+.import); move them aside too when publishing. Move them aside while running the publisher (it needs a clean tree) and put them back.
 - Back up the desktop save before test runs and restore it after: ~/Library/Application Support/Godot/app_userdata/Harbor City/harbor_save.cfg.
 - Godot: ~/harbor-city/tools/Godot.app/Contents/MacOS/Godot. Blender: /Applications/Blender.app/Contents/MacOS/Blender. JDK for apksigner: ~/harbor-city/tools/jdk17/jdk-17.0.21+9/Contents/Home.
 
@@ -26,6 +26,7 @@
 - `--nav-check` (walk grids), `--home-check` (walking inside a home).
 
 ### What is in the game now (newest first)
+- 0.51: Chapters (8 chapters visiting every district, Menu > PLAY > Chapters, chip under the top bar; `_ch_target()` is a low-priority guide target below Directions/careers/quests/trials), four always-on quick chat chips (HUB_PHRASES[CHAT_SYM_END..]), new players spawn at SPAWN_FOOD_COURT.
 - 0.50.x: careers (taxi/paramedic/police/firefighter, ranks; Menu > PLAY > Careers), homes $55k-$320k with living room, bedroom, bathroom and decorating (Menu > ME > My Home), entering the car switches to the driver's-seat camera.
 - 0.49: 40 levels (from 21, each level costs 100n XP). 0.48: performance work (spatial buckets for traffic, distant people pose less, mall interior hidden when away) and level-locked places (Galleria L4, Biosphere L7, Sky Garden L10).
 - 0.47: tabbed menu (GO / PLAY / ME / FRIENDS / SETTINGS), 15 m downtown roads with wide pavements, open street stalls. 0.46: Grand Central walk-in shops, kiosks with goods, busier traffic with police patrols. 0.45: Blender hover cars (make_hovercars.py) with cyan underglow. 0.44: walkers on walk grids, 10-station sky train, Directions + signposts, Grand Central plaza and towers, Harbor Gardens, lofts.
@@ -710,3 +711,7 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 - Homes: `_home_slots(kind)` replaces HOME_SLOTS (zones from `_home_zones`: living left with kitchen, partition at px with doorways to the bathroom (back) and bedroom (window side), `_home_build_layout`). Decorating rings sit in front of each piece (`_home_ring`), which fixes being trapped inside new furniture. `_home_fix_layout` maps older saved layouts onto the new spots by category. Dev: HC_HOMETOP=1 with HC_HOME shows a cut-away from above; --home-check walks around inside a home.
 - `_interact` entering the car sets view_mode 2 (driver's seat) unless legacy_rules.
 - Released and verified 2026-11-21: commit a21ae31 (tag v0.50.1), metadata fa8a40e, versionCode 81. APK SHA256 321e0198247e8d98c867027d3edc75c78c6a2a2471be2df481d793a9f2bf4d23 (49,846,972 bytes), same certificate. Pages passed; live release.json, page button, web pck (21,471,228) and downloaded APK hash verified. Not checked on a phone.
+
+## v0.51.0 — Released and verified 2026-11-21
+
+https://github.com/kokolo2020/GTA2027/releases/tag/v0.51.0 · source commit f8b115f (tag v0.51.0) · APK SHA256 6b16db62491486ff8344a79f477fdd3437a361b76f2c78d20c443679dfba0dcc (50109309 bytes, code 82, cert 5168f1fa...547b). Smoke test passed after fixing the chapter arrow overriding Directions/quests. Live release.json, page edition/button, /play/index.pck size and downloaded APK hash verified. Not checked on a phone.

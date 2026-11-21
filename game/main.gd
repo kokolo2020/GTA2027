@@ -2119,7 +2119,7 @@ func _online_peer_update(p: Dictionary) -> void:
 	peer["seen"] = Time.get_ticks_msec()/1000.0
 	peer["driving"] = int(p.get("d",1)) == 1
 	peer["role"] = clampi(int(p.get("t",0)),0,2)
-	peer["lvl"] = clampi(int(p.get("l",1)),1,20)
+	peer["lvl"] = clampi(int(p.get("l",1)),1,40)
 	var seat := int(p.get("s",-1))
 	peer["seat"] = seat if seat >= 0 and seat < hub_seats.size() else -1
 	peer["id"] = id
@@ -3067,7 +3067,9 @@ func _journal_flip() -> void:
 # ---------- v0.12.0: player level (derived from progress, so old saves convert automatically) ----------
 # v0.25: 20 levels, quick to climb early on. Quick quests and delivery jobs add bonus XP on top
 # of the XP that comes from discoveries, trials and missions.
-const LEVEL_XP := [0,100,250,450,700,1000,1350,1750,2200,2700,3250,3850,4500,5200,5950,6750,7600,8500,9450,10450]
+# v0.49: 40 levels. Up to 20 each level needs 50 XP more than the one before; from 20 on every
+# step is twice that (2,100 XP for level 21, then 100 more each time, 4,000 for level 40).
+const LEVEL_XP := [0,100,250,450,700,1000,1350,1750,2200,2700,3250,3850,4500,5200,5950,6750,7600,8500,9450,10450,12550,14750,17050,19450,21950,24550,27250,30050,32950,35950,39050,42250,45550,48950,52450,56050,59750,63550,67450,71450]
 const LEVEL_XP_LEGACY := [0,150,450,900,1500]
 var last_level := 0
 var bonus_xp := 0
@@ -5585,6 +5587,10 @@ void fragment() { ALBEDO = mix(hue(atan(lp.z, lp.x) / 6.28318 + 0.5), vec3(1.0),
 var rainbow_mat: ShaderMaterial
 
 func _level_color(lv: int) -> Color:
+	if lv >= 40:
+		return Color("ffffff")
+	if lv >= 30:
+		return Color("ff8ad8")
 	if lv >= 20:
 		return Color("ffe066")
 	var col: Color = LEVEL_BANDS[0][1]
@@ -7030,6 +7036,9 @@ const ACH := [
 	["lv10","City Regular","Reach level 10","level",10,"s"],
 	["lv15","Local Hero","Reach level 15","level",15,"g"],
 	["lv20","Legend of Harbor City","Reach level 20","level",20,"l"],
+	["lv25","Rising Star","Reach level 25","level",25,"g"],
+	["lv30","City Icon","Reach level 30","level",30,"l"],
+	["lv40","Harbor Immortal","Reach level 40","level",40,"l"],
 	["cash1","Pocket Money","Have $1,000","cash",1000,"b"],
 	["cash10","Comfortable","Have $10,000","cash",10000,"s"],
 	["cash50","High Roller","Have $50,000","cash",50000,"g"],
@@ -7335,7 +7344,7 @@ func _close_ach() -> void:
 		_toggle_menu()
 
 func _refresh_ach() -> void:
-	ach_info.text = "%d of %d unlocked. Gold and Legend achievements are announced to everyone online. Rewards: Bronze $100, Silver $250, Gold $750, Legend $2,000.\nYour ring's colour shows your level (green 1-4, cyan 5-9, blue 10-14, orange 15-19, rainbow at 20). The glow under it and your name tag show your best achievement: bronze, silver, gold or purple for Legend." % [ach_got.size(),ACH.size()]
+	ach_info.text = "%d of %d unlocked. Gold and Legend achievements are announced to everyone online. Rewards: Bronze $100, Silver $250, Gold $750, Legend $2,000.\nYour ring's colour shows your level (green 1-4, cyan 5-9, blue 10-14, orange 15-19, rainbow from 20; name tags turn gold at 20, pink at 30 and white at 40). The glow under it and your name tag show your best achievement: bronze, silver, gold or purple for Legend." % [ach_got.size(),ACH.size()]
 	for child in ach_list.get_children():
 		child.queue_free()
 	# Unlocked first (newest tiers first), then the closest ones to go.
@@ -9403,7 +9412,7 @@ func _smoke_test() -> void:
 	assert(run_on,"Running is on by default")
 	hud_clean = saved_clean
 	_relayout_hud()
-	print("HARBOR_SMOKE_OK: Harbor International Airport, no walls and joined roads, sea tow, Harbor Loop sky train, City Tour, day and night, find me, treasure hunt, player rings, name tag, quests list, quick quests, 20 levels, all towns open, starter crate, QR join code, graphics, RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
+	print("HARBOR_SMOKE_OK: Harbor International Airport, no walls and joined roads, sea tow, Harbor Loop sky train, City Tour, day and night, find me, treasure hunt, player rings, name tag, quests list, quick quests, 40 levels, all towns open, starter crate, QR join code, graphics, RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
 
@@ -17972,7 +17981,11 @@ func _smoke_quick() -> void:
 	_update_gate()
 	assert(not north_gate_body.visible and not marina_gate_body.visible and not bay_gate_body.visible,"No gates block the roads")
 	# 20 levels, early ones quick.
-	assert(LEVEL_XP.size() == 20 and _level_for(0) == 1 and _level_for(100) == 2 and _level_for(10450) == 20 and _level_for(99999) == 20,"Levels 1-20")
+	assert(LEVEL_XP.size() == 40 and _level_for(0) == 1 and _level_for(100) == 2 and _level_for(10450) == 20 and _level_for(12549) == 20 and _level_for(12550) == 21 and _level_for(71450) == 40 and _level_for(999999) == 40,"Levels 1-40")
+	for i in range(1,40):
+		# Level n costs 50n XP up to 20, and twice that (100n) from 21 on.
+		var gap := int(LEVEL_XP[i])-int(LEVEL_XP[i-1])
+		assert(gap == (50 if i < 20 else 100)*(i+1),"v0.49: level %d costs %d XP" % [i+1,gap])
 	# Quick quest chain: first stop is a short walk, pay and XP on the spot, then the next one.
 	# (v0.30.1: these checks run with a quest already accepted.)
 	var was_active := quest_active

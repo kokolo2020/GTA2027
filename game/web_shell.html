@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<meta name="theme-color" content="#0b1620">
+		<title>$GODOT_PROJECT_NAME</title>
+		<!-- Harbor City web shell (v0.51.3): a branded loading screen with a real progress bar.
+		     Godot fills in the $GODOT_* placeholders on every web export. -->
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: #0b1620;
+	overflow: hidden;
+	touch-action: none;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	gap: 18px;
+	padding: 24px;
+	box-sizing: border-box;
+	background: radial-gradient(ellipse at 50% 35%, #173a52 0%, #0b1620 70%);
+	font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Arial, sans-serif;
+	text-align: center;
+	z-index: 2;
+	transition: opacity 0.5s ease;
+}
+
+#status.done {
+	opacity: 0;
+	pointer-events: none;
+}
+
+#hc-logo {
+	font-size: clamp(34px, 8vw, 64px);
+	font-weight: 800;
+	letter-spacing: 0.06em;
+	line-height: 1;
+	color: #ffe36b;
+	text-shadow: 0 0 24px rgba(79, 227, 255, 0.55), 0 3px 0 #13324a;
+}
+
+#hc-logo span {
+	display: block;
+	margin-top: 10px;
+	font-size: 0.28em;
+	font-weight: 600;
+	letter-spacing: 0.35em;
+	color: #4fe3ff;
+	text-shadow: none;
+}
+
+#hc-loading {
+	font-size: 20px;
+	font-weight: 600;
+	color: #dff3ff;
+}
+
+#hc-bar {
+	width: min(440px, 80vw);
+	height: 16px;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.1);
+	border: 1px solid rgba(79, 227, 255, 0.45);
+	overflow: hidden;
+}
+
+#hc-fill {
+	height: 100%;
+	width: 0%;
+	border-radius: 999px;
+	background: linear-gradient(90deg, #4fe3ff, #ffe36b);
+	transition: width 0.2s ease;
+}
+
+#hc-fill.busy {
+	width: 35%;
+	animation: hc-busy 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes hc-busy {
+	from { margin-left: 0%; }
+	to { margin-left: 65%; }
+}
+
+#hc-detail {
+	min-height: 1.3em;
+	font-size: 14px;
+	color: #9fc4d8;
+	font-variant-numeric: tabular-nums;
+}
+
+#hc-tip {
+	max-width: 440px;
+	font-size: 14px;
+	color: #7fa3b8;
+}
+
+#status-notice {
+	display: none;
+	max-width: 520px;
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	line-height: 1.3;
+	padding: 1rem;
+	white-space: pre-line;
+}
+		</style>
+		$GODOT_HEAD_INCLUDE
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<div id="hc-logo">HARBOR CITY<span>NEO HARBOR</span></div>
+			<div id="hc-loading">Loading Harbor City…</div>
+			<div id="hc-bar"><div id="hc-fill"></div></div>
+			<div id="hc-detail"></div>
+			<div id="hc-tip">Walk: drag on the left of the screen (or WASD). Look around: drag on the right.</div>
+			<div id="status-notice"></div>
+		</div>
+
+		<script src="$GODOT_URL"></script>
+		<script>
+const GODOT_CONFIG = $GODOT_CONFIG;
+const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const params = new URLSearchParams(window.location.search);
+	const joining = params.get('join') === '1';
+	const timing = params.get('timing') === '1';
+	const t0 = performance.now();
+	const statusOverlay = document.getElementById('status');
+	const loadingText = document.getElementById('hc-loading');
+	const fill = document.getElementById('hc-fill');
+	const detail = document.getElementById('hc-detail');
+	const statusNotice = document.getElementById('status-notice');
+	const marks = {};
+	let done = false;
+
+	if (joining) {
+		loadingText.textContent = 'Loading Harbor City… joining the stream';
+	}
+
+	function mark(name) {
+		if (!(name in marks)) {
+			marks[name] = Math.round(performance.now() - t0);
+		}
+	}
+
+	function report() {
+		// Developer-only (?timing=1): send the load times to the local test server.
+		if (!timing || !('ready' in marks) || !('started' in marks) || report.sent) {
+			return;
+		}
+		report.sent = true;
+		const body = JSON.stringify({ marks: marks, ua: navigator.userAgent });
+		fetch('/__timing', { method: 'POST', body: body, keepalive: true }).finally(() => {
+			window.location.replace('about:blank');
+		});
+	}
+
+	function hide() {
+		if (done) {
+			return;
+		}
+		done = true;
+		mark('ready');
+		statusOverlay.classList.add('done');
+		setTimeout(() => statusOverlay.remove(), 600);
+		report();
+	}
+
+	// The game calls this once the city is built (main.gd, v0.51.3).
+	window.hcReady = hide;
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		let text = 'An unknown error occurred.';
+		if (err instanceof Error) {
+			text = err.message;
+		} else if (typeof err === 'string') {
+			text = err;
+		}
+		statusNotice.textContent = text;
+		statusNotice.style.display = 'block';
+		loadingText.textContent = 'Harbor City could not start';
+		fill.classList.remove('busy');
+		done = true;
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		displayFailureNotice('Your browser is missing features Harbor City needs:\n' + missing.join('\n'));
+		return;
+	}
+
+	const totalBytes = Object.values(GODOT_CONFIG['fileSizes'] || {}).reduce((a, b) => a + b, 0);
+	engine.startGame({
+		'onProgress': function (current, total) {
+			const max = total > 0 ? total : totalBytes;
+			if (current > 0 && max > 0) {
+				fill.classList.remove('busy');
+				const pct = Math.min(100, Math.round((current / max) * 100));
+				fill.style.width = pct + '%';
+				detail.textContent = pct + '%  ·  ' + (current / 1048576).toFixed(1) + ' of ' + (max / 1048576).toFixed(1) + ' MB';
+				if (current >= max) {
+					mark('downloaded');
+				}
+			} else {
+				fill.classList.add('busy');
+			}
+		},
+	}).then(() => {
+		mark('started');
+		report();
+		// Downloaded; the city is being built now.
+		fill.style.width = '100%';
+		loadingText.textContent = joining ? 'Building the city… almost in the stream' : 'Building the city…';
+		detail.textContent = '';
+		// Safety net: never keep the screen up if the game forgets to say it's ready.
+		setTimeout(hide, 30000);
+	}, displayFailureNotice);
+}());
+		</script>
+	</body>
+</html>

@@ -357,9 +357,13 @@ func _ready() -> void:
 	_show_toast("Harbor City 0.51.2: Photo mode (camera button under the map) and Restart chapters.")
 	booted = true
 	_sg_boot_note()
+	_stream_join_check()
 	_online_autostart()
-	if not dev_mode and not crate_done:
+	if not dev_mode and not crate_done and not stream_join:
 		_open_crate()
+	if OS.has_feature("web"):
+		# v0.51.3: tell the loading screen the city is built, so it can fade out.
+		JavaScriptBridge.eval("window.hcReady && window.hcReady()",true)
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
 	elif "--shots" in OS.get_cmdline_user_args():
@@ -807,9 +811,10 @@ func _real_setup(mat: BaseMaterial3D, kind: String, tint: Color, scale := -1.0) 
 		return
 	mat.albedo_texture = diff
 	mat.albedo_color = tint
-	var nor := _real_tex(kind+"_nor")
-	# The browser version skips the bump detail (normal maps) to keep the frame rate up.
+	# The browser version skips the bump detail (normal maps) to keep the frame rate up; since
+	# v0.51.3 they are not even packed into the web build, so it downloads faster.
 	var lite := OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()
+	var nor := _real_tex(kind+"_nor") if not lite else null
 	if nor != null and not lite:
 		mat.normal_enabled = true
 		mat.normal_texture = nor
@@ -2033,7 +2038,7 @@ func _online_pos_frame() -> Dictionary:
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
 		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
-		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"qc":1 if my_bubble_crew else 0,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on],"lk":_look_pack(look)}
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"qc":1 if my_bubble_crew else 0,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on],"lk":_look_pack(look),"st":1 if streamer_on else 0}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -5704,6 +5709,7 @@ func _social_peer_extras(peer: Dictionary, p: Dictionary) -> void:
 		peer["dance_until"] = clock+4.0
 	peer["dance_en"] = int(p.get("en",0))
 	peer["at"] = clampi(int(p.get("at",-1)),-1,3)
+	peer["st"] = int(p.get("st",0)) == 1     # v0.51.3: this player is streaming
 	peer["ac"] = clampi(int(p.get("ac",0)),0,ACH.size())
 	_style_ring(peer.get("ring"),int(peer.get("lvl",1)),int(peer["at"]),CREW_COLORS[int(peer["cc"])] if cr != "" else null)
 
@@ -8669,6 +8675,7 @@ func _process(delta: float) -> void:
 	_ga_inner_tick()
 	_cash_pill_tick()
 	_shot_tick()
+	_stream_join_tick(delta)
 	_lb_tick(delta)
 	_market_tick(delta)
 	_board_tick(delta)
@@ -9011,6 +9018,7 @@ func _smoke_test() -> void:
 	_smoke_qr()
 	_smoke_chapters()
 	_smoke_photo()
+	_smoke_stream_join()
 	_smoke_crate()
 	_smoke_bus()
 	_smoke_chase_extras()
@@ -17228,8 +17236,7 @@ func _build_qr(root: Control) -> void:
 	qr_big.hide()
 	get_viewport().size_changed.connect(_qr_layout)
 	_qr_layout()
-	if OS.has_feature("web"):
-		get_tree().create_timer(2.0).timeout.connect(_qr_join_check)
+	# v0.51.3: ?join=1 (QR code and the short link) is handled by _stream_join_check at startup.
 
 func _qr_button(tex: Texture2D, side: int, caption: String) -> Button:
 	var b := Button.new()
@@ -17275,12 +17282,6 @@ func _qr_layout() -> void:
 		return
 	var view := get_viewport().get_visible_rect().size
 	qr_big.position = (view-qr_big.size)/2.0
-
-func _qr_join_check() -> void:
-	# Opened from the QR code (…/play/?join=1): switch Online on straight away.
-	var search = JavaScriptBridge.eval("window.location.search",true)
-	if typeof(search) == TYPE_STRING and String(search).contains("join=1") and not online_on:
-		_online_toggle()
 
 func _smoke_qr() -> void:
 	assert(qr_small != null and qr_big != null and not qr_big.visible,"QR code built, big view closed")
@@ -25314,6 +25315,8 @@ var st_qr: PanelContainer
 var st_top: Label
 var st_fetch_t := 0.0
 var st_dim: Array = []
+var st_viewers: Label
+var st_flash := 0.0
 
 func _build_streamer(root: Control) -> void:
 	st_root = Control.new()
@@ -25362,7 +25365,7 @@ func _build_streamer(root: Control) -> void:
 		img.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		img.custom_minimum_size = Vector2(150,150)
 		card.add_child(img)
-	var url := _label("Scan, or open\nkokolo2020.github.io\n/GTA2027/play",14,Color("cfefff"))
+	var url := _label("Scan, or type\n%s" % SHORT_LINK_CARD,15,Color("cfefff"))
 	url.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(url)
 	# Top of the screen: who's leading right now.
@@ -25372,6 +25375,18 @@ func _build_streamer(root: Control) -> void:
 	st_top.add_theme_constant_override("outline_size",8)
 	st_top.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	st_root.add_child(st_top)
+	# v0.51.3: how many viewers are playing with you right now (flashes when someone joins).
+	st_viewers = _label("",24,Color("ffffff"))
+	st_viewers.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var vsb := _panel(Color("6a2bd0"),16)
+	vsb.content_margin_left = 14
+	vsb.content_margin_right = 14
+	vsb.content_margin_top = 8
+	vsb.content_margin_bottom = 8
+	st_viewers.add_theme_stylebox_override("normal",vsb)
+	st_viewers.add_theme_color_override("font_outline_color",Color("1a0a3a"))
+	st_viewers.add_theme_constant_override("outline_size",6)
+	st_root.add_child(st_viewers)
 	st_root.hide()
 
 func _toggle_streamer() -> void:
@@ -25419,6 +25434,17 @@ func _streamer_tick(delta: float) -> void:
 	st_badge.modulate.a = 0.75+0.25*sin(clock*3.0)
 	st_qr.reset_size()
 	st_qr.position = Vector2(18,18+st_badge.size.y+12.0)
+	var nv := _viewer_count()
+	var vt := "🎮 %d %s playing now!" % [nv,"viewer" if nv == 1 else "viewers"]
+	if st_viewers.text != vt:
+		st_viewers.text = vt
+	st_flash = maxf(0.0,st_flash-delta)
+	var pulse := sin(st_flash*18.0)*0.5+0.5 if st_flash > 0.0 else 0.0
+	st_viewers.reset_size()
+	st_viewers.pivot_offset = st_viewers.size/2.0
+	st_viewers.scale = Vector2.ONE*(1.0+0.12*pulse)
+	st_viewers.self_modulate = Color(1,1,1).lerp(Color("ffe36b"),pulse)
+	st_viewers.position = Vector2(18,st_qr.position.y+st_qr.size.y+12.0)
 	var rows := _ds_sorted(0)
 	var line := "HARBOR CITY"
 	if not rows.is_empty():
@@ -25428,7 +25454,7 @@ func _streamer_tick(delta: float) -> void:
 		line += "   ·   Richest: %s %s" % [_online_clean_name(String(rich.get("name",""))).substr(0,12),_money(int(rich.get("cash",0)))]
 	st_top.text = line
 	st_top.size = Vector2(0,0)
-	st_top.position = Vector2((view.x-st_top.get_combined_minimum_size().x)/2.0,104.0)
+	_hud_top_stack()     # v0.51.3: in the top column, under the quest and chapter bars
 	# Keep the leaderboard fresh while streaming, wherever you are.
 	if "--smoke-test" in OS.get_cmdline_user_args() or ds_get == null:
 		return
@@ -28135,6 +28161,13 @@ func _city_shots() -> void:
 			pet_on = 3
 			for i in 40:
 				await get_tree().physics_frame
+		if OS.get_environment("HC_VIEWERS") != "":
+			# v0.51.3: the viewer badge with a pretend count, flashing as if someone just joined.
+			viewers_demo = int(OS.get_environment("HC_VIEWERS"))
+			st_flash = 1.55
+		if OS.get_environment("HC_SJ") != "":
+			# v0.51.3: the welcome banner a stream joiner sees.
+			_sj_welcome(OS.get_environment("HC_SJ"))
 		if OS.get_environment("HC_STREAM") != "":
 			streamer_on = true
 			ds_rows = [{"name":"MasterKolo","level":20,"xp":9,"cash":47564,"ach":30,"kind":2},{"name":"NeonPanda30","level":9,"xp":5,"cash":12000,"ach":13,"kind":0}]
@@ -32246,6 +32279,11 @@ func _hud_top_stack() -> void:
 		ch_chip.reset_size()
 		ch_chip.global_position = Vector2((view.x-ch_chip.size.x)/2.0,top)
 		top += ch_chip.size.y+8.0
+	if st_top != null and st_root != null and st_root.visible:
+		var sz := st_top.get_combined_minimum_size()
+		st_top.size = sz
+		st_top.position = Vector2((view.x-sz.x)/2.0,top)
+		top += sz.y+6.0
 	var ax := view.x/2.0-70.0
 	if treasure_label != null and treasure_label.visible:
 		var tl := treasure_label
@@ -32503,6 +32541,8 @@ func _announce_join(who: String, lvl: int) -> void:
 			get_tree().create_timer(4.0).timeout.connect(_announce_already_here)
 		return
 	join_msgs += 1
+	if streamer_on:
+		st_flash = 1.6      # v0.51.3: the viewer badge flashes with the join chime
 	_chat_log_add("★","%s joined the game! (Lv %d)" % [who,clampi(lvl,1,40)],false)
 	_feed_add_system("★ %s joined the game! Say hi with CHAT." % who)
 	if fx_player != null and "--smoke-test" not in OS.get_cmdline_user_args():
@@ -32783,5 +32823,221 @@ func _smoke_photo() -> void:
 	camera.cull_mask = keep[5] | UI3D_LAYER
 	_apply_view()
 	if keep[0] and not paused:
+		_toggle_menu()
+
+# ---------------- v0.51.3: stream joiners ----------------
+# Viewers open kokolo2020.github.io/GTA2027/p (or scan the QR code), which goes to /play/?join=1.
+# Such a visit goes online straight away, leaves the starter crate for later, and puts the new
+# player next to whoever is streaming (the "st" flag in the position frame), with a welcome banner.
+const SHORT_LINK := "kokolo2020.github.io/GTA2027/p"
+const SHORT_LINK_CARD := "kokolo2020.github.io\n/GTA2027/p"
+const SJ_WAIT := 12.0              # seconds to look for a streamer before a plain welcome
+const SJ_CRATE_AFTER := 120.0      # the skipped starter crate opens after this much play
+var stream_join := false
+var sj_t := 0.0
+var sj_landed := false
+var sj_crate_later := false
+var sj_banner: PanelContainer
+var sj_title: Label
+var sj_hint: Label
+var sj_banner_t := 0.0
+var sj_with := ""
+
+var viewers_demo := -1             # developer screenshots only (HC_VIEWERS)
+
+func _viewer_count() -> int:
+	# Other players online right now (the streamer's viewers who joined).
+	if viewers_demo >= 0:
+		return viewers_demo
+	return online_peers.size() if online_on else 0
+
+func _stream_join_check() -> void:
+	if not OS.has_feature("web"):
+		return
+	var search = JavaScriptBridge.eval("window.location.search",true)
+	if typeof(search) == TYPE_STRING and String(search).contains("join=1"):
+		_stream_join_start(true)
+
+func _stream_join_start(connect := true) -> void:
+	stream_join = true
+	sj_t = 0.0
+	sj_landed = false
+	sj_crate_later = not crate_done
+	# Online straight away, quietly (no nickname box in the way).
+	if not online_on and _online_load_config() and not legacy_rules:
+		online_pref = true
+		online_on = true
+		online_id = _uid()
+		if online_name == "":
+			online_name = "Driver%d" % (100+randi() % 900)
+		online_retry = 0.0
+		if connect:
+			_online_connect()
+		_online_refresh_button()
+
+func _sj_streamer() -> Dictionary:
+	# The streamer to join: of the players streaming right now, the one heard from most recently.
+	var best := {}
+	for id in online_peers:
+		var peer: Dictionary = online_peers[id]
+		if bool(peer.get("st",false)) and (best.is_empty() or float(peer.get("seen",0.0)) > float(best.get("seen",0.0))):
+			best = peer
+	return best
+
+func _stream_join_tick(delta: float) -> void:
+	if sj_banner != null and sj_banner.visible:
+		sj_banner_t -= delta
+		var view := get_viewport().get_visible_rect().size
+		sj_banner.reset_size()
+		sj_banner.position = Vector2((view.x-sj_banner.size.x)/2.0,view.y*0.3)
+		sj_banner.modulate.a = clampf(sj_banner_t,0.0,1.0)
+		if sj_banner_t <= 0.0 or paused:
+			sj_banner.hide()
+	if not stream_join:
+		return
+	sj_t += delta
+	if not sj_landed:
+		var st := _sj_streamer()
+		if not st.is_empty():
+			_stream_join_land(st)
+		elif sj_t > SJ_WAIT:
+			sj_landed = true
+			_sj_welcome("")
+	elif sj_crate_later and sj_t > SJ_CRATE_AFTER and not paused and not crate_open and not race_car and trial_active < 0 and chase_mode == 0 and not shot_on:
+		sj_crate_later = false
+		if not crate_done:
+			_open_crate()
+
+func _stream_join_land(st: Dictionary) -> void:
+	sj_landed = true
+	var at: Vector3 = (st["node"] as Node3D).position
+	var spot := _offroad(at+Vector3(2.5,0,2.5))
+	if driving:
+		car.position = spot+Vector3(0,0.8,0)
+		car.velocity = Vector3.ZERO
+		car_speed = 0.0
+	else:
+		player.position = spot+Vector3(0,0.9,0)
+		player.velocity = Vector3.ZERO
+		# Face the streamer.
+		player.rotation.y = atan2(-(at.x-spot.x),-(at.z-spot.z))
+	_follow_camera(1.0)
+	_sj_welcome(String(st.get("name","")))
+
+func _sj_welcome(who: String) -> void:
+	sj_with = who
+	if sj_banner == null:
+		sj_banner = PanelContainer.new()
+		sj_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sb := _panel(Color(0.05,0.1,0.16,0.94),24)
+		sb.border_color = Color("ffe36b")
+		sb.set_border_width_all(3)
+		sb.set_content_margin_all(22)
+		sj_banner.add_theme_stylebox_override("panel",sb)
+		hud.get_child(0).add_child(sj_banner)
+		var col := VBoxContainer.new()
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_theme_constant_override("separation",12)
+		sj_banner.add_child(col)
+		sj_title = _label("",32,Color("ffe36b"))
+		sj_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(sj_title)
+		sj_hint = _label("",19,Color("dff3ff"))
+		sj_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(sj_hint)
+	if who != "":
+		sj_title.text = "Welcome to Harbor City!\nYou're playing with %s — say hi!" % who
+	else:
+		sj_title.text = "Welcome to Harbor City!\nYou're online — say hi with CHAT!"
+	sj_hint.text = "Walk: drag on the left of the screen (or WASD / arrow keys)\nLook around: drag on the right   ·   Talk: CHAT"
+	sj_banner_t = 10.0
+	sj_banner.modulate.a = 1.0
+	sj_banner.show()
+	_stream_join_tick(0.0)
+	if fx_player != null and "--smoke-test" not in OS.get_cmdline_user_args():
+		fx_player.stream = _step_sound()
+		fx_player.play()
+
+func _smoke_stream_join() -> void:
+	# v0.51.3: streamers are flagged, stream joiners land next to them, the viewer badge counts and flashes.
+	var keep := [streamer_on,online_on,online_pref,online_id,online_name,crate_done,player.position,driving,stream_join,paused]
+	if paused:
+		_toggle_menu()
+	driving = false
+	streamer_on = true
+	var f: Dictionary = _online_pos_frame()["payload"]["payload"]
+	assert(int(f.get("st",0)) == 1,"v0.51.3: streamer mode is sent with your position")
+	streamer_on = false
+	f = _online_pos_frame()["payload"]["payload"]
+	assert(int(f.get("st",1)) == 0,"v0.51.3: not streaming, no flag")
+	# The short link works and is on the join card.
+	var site := ProjectSettings.globalize_path("res://").path_join("../site")
+	for page in ["p/index.html","join/index.html"]:
+		var t := FileAccess.get_file_as_string(site.path_join(page))
+		assert(t.contains("play/?join=1") and t.contains("location.replace"),"v0.51.3: %s redirects to the game with join=1" % page)
+	var card_text := ""
+	for n in st_qr.find_children("*","Label",true,false):
+		card_text += (n as Label).text
+	assert(card_text.replace("\n","").contains(SHORT_LINK),"v0.51.3: the short link is on the PLAY WITH ME card")
+	# A viewer arrives: online at once, crate later, lands beside the streamer with a welcome.
+	online_on = false
+	crate_done = false
+	var keep_legacy := legacy_rules
+	legacy_rules = false     # the real game's rules, where joining goes online
+	_stream_join_start(false)
+	legacy_rules = keep_legacy
+	assert(stream_join and not crate_open and sj_crate_later,"v0.51.3: stream joiners skip the starter crate for now")
+	assert(online_on == _online_load_config(),"v0.51.3: stream joiners go online straight away")
+	online_on = true
+	online_joined_at = -100.0
+	player.position = SPAWN_FOOD_COURT
+	_online_peer_update({"i":"sjv1","n":"ViewerOne","x":-60.0,"y":0.9,"z":40.0,"r":0.0,"d":0,"l":3,"st":0})
+	_online_peer_update({"i":"sjst","n":"MasterKolo","x":12.0,"y":0.9,"z":30.0,"r":0.0,"d":0,"l":20,"st":1})
+	(online_peers["sjst"]["node"] as Node3D).position = Vector3(12.0,0.9,30.0)
+	_stream_join_tick(0.1)
+	assert(sj_landed and Vector2(player.position.x-12.0,player.position.z-30.0).length() < 8.0,"v0.51.3: the viewer lands next to the streamer (%s)" % str(player.position))
+	assert(sj_banner.visible and sj_title.text.contains("You're playing with MasterKolo") and sj_hint.text.contains("WASD"),"v0.51.3: welcome banner names the streamer and shows how to move")
+	# Later the starter crate still comes.
+	sj_t = SJ_CRATE_AFTER+1.0
+	_stream_join_tick(0.1)
+	assert(crate_open and not sj_crate_later,"v0.51.3: the starter crate opens later")
+	crate_open = false
+	paused = false
+	if crate_root != null:
+		crate_root.hide()
+	# Streamer screen: the viewer badge counts the others online and flashes when one joins.
+	streamer_on = true
+	_streamer_tick(0.016)
+	assert(online_peers.size() >= 2 and st_viewers.visible and st_viewers.text == "🎮 %d viewers playing now!" % online_peers.size(),"v0.51.3: viewer badge counts (%s)" % st_viewers.text)
+	var ok := ThemeDB.fallback_font.has_char("🎮".unicode_at(0))
+	for fb in ThemeDB.fallback_font.fallbacks:
+		ok = ok or (fb as Font).has_char("🎮".unicode_at(0))
+	assert(ok,"v0.51.3: the game font can draw the badge symbol")
+	_announce_join("ViewerTwo",2)
+	assert(st_flash > 0.0,"v0.51.3: the badge flashes when someone joins")
+	_streamer_tick(0.05)
+	assert(st_viewers.scale.x > 1.0 or st_viewers.self_modulate != Color.WHITE,"v0.51.3: the flash shows")
+	var br := Rect2(st_viewers.position,st_viewers.size*st_viewers.scale)
+	assert(br.position.y >= st_qr.position.y+st_qr.size.y,"v0.51.3: the badge sits under the join card")
+	# The leaders line no longer covers the chapter bar.
+	if ch_chip.visible and st_top.visible:
+		assert(not Rect2(st_top.position,st_top.size).intersects(Rect2(ch_chip.global_position,ch_chip.size)),"v0.51.3: the leaders line sits under the chapter bar")
+	for id in ["sjv1","sjst"]:
+		if online_peers.has(id):
+			(online_peers[id]["node"] as Node3D).queue_free()
+			online_peers.erase(id)
+	sj_banner.hide()
+	streamer_on = keep[0]
+	online_on = keep[1]
+	online_pref = keep[2]
+	online_id = keep[3]
+	online_name = keep[4]
+	crate_done = keep[5]
+	player.position = keep[6]
+	driving = keep[7]
+	stream_join = keep[8]
+	st_flash = 0.0
+	_streamer_tick(0.016)
+	if keep[9] and not paused:
 		_toggle_menu()
 

@@ -2228,6 +2228,7 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 	label.font_size = 44
 	label.fixed_size = true
 	label.pixel_size = 0.00075
+	_ui3d(label)
 	label.no_depth_test = true
 	label.render_priority = 9
 	node.add_child(label)
@@ -3294,6 +3295,7 @@ func _chase_make_unit(cop: bool) -> Dictionary:
 		_box(body,Vector3(0,0.98,0.1),Vector3(0.5,0.15,0.3),Color("ffb020"))
 	var label := Label3D.new()
 	label.text = "POLICE" if cop else "THIEF"
+	_ui3d(label)
 	label.font_size = 40
 	label.modulate = Color("9cc4ff") if cop else Color("ffb020")
 	label.position = Vector3(0,2.6,0)
@@ -7500,6 +7502,9 @@ func _draw_joystick() -> void:
 	joystick.draw_circle(Vector2(90,90)+stick*58,32,Color(0.6,0.87,0.88,0.85))
 
 func _input(event: InputEvent) -> void:
+	if shot_on:
+		_shot_input(event)
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F12:
 			_capture_preview()
@@ -7572,7 +7577,9 @@ func _notification(what: int) -> void:
 		if booted:
 			_save_progress()
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and booted:
-		if map_open:
+		if shot_on:
+			_shot_exit()
+		elif map_open:
 			_close_map()
 		else:
 			_toggle_menu()
@@ -8661,6 +8668,7 @@ func _process(delta: float) -> void:
 	_career_tick(delta)
 	_ga_inner_tick()
 	_cash_pill_tick()
+	_shot_tick()
 	_lb_tick(delta)
 	_market_tick(delta)
 	_board_tick(delta)
@@ -9002,6 +9010,7 @@ func _smoke_test() -> void:
 	_smoke_travel()
 	_smoke_qr()
 	_smoke_chapters()
+	_smoke_photo()
 	_smoke_crate()
 	_smoke_bus()
 	_smoke_chase_extras()
@@ -12781,6 +12790,7 @@ func _build_guidance(root: Control) -> void:
 	guide_arrow = Node3D.new()
 	add_child(guide_arrow)
 	_arrow_mesh(guide_arrow,Color("ffcf4a"),2.2,1.2)
+	_ui3d(guide_arrow)
 	guide_arrow.hide()
 	# A big bouncing arrow over the golden ring, pointing down at it.
 	goal_arrow = Node3D.new()
@@ -12789,6 +12799,7 @@ func _build_guidance(root: Control) -> void:
 	down.rotation_degrees.x = -90.0
 	goal_arrow.add_child(down)
 	_arrow_mesh(down,Color("ffcf4a"),3.2,2.2)
+	_ui3d(goal_arrow)
 	goal_arrow.position.y = 7.0
 	# Screen arrow for the In-car and Eye views (the floating arrow is behind the camera there).
 	hud_arrow = Control.new()
@@ -13385,6 +13396,7 @@ func _build_hub_bots() -> void:
 		_sit_pose(person,float(seat["h"]),0.0)
 		var tag := Label3D.new()
 		tag.text = "%s · BOT" % names[k % names.size()]
+		_ui3d(tag)
 		tag.font_size = 32
 		tag.pixel_size = 0.01
 		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -13451,6 +13463,7 @@ func _bubble(parent: Node3D, text: String, height: float) -> void:
 	lab.no_depth_test = true
 	lab.render_priority = 2
 	holder.add_child(lab)
+	_ui3d(holder)
 	hub_bubbles.append({"label":holder,"until":clock+6.0})
 
 func _emote(person: Dictionary, kind: int) -> void:
@@ -16059,6 +16072,7 @@ func _rw_spawn_ai(k: int, slot_i: int) -> void:
 		_box(node,Vector3(0,0.8,0),Vector3(1.8,0.9,3.6),AI_COLORS[k])
 	var tag := Label3D.new()
 	tag.text = AI_NAMES[k]
+	_ui3d(tag)
 	tag.font_size = 32
 	tag.pixel_size = 0.012
 	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -18376,6 +18390,7 @@ func _my_tag_tick() -> void:
 		my_tag.fixed_size = true
 		my_tag.pixel_size = 0.0011
 		my_tag.render_priority = 10
+		_ui3d(my_tag)
 		add_child(my_tag)
 	var body: Node3D = car if driving else player
 	# v0.33.7: you don't see your own name tag any more (your ring marks you); others still see it.
@@ -25876,6 +25891,7 @@ func _player_ring(parent: Node3D, color: Color) -> MeshInstance3D:
 	halo.material_override = _halo_mat(color)
 	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	ring.add_child(halo)
+	_ui3d(ring)
 	return ring
 
 var halo_mats := {}
@@ -28161,6 +28177,11 @@ func _city_shots() -> void:
 				camera.look_at(_home_origin(hi)+Vector3(hz.x*0.3,1.0,-hz.z*0.15))
 		if OS.get_environment("HC_CAREER") != "":
 			_career_start(int(OS.get_environment("HC_CAREER")))
+			for i in 4:
+				await get_tree().physics_frame
+		if OS.get_environment("HC_PHOTO") != "":
+			# v0.51.2: the picture as Photo mode shows it.
+			_shot_enter()
 			for i in 4:
 				await get_tree().physics_frame
 		if OS.get_environment("HC_NOHUD") != "":
@@ -32500,3 +32521,267 @@ func _announce_leave(who: String) -> void:
 	if who == "" or not online_on:
 		return
 	_chat_log_add("★","%s left the game." % who,false)
+
+# ---------------- v0.51.2: Photo mode (clean screenshots) ----------------
+# A small camera button under the minimap hides everything on screen, leaving only the 3D view.
+# The HUD layers are hidden as a whole (each element keeps its own visibility, so nothing stays
+# hidden afterwards) and 3D overlays (name tags, player rings, speech bubbles, guide arrows) sit on
+# their own render layer that the camera stops drawing. The game keeps running. In Photo mode you
+# can still look around by dragging and walk with an invisible stick on the left half; a single
+# tap anywhere, Back or Esc brings everything back.
+const UI3D_LAYER := 1 << 19        # render layer 20: 3D things that are really part of the HUD
+const SHOT_TAP_PX := 14.0
+const SHOT_TAP_MS := 350
+var shot_on := false
+var shot_button: Button
+var shot_hidden: Array = []        # the layers Photo mode hid, shown again on exit
+var shot_cull := 0
+var shot_press := {}               # touch index (or -10 for the mouse) -> [start position, start ms, moved]
+
+func _ui3d(n: Node) -> void:
+	if n is VisualInstance3D:
+		(n as VisualInstance3D).layers = UI3D_LAYER
+	for c in n.get_children():
+		_ui3d(c)
+
+func _shot_tick() -> void:
+	if minimap == null:
+		return
+	if shot_button == null:
+		shot_button = _button("",_shot_enter)
+		shot_button.custom_minimum_size = Vector2(60,46)
+		shot_button.tooltip_text = "Photo mode"
+		shot_button.add_theme_stylebox_override("normal",_panel(Color(0.04,0.1,0.14,0.75),14))
+		shot_button.add_theme_stylebox_override("hover",_panel(Color(0.06,0.16,0.22,0.85),14))
+		var icon := Control.new()
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon.draw.connect(_draw_shot_icon.bind(icon))
+		shot_button.add_child(icon)
+		minimap.get_parent().add_child(shot_button)
+	shot_button.visible = not paused and not shot_on
+	if not shot_button.visible:
+		return
+	shot_button.size = shot_button.custom_minimum_size
+	var bw := shot_button.size.x
+	if _clean_on():
+		# Right-aligned under the minimap and the pills below it.
+		var right := minimap.position.x+MINI_SIZE*CLEAN_MINI_SCALE
+		var y := minimap.position.y+MINI_SIZE*CLEAN_MINI_SCALE+6.0
+		for c in [online_pill,cash_pill]:
+			if c != null and (c as Control).visible:
+				y = maxf(y,(c as Control).position.y+(c as Control).size.y+6.0)
+		shot_button.position = Vector2(right-bw,y)
+	else:
+		# Full screen HUD: the column under the minimap is taken, so it sits at the minimap's bottom left.
+		shot_button.position = Vector2(minimap.position.x-bw-10.0,minimap.position.y+MINI_SIZE-shot_button.size.y)
+
+func _draw_shot_icon(c: Control) -> void:
+	# A little camera: body, viewfinder bump and lens.
+	var mid := c.size/2.0
+	var col := Color("dff3ff")
+	c.draw_rect(Rect2(mid+Vector2(-15,-9),Vector2(30,20)),col)
+	c.draw_rect(Rect2(mid+Vector2(-6,-13),Vector2(12,5)),col)
+	c.draw_circle(mid+Vector2(0,1),7.0,Color("0e2230"))
+	c.draw_circle(mid+Vector2(0,1),4.0,col)
+
+func _shot_enter() -> void:
+	if shot_on or paused:
+		return
+	shot_on = true
+	shot_hidden.clear()
+	for c in get_children():
+		if (c is CanvasLayer or c is Control) and c.visible:
+			c.visible = false
+			shot_hidden.append(c)
+	shot_cull = camera.cull_mask
+	camera.cull_mask = shot_cull & ~UI3D_LAYER
+	shot_press.clear()
+	_shot_release_controls()
+
+func _shot_exit() -> void:
+	if not shot_on:
+		return
+	shot_on = false
+	for c in shot_hidden:
+		if is_instance_valid(c):
+			c.visible = true
+	shot_hidden.clear()
+	camera.cull_mask = shot_cull | UI3D_LAYER
+	shot_press.clear()
+	_shot_release_controls()
+
+func _shot_release_controls() -> void:
+	stick = Vector2.ZERO
+	touch_id = -1
+	look_id = -1
+	mouse_stick = false
+	mouse_look = false
+
+func _shot_stick_zone(point: Vector2) -> bool:
+	return point.x < get_viewport().get_visible_rect().size.x*0.5
+
+func _shot_input(event: InputEvent) -> void:
+	get_viewport().set_input_as_handled()
+	if event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_ESCAPE or event.keycode == KEY_BACK):
+		_shot_exit()
+		return
+	var id := -999
+	var pos := Vector2.ZERO
+	var pressed := false
+	var is_press := false
+	if event is InputEventScreenTouch:
+		id = event.index
+		pos = event.position
+		pressed = event.pressed
+		is_press = true
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.device != InputEvent.DEVICE_ID_EMULATION:
+		id = -10
+		pos = event.position
+		pressed = event.pressed
+		is_press = true
+	if is_press:
+		if pressed:
+			shot_press[id] = [pos,Time.get_ticks_msec(),false]
+			if _shot_stick_zone(pos):
+				if id == -10:
+					mouse_stick = true
+				else:
+					touch_id = id
+				touch_origin = pos
+				stick = Vector2.ZERO
+			elif eye_view or follow_view:
+				if id == -10:
+					mouse_look = true
+				else:
+					look_id = id
+		else:
+			var tap := false
+			if shot_press.has(id):
+				var st: Array = shot_press[id]
+				tap = not bool(st[2]) and (pos-(st[0] as Vector2)).length() < SHOT_TAP_PX and Time.get_ticks_msec()-int(st[1]) < SHOT_TAP_MS
+				shot_press.erase(id)
+			if id == touch_id or (id == -10 and mouse_stick):
+				touch_id = -1
+				mouse_stick = false
+				stick = Vector2.ZERO
+			if id == look_id or (id == -10 and mouse_look):
+				look_id = -1
+				mouse_look = false
+			if tap:
+				_shot_exit()
+		return
+	var did := -999
+	var rel := Vector2.ZERO
+	if event is InputEventScreenDrag:
+		did = event.index
+		pos = event.position
+		rel = event.relative
+	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
+		did = -10
+		pos = event.position
+		rel = event.relative
+	if did == -999 or not shot_press.has(did):
+		return
+	var sp: Array = shot_press[did]
+	if (pos-(sp[0] as Vector2)).length() >= SHOT_TAP_PX:
+		sp[2] = true
+	if did == touch_id or (did == -10 and mouse_stick):
+		stick = ((pos-touch_origin)/65.0).limit_length()
+	elif (did == look_id or (did == -10 and mouse_look)) and (eye_view or follow_view):
+		_look(rel)
+
+func _smoke_photo() -> void:
+	# v0.51.2: Photo mode hides everything on screen, keeps the game running and brings it all back.
+	var keep := [paused,walk_view,driving,player.position,player.rotation,camera.cull_mask]
+	if paused:
+		_toggle_menu()
+	driving = false
+	walk_view = 0
+	_apply_view()
+	_shot_tick()
+	assert(shot_button != null and shot_button.visible and shot_button.get_parent() == minimap.get_parent(),"v0.51.2: camera button on the main screen")
+	if _clean_on():
+		assert(shot_button.position.y >= minimap.position.y+MINI_SIZE*CLEAN_MINI_SCALE and shot_button.position.x+shot_button.size.x <= minimap.position.x+MINI_SIZE*CLEAN_MINI_SCALE+1.0,"v0.51.2: camera button under the minimap")
+	_my_tag_tick()
+	_bubble(player,"Hi!",2.6)
+	var bub: Node3D = hub_bubbles[hub_bubbles.size()-1]["label"]
+	for n in [my_ring,my_tag,guide_arrow.get_child(0),goal_arrow.get_child(0).get_child(0),bub.get_child(0)]:
+		if n is VisualInstance3D:
+			assert((n as VisualInstance3D).layers == UI3D_LAYER,"v0.51.2: %s is drawn as part of the HUD" % n.name)
+	var shown := []
+	for c in get_children():
+		if (c is CanvasLayer or c is Control) and c.visible:
+			shown.append(c)
+	assert(hud in shown,"v0.51.2: the HUD shows before Photo mode")
+	var inner := {}
+	for c in [quest_bar,ch_chip,chat_quick,minimap,joystick,action_button,qr_small,cash_pill,shot_button]:
+		if c != null:
+			inner[c] = (c as CanvasItem).visible
+	shot_button.pressed.emit()
+	assert(shot_on and camera.cull_mask & UI3D_LAYER == 0,"v0.51.2: Photo mode stops drawing tags, rings, bubbles and arrows")
+	for c in get_children():
+		if c is CanvasLayer or c is Control:
+			assert(not c.visible,"v0.51.2: Photo mode hides %s" % c.name)
+	assert(not get_tree().paused and not paused,"v0.51.2: the game keeps running in Photo mode")
+	# Drag on the left half walks, drag on the right looks, neither leaves Photo mode.
+	var view := get_viewport().get_visible_rect().size
+	var t := InputEventScreenTouch.new()
+	t.index = 0
+	t.position = Vector2(view.x*0.2,view.y*0.5)
+	t.pressed = true
+	_input(t)
+	var d := InputEventScreenDrag.new()
+	d.index = 0
+	d.position = t.position+Vector2(0,-60)
+	d.relative = Vector2(0,-60)
+	_input(d)
+	assert(stick.y < -0.5,"v0.51.2: the invisible stick walks in Photo mode")
+	t.position = d.position
+	t.pressed = false
+	_input(t)
+	assert(shot_on and stick == Vector2.ZERO,"v0.51.2: walking does not leave Photo mode")
+	t.index = 1
+	t.position = Vector2(view.x*0.75,view.y*0.4)
+	t.pressed = true
+	_input(t)
+	assert(look_id == 1,"v0.51.2: dragging on the right looks around")
+	d.index = 1
+	d.position = t.position+Vector2(80,0)
+	d.relative = Vector2(80,0)
+	_input(d)
+	t.position = d.position
+	t.pressed = false
+	_input(t)
+	assert(shot_on and look_id == -1,"v0.51.2: looking does not leave Photo mode")
+	# A single tap anywhere brings everything back.
+	t.index = 2
+	t.position = Vector2(view.x*0.6,view.y*0.6)
+	t.pressed = true
+	_input(t)
+	t.pressed = false
+	_input(t)
+	assert(not shot_on and camera.cull_mask & UI3D_LAYER != 0,"v0.51.2: a tap leaves Photo mode")
+	for c in shown:
+		assert(c.visible,"v0.51.2: %s is back after Photo mode" % c.name)
+	for c in inner:
+		assert((c as CanvasItem).visible == inner[c],"v0.51.2: %s keeps its own visibility" % c.name)
+	# Esc (and Back) leave it too, without opening the menu.
+	_shot_enter()
+	var k := InputEventKey.new()
+	k.keycode = KEY_ESCAPE
+	k.pressed = true
+	_input(k)
+	assert(not shot_on and not paused and hud.visible,"v0.51.2: Esc leaves Photo mode without opening the menu")
+	_shot_enter()
+	_notification(NOTIFICATION_WM_GO_BACK_REQUEST)
+	assert(not shot_on and not paused and hud.visible,"v0.51.2: Back leaves Photo mode")
+	walk_view = keep[1]
+	driving = keep[2]
+	player.position = keep[3]
+	player.rotation = keep[4]
+	camera.cull_mask = keep[5] | UI3D_LAYER
+	_apply_view()
+	if keep[0] and not paused:
+		_toggle_menu()
+

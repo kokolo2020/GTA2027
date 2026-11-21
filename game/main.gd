@@ -8254,6 +8254,7 @@ func _save_progress() -> void:
 	file.set_value("progress","fm_refund",fm_refund)
 	file.set_value("chapters","idx",ch_idx)
 	file.set_value("chapters","step",ch_step)
+	file.set_value("chapters","best",ch_best)
 	file.save(SAVE_PATH)
 
 func _load_progress() -> void:
@@ -8275,6 +8276,7 @@ func _load_progress() -> void:
 		bio_pass_day = String(file.get_value("progress","bio_pass_day",""))
 		ch_idx = clampi(int(file.get_value("chapters","idx",0)),0,CHAPTERS.size())
 		ch_step = maxi(0,int(file.get_value("chapters","step",0)))
+		ch_best = clampi(maxi(int(file.get_value("chapters","best",0)),ch_idx),0,CHAPTERS.size())
 		pz_streak = maxi(0,int(file.get_value("progress","pz_streak",0)))
 		pz_total = maxi(0,int(file.get_value("progress","pz_total",0)))
 		hud_clean = bool(file.get_value("progress","hud_clean",true))
@@ -8645,6 +8647,7 @@ func _process(delta: float) -> void:
 	_sky_traffic_tick(delta)
 	_clean_hud_tick()
 	_quest_offer_tick()
+	_hud_top_stack()
 	_auto_collect_tick()
 	_food_court_tick(delta)
 	_commons_tick(delta)
@@ -14156,6 +14159,7 @@ var chat_to_crew := false
 var chat_last_say := -10.0
 var chat_pill: Button
 var chat_quick: GridContainer
+var web_build := OS.has_feature("web")   # v0.51.2: quick chat chips are for the app only
 var chat_to_button: Button
 var chat_log_panel: PanelContainer
 var chat_log_title: Label
@@ -14311,7 +14315,7 @@ func _chat_tick(delta: float) -> void:
 	if chat_pill == null or player == null:
 		return
 	if chat_quick != null:
-		chat_quick.visible = not paused and not race_car and not sky_riding and not bus_riding
+		chat_quick.visible = not web_build and not paused and not race_car and not sky_riding and not bus_riding
 		if chat_quick.visible:
 			var qv := get_viewport().get_visible_rect().size
 			chat_quick.reset_size()
@@ -25809,8 +25813,6 @@ func _treasure_tick(_delta: float) -> void:
 	var vis := not paused and not race_car and chase_mode == 0 and online_role == 0 and not crate_open
 	treasure_label.visible = vis
 	if not vis:
-		if hud_arrow != null:
-			hud_arrow.position.y = 96.0
 		return
 	var mm := int(left)/60
 	var ss := int(left)%60
@@ -25829,11 +25831,7 @@ func _treasure_tick(_delta: float) -> void:
 	treasure_label.size = Vector2(w,0)
 	treasure_label.reset_size()
 	treasure_label.position = Vector2(maxf(left_x,minf(view.x/2.0-w/2.0,view.x-390.0-w)),24)
-	if hud_arrow != null:
-		# Keep the quest arrow just below the banner instead of under it.
-		var ax := view.x/2.0-70.0
-		var overlaps := ax+140.0 > treasure_label.position.x and ax < treasure_label.position.x+treasure_label.size.x
-		hud_arrow.position.y = maxf(96.0,treasure_label.position.y+treasure_label.size.y+4.0) if overlaps else 96.0
+	_hud_top_stack()     # keeps the arrow below the banner instead of under it
 
 func _treasure_claim() -> void:
 	treasure_got = treasure_cycle
@@ -28078,6 +28076,10 @@ func _city_shots() -> void:
 		day_hour_override = float(parts[3]) if parts.size() > 3 else 13.0
 		_daynight_apply(true)
 		player.position = Vector3(cp[0],0.9,cp[2]+2.0)
+		if OS.get_environment("HC_FOLLOW") != "":
+			# v0.51.2: the Follow view on foot, where the screen guide arrow shows.
+			walk_view = 0
+			_apply_view()
 		for i in 90+(int(parts[4]) if parts.size() > 4 else 0):
 			await get_tree().physics_frame
 		if OS.get_environment("HC_PEERS") != "":
@@ -32095,6 +32097,8 @@ var ch_idx := 0                    # current chapter (CHAPTERS.size() = all done
 var ch_step := 0                   # current step inside it, saved
 var ch_chip: Button
 var ch_fx_n := 0                 # celebrations played (for tests)
+var ch_best := 0                   # v0.51.2: chapters ever finished (rewards are paid once), saved
+var ch_confirm: HBoxContainer
 var ch_panel: PanelContainer
 var ch_list: Label
 var ch_t := 0.0
@@ -32148,17 +32152,22 @@ func _ch_target() -> Variant:
 
 func _ch_finish_chapter() -> void:
 	var C: Dictionary = CHAPTERS[ch_idx]
-	cash += int(C["pay"])
-	if not legacy_rules:
-		bonus_xp += int(C["xp"])
+	# v0.51.2: after Restart chapters, a chapter finished before celebrates again but pays nothing.
+	var paid := ch_idx >= ch_best
+	if paid:
+		cash += int(C["pay"])
+		if not legacy_rules:
+			bonus_xp += int(C["xp"])
 	var nxt := ""
 	if ch_idx+1 < CHAPTERS.size():
 		nxt = "  Next: %s." % String(CHAPTERS[ch_idx+1]["name"])
 	else:
 		nxt = "  You finished every chapter. You are a Harbor City legend!"
-	_show_toast("CHAPTER %d COMPLETE: %s  +%s  +%d XP.%s" % [ch_idx+1,C["name"],_money(int(C["pay"])),int(C["xp"]),nxt])
-	_level_up_fx(0,"CHAPTER %d COMPLETE!" % (ch_idx+1),"%s\n+%s  ·  +%d XP" % [C["name"],_money(int(C["pay"])),int(C["xp"])])
+	var reward: String = "+%s  +%d XP" % [_money(int(C["pay"])),int(C["xp"])] if paid else "replayed"
+	_show_toast("CHAPTER %d COMPLETE: %s  %s.%s" % [ch_idx+1,C["name"],reward,nxt])
+	_level_up_fx(0,"CHAPTER %d COMPLETE!" % (ch_idx+1),"%s\n%s" % [C["name"],reward.replace("  "," · ")])
 	ch_fx_n += 1
+	ch_best = maxi(ch_best,ch_idx+1)
 	ch_idx += 1
 	ch_step = 0
 	_save_progress()
@@ -32201,10 +32210,28 @@ func _chapters_tick(delta: float) -> void:
 	else:
 		ch_chip.text = "  CH %d · %s  ➜ %s  " % [ch_idx+1,CHAPTERS[ch_idx]["name"],_ch_step_text(s)]
 	ch_chip.reset_size()
+	_hud_top_stack()
+
+func _hud_top_stack() -> void:
+	# v0.51.2: the top of the screen is one column, top to bottom: the quest bar, the chapter bar
+	# right under it, then the screen guide arrow (and the treasure banner if it is in the way).
+	if ch_chip == null or hud_arrow == null or quest_bar == null:
+		return
 	var view := get_viewport().get_visible_rect().size
-	# v0.51.1: just below the screen arrow and its distance (drawn at about y 100-200), so it never
-	# covers them, and well above your character's speech bubble.
-	ch_chip.global_position = Vector2((view.x-ch_chip.size.x)/2.0,212.0)
+	var top := 18.0
+	if quest_bar.visible:
+		top = quest_bar.position.y+quest_bar.get_combined_minimum_size().y+8.0
+	if ch_chip.visible:
+		ch_chip.reset_size()
+		ch_chip.global_position = Vector2((view.x-ch_chip.size.x)/2.0,top)
+		top += ch_chip.size.y+8.0
+	var ax := view.x/2.0-70.0
+	if treasure_label != null and treasure_label.visible:
+		var tl := treasure_label
+		if ax+140.0 > tl.position.x and ax < tl.position.x+tl.size.x:
+			top = maxf(top,tl.position.y+tl.size.y+4.0)
+	# The arrow's circle starts 8 px into its box; keep the old resting place when the top is empty.
+	hud_arrow.position = Vector2(ax,maxf(96.0,top-8.0))
 
 func _build_chapters_ui(root: Control) -> void:
 	ch_chip = _button("",_open_chapters)
@@ -32228,10 +32255,38 @@ func _build_chapters_ui(root: Control) -> void:
 	col.add_child(ch_list)
 	var foot := HBoxContainer.new()
 	col.add_child(foot)
+	var restart := _button("Restart chapters",_chapters_restart_ask)
+	foot.add_child(restart)
 	var close := _button("Close",_chapters_close)
 	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(close)
+	# v0.51.2: Restart asks first.
+	ch_confirm = HBoxContainer.new()
+	ch_confirm.add_theme_constant_override("separation",10)
+	col.add_child(ch_confirm)
+	var q := _label("Back to Chapter 1, step 1? Chapters you already finished don't pay again.",17,Color("ffe29a"))
+	q.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	q.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ch_confirm.add_child(q)
+	var yes := _button("Yes, restart",_chapters_restart)
+	yes.add_theme_stylebox_override("normal",_panel(Color("c42b2b"),16))
+	ch_confirm.add_child(yes)
+	ch_confirm.add_child(_button("Cancel",ch_confirm.hide))
+	ch_confirm.hide()
 	ch_panel.hide()
+
+func _chapters_restart_ask() -> void:
+	ch_confirm.show()
+
+func _chapters_restart() -> void:
+	ch_best = maxi(ch_best,ch_idx)
+	ch_idx = 0
+	ch_step = 0
+	ch_t = 0.0
+	ch_confirm.hide()
+	ch_list.text = _chapters_text()
+	_save_progress()
+	_show_toast("Chapters restarted: back to Chapter 1. Finished chapters celebrate again but don't pay twice.")
 
 func _chapters_text() -> String:
 	var lines: Array = []
@@ -32241,7 +32296,8 @@ func _chapters_text() -> String:
 		if i < ch_idx:
 			lines.append("[DONE]  %d. %s" % [i+1,C["name"]])
 		elif i == ch_idx:
-			lines.append("▶  %d. %s  ·  %s  (+%s, +%d XP)" % [i+1,C["name"],C["story"],_money(int(C["pay"])),int(C["xp"])])
+			var rw: String = "(+%s, +%d XP)" % [_money(int(C["pay"])),int(C["xp"])] if i >= ch_best else "(replay, already paid)"
+			lines.append("▶  %d. %s  ·  %s  %s" % [i+1,C["name"],C["story"],rw])
 			for k in steps.size():
 				var mark := "[x]" if k < ch_step else ("[ > ]" if k == ch_step else "[  ]")
 				lines.append("      %s %s" % [mark,_ch_step_text(steps[k])])
@@ -32256,6 +32312,7 @@ func _open_chapters() -> void:
 	if not paused:
 		_toggle_menu()
 	ch_list.text = _chapters_text()
+	ch_confirm.hide()
 	_open_panel(ch_panel)
 
 func _chapters_close() -> void:
@@ -32274,7 +32331,8 @@ func _smoke_chapters() -> void:
 				if String(st["k"]) == "go" and String(st["t"]) == String(d["name"]):
 					found = true
 		assert(found,"v0.51: chapters visit %s" % String(d["name"]))
-	var keep := [ch_idx,ch_step,cash,bonus_xp,player.position,driving,dir_custom,dir_target,quick_on]
+	var keep := [ch_idx,ch_step,cash,bonus_xp,player.position,driving,dir_custom,dir_target,quick_on,ch_best]
+	ch_best = 0
 	driving = false
 	dir_target = -1
 	dir_custom = Vector3.INF
@@ -32302,6 +32360,61 @@ func _smoke_chapters() -> void:
 	_chapters_tick(1.0)
 	assert(ch_idx == CHAPTERS.size() and cash == before+5000,"v0.51: a finished chapter pays out")
 	assert(ch_fx_n > fx0 and lvl_root.visible and lvl_title.text.begins_with("CHAPTER"),"v0.51.1: finishing a chapter celebrates with a banner")
+	assert(ch_best == CHAPTERS.size(),"v0.51.2: the furthest chapter is remembered")
+	assert(_chapters_text().contains("All chapters complete"),"v0.51: chapter list shows completion")
+	# v0.51.2: Restart chapters asks first, goes back to Chapter 1 step 1, celebrates again, never pays twice.
+	_chapters_restart_ask()
+	assert(ch_confirm.visible and ch_idx == CHAPTERS.size(),"v0.51.2: restart asks before doing anything")
+	_chapters_restart()
+	assert(ch_idx == 0 and ch_step == 0 and not ch_confirm.visible and ch_best == CHAPTERS.size(),"v0.51.2: restart goes back to Chapter 1, step 1")
+	assert(_chapters_text().contains("already paid"),"v0.51.2: the list says a replayed chapter is already paid")
+	ch_step = (CHAPTERS[0]["steps"] as Array).size()
+	before = cash
+	var bxp := bonus_xp
+	fx0 = ch_fx_n
+	ch_t = 0.0
+	_chapters_tick(1.0)
+	assert(ch_idx == 1 and cash == before and bonus_xp == bxp,"v0.51.2: a replayed chapter pays nothing")
+	assert(ch_fx_n > fx0 and lvl_title.text.begins_with("CHAPTER 1"),"v0.51.2: a replayed chapter still celebrates")
+	ch_best = 3
+	ch_idx = 3
+	ch_step = (CHAPTERS[3]["steps"] as Array).size()
+	before = cash
+	ch_t = 0.0
+	_chapters_tick(1.0)
+	assert(cash == before+int(CHAPTERS[3]["pay"]) and ch_best == 4,"v0.51.2: a chapter past the furthest one still pays")
+	# v0.51.2: top of the screen: quest bar, chapter bar right under it, then the screen arrow; no overlaps.
+	var keep_ui := [quest_bar.visible,quest_bar.text,ch_chip.visible,lvl_root.visible]
+	lvl_root.hide()
+	quest_bar.text = "▶  Collect a parcel at the North Gate post office  ·  21 m    ✕"
+	quest_bar.size = Vector2.ZERO
+	quest_bar.position = Vector2((get_viewport().get_visible_rect().size.x-quest_bar.get_combined_minimum_size().x)/2.0,18)
+	quest_bar.show()
+	ch_chip.text = "  CH 1 · Welcome to Harbor  ➜ Harbor Waterfront · 40 m  "
+	ch_chip.show()
+	_hud_top_stack()
+	var qr := Rect2(quest_bar.position,quest_bar.get_combined_minimum_size())
+	var cr := Rect2(ch_chip.global_position,ch_chip.size)
+	var ar := Rect2(hud_arrow.position+Vector2(0,8),Vector2(140,100))
+	assert(cr.position.y >= qr.end.y and cr.position.y-qr.end.y <= 12.0,"v0.51.2: the chapter bar sits right under the quest bar")
+	assert(ar.position.y >= cr.end.y and not ar.intersects(cr) and not ar.intersects(qr),"v0.51.2: the screen arrow sits under the chapter bar")
+	assert(absf(cr.get_center().x-qr.get_center().x) < 2.0,"v0.51.2: quest and chapter bars are centred together")
+	quest_bar.hide()
+	_hud_top_stack()
+	assert(ch_chip.global_position.y <= 20.0 and hud_arrow.position.y >= ch_chip.global_position.y+ch_chip.size.y-8.0,"v0.51.2: without a quest the chapter bar moves to the top")
+	quest_bar.visible = keep_ui[0]
+	quest_bar.text = keep_ui[1]
+	ch_chip.visible = keep_ui[2]
+	lvl_root.visible = keep_ui[3]
+	# v0.51.2: quick chat chips are for the Android app only, never the browser build.
+	var keep_web := web_build
+	web_build = true
+	_chat_tick(0.0)
+	assert(not chat_quick.visible,"v0.51.2: no quick chat chips in the browser")
+	web_build = false
+	_chat_tick(0.0)
+	assert(chat_quick.visible == (not paused and not race_car and not sky_riding and not bus_riding),"v0.51.2: quick chat chips in the app")
+	web_build = keep_web
 	# v0.51.1: a player coming online is announced in the chat log and the feed.
 	var jm := join_msgs
 	var cl := chat_lines.size()
@@ -32313,7 +32426,6 @@ func _smoke_chapters() -> void:
 	if online_peers.has("join1"):
 		(online_peers["join1"]["node"] as Node3D).queue_free()
 		online_peers.erase("join1")
-	assert(_chapters_text().contains("All chapters complete"),"v0.51: chapter list shows completion")
 	ch_idx = keep[0]
 	ch_step = keep[1]
 	cash = keep[2]
@@ -32323,6 +32435,7 @@ func _smoke_chapters() -> void:
 	dir_custom = keep[6]
 	dir_target = keep[7]
 	quick_on = keep[8]
+	ch_best = keep[9]
 
 var step_sound: AudioStreamWAV
 

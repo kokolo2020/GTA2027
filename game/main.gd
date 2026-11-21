@@ -328,6 +328,7 @@ func _ready() -> void:
 	if not OS.get_environment("HC_SKIP").contains("fill"):
 		_build_fill()
 	_build_signposts()
+	_build_homes()
 	traffic_on = "--smoke-test" not in OS.get_cmdline_user_args()
 	radio_player = AudioStreamPlayer.new()
 	radio_player.volume_db = -6.0
@@ -1294,6 +1295,10 @@ func _apply_car() -> void:
 		car_body_mat.albedo_color = spec["color"]
 		car_roof_mat.albedo_color = spec["roof"]
 	spoiler.visible = car_id >= 3
+	if career >= 0:
+		# v0.50: the career vehicle's livery (your car's speed and handling stay the same).
+		car_body_mat.albedo_color = CAREERS[career]["body"]
+		car_roof_mat.albedo_color = CAREERS[career]["roof"]
 	_apply_car_model()
 
 func _tune_level(car_index: int, cat: int) -> int:
@@ -3326,6 +3331,7 @@ func _chase_end(message: String, reward: int) -> void:
 		chase_wins += 1
 		_save_progress()
 	_show_toast(message)
+	_career_chase_over(reward > 0)
 
 func _chase_steer(u: Dictionary, goal: Vector3, speed: float, delta: float) -> void:
 	var body: CharacterBody3D = u["node"]
@@ -4556,7 +4562,7 @@ func _apply_car_model() -> void:
 		car_model.free()
 		car_model = null
 	car_model_id = _model_key()
-	var model := _try_model("res://models/car_%d.glb" % (4 if race_car else int(CARS[car_id].get("model",car_id))))
+	var model := _try_model("res://models/car_%d.glb" % (4 if race_car else (int(CAREERS[career]["model"]) if career >= 0 else int(CARS[car_id].get("model",car_id)))))
 	if model == null:
 		car_boxes.visible = true
 		return
@@ -4712,6 +4718,8 @@ func _build_hud() -> void:
 	_build_sg_panel(root)
 	_build_hp_panel(root)
 	_build_dir_panel(root)
+	_build_career_panel(root)
+	_build_home_panels(root)
 	_build_puzzle_panel(root)
 	_build_streamer(root)
 	_build_ach(root)
@@ -4767,8 +4775,8 @@ func _build_hud() -> void:
 	menu_screen_button = _button("Screen: Clean",_menu_stay.bind(_toggle_clean_hud))
 	var pages := [
 		["GO",Color("2f8fb8"),[["Map",_menu_go.bind(_open_map)],["Travel",_menu_go.bind(_open_travel)],["Directions",_menu_go.bind(_open_dir)],["Call car",_menu_go.bind(_menu_call_car)],["Quests",_menu_go.bind(_open_quests)],["Back to my car",_rescue]]],
-		["PLAY",Color("c9612f"),[["Trials",_open_trials],["Chase",_chase_open],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
-		["ME",Color("8a5ad0"),[["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
+		["PLAY",Color("c9612f"),[["Careers",_open_careers],["Trials",_open_trials],["Chase",_chase_open],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
+		["ME",Color("8a5ad0"),[["My Home",_open_homes],["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
 		["FRIENDS",Color("2fa37a"),[["Chat",_menu_go.bind(_toggle_chat)],["Players & friends",_open_social],[menu_online_button]]],
 		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[time_button]]],
 	]
@@ -7767,6 +7775,9 @@ func _interact() -> void:
 		_sit(near_seat)
 		_refresh_hud()
 		return
+	if _home_interact():
+		_refresh_hud()
+		return
 	if trial_active >= 0:
 		if driving:
 			_show_toast("Trial running: drive through the golden rings, or Menu > Trials to cancel.")
@@ -7923,6 +7934,7 @@ func _refresh_hud() -> void:
 		var q: Dictionary = QUICK[quick_idx]
 		mission_label.text = "HARBOR CITY  /  DAILY QUEST %d/%d" % [QUICK.size()-_quick_left()+1,QUICK.size()]
 		objective.text = "%s  ·  %dm" % [q["task"],distance]
+	_career_hud()
 	mission_label.text += "  ·  LV %d" % _level()
 	balance_label.text = "$%d  ·  %d/8 finds  ·  %d/%d sites  ·  %d jobs" % [cash,count,_civic_count()+_ridge_count()+_bay_count()+_north_count()+_marina_count()+_downtown_count(),CIVIC.size()+RIDGE.size()+BAY.size()+NORTH.size()+MARINA.size()+DOWNTOWN.size(),deliveries]
 	var offset: Vector3 = destination-body.position
@@ -7956,6 +7968,8 @@ func _refresh_hud() -> void:
 		action_button.text = "STAND UP"
 	elif not driving and _nearest_seat() >= 0:
 		action_button.text = _seat_label(_nearest_seat())
+	elif _home_btn() != "":
+		action_button.text = _home_btn()
 	elif _sky_hud():
 		pass
 	elif _on_dance_floor() and not bus_riding:
@@ -8162,6 +8176,8 @@ func _save_progress() -> void:
 	file.set_value("progress","look_v40",_look_pack(look))
 	file.set_value("progress","sky_run",[sky_day,sky_best])
 	file.set_value("progress","harbor_pass",{"album":album_claimed,"album_all":album_all,"sid":season_id,"sbase":season_base,"sclaim":season_claimed,"cw":cal_week,"cd":cal_days,"cp":cal_paid})
+	file.set_value("progress","careers",{"jobs":career_jobs,"earned":career_earned})
+	file.set_value("progress","homes",{"own":homes_owned,"layout":home_layout,"furni":furni_owned})
 	file.set_value("progress","sky_garden",{"plots":sg_plots,"bag":sg_bag,"codex":sg_codex,"muts":sg_mutseen,"all":sg_all_done,"bk":sg_bought_key,"bought":sg_bought})
 	file.set_value("progress","look_own_v40",look_own)
 	file.set_value("progress","av_own",av_own)
@@ -8331,6 +8347,20 @@ func _load_progress() -> void:
 			cal_week = int(hpd.get("cw",-1))
 			cal_days = int(hpd.get("cd",0)) & 127
 			cal_paid = bool(hpd.get("cp",false))
+		var hmd = file.get_value("progress","homes",{})
+		if hmd is Dictionary:
+			homes_owned = int((hmd as Dictionary).get("own",0)) & ((1 << HOMES.size())-1)
+			var lay = (hmd as Dictionary).get("layout",{})
+			home_layout = (lay as Dictionary).duplicate(true) if lay is Dictionary else {}
+			var fo = (hmd as Dictionary).get("furni",{})
+			furni_owned = (fo as Dictionary).duplicate() if fo is Dictionary else {}
+		var crd = file.get_value("progress","careers",{})
+		if crd is Dictionary:
+			var cjb = (crd as Dictionary).get("jobs",[])
+			var cer = (crd as Dictionary).get("earned",[])
+			for i in CAREERS.size():
+				career_jobs[i] = maxi(0,int(cjb[i])) if cjb is Array and i < (cjb as Array).size() else 0
+				career_earned[i] = maxi(0,int(cer[i])) if cer is Array and i < (cer as Array).size() else 0
 		var sgd = file.get_value("progress","sky_garden",{})
 		if sgd is Dictionary and (sgd as Dictionary).has("plots"):
 			sg_plots = []
@@ -8585,6 +8615,7 @@ func _process(delta: float) -> void:
 	_dir_tick(delta)
 	_gc_tick(delta)
 	_places_tick(delta)
+	_career_tick(delta)
 	_ga_inner_tick()
 	_cash_pill_tick()
 	_lb_tick(delta)
@@ -12716,6 +12747,11 @@ func _build_guidance(root: Control) -> void:
 func _guide_target() -> Variant:
 	if bus_riding or sky_riding or online_role != 0 or chase_mode == 1:
 		return null
+	var ct = _career_target()
+	if ct != null and chase_mode == 0:
+		return ct
+	if dir_custom != Vector3.INF and not race_car and trial_active < 0 and chase_mode == 0:
+		return dir_custom
 	if dir_target >= 0 and not race_car and trial_active < 0 and chase_mode == 0:
 		return _dir_pos(dir_target)
 	var tp = _track_pos()
@@ -15699,7 +15735,7 @@ func _build_rw_trackside() -> void:
 
 # ---------- race car rental ----------
 func _model_key() -> int:
-	return 100 if race_car else car_id
+	return 100 if race_car else (200+career if career >= 0 else car_id)
 
 func _race_car_start() -> void:
 	if race_car:
@@ -27891,6 +27927,7 @@ func _smoke_v27() -> void:
 	_smoke_car_barriers()
 	_smoke_pass()
 	await _smoke_strollers()
+	_smoke_careers_homes()
 	# Nobody stands in a road, and a car stuck behind someone in its lane moves on after a few seconds.
 	for p in peds:
 		if bool(p["idle"]):
@@ -28007,6 +28044,28 @@ func _city_shots() -> void:
 					camera.global_position = bn.global_position+bn.global_basis*Vector3(7,4,-12)
 					camera.look_at(bn.global_position+Vector3(0,1.5,0))
 					break
+		if OS.get_environment("HC_HOME") != "":
+			# Developer-only: inside a home, furnished.
+			var hi := int(OS.get_environment("HC_HOME"))
+			homes_owned |= 1 << hi
+			var lay := _home_default_layout(hi)
+			var fills := {"art":"art1","fun":"fun1","lamp":"lamp1","plant":"plant2"}
+			var sl: Array = HOME_SLOTS[int(HOMES[hi]["kind"])]
+			for k in sl.size():
+				if fills.has(String(sl[k][3])) and String(lay[k]) == "":
+					lay[k] = fills[String(sl[k][3])]
+			home_layout["h%d" % hi] = lay
+			driving = false
+			_home_enter(hi)
+			for i in 10:
+				await get_tree().physics_frame
+			var hz: Vector3 = HOME_ROOM[int(HOMES[hi]["kind"])]
+			camera.global_position = _home_origin(hi)+Vector3(hz.x*0.42,2.6,-hz.z*0.42)
+			camera.look_at(_home_origin(hi)+Vector3(-hz.x*0.1,1.0,hz.z*0.3))
+		if OS.get_environment("HC_CAREER") != "":
+			_career_start(int(OS.get_environment("HC_CAREER")))
+			for i in 4:
+				await get_tree().physics_frame
 		if OS.get_environment("HC_MENU") != "":
 			# Developer-only: show the Menu on a given tab for the screenshot.
 			_toggle_menu()
@@ -29253,6 +29312,8 @@ const DIR_DESTS := [
 ]
 const DIR_ARRIVE := 28.0
 var dir_target := -1
+var dir_custom := Vector3.INF     # v0.50: directions to a spot that isn't in DIR_DESTS (a home)
+var dir_custom_name := ""
 var dir_chip: Button
 var dir_panel: PanelContainer
 var dir_buttons: Array = []
@@ -29458,6 +29519,11 @@ func _dir_stop_and_close() -> void:
 func _dir_tick(delta: float) -> void:
 	if dir_chip == null:
 		return
+	if dir_custom != Vector3.INF:
+		var me: Node3D = car if driving else player
+		if Vector2(me.position.x-dir_custom.x,me.position.z-dir_custom.z).length() < 6.0:
+			_show_toast("You've arrived at %s!" % dir_custom_name)
+			dir_custom = Vector3.INF
 	var show := dir_target >= 0 and not paused and not sky_riding and not bus_riding
 	dir_chip.visible = show
 	if dir_target < 0:
@@ -30641,3 +30707,1050 @@ func _places_tick(delta: float) -> void:
 		return
 	place_t = 1.0
 	_places_refresh()
+
+# ---------------- v0.50: city careers ----------------
+# Start a shift from Menu > PLAY > Careers. Your car becomes the career vehicle and jobs come one
+# after another: taxi fares, ambulance runs to the hospital, police calls that end in a chase, and
+# fires to put out on foot. Every job adds to your rank in that career; higher ranks pay more.
+const CAREERS := [
+	{"id":"taxi","name":"Taxi Driver","level":1,"model":1,"body":Color("f2c230"),"roof":Color("1d2a33"),"desc":"Pick up passengers and drive them across town. Faster rides tip more."},
+	{"id":"medic","name":"Paramedic","level":8,"model":2,"body":Color("f4f6f8"),"roof":Color("d2302a"),"desc":"Reach the patient, treat them, then rush them to Harbor General before time runs out."},
+	{"id":"police","name":"Police Officer","level":12,"model":2,"body":Color("f4f6f8"),"roof":Color("1d2a33"),"desc":"Answer calls across the city and catch the suspect who runs."},
+	{"id":"fire","name":"Firefighter","level":16,"model":2,"body":Color("d2302a"),"roof":Color("f4f1ea"),"desc":"Drive to the fire, get out and stand close to hose it down."},
+]
+const CAREER_RANKS := [["Rookie",0,1.0],["Pro",5,1.2],["Expert",15,1.45],["Chief",30,1.75],["Legend",60,2.1]]
+const HOSPITAL_DROP := Vector3(-114,0,38.5)
+const CAREER_XP := 25
+var career := -1                 # the career you're on shift for (not saved)
+var career_jobs := [0,0,0,0]     # jobs done per career (saved)
+var career_earned := [0,0,0,0]
+var cj := {}                     # the job in progress
+var cj_nodes: Array = []         # passenger / patient / fire for this job
+var career_light: Array = []
+var career_panel: PanelContainer
+var career_rows: Array = []
+var career_spots: Array = []
+var career_test := false         # tests: no randomness in spot picks
+
+func _career_rank(i: int) -> int:
+	var r := 0
+	for k in CAREER_RANKS.size():
+		if int(career_jobs[i]) >= int(CAREER_RANKS[k][1]):
+			r = k
+	return r
+
+func _career_rank_name(i: int) -> String:
+	return String(CAREER_RANKS[_career_rank(i)][0])
+
+func _career_mult(i: int) -> float:
+	return float(CAREER_RANKS[_career_rank(i)][2])
+
+func _career_spots() -> Array:
+	# Places a job can be: quest stops, checkpoints and direction targets (all on walkable ground,
+	# off the road), minus the raceway and anything locked.
+	if not career_spots.is_empty():
+		return career_spots
+	var raw: Array = []
+	for q in QUICK:
+		raw.append(q["pos"])
+	for c in CHECKPOINTS:
+		if _place_lock_of(String(c["name"])) < 0:
+			raw.append(c["pos"])
+	for d in DIR_DESTS:
+		if _place_lock_of(String(d["name"])) < 0:
+			raw.append(d["pos"])
+	for st in street_stalls:
+		raw.append((st as Vector3)+Vector3(0,0,0))
+	for p: Vector3 in raw:
+		if p.x > 200.0 and p.z < -35.0 and p.z > -445.0:
+			continue          # raceway
+		var dup := false
+		for q: Vector3 in career_spots:
+			if q.distance_to(p) < 20.0:
+				dup = true
+		if not dup:
+			career_spots.append(p)
+	return career_spots
+
+func _career_pick(from: Vector3, dmin: float, dmax: float) -> Vector3:
+	var spots := _career_spots()
+	var ok: Array = []
+	for p: Vector3 in spots:
+		var d := Vector2(p.x-from.x,p.z-from.z).length()
+		if d >= dmin and d <= dmax:
+			ok.append(p)
+	if ok.is_empty():
+		ok = spots
+	return ok[0] if career_test else ok[randi() % ok.size()]
+
+func _career_block_reason() -> String:
+	if race_car:
+		return "Finish or quit the race first."
+	if chase_mode != 0 or online_role != 0:
+		return "Finish the chase first."
+	if trial_active >= 0:
+		return "Cancel the time trial first."
+	if bus_riding or sky_riding:
+		return "Get off first."
+	if home_in >= 0:
+		return "Leave your home first."
+	return ""
+
+func _career_start(i: int) -> void:
+	if _level() < int(CAREERS[i]["level"]):
+		_show_toast("%s opens at level %d." % [CAREERS[i]["name"],int(CAREERS[i]["level"])])
+		return
+	var why := _career_block_reason()
+	if why != "":
+		_show_toast(why)
+		return
+	if career >= 0:
+		_career_end(false)
+	career = i
+	_apply_car()
+	if i == 2:
+		for sd in [-1,1]:
+			var bl := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.36,0.12,0.2)
+			bl.mesh = bm
+			bl.material_override = _fc_glow(Color("ff3b3b") if sd < 0 else Color("3b7bff"))
+			bl.position = Vector3(float(sd)*0.24,1.27,0.25)
+			car.add_child(bl)
+			career_light.append(bl)
+			police_lights.append([bl,sd])
+	if paused:
+		_toggle_menu()
+	_career_next()
+	_show_toast("Shift started: %s (%s). %s" % [CAREERS[i]["name"],_career_rank_name(i),"Get in your car." if not driving else "Follow the arrow."])
+
+func _career_end(announce := true) -> void:
+	if career < 0:
+		return
+	_career_clear_job()
+	for bl in career_light:
+		for L in police_lights.duplicate():
+			if L[0] == bl:
+				police_lights.erase(L)
+		if is_instance_valid(bl):
+			(bl as Node3D).queue_free()
+	career_light.clear()
+	var was := career
+	career = -1
+	_apply_car()
+	if announce:
+		_show_toast("Shift over. %s: %d jobs, %s rank." % [CAREERS[was]["name"],int(career_jobs[was]),_career_rank_name(was)])
+
+func _career_clear_job() -> void:
+	for n in cj_nodes:
+		if is_instance_valid(n):
+			(n as Node).queue_free()
+	cj_nodes.clear()
+	cj = {}
+
+func _career_person(at: Vector3, seed_i: int, lying := false) -> Node3D:
+	var holder := Node3D.new()
+	holder.position = at
+	add_child(holder)
+	var pp := _cm_person(holder,Vector3.ZERO,randf()*TAU,seed_i)
+	if not pp.is_empty():
+		pp["walk"] = true
+		_pose_person(pp,0.0,0.0)
+		cm_people.erase(pp)
+		if lying:
+			var r: Node3D = (pp["root"] as Node3D).get_parent()
+			r.rotation = Vector3(-PI/2.0,r.rotation.y,0)
+			r.position.y = 0.25
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 1.3
+	tm.outer_radius = 1.6
+	ring.mesh = tm
+	ring.material_override = _fc_glow(Color("ffd23f") if not lying else Color("ff3b4a"))
+	ring.position = Vector3(0,0.12,0)
+	holder.add_child(ring)
+	cj_nodes.append(holder)
+	return holder
+
+func _career_fire(at: Vector3) -> Node3D:
+	var holder := Node3D.new()
+	holder.position = at
+	add_child(holder)
+	var fl := CPUParticles3D.new()
+	fl.amount = 40
+	fl.lifetime = 0.9
+	fl.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	fl.emission_sphere_radius = 1.2
+	fl.direction = Vector3.UP
+	fl.spread = 15.0
+	fl.initial_velocity_min = 2.0
+	fl.initial_velocity_max = 4.0
+	fl.gravity = Vector3(0,1.5,0)
+	fl.scale_amount_min = 0.5
+	fl.scale_amount_max = 1.1
+	var sm := SphereMesh.new()
+	sm.radius = 0.35
+	sm.height = 0.7
+	fl.mesh = sm
+	fl.material_override = _fc_glow(Color("ff7a1a"))
+	fl.position = Vector3(0,0.6,0)
+	holder.add_child(fl)
+	var smoke := fl.duplicate() as CPUParticles3D
+	smoke.amount = 24
+	smoke.lifetime = 2.4
+	smoke.initial_velocity_min = 1.5
+	smoke.initial_velocity_max = 2.5
+	smoke.scale_amount_min = 1.2
+	smoke.scale_amount_max = 2.4
+	smoke.material_override = _material(Color("3a3f45"))
+	smoke.position = Vector3(0,2.2,0)
+	holder.add_child(smoke)
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 2.6
+	tm.outer_radius = 3.0
+	ring.mesh = tm
+	ring.material_override = _fc_glow(Color("ff5a1a"))
+	ring.position = Vector3(0,0.12,0)
+	holder.add_child(ring)
+	cj_nodes.append(holder)
+	return holder
+
+func _career_next() -> void:
+	_career_clear_job()
+	if career < 0:
+		return
+	var me: Vector3 = car.position if driving else player.position
+	match String(CAREERS[career]["id"]):
+		"taxi":
+			var a := _career_pick(me,80.0,380.0)
+			var b := _career_pick(a,260.0,900.0)
+			cj = {"stage":0,"a":a,"b":b,"t":0.0,"name":["Ana","Leo","Mia","Sam","Kai","Zoe","Noah","Ivy"][randi() % 8]}
+			_career_person(a,3000+randi() % 500)
+		"medic":
+			var a := _career_pick(me,100.0,450.0)
+			cj = {"stage":0,"a":a,"b":HOSPITAL_DROP,"t":0.0,"treat":0.0}
+			_career_person(a,3500+randi() % 500,true)
+		"police":
+			var a := _career_pick(me,120.0,450.0)
+			cj = {"stage":0,"a":a,"t":0.0,"call":["Speeding car","Bag snatcher","Stolen scooter","Shoplifter","Noisy street race"][randi() % 5]}
+		"fire":
+			var a := _career_pick(me,100.0,450.0)
+			cj = {"stage":0,"a":a,"t":0.0,"hp":1.0}
+			_career_fire(a)
+
+func _career_target() -> Variant:
+	if career < 0 or cj.is_empty():
+		return null
+	if String(CAREERS[career]["id"]) == "police" and int(cj["stage"]) == 1:
+		return null      # the chase guides you
+	return cj["b"] if int(cj["stage"]) == 1 and cj.has("b") else cj["a"]
+
+func _career_pay(base: int) -> int:
+	var pay := int(round(float(base)*_career_mult(career)))
+	cash += pay
+	bonus_xp += CAREER_XP
+	career_jobs[career] = int(career_jobs[career])+1
+	career_earned[career] = int(career_earned[career])+pay
+	var r0 := _career_rank(career)
+	_save_progress()
+	return pay
+
+func _career_done(base: int, msg: String) -> void:
+	var before := _career_rank(career)
+	var pay := _career_pay(base)
+	var up := _career_rank(career) > before
+	_show_toast("%s  +%s  (+%d XP)%s" % [msg,_money(pay),CAREER_XP,"  ·  PROMOTED to %s!" % _career_rank_name(career) if up else ""])
+	if up:
+		_feed_add("%s was promoted to %s %s!" % [_my_name(),_career_rank_name(career),CAREERS[career]["name"]],"")
+	_career_next()
+
+func _career_tick(delta: float) -> void:
+	if career < 0 or cj.is_empty() or paused:
+		return
+	cj["t"] = float(cj["t"])+delta
+	var me: Vector3 = car.position if driving else player.position
+	var slow := not driving or absf(car_speed) < 3.5
+	var id := String(CAREERS[career]["id"])
+	var a: Vector3 = cj["a"]
+	var da := Vector2(me.x-a.x,me.z-a.z).length()
+	match id:
+		"taxi":
+			if int(cj["stage"]) == 0 and driving and slow and da < 9.0:
+				cj["stage"] = 1
+				cj["t"] = 0.0
+				for n in cj_nodes:
+					(n as Node3D).hide()
+				var b: Vector3 = cj["b"]
+				cj["par"] = a.distance_to(b)/9.0+20.0
+				_show_toast("%s gets in. Drive to the arrow (beat %ds for a tip)." % [cj["name"],int(cj["par"])])
+			elif int(cj["stage"]) == 1:
+				var b: Vector3 = cj["b"]
+				if driving and slow and Vector2(me.x-b.x,me.z-b.z).length() < 9.0:
+					var fare := 40+int(a.distance_to(b)*0.5)
+					var tip := 60 if float(cj["t"]) <= float(cj["par"]) else 0
+					_career_done(fare+tip,"Fare paid by %s%s." % [cj["name"]," with a tip" if tip > 0 else ""])
+		"medic":
+			if int(cj["stage"]) == 0 and slow and da < 8.0:
+				cj["treat"] = float(cj["treat"])+delta
+				if float(cj["treat"]) >= 3.0:
+					cj["stage"] = 1
+					cj["t"] = 0.0
+					for n in cj_nodes:
+						(n as Node3D).hide()
+					cj["limit"] = a.distance_to(HOSPITAL_DROP)/9.0+30.0
+					_show_toast("Patient on board! Get to Harbor General in %ds." % int(cj["limit"]))
+			elif int(cj["stage"]) == 1:
+				if driving and slow and Vector2(me.x-HOSPITAL_DROP.x,me.z-HOSPITAL_DROP.z).length() < 10.0:
+					var late := float(cj["t"]) > float(cj["limit"])
+					_career_done(110 if late else 260,"Patient delivered%s." % (" (a bit late)" if late else " in time"))
+		"police":
+			if int(cj["stage"]) == 0 and driving and da < 14.0:
+				cj["stage"] = 1
+				_chase_start(2)
+		"fire":
+			if int(cj["stage"]) == 0 and not driving and da < 8.0:
+				cj["hp"] = float(cj["hp"])-delta/6.0
+				if float(cj["hp"]) <= 0.0:
+					_career_done(240,"Fire's out!")
+			elif int(cj["stage"]) == 0 and driving and slow and da < 14.0 and fmod(float(cj["t"]),4.0) < delta:
+				_show_toast("Get out and stand close to the fire to hose it down.")
+
+func _career_chase_over(won: bool) -> void:
+	# Called from _chase_end while on a police shift.
+	if career < 0 or String(CAREERS[career]["id"]) != "police":
+		return
+	if won:
+		_career_done(200,"Suspect arrested (%s)." % cj.get("call","call"))
+	else:
+		_show_toast("The suspect got away. Next call coming in.")
+		_career_next()
+
+func _career_hud() -> void:
+	if career < 0 or cj.is_empty():
+		return
+	var me: Vector3 = car.position if driving else player.position
+	var tgt = _career_target()
+	var d := int(Vector2(me.x-(tgt as Vector3).x,me.z-(tgt as Vector3).z).length()) if tgt != null else 0
+	mission_label.text = "CAREER  /  %s  ·  %s" % [String(CAREERS[career]["name"]).to_upper(),_career_rank_name(career)]
+	match String(CAREERS[career]["id"]):
+		"taxi":
+			objective.text = ("Pick up %s  ·  %dm" % [cj["name"],d]) if int(cj["stage"]) == 0 else ("Drive %s to the arrow  ·  %dm  ·  %ds" % [cj["name"],d,maxi(0,int(float(cj["par"])-float(cj["t"])))])
+		"medic":
+			objective.text = ("Reach the patient  ·  %dm" % d) if int(cj["stage"]) == 0 and float(cj["treat"]) <= 0.0 else (("Treating…  %d%%" % int(float(cj["treat"])/3.0*100.0)) if int(cj["stage"]) == 0 else ("Rush to Harbor General  ·  %dm  ·  %ds" % [d,maxi(0,int(float(cj["limit"])-float(cj["t"])))]))
+		"police":
+			objective.text = ("Call: %s  ·  %dm" % [cj["call"],d]) if int(cj["stage"]) == 0 else "Catch the suspect!"
+		"fire":
+			objective.text = ("Fire!  ·  %dm" % d) if driving or d > 8 else ("Hosing it down…  %d%%" % int((1.0-float(cj["hp"]))*100.0))
+
+# ---- the Careers panel ----
+func _build_career_panel(root: Control) -> void:
+	career_panel = PanelContainer.new()
+	career_panel.add_theme_stylebox_override("panel",_panel(Color(0.06,0.11,0.16,0.97),26))
+	career_panel.custom_minimum_size = Vector2(820,0)
+	root.add_child(career_panel)
+	extra_panels.append(career_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",10)
+	career_panel.add_child(col)
+	col.add_child(_label("CAREERS",28,Color("f0bd62")))
+	var info := _label("Start a shift and your car becomes the work vehicle. Every job raises your rank: Rookie, Pro (5 jobs), Expert (15), Chief (30), Legend (60). Higher ranks pay more, and every job gives XP.",16,Color("cbd8de"))
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size.x = 780
+	col.add_child(info)
+	for i in CAREERS.size():
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation",10)
+		col.add_child(row)
+		var t := _label("",17,Color("dff3ff"))
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		t.custom_minimum_size.x = 560
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(t)
+		var b := _button("Start",_career_start.bind(i))
+		b.custom_minimum_size = Vector2(190,64)
+		b.add_theme_stylebox_override("normal",_panel((CAREERS[i]["body"] as Color).darkened(0.45),16))
+		row.add_child(b)
+		career_rows.append([t,b])
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation",10)
+	col.add_child(foot)
+	var stop := _button("End shift",_career_end_close)
+	stop.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(stop)
+	var close := _button("Close",_career_close)
+	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(close)
+	career_panel.hide()
+
+func _open_careers() -> void:
+	if not paused:
+		_toggle_menu()
+	var lv := _level()
+	for i in CAREERS.size():
+		var C: Dictionary = CAREERS[i]
+		var r := _career_rank(i)
+		var nxt := "  ·  next rank at %d jobs" % int(CAREER_RANKS[r+1][1]) if r+1 < CAREER_RANKS.size() else "  ·  top rank"
+		(career_rows[i][0] as Label).text = "%s  ·  %s  ·  %d jobs  ·  pay x%.2f%s\n%s" % [C["name"],_career_rank_name(i),int(career_jobs[i]),_career_mult(i),nxt,C["desc"]]
+		var b: Button = career_rows[i][1]
+		if lv < int(C["level"]):
+			b.text = "Level %d" % int(C["level"])
+			b.disabled = true
+		else:
+			b.disabled = false
+			b.text = "On shift" if career == i else "Start shift"
+	_open_panel(career_panel)
+
+func _career_close() -> void:
+	if paused:
+		_toggle_menu()
+
+func _career_end_close() -> void:
+	_career_end()
+	_career_close()
+
+# ---------------- v0.50: homes ----------------
+# Five homes from $55,000. Buy one at its front door (FOR SALE sign), then ENTER HOME. Inside: a
+# furnished room with a big window over the harbour, and furniture spots you decorate from a
+# catalogue (Menu > ME > My Home lists them all, with directions and a quick way home).
+const HOMES := [
+	{"name":"Garden Loft","price":55000,"kind":0,"where":"Airport Road"},
+	{"name":"Westpark Townhouse","price":68000,"kind":1,"where":"Westpark"},
+	{"name":"Galleria Loft","price":85000,"kind":1,"where":"by Harbor Galleria"},
+	{"name":"Aurora Sky Home","price":160000,"kind":2,"where":"Grand Central"},
+	{"name":"Meridian Penthouse","price":320000,"kind":3,"where":"Grand Central"},
+]
+const HOME_ROOM := [Vector3(14,3.6,10),Vector3(17,3.8,12),Vector3(21,4.4,14),Vector3(28,5.2,18)]
+const HOME_BASE := Vector3(2600,40,2600)
+# Furniture: [id, category, name, price]
+const FURNI := [
+	["sofa0","sofa","Pearl Sofa",2000],["sofa1","sofa","Velvet Sofa",3500],["sofa2","sofa","Cloud Sectional",6000],
+	["tv0","tv","Wall TV",1500],["tv1","tv","Holo Screen",5000],
+	["plant0","plant","Fern",300],["plant1","plant","Olive Tree",900],["plant2","plant","Cherry Bonsai",1500],
+	["art0","art","Harbor Print",600],["art1","art","Neon Art",1800],["art2","art","Gold Frame",4000],
+	["fun0","fun","Arcade Cabinet",3000],["fun1","fun","Aquarium",4500],["fun2","fun","Grand Piano",8000],["fun3","fun","Gaming Desk",3500],
+	["lamp0","lamp","Floor Lamp",400],["lamp1","lamp","Neon Tube",900],
+	["rug0","rug","Round Rug",500],["rug1","rug","Pattern Rug",800],
+	["bed0","bed","Comfy Bed",2500],["bed1","bed","King Bed",5500],
+]
+# Furniture spots per home kind: [local x, local z, yaw, category]. Room local frame: centre of the
+# floor, +z is the window wall, -z the door wall.
+const HOME_SLOTS := [
+	[[-3.0,1.5,PI,"sofa"],[-3.0,4.2,0.0,"tv"],[-3.0,2.8,0.0,"rug"],[5.5,-3.8,0.0,"plant"],[0.0,-4.85,0.0,"art"],[5.5,2.5,-PI/2.0,"fun"],[3.5,-1.0,0.0,"lamp"]],
+	[[-4.0,2.0,PI,"sofa"],[-4.0,5.2,0.0,"tv"],[-4.0,3.5,0.0,"rug"],[7.0,-4.8,0.0,"plant"],[-1.0,-5.85,0.0,"art"],[6.0,3.0,-PI/2.0,"fun"],[4.0,-3.0,0.0,"bed"],[2.0,1.0,0.0,"lamp"]],
+	[[-5.5,2.5,PI,"sofa"],[-5.5,6.2,0.0,"tv"],[-5.5,4.2,0.0,"rug"],[9.0,-5.8,0.0,"plant"],[-2.0,-6.85,0.0,"art"],[8.0,3.5,-PI/2.0,"fun"],[5.0,-3.5,0.0,"bed"],[2.0,2.0,0.0,"lamp"],[-9.0,-5.5,0.0,"plant"]],
+	[[-8.0,3.0,PI,"sofa"],[-8.0,8.2,0.0,"tv"],[-8.0,5.5,0.0,"rug"],[12.5,-7.8,0.0,"plant"],[-3.0,-8.85,0.0,"art"],[10.0,5.0,-PI/2.0,"fun"],[7.0,-4.5,0.0,"bed"],[1.0,3.0,0.0,"lamp"],[-12.5,-7.5,0.0,"plant"],[3.0,6.0,-PI/2.0,"fun"],[5.0,-8.85,0.0,"art"]],
+]
+var homes_owned := 0             # bit per home (saved)
+var home_layout := {}            # "h<i>" -> [item id or "" per slot] (saved)
+var furni_owned := {}            # item id -> true (saved): owned pieces can be placed again for free
+var home_doors: Array = []       # door spot outside, per home
+var home_door_labels: Array = []
+var home_rooms := {}             # home index -> room node (built when you first go in)
+var home_in := -1                # the home you're inside
+var home_back := Vector3.ZERO    # where to put you when you leave
+var home_slot_nodes := {}        # home index -> [slot node]
+var home_panel: PanelContainer
+var home_rows: Array = []
+var deco_panel: PanelContainer
+var deco_list: VBoxContainer
+var deco_title: Label
+var deco_slot := -1
+
+func _home_door_spots() -> void:
+	# Front doors: the first Airport Road loft, the first Westpark loft, the first Galleria loft and the
+	# two corner lobbies of the Grand Central towers.
+	var pick := [null,null,null]
+	for L in lofts:
+		var c: Vector3 = L[0]
+		var yaw := float(L[2])
+		if absf(yaw) < 0.1 and pick[0] == null:
+			pick[0] = c+Vector3(0,0,7.9)
+		elif absf(yaw-PI/2.0) < 0.1 and pick[1] == null:
+			pick[1] = c+Vector3(7.9,0,0)
+		elif absf(yaw+PI/2.0) < 0.1 and pick[2] == null:
+			pick[2] = c+Vector3(-7.9,0,0)
+	home_doors = [pick[0],pick[1],pick[2],GC_T+Vector3(-19.25,0,-23.9),GC_T+Vector3(19.25,0,23.9)]
+
+func _build_homes() -> void:
+	_home_door_spots()
+	for i in HOMES.size():
+		var d = home_doors[i]
+		if d == null:
+			home_door_labels.append(null)
+			continue
+		var n := Node3D.new()
+		n.position = d
+		add_child(n)
+		var ring := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 0.95
+		tm.outer_radius = 1.2
+		ring.mesh = tm
+		ring.material_override = _fc_glow(Color("ffd27a"))
+		ring.position = Vector3(0,0.12,0)
+		n.add_child(ring)
+		var l := Label3D.new()
+		l.font_size = 48
+		l.pixel_size = 0.009
+		l.outline_size = 6
+		l.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		l.position = Vector3(0,2.7,0)
+		l.visibility_range_end = 60.0
+		n.add_child(l)
+		home_door_labels.append(l)
+	_home_labels()
+
+func _home_labels() -> void:
+	for i in HOMES.size():
+		var l = home_door_labels[i] if i < home_door_labels.size() else null
+		if l == null:
+			continue
+		var own := (homes_owned & (1 << i)) != 0
+		(l as Label3D).text = ("HOME\n%s" % HOMES[i]["name"]) if own else ("FOR SALE\n%s  ·  %s" % [HOMES[i]["name"],_money(int(HOMES[i]["price"]))])
+		(l as Label3D).modulate = Color("9cffb0") if own else Color("ffd27a")
+
+func _home_door_near() -> int:
+	if driving or paused or home_in >= 0:
+		return -1
+	for i in home_doors.size():
+		var d = home_doors[i]
+		if d != null and Vector2(player.position.x-(d as Vector3).x,player.position.z-(d as Vector3).z).length() < 2.2:
+			return i
+	return -1
+
+func _home_origin(i: int) -> Vector3:
+	return HOME_BASE+Vector3(float(i)*120.0,0,0)
+
+func _home_slot_near() -> int:
+	if home_in < 0 or paused:
+		return -1
+	var slots: Array = HOME_SLOTS[int(HOMES[home_in]["kind"])]
+	var o := _home_origin(home_in)
+	for k in slots.size():
+		var S: Array = slots[k]
+		var p := o+Vector3(float(S[0]),0,float(S[1]))
+		if Vector2(player.position.x-p.x,player.position.z-p.z).length() < 1.6:
+			return k
+	return -1
+
+func _home_exit_near() -> bool:
+	if home_in < 0:
+		return false
+	var sz: Vector3 = HOME_ROOM[int(HOMES[home_in]["kind"])]
+	var e := _home_origin(home_in)+Vector3(0,0,-sz.z/2.0+1.2)
+	return Vector2(player.position.x-e.x,player.position.z-e.z).length() < 1.8
+
+func _home_btn() -> String:
+	if home_in >= 0:
+		if _home_exit_near():
+			return "LEAVE HOME"
+		var k := _home_slot_near()
+		if k >= 0:
+			return "DECORATE"
+		return ""
+	var d := _home_door_near()
+	if d < 0:
+		return ""
+	return "ENTER HOME" if (homes_owned & (1 << d)) != 0 else "BUY HOME  %s" % _money(int(HOMES[d]["price"]))
+
+func _home_interact() -> bool:
+	if home_in >= 0:
+		if _home_exit_near():
+			_home_leave()
+			return true
+		var k := _home_slot_near()
+		if k >= 0:
+			_deco_open(k)
+			return true
+		return false
+	var d := _home_door_near()
+	if d < 0:
+		return false
+	if (homes_owned & (1 << d)) == 0:
+		_home_buy(d)
+	else:
+		_home_enter(d)
+	return true
+
+func _home_buy(i: int) -> void:
+	var price := int(HOMES[i]["price"])
+	if cash < price:
+		_show_toast("%s costs %s. You have %s." % [HOMES[i]["name"],_money(price),_money(cash)])
+		return
+	cash -= price
+	homes_owned |= 1 << i
+	if not home_layout.has("h%d" % i):
+		home_layout["h%d" % i] = _home_default_layout(i)
+	_save_progress()
+	_home_labels()
+	_show_toast("You bought %s! Tap ENTER HOME." % HOMES[i]["name"])
+	_feed_add("%s bought %s!" % [_my_name(),HOMES[i]["name"]],"")
+
+func _home_default_layout(i: int) -> Array:
+	# Every home comes with a sofa, a TV, a rug, a plant and (in bigger homes) a bed.
+	var out: Array = []
+	for S in HOME_SLOTS[int(HOMES[i]["kind"])]:
+		var cat := String(S[3])
+		out.append({"sofa":"sofa0","tv":"tv0","rug":"rug0","plant":"plant0","bed":"bed0"}.get(cat,""))
+	return out
+
+func _home_enter(i: int) -> void:
+	if driving:
+		_show_toast("Park and get out first.")
+		return
+	var why := _career_block_reason() if career < 0 else "End your shift first."
+	if why != "" and home_in < 0 and not why.begins_with("Leave"):
+		_show_toast(why)
+		return
+	if not home_rooms.has(i):
+		_home_build_room(i)
+	for k in home_rooms:
+		(home_rooms[k] as Node3D).visible = k == i
+	home_in = i
+	home_back = (home_doors[i] as Vector3) if home_doors[i] != null else player.position
+	var sz: Vector3 = HOME_ROOM[int(HOMES[i]["kind"])]
+	player.position = _home_origin(i)+Vector3(0,0.9,-sz.z/2.0+2.2)
+	player.velocity = Vector3.ZERO
+	player.rotation.y = 0.0
+	_show_toast("Welcome home! Walk to a glowing spot to decorate. LEAVE HOME by the door.")
+
+func _home_leave() -> void:
+	if home_in < 0:
+		return
+	(home_rooms[home_in] as Node3D).visible = false
+	home_in = -1
+	player.position = home_back+Vector3(0,0.9,0.6)
+	player.velocity = Vector3.ZERO
+
+func _hm(parent: Node3D, pos: Vector3, size: Vector3, col: Color, solid := false, yaw := 0.0) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = _material(col)
+	mi.position = pos
+	mi.rotation.y = yaw
+	parent.add_child(mi)
+	if solid:
+		var body := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = size
+		cs.shape = bs
+		body.add_child(cs)
+		mi.add_child(body)
+	return mi
+
+func _home_build_room(i: int) -> void:
+	var kind := int(HOMES[i]["kind"])
+	var sz: Vector3 = HOME_ROOM[kind]
+	var root := Node3D.new()
+	root.name = "Home%d" % i
+	root.position = _home_origin(i)
+	add_child(root)
+	home_rooms[i] = root
+	var wall: Color = [Color("efe8dc"),Color("e6dccb"),Color("dfe6ea"),Color("2a3038")][kind]
+	var floor_c: Color = [Color("b08a62"),Color("9a6a42"),Color("d9d2c4"),Color("1d2a33")][kind]
+	_hm(root,Vector3(0,-0.1,0),Vector3(sz.x,0.2,sz.z),floor_c,true)
+	_hm(root,Vector3(0,sz.y+0.1,0),Vector3(sz.x,0.2,sz.z),Color("f4f1ea"))
+	_hm(root,Vector3(0,sz.y/2.0,-sz.z/2.0),Vector3(sz.x,sz.y,0.2),wall,true)
+	for sd: float in [-1.0,1.0]:
+		_hm(root,Vector3(sd*sz.x/2.0,sz.y/2.0,0),Vector3(0.2,sz.y,sz.z),wall,true)
+	# The window wall: floor-to-ceiling glass on slim frames.
+	var glass := MeshInstance3D.new()
+	var gm := BoxMesh.new()
+	gm.size = Vector3(sz.x,sz.y,0.06)
+	glass.mesh = gm
+	glass.material_override = _bio_glass_mat(Color("dff3ff"),0.12)
+	glass.position = Vector3(0,sz.y/2.0,sz.z/2.0)
+	root.add_child(glass)
+	_collider(root,Vector3(0,sz.y/2.0,sz.z/2.0),Vector3(sz.x,sz.y,0.2))
+	var f := -sz.x/2.0
+	while f <= sz.x/2.0+0.01:
+		_hm(root,Vector3(f,sz.y/2.0,sz.z/2.0),Vector3(0.12,sz.y,0.16),Color("1d2a33"))
+		f += 3.5
+	# Ceiling light strips and a lamp so it's bright inside, day or night.
+	for k in 3:
+		var strip := _hm(root,Vector3(0,sz.y-0.02,-sz.z/3.0+float(k)*sz.z/3.0),Vector3(sz.x*0.7,0.04,0.3),Color.WHITE)
+		strip.material_override = _fc_glow(Color("fff4dc"))
+	var lamp := OmniLight3D.new()
+	lamp.position = Vector3(0,sz.y-0.6,0)
+	lamp.omni_range = maxf(sz.x,sz.z)
+	lamp.light_energy = 1.4
+	lamp.light_color = Color("fff1dc")
+	root.add_child(lamp)
+	# Kitchen along the left wall, the door on the back wall.
+	_hm(root,Vector3(-sz.x/2.0+0.5,0.45,-sz.z/2.0+3.0),Vector3(0.9,0.9,4.0),Color("f4f6f8"),true)
+	_hm(root,Vector3(-sz.x/2.0+0.5,0.92,-sz.z/2.0+3.0),Vector3(1.0,0.06,4.1),Color("3a3f45"))
+	_hm(root,Vector3(-sz.x/2.0+0.2,1.9,-sz.z/2.0+3.0),Vector3(0.4,0.8,3.6),Color("f4f6f8"))
+	var door := _hm(root,Vector3(0,1.1,-sz.z/2.0+0.12),Vector3(1.4,2.2,0.06),Color("6b4a32"))
+	var exit_ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.8
+	tm.outer_radius = 1.0
+	exit_ring.mesh = tm
+	exit_ring.material_override = _fc_glow(Color("9cffb0"))
+	exit_ring.position = Vector3(0,0.05,-sz.z/2.0+1.2)
+	root.add_child(exit_ring)
+	var nm := Label3D.new()
+	nm.text = HOMES[i]["name"]
+	nm.font_size = 64
+	nm.pixel_size = 0.01
+	nm.modulate = Color("1d2a33") if kind < 3 else Color("ffd27a")
+	nm.outline_size = 0
+	nm.position = Vector3(0,2.7,-sz.z/2.0+0.13)
+	root.add_child(nm)
+	if kind == 3:
+		# The penthouse has a terrace outside the glass with a pool.
+		_hm(root,Vector3(0,-0.1,sz.z/2.0+4.0),Vector3(sz.x,0.2,8.0),Color("d9d2c4"),true)
+		var pool := _hm(root,Vector3(4.0,0.02,sz.z/2.0+4.0),Vector3(8.0,0.06,4.0),Color.WHITE)
+		pool.material_override = _bio_water_mat(Color("5fc9e8"))
+		for sd: float in [-1.0,1.0]:
+			_hm(root,Vector3(sd*sz.x/2.0,0.55,sz.z/2.0+4.0),Vector3(0.1,1.1,8.0),Color("dff3ff"),true)
+		_hm(root,Vector3(0,0.55,sz.z/2.0+8.0),Vector3(sz.x,1.1,0.1),Color("dff3ff"),true)
+	# The view: a sea far below and a ring of towers round the bay.
+	var sea := _hm(root,Vector3(0,-40.0,200),Vector3(900,0.2,700),Color("2f7fb8"))
+	sea.material_override = _bio_water_mat(Color("3a8fc8"))
+	var r := RandomNumberGenerator.new()
+	r.seed = 5150+i
+	var tglass := _gc_glass("homeview",Color("6f9ac0"))
+	for k in 34:
+		var a := lerpf(-1.2,1.2,float(k)/33.0)+r.randf_range(-0.03,0.03)
+		var dist := r.randf_range(140.0,320.0)
+		var h := r.randf_range(50.0,170.0)
+		var w := r.randf_range(14.0,30.0)
+		var tw := MeshInstance3D.new()
+		var tb := BoxMesh.new()
+		tb.size = Vector3(w,h,w)
+		tw.mesh = tb
+		tw.material_override = tglass
+		tw.position = Vector3(sin(a)*dist,-40.0+h/2.0,cos(a)*dist+20.0)
+		root.add_child(tw)
+	# Furniture spots.
+	var nodes: Array = []
+	var slots: Array = HOME_SLOTS[kind]
+	for k in slots.size():
+		var S: Array = slots[k]
+		var sn := Node3D.new()
+		sn.position = Vector3(float(S[0]),0,float(S[1]))
+		sn.rotation.y = float(S[2])
+		root.add_child(sn)
+		var ring := MeshInstance3D.new()
+		var rt := TorusMesh.new()
+		rt.inner_radius = 0.45
+		rt.outer_radius = 0.55
+		ring.mesh = rt
+		ring.material_override = _fc_glow(Color("8fe3ff"))
+		ring.position = Vector3(0,0.04,0)
+		ring.name = "SpotRing"
+		root.add_child(ring)
+		ring.position = sn.position+Vector3(0,0.04,0)
+		nodes.append(sn)
+	home_slot_nodes[i] = nodes
+	_home_refresh_room(i)
+
+func _home_refresh_room(i: int) -> void:
+	if not home_slot_nodes.has(i):
+		return
+	var lay: Array = home_layout.get("h%d" % i,[])
+	var nodes: Array = home_slot_nodes[i]
+	for k in nodes.size():
+		var sn: Node3D = nodes[k]
+		for c in sn.get_children():
+			c.queue_free()
+		var id := String(lay[k]) if k < lay.size() else ""
+		if id != "":
+			_furni_build(sn,id)
+
+func _furni_build(n: Node3D, id: String) -> void:
+	# Each piece in its own frame: the front faces local +z (towards the room).
+	match id:
+		"sofa0","sofa1","sofa2":
+			var c: Color = {"sofa0":Color("eef2f5"),"sofa1":Color("7a2f5a"),"sofa2":Color("cfd8e0")}[id]
+			var w := 3.6 if id == "sofa2" else 2.6
+			_hm(n,Vector3(0,0.25,0),Vector3(w,0.5,1.0),c,true)
+			_hm(n,Vector3(0,0.75,-0.4),Vector3(w,0.6,0.25),c)
+			for sd: float in [-1.0,1.0]:
+				_hm(n,Vector3(sd*w/2.0,0.55,0),Vector3(0.25,0.4,1.0),c)
+			if id == "sofa2":
+				_hm(n,Vector3(w/2.0-0.5,0.25,1.0),Vector3(1.0,0.5,1.2),c,true)
+			for k in 3:
+				_hm(n,Vector3(-0.8+float(k)*0.8,0.62,-0.2),Vector3(0.45,0.35,0.12),_goods_color(k+2))
+		"tv0","tv1":
+			_hm(n,Vector3(0,0.3,0),Vector3(2.2,0.6,0.5),Color("2a3038"),true)
+			var scr := _hm(n,Vector3(0,1.5,-0.15),Vector3(2.4 if id == "tv0" else 3.2,1.4 if id == "tv0" else 1.8,0.08),Color("10151b"))
+			var glow := _hm(n,Vector3(0,1.5,-0.1),Vector3(2.25 if id == "tv0" else 3.0,1.25 if id == "tv0" else 1.65,0.02),Color.WHITE)
+			glow.material_override = _fc_glow(Color("5fd0ff") if id == "tv0" else Color("ff8ad8"))
+		"rug0":
+			var rug := MeshInstance3D.new()
+			var cm := CylinderMesh.new()
+			cm.top_radius = 1.6
+			cm.bottom_radius = 1.6
+			cm.height = 0.02
+			rug.mesh = cm
+			rug.material_override = _material(Color("c9785a"))
+			rug.position = Vector3(0,0.01,0)
+			n.add_child(rug)
+		"rug1":
+			_hm(n,Vector3(0,0.01,0),Vector3(3.2,0.02,2.2),Color("3f5f8a"))
+			_hm(n,Vector3(0,0.02,0),Vector3(2.6,0.02,1.6),Color("e6c27a"))
+		"plant0","plant1","plant2":
+			_hm(n,Vector3(0,0.3,0),Vector3(0.6,0.6,0.6),Color("c9785a"),true)
+			var tree := _try_model("res://models/%s.glb" % {"plant0":"nature_fern","plant1":"nature_oak","plant2":"nature_cherry"}[id])
+			if tree != null:
+				tree.position = Vector3(0,0.6,0)
+				tree.scale = Vector3.ONE*(0.6 if id == "plant0" else 0.22)
+				n.add_child(tree)
+		"art0","art1","art2":
+			_hm(n,Vector3(0,1.7,0.08),Vector3(1.8,1.2,0.06),Color("1d2a33") if id != "art2" else Color("c9a44a"))
+			var pic := _hm(n,Vector3(0,1.7,0.12),Vector3(1.6,1.0,0.02),Color.WHITE)
+			pic.material_override = _fc_glow(Color("ff5fd2")) if id == "art1" else _material(Color("3f8fd2") if id == "art0" else Color("7a2f5a"))
+		"fun0":
+			_hm(n,Vector3(0,0.9,0),Vector3(0.8,1.8,0.7),Color("3b2a6a"),true)
+			var s2 := _hm(n,Vector3(0,1.35,0.36),Vector3(0.6,0.45,0.02),Color.WHITE)
+			s2.material_override = _fc_glow(Color("7dff9a"))
+		"fun1":
+			_hm(n,Vector3(0,0.4,0),Vector3(2.0,0.8,0.7),Color("2a3038"),true)
+			var tank := _hm(n,Vector3(0,1.25,0),Vector3(1.9,0.9,0.6),Color.WHITE)
+			tank.material_override = _bio_water_mat(Color("4fb0d0"))
+			for k in 5:
+				var fish := _hm(n,Vector3(-0.7+float(k)*0.35,1.1+0.12*float(k%3),0.0),Vector3(0.16,0.08,0.04),_goods_color(k*2+3))
+		"fun2":
+			_hm(n,Vector3(0,0.5,0),Vector3(1.5,1.0,1.8),Color("101418"),true)
+			_hm(n,Vector3(0,1.05,-0.6),Vector3(1.5,0.1,0.5),Color("f4f1ea"))
+		"fun3":
+			_hm(n,Vector3(0,0.75,0),Vector3(1.8,0.06,0.8),Color("1d2a33"),true)
+			for sd: float in [-0.5,0.5]:
+				var m := _hm(n,Vector3(sd,1.15,-0.25),Vector3(0.8,0.5,0.04),Color.WHITE)
+				m.material_override = _fc_glow(Color("8fe3ff"))
+			_hm(n,Vector3(0,0.5,0.7),Vector3(0.6,1.0,0.6),Color("d2302a"))
+		"lamp0":
+			_hm(n,Vector3(0,0.8,0),Vector3(0.08,1.6,0.08),Color("3a3f45"))
+			var shade := _hm(n,Vector3(0,1.7,0),Vector3(0.5,0.35,0.5),Color.WHITE)
+			shade.material_override = _fc_glow(Color("fff1c8"))
+		"lamp1":
+			var tube := _hm(n,Vector3(0,1.2,0),Vector3(0.08,2.2,0.08),Color.WHITE)
+			tube.material_override = _neon_mat(Color("ff5fd2"))
+		"bed0","bed1":
+			var w := 2.0 if id == "bed0" else 2.6
+			_hm(n,Vector3(0,0.3,0),Vector3(w,0.6,2.4),Color("e6dccb"),true)
+			_hm(n,Vector3(0,0.65,0.3),Vector3(w-0.1,0.12,1.7),Color("3f8fd2") if id == "bed0" else Color("7a2f5a"))
+			_hm(n,Vector3(0,0.95,-1.15),Vector3(w,0.9,0.15),Color("6b4a32"))
+			for sd: float in [-1.0,1.0]:
+				_hm(n,Vector3(sd*w*0.25,0.72,-0.8),Vector3(w*0.4,0.15,0.4),Color("f4f6f8"))
+
+# ---- decorating ----
+func _build_home_panels(root: Control) -> void:
+	home_panel = PanelContainer.new()
+	home_panel.add_theme_stylebox_override("panel",_panel(Color(0.06,0.11,0.16,0.97),26))
+	home_panel.custom_minimum_size = Vector2(820,0)
+	root.add_child(home_panel)
+	extra_panels.append(home_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",10)
+	home_panel.add_child(col)
+	col.add_child(_label("MY HOME",28,Color("f0bd62")))
+	var info := _label("Buy a home at its front door. Inside, walk to a glowing spot to decorate it. Pieces you buy are yours to move to any spot.",16,Color("cbd8de"))
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size.x = 780
+	col.add_child(info)
+	for i in HOMES.size():
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation",10)
+		col.add_child(row)
+		var t := _label("",18,Color("dff3ff"))
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(t)
+		var b := _button("",_home_row_go.bind(i))
+		b.custom_minimum_size = Vector2(220,58)
+		row.add_child(b)
+		home_rows.append([t,b])
+	var close := _button("Close",_home_panel_close)
+	col.add_child(close)
+	home_panel.hide()
+	deco_panel = PanelContainer.new()
+	deco_panel.add_theme_stylebox_override("panel",_panel(Color(0.06,0.11,0.16,0.97),26))
+	deco_panel.custom_minimum_size = Vector2(620,0)
+	root.add_child(deco_panel)
+	extra_panels.append(deco_panel)
+	var dc := VBoxContainer.new()
+	dc.add_theme_constant_override("separation",8)
+	deco_panel.add_child(dc)
+	deco_title = _label("",26,Color("f0bd62"))
+	dc.add_child(deco_title)
+	deco_list = VBoxContainer.new()
+	deco_list.add_theme_constant_override("separation",8)
+	dc.add_child(deco_list)
+	var dclose := _button("Close",_home_panel_close)
+	dc.add_child(dclose)
+	deco_panel.hide()
+
+func _open_homes() -> void:
+	if not paused:
+		_toggle_menu()
+	for i in HOMES.size():
+		var own := (homes_owned & (1 << i)) != 0
+		var H: Dictionary = HOMES[i]
+		(home_rows[i][0] as Label).text = "%s  ·  %s  ·  %s" % [H["name"],H["where"],"YOURS" if own else _money(int(H["price"]))]
+		(home_rows[i][1] as Button).text = "Go home" if own else "Directions"
+	_open_panel(home_panel)
+
+func _home_row_go(i: int) -> void:
+	if (homes_owned & (1 << i)) != 0:
+		var why := _travel_block_reason()
+		if why != "" or career >= 0:
+			_show_toast(why if why != "" else "End your shift first.")
+			return
+		_home_panel_close()
+		if driving:
+			driving = false
+			player.position = car.position+Vector3(2.5,0.9,0)
+			player.show()
+			player.get_child(0).set_deferred("disabled",false)
+			_car_away()
+		_home_enter(i)
+		return
+	dir_custom = home_doors[i] if home_doors[i] != null else Vector3.INF
+	dir_custom_name = String(HOMES[i]["name"])
+	_home_panel_close()
+	_show_toast("Directions to %s: follow the arrow." % HOMES[i]["name"])
+
+func _home_panel_close() -> void:
+	if paused:
+		_toggle_menu()
+
+func _deco_open(k: int) -> void:
+	var S: Array = HOME_SLOTS[int(HOMES[home_in]["kind"])][k]
+	var cat := String(S[3])
+	deco_slot = k
+	for c in deco_list.get_children():
+		c.queue_free()
+	deco_title.text = "DECORATE  ·  %s" % cat.to_upper()
+	var lay: Array = home_layout.get("h%d" % home_in,[])
+	var cur := String(lay[k]) if k < lay.size() else ""
+	for F in FURNI:
+		if String(F[1]) != cat:
+			continue
+		var id := String(F[0])
+		var owned := furni_owned.has(id) or _home_default_layout(home_in).has(id)
+		var b := _button("%s%s  ·  %s" % ["✓ " if id == cur else "",F[2],"owned" if owned else _money(int(F[3]))],_deco_pick.bind(id))
+		b.custom_minimum_size = Vector2(0,54)
+		deco_list.add_child(b)
+	var clear := _button("Empty this spot",_deco_pick.bind(""))
+	deco_list.add_child(clear)
+	if not paused:
+		_toggle_menu()
+	_open_panel(deco_panel)
+
+func _deco_pick(id: String) -> void:
+	if home_in < 0 or deco_slot < 0:
+		return
+	if id != "" and not furni_owned.has(id) and not _home_default_layout(home_in).has(id):
+		var price := 0
+		for F in FURNI:
+			if String(F[0]) == id:
+				price = int(F[3])
+		if cash < price:
+			_show_toast("That costs %s. You have %s." % [_money(price),_money(cash)])
+			return
+		cash -= price
+		furni_owned[id] = true
+	var key := "h%d" % home_in
+	var lay: Array = home_layout.get(key,_home_default_layout(home_in))
+	while lay.size() < HOME_SLOTS[int(HOMES[home_in]["kind"])].size():
+		lay.append("")
+	lay[deco_slot] = id
+	home_layout[key] = lay
+	_save_progress()
+	_home_refresh_room(home_in)
+	_home_panel_close()
+
+func _smoke_careers_homes() -> void:
+	# v0.50: every career job works start to finish, and a home can be bought, entered, decorated and left.
+	var keep := [cash,bonus_xp,career_jobs.duplicate(),career_earned.duplicate(),player.position,car.position,driving,homes_owned,home_layout.duplicate(true),furni_owned.duplicate(),car_speed]
+	career_test = true
+	bonus_xp = 200000
+	cash = 1000
+	_career_start(0)
+	assert(career == 0 and _model_key() == 200 and not cj.is_empty(),"v0.50: taxi shift starts")
+	driving = true
+	car_speed = 0.0
+	car.position = (cj["a"] as Vector3)+Vector3(0,0.8,0)
+	_career_tick(0.1)
+	assert(int(cj["stage"]) == 1,"v0.50: passenger gets in")
+	var b: Vector3 = cj["b"]
+	car.position = b+Vector3(0,0.8,0)
+	_career_tick(0.1)
+	assert(int(career_jobs[0]) == int(keep[2][0])+1 and cash > 1000,"v0.50: taxi fare paid")
+	_career_start(1)
+	car.position = (cj["a"] as Vector3)+Vector3(0,0.8,0)
+	for k in 32:
+		_career_tick(0.1)
+	assert(int(cj["stage"]) == 1,"v0.50: patient treated and on board")
+	car.position = HOSPITAL_DROP+Vector3(0,0.8,0)
+	_career_tick(0.1)
+	assert(int(career_jobs[1]) == int(keep[2][1])+1,"v0.50: patient delivered")
+	_career_start(3)
+	driving = false
+	player.position = (cj["a"] as Vector3)+Vector3(2,0.9,0)
+	for k in 62:
+		_career_tick(0.1)
+	assert(int(career_jobs[3]) == int(keep[2][3])+1,"v0.50: fire put out")
+	driving = true
+	_career_start(2)
+	assert(police_lights.size() >= 2 and not career_light.is_empty(),"v0.50: police car has roof lights")
+	car.position = (cj["a"] as Vector3)+Vector3(0,0.8,0)
+	_career_tick(0.1)
+	assert(chase_mode == 2,"v0.50: a police call turns into a chase")
+	_chase_end("Caught!",400)
+	assert(int(career_jobs[2]) == int(keep[2][2])+1 and chase_mode == 0,"v0.50: arrest counts for the police career")
+	_career_end(false)
+	assert(career == -1 and career_light.is_empty() and _model_key() == car_id,"v0.50: shift ends and your own car comes back")
+	career_jobs = [60,0,0,0]
+	assert(_career_rank_name(0) == "Legend" and _career_mult(0) > 2.0,"v0.50: ranks")
+	# Homes.
+	assert(home_doors.size() == HOMES.size(),"v0.50: every home has a front door")
+	for i in HOMES.size():
+		assert(int(HOMES[i]["price"]) >= 50000,"v0.50: homes cost at least $50,000")
+		if home_doors[i] != null:
+			assert(not _on_road(home_doors[i]),"v0.50: %s door is off the road" % HOMES[i]["name"])
+	homes_owned = 0
+	cash = 60000
+	driving = false
+	player.position = (home_doors[0] as Vector3)+Vector3(0,0.9,0)
+	assert(_home_btn().begins_with("BUY HOME"),"v0.50: BUY HOME at the door")
+	_home_interact()
+	assert((homes_owned & 1) != 0 and cash == 60000-int(HOMES[0]["price"]),"v0.50: home bought")
+	assert(_home_btn() == "ENTER HOME","v0.50: ENTER HOME once it's yours")
+	_home_interact()
+	assert(home_in == 0 and player.position.distance_to(_home_origin(0)) < 12.0 and (home_rooms[0] as Node3D).visible,"v0.50: inside the home")
+	var art := -1
+	var slots: Array = HOME_SLOTS[int(HOMES[0]["kind"])]
+	for k in slots.size():
+		if String(slots[k][3]) == "art":
+			art = k
+	var c0 := cash
+	_deco_open(art)
+	_deco_pick("art1")
+	assert(cash == c0-1800 and String(home_layout["h0"][art]) == "art1" and (home_slot_nodes[0][art] as Node3D).get_child_count() > 0,"v0.50: decorating buys and places a piece")
+	assert(not paused,"v0.50: decorating closes the panel")
+	var sz: Vector3 = HOME_ROOM[int(HOMES[0]["kind"])]
+	player.position = _home_origin(0)+Vector3(0,0.9,-sz.z/2.0+1.2)
+	assert(_home_btn() == "LEAVE HOME","v0.50: LEAVE HOME by the door")
+	_home_interact()
+	assert(home_in == -1 and player.position.distance_to(home_doors[0] as Vector3) < 3.0,"v0.50: back outside")
+	career_test = false
+	cash = keep[0]
+	bonus_xp = keep[1]
+	career_jobs = keep[2]
+	career_earned = keep[3]
+	player.position = keep[4]
+	car.position = keep[5]
+	driving = keep[6]
+	homes_owned = keep[7]
+	home_layout = keep[8]
+	furni_owned = keep[9]
+	car_speed = keep[10]
+	_home_labels()
+	_apply_car()

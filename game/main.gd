@@ -9048,6 +9048,8 @@ func _smoke_test() -> void:
 	_save_progress()
 	# v0.30.1: quests are offered near you; nothing is tracked until you accept; the arrow then shows the way.
 	var was_q := [legacy_rules,quick_on,quick_idx,quest_active,quick_got,player.position,driving,paused]
+	var keep_ch_q := ch_idx
+	ch_idx = CHAPTERS.size()    # v0.51.1: the chapter arrow comes first; test the quest arrow on its own
 	legacy_rules = false
 	quick_on = true
 	quest_active = false
@@ -9097,6 +9099,9 @@ func _smoke_test() -> void:
 	quick_got = was_q[4]
 	player.position = was_q[5]
 	driving = was_q[6]
+	ch_idx = keep_ch_q
+	if ch_idx < CHAPTERS.size() and _ch_target() != null and trial_active < 0 and not race_car and dir_target < 0 and career < 0:
+		assert((_guide_target() as Vector3).is_equal_approx(_ch_target()),"v0.51.1: the chapter takes the arrow ahead of daily quests")
 	quest_declined.clear()
 	quest_offer_idx = -1
 	quest_offer_panel.hide()
@@ -12800,9 +12805,10 @@ func _guide_target() -> Variant:
 			if not u["cop"]:
 				return (u["node"] as Node3D).position
 		return null
-	# v0.51: the current chapter's "go" step, unless a quest, trial or race is running.
+	# v0.51.1: the chapter comes first, ahead of daily quests (only Directions, careers, player
+	# tracking, chases, trials and races take over the arrow).
 	var cht = _ch_target()
-	if cht != null and not _qt() and trial_active < 0 and not race_car:
+	if cht != null and trial_active < 0 and not race_car:
 		return cht
 	if not marker.visible:
 		return null
@@ -14361,7 +14367,7 @@ func _say(k: int) -> void:
 	my_bubble = k
 	my_bubble_n += 1
 	my_bubble_crew = chat_to_crew and crew_name != ""
-	_bubble(player if not driving else car,HUB_PHRASES[k],6.0 if k >= CHAT_SYM_END else (2.6 if not driving else 3.2))
+	_bubble(player if not driving else car,HUB_PHRASES[k],2.6 if not driving else 3.2)
 	_chat_log_add("You",HUB_PHRASES[k],my_bubble_crew)
 	if online_on and online_state >= 2 and online_ws != null:
 		_online_send(_online_pos_frame())
@@ -28150,6 +28156,15 @@ func _city_shots() -> void:
 			for c in get_children():
 				if c is CanvasLayer or c is Control:
 					c.visible = false
+		if OS.get_environment("HC_SAY") != "":
+			# Developer-only: say a quick chat line, seen from the normal follow camera.
+			cam_lock = false
+			walk_view = 0
+			_apply_view()
+			chat_last_say = -10.0
+			_say(int(OS.get_environment("HC_SAY")))
+			for i in 30:
+				await get_tree().physics_frame
 		if OS.get_environment("HC_MENU") != "":
 			# Developer-only: show the Menu on a given tab for the screenshot.
 			_toggle_menu()
@@ -32160,7 +32175,9 @@ func _chapters_tick(delta: float) -> void:
 		ch_chip.text = "  CH %d · %s  ➜ %s  " % [ch_idx+1,CHAPTERS[ch_idx]["name"],_ch_step_text(s)]
 	ch_chip.reset_size()
 	var view := get_viewport().get_visible_rect().size
-	ch_chip.position = Vector2((view.x-ch_chip.size.x)/2.0,138.0)
+	# v0.51.1: just below the screen arrow and its distance (drawn at about y 100-200), so it never
+	# covers them, and well above your character's speech bubble.
+	ch_chip.global_position = Vector2((view.x-ch_chip.size.x)/2.0,212.0)
 
 func _build_chapters_ui(root: Control) -> void:
 	ch_chip = _button("",_open_chapters)

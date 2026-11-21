@@ -652,3 +652,4 @@ Release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.22.0 (source 04ca
 ## v0.49.0 (2026-11-21): 40 levels
 
 - LEVEL_XP has 40 entries: level n costs 50n XP up to 20 and 100n from 21 (level 40 at 71,450 XP). Peer levels clamp to 1-40; ACH gained lv25/lv30/lv40; `_level_color` gold at 20, pink at 30, white at 40.
+- Released and verified 2026-11-21: commit ea3cbc0 (tag v0.49.0), versionCode 79. APK SHA256 fc606268a01e32cfcddaf221ed740163565311fcd95e7a502bebdade5c57874f (49,801,916 bytes), same certificate. Pages passed; live release.json, page button, web pck (21,427,868) and downloaded APK hash verified.

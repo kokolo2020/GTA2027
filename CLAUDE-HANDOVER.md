@@ -21,7 +21,7 @@
 8. Verify live: release.json version + sha256, page edition and button, /play/index.pck content-length, downloaded APK sha256. Append a "Released and verified" line here, commit, push, switch back to character-redesign.
 
 ### Developer tools in the game
-- `--city-shots` with HC_CAM="name;x,y,z;lx,ly,lz;hour[;extra frames]" and HC_SHOTS=<dir> saves one frame. Extras: HC_NOHUD=1 (no buttons), HC_PHOTO=1 (Photo mode), HC_VIEWERS=<n> (streamer viewer badge), HC_SJ=<name> (stream-join welcome banner), HC_FOLLOW=1 (Follow view, shows the screen arrow), HC_MENU=<tab>, HC_HOME=<i> (+HC_HOMETOP=1), HC_CAREER=<i>, HC_LEVEL=<n>, HC_SHOWOFF, HC_PEERS.
+- `--city-shots` with HC_CAM="name;x,y,z;lx,ly,lz;hour[;extra frames]" and HC_SHOTS=<dir> saves one frame. Extras: HC_NOHUD=1 (no buttons), HC_PHOTO=1 (Photo mode), HC_VIEWERS=<n> (streamer viewer badge), HC_CAREER=<0-3> HC_CJ=<wait|pickup|mirror|dropoff|done|load|unload|radio|arrest|spray|fireout>[:seconds] (one frozen moment of a career job), HC_SJ=<name> (stream-join welcome banner), HC_FOLLOW=1 (Follow view, shows the screen arrow), HC_MENU=<tab>, HC_HOME=<i> (+HC_HOMETOP=1), HC_CAREER=<i>, HC_LEVEL=<n>, HC_SHOWOFF, HC_PEERS.
 - `--bench --web-lite` with HC_BENCH_AT="x,z,yaw" prints fps, draw calls, primitives, process/physics ms; HC_SKIP="biosphere,galleria,..." skips building parts.
 - `--nav-check` (walk grids), `--home-check` (walking inside a home).
 

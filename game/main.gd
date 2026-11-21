@@ -7513,7 +7513,7 @@ func _clean_hud_tick() -> void:
 		return
 	hud_clean_applied = true
 	for c in [hud_info,hud_pause_button,radio_button,radio_caption,online_button,view_button,chat_button,travel_button,run_button,feed_box,clock_label,treasure_label]:
-		if c != null:
+		if c != null and not (streamer_on and c == run_button):
 			(c as CanvasItem).visible = false
 	# v0.32: invites, gifts and crew news still pop up on the clean screen.
 	if feed_box != null:
@@ -9057,6 +9057,7 @@ func _smoke_test() -> void:
 	_smoke_chapters()
 	_smoke_photo()
 	_smoke_stream_join()
+	_smoke_streamer_clean()
 	_smoke_crate()
 	_smoke_bus()
 	_smoke_chase_extras()
@@ -25355,6 +25356,12 @@ var st_fetch_t := 0.0
 var st_dim: Array = []
 var st_viewers: Label
 var st_flash := 0.0
+var st_menu_dot: Button
+var st_hold: Control                 # v0.52.1: hidden holder for everything streamer mode hides
+var st_held := {}                    # element -> [original parent, index]
+var st_run_was: Array = []           # RUN's visibility and spot before streamer mode
+# What streamer mode hides (by name, so elements built later are covered too).
+const ST_HIDE := ["hud_info","hud_pause_button","radio_button","radio_caption","online_button","view_button","chat_button","travel_button","clock_label","treasure_label","chase_label","quest_bar","quest_offer_panel","quests_button","players_button","chat_pill","chat_log_panel","chat_panel","minimap","cash_pill","online_pill","feed_box","status_label","qr_small","qr_big","hud_arrow","ach_banner","st_badge","st_top","sj_banner"]
 
 func _build_streamer(root: Control) -> void:
 	st_root = Control.new()
@@ -25425,6 +25432,22 @@ func _build_streamer(root: Control) -> void:
 	st_viewers.add_theme_color_override("font_outline_color",Color("1a0a3a"))
 	st_viewers.add_theme_constant_override("outline_size",6)
 	st_root.add_child(st_viewers)
+	# v0.52.1: a small menu button on the join card's corner (the LIVE badge is hidden now).
+	st_menu_dot = _button("",_streamer_badge_tap)
+	st_menu_dot.custom_minimum_size = Vector2(46,46)
+	st_menu_dot.tooltip_text = "Menu"
+	st_menu_dot.add_theme_stylebox_override("normal",_panel(Color("4fe3ff").darkened(0.35),23))
+	st_menu_dot.add_theme_stylebox_override("hover",_panel(Color("4fe3ff").darkened(0.2),23))
+	var dots := Control.new()
+	dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dots.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dots.draw.connect(func() -> void:
+		var c := dots.size/2.0
+		for k in [-1,0,1]:
+			dots.draw_rect(Rect2(c+Vector2(-10,float(k)*6.0-1.5),Vector2(20,3)),Color.WHITE)
+	)
+	st_menu_dot.add_child(dots)
+	st_root.add_child(st_menu_dot)
 	st_root.hide()
 
 func _toggle_streamer() -> void:
@@ -25435,12 +25458,13 @@ func _toggle_streamer() -> void:
 		for c in st_dim:
 			if is_instance_valid(c):
 				(c as CanvasItem).modulate.a = 1.0
-		# Bring back what the rest of the HUD doesn't re-show every frame.
-		for c in [qr_small,quests_button]:
-			if c != null:
-				(c as CanvasItem).visible = true
+		# v0.52.1: everything goes back where it was, with its own visibility untouched.
+		_st_restore()
+	else:
+		st_run_was = [run_button.visible,run_button.position] if run_button != null else []
+		_st_hide_tick()
 	st_fetch_t = 0.0
-	_show_toast("Streamer mode ON: a clean screen with a join code for your viewers. Tap ● LIVE for the Menu." if streamer_on else "Streamer mode off.")
+	_show_toast("Streamer mode ON: a clean screen with a join code for your viewers. Tap ≡ on the join card for the Menu." if streamer_on else "Streamer mode off.")
 
 func _streamer_badge_tap() -> void:
 	if not paused:
@@ -25451,15 +25475,13 @@ func _streamer_tick(delta: float) -> void:
 		return
 	st_root.visible = streamer_on and not paused
 	if not streamer_on:
+		# Self-healing: however streamer mode was switched off, nothing stays hidden.
+		if st_hold != null and st_hold.get_child_count() > 0:
+			_st_restore()
 		return
-	# Hide the clutter; keep the stick and big buttons faint so you can still play.
-	for c in [qr_small,qr_big,quests_button,players_button,cash_pill,online_pill,feed_box]:
-		if c != null:
-			(c as CanvasItem).visible = false
-	st_dim = [joystick,action_button,board_button,quest_bar]
-	for c in st_dim:
-		if c != null:
-			(c as CanvasItem).modulate.a = 0.4
+	# v0.52.1: everything but the join card, the play controls, quick chat and the step bars goes
+	# into a hidden holder (see _st_hide_tick); the controls stay fully visible.
+	_st_hide_tick()
 	if paused:
 		return
 	var view := get_viewport().get_visible_rect().size
@@ -25471,7 +25493,9 @@ func _streamer_tick(delta: float) -> void:
 	st_badge.position = Vector2(18,18)
 	st_badge.modulate.a = 0.75+0.25*sin(clock*3.0)
 	st_qr.reset_size()
-	st_qr.position = Vector2(18,18+st_badge.size.y+12.0)
+	st_qr.position = Vector2(18,18)     # v0.52.1: top-left corner (the LIVE badge is hidden)
+	st_menu_dot.size = st_menu_dot.custom_minimum_size
+	st_menu_dot.position = st_qr.position+Vector2(st_qr.size.x-st_menu_dot.size.x*0.6,-st_menu_dot.size.y*0.4)
 	var nv := _viewer_count()
 	var vt := "🎮 %d %s playing now!" % [nv,"viewer" if nv == 1 else "viewers"]
 	if st_viewers.text != vt:
@@ -33295,9 +33319,9 @@ func _hud_top_stack() -> void:
 		return
 	var view := get_viewport().get_visible_rect().size
 	var top := 18.0
-	if quest_bar.visible:
+	if quest_bar.is_visible_in_tree():
 		top = quest_bar.position.y+quest_bar.get_combined_minimum_size().y+8.0
-	if cj_bar != null and cj_bar.visible:
+	if cj_bar != null and cj_bar.is_visible_in_tree():
 		cj_bar.reset_size()
 		cj_bar.position = Vector2((view.x-cj_bar.size.x)/2.0,top)
 		top += cj_bar.size.y+8.0
@@ -33305,13 +33329,13 @@ func _hud_top_stack() -> void:
 		ch_chip.reset_size()
 		ch_chip.global_position = Vector2((view.x-ch_chip.size.x)/2.0,top)
 		top += ch_chip.size.y+8.0
-	if st_top != null and st_root != null and st_root.visible:
+	if st_top != null and st_root != null and st_top.is_visible_in_tree():
 		var sz := st_top.get_combined_minimum_size()
 		st_top.size = sz
 		st_top.position = Vector2((view.x-sz.x)/2.0,top)
 		top += sz.y+6.0
 	var ax := view.x/2.0-70.0
-	if treasure_label != null and treasure_label.visible:
+	if treasure_label != null and treasure_label.is_visible_in_tree():
 		var tl := treasure_label
 		if ax+140.0 > tl.position.x and ax < tl.position.x+tl.size.x:
 			top = maxf(top,tl.position.y+tl.size.y+4.0)
@@ -34149,4 +34173,117 @@ func _career_shot(what: String) -> void:
 		cs_freeze = true
 	for i in 45:
 		await get_tree().physics_frame
+
+# ---------------- v0.52.1: streamer mode shows only what the stream needs ----------------
+# The join card, the play controls (stick, action button, BOARD, RUN, camera), quick chat and the
+# job/chapter step bars while they're active. Everything else is moved into a hidden holder (its own
+# visibility untouched) and moved back when streamer mode ends, so nothing comes back wrong.
+func _st_hide_tick() -> void:
+	if hud == null:
+		return
+	var root: Control = hud.get_child(0)
+	if st_hold == null:
+		st_hold = Control.new()
+		st_hold.name = "StreamerHidden"
+		st_hold.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		st_hold.set_anchors_preset(Control.PRESET_FULL_RECT)
+		st_hold.visible = false
+		root.add_child(st_hold)
+	var want := {}
+	for nm in ST_HIDE:
+		var c = get(nm)
+		if c is Control and is_instance_valid(c):
+			want[c] = true
+	for c in want:
+		var ctl := c as Control
+		if ctl.get_parent() != st_hold:
+			var par := ctl.get_parent()
+			st_held[ctl] = [par,ctl.get_index(),st_held.size()]     # removal order, for an exact undo
+			par.remove_child(ctl)
+			st_hold.add_child(ctl)
+	# Anything else that was built into the holder while it held the minimap (lazily made buttons)
+	# goes straight back out.
+	for c in st_hold.get_children():
+		if not want.has(c):
+			st_hold.remove_child(c)
+			var back: Array = st_held.get(c,[root,-1])
+			(back[0] as Node).add_child(c)
+			st_held.erase(c)
+	# RUN is part of the play controls here, even on the clean screen: above BOARD / the action button.
+	if run_button != null and not driving:
+		run_button.visible = true
+		run_button.reset_size()
+		var anchor: Control = board_button if board_button != null and board_button.is_visible_in_tree() else action_button
+		run_button.position = anchor.position+Vector2(anchor.size.x-run_button.size.x,-run_button.size.y-12.0)
+
+func _st_restore() -> void:
+	if st_hold == null:
+		return
+	# Put them back in reverse removal order, each at the index it had, which undoes it exactly.
+	var items: Array = []
+	for c in st_hold.get_children():
+		var back: Array = st_held.get(c,[hud.get_child(0),-1,-1])
+		items.append([c,back[0],int(back[1]),int(back[2]) if back.size() > 2 else -1])
+	items.sort_custom(func(a,b): return int(a[3]) > int(b[3]))
+	for it in items:
+		var c: Node = it[0]
+		st_hold.remove_child(c)
+		(it[1] as Node).add_child(c)
+		if int(it[2]) >= 0 and int(it[2]) < (it[1] as Node).get_child_count():
+			(it[1] as Node).move_child(c,int(it[2]))
+	st_held.clear()
+	if run_button != null and st_run_was.size() == 2:
+		run_button.visible = bool(st_run_was[0])
+		run_button.position = st_run_was[1]
+	st_run_was = []
+
+func _smoke_streamer_clean() -> void:
+	# v0.52.1: streamer mode hides everything but the join card, controls, quick chat and step bars,
+	# keeps the menu reachable, and brings it all back exactly.
+	var keep := [streamer_on,paused,driving]
+	if streamer_on:
+		_toggle_streamer()
+	if paused:
+		_toggle_menu()
+	driving = false
+	_clean_hud_tick()
+	_streamer_tick(0.016)
+	_shot_tick()
+	_chat_tick(0.0)
+	var before := {}
+	for nm in ST_HIDE+["joystick","action_button","board_button","run_button","shot_button","chat_quick","menu"]:
+		var c = get(nm)
+		if c is CanvasItem and is_instance_valid(c):
+			before[nm] = [(c as CanvasItem).visible,(c as Node).get_parent(),(c as Node).get_index()]
+	_toggle_streamer()
+	_streamer_tick(0.016)
+	assert(streamer_on and st_qr.is_visible_in_tree() and st_menu_dot.is_visible_in_tree(),"v0.52.1: the join card shows, with its menu button")
+	for nm in ST_HIDE:
+		var c = get(nm)
+		if c is CanvasItem and is_instance_valid(c):
+			assert(not (c as CanvasItem).is_visible_in_tree(),"v0.52.1: streamer mode hides %s" % nm)
+	for nm in ["joystick","action_button","shot_button","run_button"]:
+		assert((get(nm) as CanvasItem).is_visible_in_tree(),"v0.52.1: streamer mode keeps %s" % nm)
+	assert(chat_quick.is_visible_in_tree() == (not web_build),"v0.52.1: quick chat stays (app)")
+	assert(Rect2(run_button.position,run_button.size).intersects(Rect2(st_qr.position,st_qr.size)) == false,"v0.52.1: RUN sits with the controls, not on the card")
+	# Step bars still show while a job or chapter step is active.
+	assert(ch_chip.get_parent() != st_hold and (cj_bar == null or cj_bar.get_parent() != st_hold),"v0.52.1: step bars are never hidden by streamer mode")
+	# A hidden button can't be tapped.
+	assert(not minimap.is_visible_in_tree() and not quests_button.is_visible_in_tree(),"v0.52.1: hidden buttons are out of reach")
+	# The menu is reachable from the card's corner.
+	st_menu_dot.pressed.emit()
+	assert(paused and menu.visible,"v0.52.1: the menu opens from the join card")
+	_toggle_menu()
+	_toggle_streamer()
+	_clean_hud_tick()
+	_streamer_tick(0.016)
+	assert(not streamer_on and st_hold.get_child_count() == 0,"v0.52.1: streamer mode off empties the holder")
+	for nm in before:
+		var c: CanvasItem = get(nm)
+		assert(c.visible == before[nm][0] and c.get_parent() == before[nm][1] and c.get_index() == int(before[nm][2]),"v0.52.1: %s is back exactly as before (vis %s/%s, parent %s/%s, index %d/%d)" % [nm,c.visible,before[nm][0],c.get_parent().name,(before[nm][1] as Node).name,c.get_index(),int(before[nm][2])])
+	driving = keep[2]
+	if keep[0] != streamer_on:
+		_toggle_streamer()
+	if keep[1] and not paused:
+		_toggle_menu()
 

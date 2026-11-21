@@ -354,7 +354,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.50.1: homes now have a bedroom, bathroom and living room, no more getting stuck, and the camera goes to the driver's seat when you get in.")
+	_show_toast("Harbor City 0.51: Chapters (Menu > PLAY), quick chat chips and a Food Court start.")
 	booted = true
 	_sg_boot_note()
 	_online_autostart()
@@ -4113,7 +4113,7 @@ func _build_panels(root: Control) -> void:
 func _build_player() -> void:
 	player = CharacterBody3D.new()
 	player.name = "Player"
-	player.position = Vector3(7,0.7,7)
+	player.position = SPAWN_FOOD_COURT
 	add_child(player)
 	var collision := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
@@ -4745,6 +4745,7 @@ func _build_hud() -> void:
 	_build_hp_panel(root)
 	_build_dir_panel(root)
 	_build_career_panel(root)
+	_build_chapters_ui(root)
 	_build_home_panels(root)
 	_build_puzzle_panel(root)
 	_build_streamer(root)
@@ -4801,7 +4802,7 @@ func _build_hud() -> void:
 	menu_screen_button = _button("Screen: Clean",_menu_stay.bind(_toggle_clean_hud))
 	var pages := [
 		["GO",Color("2f8fb8"),[["Map",_menu_go.bind(_open_map)],["Travel",_menu_go.bind(_open_travel)],["Directions",_menu_go.bind(_open_dir)],["Call car",_menu_go.bind(_menu_call_car)],["Quests",_menu_go.bind(_open_quests)],["Back to my car",_rescue]]],
-		["PLAY",Color("c9612f"),[["Careers",_open_careers],["Trials",_open_trials],["Chase",_chase_open],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
+		["PLAY",Color("c9612f"),[["Chapters",_open_chapters],["Careers",_open_careers],["Trials",_open_trials],["Chase",_chase_open],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
 		["ME",Color("8a5ad0"),[["My Home",_open_homes],["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
 		["FRIENDS",Color("2fa37a"),[["Chat",_menu_go.bind(_toggle_chat)],["Players & friends",_open_social],[menu_online_button]]],
 		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[time_button]]],
@@ -7689,6 +7690,7 @@ func _physics_process(delta: float) -> void:
 	_orole_tick(delta)
 	_online_tick(delta)
 	_check_missions()
+	_chapters_tick(delta)
 	_check_level()
 	marker.visible = (race_car and rec_act > 0) or trial_active >= 0 or _qt() or (not exploring and not quick_on and not next_job_pending) or (exploring and (_nearest_find() >= 0 or _nearest_civic() >= 0 or not _ridge_open() or _nearest_ridge() >= 0 or _nearest_bay() >= 0 or (_north_open() and _nearest_north() >= 0) or (_downtown_open() and _nearest_downtown() >= 0) or (_marina_open() and _nearest_marina() >= 0)))
 	for index in find_nodes.size():
@@ -8247,6 +8249,8 @@ func _save_progress() -> void:
 	file.set_value("progress","treasure_got",treasure_got)
 	file.set_value("progress","treasure_count",treasure_count)
 	file.set_value("progress","fm_refund",fm_refund)
+	file.set_value("chapters","idx",ch_idx)
+	file.set_value("chapters","step",ch_step)
 	file.save(SAVE_PATH)
 
 func _load_progress() -> void:
@@ -8266,6 +8270,8 @@ func _load_progress() -> void:
 		pz_day = String(file.get_value("progress","pz_day",""))
 		bio_seen = int(file.get_value("progress","bio_seen",0)) & ((1 << BIO_SPECIES.size())-1)
 		bio_pass_day = String(file.get_value("progress","bio_pass_day",""))
+		ch_idx = clampi(int(file.get_value("chapters","idx",0)),0,CHAPTERS.size())
+		ch_step = maxi(0,int(file.get_value("chapters","step",0)))
 		pz_streak = maxi(0,int(file.get_value("progress","pz_streak",0)))
 		pz_total = maxi(0,int(file.get_value("progress","pz_total",0)))
 		hud_clean = bool(file.get_value("progress","hud_clean",true))
@@ -8989,6 +8995,7 @@ func _smoke_test() -> void:
 	await _smoke_follow_call()
 	_smoke_travel()
 	_smoke_qr()
+	_smoke_chapters()
 	_smoke_crate()
 	_smoke_bus()
 	_smoke_chase_extras()
@@ -12793,6 +12800,10 @@ func _guide_target() -> Variant:
 			if not u["cop"]:
 				return (u["node"] as Node3D).position
 		return null
+	# v0.51: the current chapter's "go" step, unless a quest, trial or race is running.
+	var cht = _ch_target()
+	if cht != null and not _qt() and trial_active < 0 and not race_car:
+		return cht
 	if not marker.visible:
 		return null
 	if quick_on and not _qt() and trial_active < 0 and not (race_car and rec_act > 0):
@@ -12959,6 +12970,8 @@ func _draw_checkpoint_icon(ctl: Control, at: Vector2, r: float, saved: bool) -> 
 
 func _smoke_guidance_checkpoints() -> void:
 	var was := [driving,player.position,player.rotation,view_mode,exploring,trial_active,checkpoint_id,car.position]
+	var keep_ch := ch_idx
+	ch_idx = CHAPTERS.size()     # v0.51: no chapter arrow while this checks the explore arrow
 	driving = false
 	exploring = true
 	view_mode = 0
@@ -13002,6 +13015,7 @@ func _smoke_guidance_checkpoints() -> void:
 	view_mode = was[3]
 	exploring = was[4]
 	car.position = was[7]
+	ch_idx = keep_ch
 	_apply_view()
 
 func _guide_shots() -> void:
@@ -13041,8 +13055,11 @@ const RPS_PRICE := 5
 const HUB_PHRASES := ["Hi!","Hello everyone!","Wanna play?","Good game!","Nice one!","Haha!","Thanks!","See you!",
 	"Follow me!","Race?","Meet at the Food Court","Nice car!","Come to Harbor Commons","Let's do the puzzle!","Where are you?","On my way!",
 	"Wait for me!","Join my crew!","Wow!","Bye!",
-	"♥","★","✋","✌","⚡","☀","⚽","✔"]
-const CHAT_SAY := 20        # HUB_PHRASES[0..19] are words, the rest are symbols
+	"♥","★","✋","✌","⚡","☀","⚽","✔",
+	"SCAN AND JOIN THE GAME","JOIN THE FUN","HANG OUT FOR FUN","SUBSCRIBE & LIKE"]
+const CHAT_SAY := 20        # HUB_PHRASES[0..19] are words, 20..27 are symbols
+const CHAT_SYM_END := 28    # v0.51: 28..31 are the always-visible quick chat chips (stream calls to action)
+const CHAT_QUICK_COL := [Color("c2307a"),Color("2f8fb8"),Color("2fa37a"),Color("c42b2b")]
 const CHAT_NEAR := 40.0     # v0.36: you see bubbles and chat from players within 40 m (crew: anywhere)
 const HUB_EMOTES := ["Wave","Clap","Dance","Cheer"]
 const RPS_NAMES := ["ROCK","PAPER","SCISSORS"]
@@ -13495,7 +13512,7 @@ func _hub_people_tick(delta: float) -> void:
 		bot_chat_t = randf_range(5.0,9.0)
 		var bot: Dictionary = hub_bots[randi() % hub_bots.size()]
 		if (bot["node"] as Node3D).global_position.distance_to(camera.global_position) < 80.0:
-			_bubble(bot["node"],HUB_PHRASES[randi() % HUB_PHRASES.size()],2.5)
+			_bubble(bot["node"],HUB_PHRASES[randi() % CHAT_SAY],2.5)
 			if randf() < 0.4:
 				_emote(bot["person"],randi() % 2)
 	hub_tile_t += delta
@@ -14122,6 +14139,7 @@ var my_bubble_crew := false
 var chat_to_crew := false
 var chat_last_say := -10.0
 var chat_pill: Button
+var chat_quick: GridContainer
 var chat_to_button: Button
 var chat_log_panel: PanelContainer
 var chat_log_title: Label
@@ -14167,7 +14185,7 @@ func _build_chat(root: Control) -> void:
 	var syms := HBoxContainer.new()
 	syms.add_theme_constant_override("separation",8)
 	col.add_child(syms)
-	for k in range(CHAT_SAY,HUB_PHRASES.size()):
+	for k in range(CHAT_SAY,CHAT_SYM_END):
 		var b := _button(HUB_PHRASES[k],_say.bind(k))
 		b.custom_minimum_size = Vector2(92,52)
 		b.add_theme_font_size_override("font_size",28)
@@ -14217,6 +14235,20 @@ func _build_chat(root: Control) -> void:
 	lc.add_child(chat_log_box)
 	chat_log_panel.custom_minimum_size = Vector2(380,0)
 	chat_log_panel.hide()
+	# v0.51: quick chat chips, always on screen (even on the clean screen and offline): one tap puts the
+	# call to action in a bubble over your head, and sends it to everyone online.
+	chat_quick = GridContainer.new()
+	chat_quick.columns = 2
+	chat_quick.add_theme_constant_override("h_separation",8)
+	chat_quick.add_theme_constant_override("v_separation",8)
+	root.add_child(chat_quick)
+	for k in range(CHAT_SYM_END,HUB_PHRASES.size()):
+		var qb := _button(HUB_PHRASES[k],_say.bind(k))
+		qb.custom_minimum_size = Vector2(212,46)
+		qb.add_theme_font_size_override("font_size",15)
+		qb.add_theme_stylebox_override("normal",_panel(CHAT_QUICK_COL[k-CHAT_SYM_END],16))
+		chat_quick.add_child(qb)
+	chat_quick.hide()
 
 func _chat_toggle_to() -> void:
 	if crew_name == "":
@@ -14262,6 +14294,12 @@ func _chat_near_count() -> int:
 func _chat_tick(delta: float) -> void:
 	if chat_pill == null or player == null:
 		return
+	if chat_quick != null:
+		chat_quick.visible = not paused and not race_car and not sky_riding and not bus_riding
+		if chat_quick.visible:
+			var qv := get_viewport().get_visible_rect().size
+			chat_quick.reset_size()
+			chat_quick.position = Vector2(maxf(210.0,qv.x*0.5-chat_quick.size.x*0.5-40.0),qv.y-chat_quick.size.y-24.0)
 	chat_pill.visible = (online_on or chat_preview) and not paused and not race_car
 	if chat_pill.visible:
 		var above: Control = players_button if players_button != null and players_button.visible else quests_button
@@ -14323,7 +14361,7 @@ func _say(k: int) -> void:
 	my_bubble = k
 	my_bubble_n += 1
 	my_bubble_crew = chat_to_crew and crew_name != ""
-	_bubble(player if not driving else car,HUB_PHRASES[k],2.6 if not driving else 3.2)
+	_bubble(player if not driving else car,HUB_PHRASES[k],6.0 if k >= CHAT_SYM_END else (2.6 if not driving else 3.2))
 	_chat_log_add("You",HUB_PHRASES[k],my_bubble_crew)
 	if online_on and online_state >= 2 and online_ws != null:
 		_online_send(_online_pos_frame())
@@ -18335,6 +18373,9 @@ func _my_tag_tick() -> void:
 # On the wide pavement in front of the old Mint Cruiser building (block -17,-17), facing the street.
 const FC_BLOCK := Vector3(-17,0,-17)
 const FC_Z := -20.0
+# v0.51: everyone starts here: the paving in front of the food court stands (players who saved a checkpoint
+# still resume at it). The car waits on the street nearby; Call Car brings it to you.
+const SPAWN_FOOD_COURT := Vector3(-17,0.9,-9.5)
 const FC_STANDS := [
 	{"name":"FRESH ORANGE JUICE","x":-22.5,"col":Color("ff8a1c"),"trim":Color("ffe36b"),"kind":"oj","menu":"FRESH OJ   $4\nBIG SQUEEZE   $6"},
 	{"name":"HOT DOGS","x":-17.0,"col":Color("ff3b5c"),"trim":Color("ffd23f"),"kind":"dog","menu":"CLASSIC DOG   $5\nNEON CHILI DOG   $7"},
@@ -19215,7 +19256,7 @@ func _smoke_chat() -> void:
 	assert("Crewmate" in who,"v0.36: crew chat reaches the crew anywhere")
 	assert(not "Stranger" in who,"v0.36: other crews' chat is private")
 	assert(_chat_area(CM_C) == "Harbor Commons","v0.36: chat header names the area")
-	for ch in HUB_PHRASES.slice(CHAT_SAY):
+	for ch in HUB_PHRASES.slice(CHAT_SAY,CHAT_SYM_END):
 		var ok := ThemeDB.fallback_font.has_char(String(ch).unicode_at(0))
 		for fb in ThemeDB.fallback_font.fallbacks:
 			ok = ok or (fb as Font).has_char(String(ch).unicode_at(0))
@@ -31961,3 +32002,266 @@ func _home_build_layout(root: Node3D, kind: int) -> void:
 	_hm(root,Vector3(-hx+2.4,0.75,-hz+3.0),Vector3(1.2,0.06,1.2),Color("9a6a42"),true)
 	for c2 in [[-0.8,0.0],[0.8,0.0]]:
 		_hm(root,Vector3(-hx+2.4+float(c2[0]),0.45,-hz+3.0),Vector3(0.45,0.06,0.45),Color("3a3f45"))
+
+# ---------------- v0.51: Chapters (a guided story across the whole map) ----------------
+# Eight chapters, each a short list of steps done in order. "go" steps send you to a place (the
+# guide arrow points there); the other kinds count things you do anywhere (deliveries, jobs...).
+# Every district on the map is visited, and the wonders ask for their levels first. Finishing a
+# chapter pays cash and XP. Progress is saved; a chip under the top bar shows the next step.
+const CHAPTERS := [
+	{"name":"Welcome to Harbor","pay":500,"xp":60,"story":"Learn the old city around the waterfront.","steps":[
+		{"k":"go","t":"Harbor Waterfront","p":Vector3(10,0,27)},
+		{"k":"go","t":"Civic Center","p":Vector3(-150,0,23)},
+		{"k":"go","t":"Harbor Commons","p":Vector3(-93,0,-36)},
+		{"k":"go","t":"Westside Market","p":Vector3(-330,0,111)},
+		{"k":"deliv","n":3}]},
+	{"name":"Over the Ridge","pay":800,"xp":80,"story":"East of town the road climbs to the Ridge.","steps":[
+		{"k":"go","t":"Ridge Pass Marker","p":Vector3(69,0,5.5)},
+		{"k":"go","t":"Summit Lookout","p":Vector3(144,5.7,0)},
+		{"k":"go","t":"Harbor Dome","p":Vector3(148,0,36)},
+		{"k":"cars","n":2}]},
+	{"name":"Bay Road","pay":900,"xp":80,"story":"Head west along the coast to the lighthouse.","steps":[
+		{"k":"go","t":"Cove Cafe","p":Vector3(-90,0,9)},
+		{"k":"go","t":"Whale Rock","p":Vector3(-126,0,9)},
+		{"k":"go","t":"Lighthouse Light","p":Vector3(-173,0,-5.5)}]},
+	{"name":"Northbound","pay":1200,"xp":100,"story":"Follow the North Highway all the way to the airport.","steps":[
+		{"k":"go","t":"North Highway","p":Vector3(12,0,-72)},
+		{"k":"go","t":"Maple Suburbs","p":Vector3(12,0,-206)},
+		{"k":"go","t":"Harbor Airfield","p":Vector3(13,0,-318)},
+		{"k":"go","t":"Summit Pass Overlook","p":Vector3(178,5.7,-270)},
+		{"k":"go","t":"Midtown","p":Vector3(-60,0,-410)},
+		{"k":"go","t":"Harbor Airport","p":Vector3(52,0,-470)}]},
+	{"name":"Sun, Sea and Speed","pay":1500,"xp":120,"story":"Marina Heights, the beach and the raceway.","steps":[
+		{"k":"go","t":"Marina Heights","p":Vector3(-10,0,116)},
+		{"k":"go","t":"Sunset Beach","p":Vector3(300,0,158)},
+		{"k":"go","t":"Harbor Raceway","p":Vector3(170,0,-150)},
+		{"k":"trials","n":3}]},
+	{"name":"Skyline Life","pay":2000,"xp":140,"story":"Ride the sky train into the big-city blocks.","steps":[
+		{"k":"go","t":"Union Station","p":Vector3(-196,0,-317)},
+		{"k":"go","t":"Grand Central","p":Vector3(-420,0,-286)},
+		{"k":"go","t":"Central Park","p":Vector3(-430,0,-206)},
+		{"k":"go","t":"Skyline District","p":Vector3(-400,0,-262)},
+		{"k":"go","t":"Grand Mall","p":Vector3(-540,0,-78)},
+		{"k":"go","t":"Harbor Stadium","p":Vector3(-540,0,-381)}]},
+	{"name":"Wonders of Harbor","pay":3000,"xp":180,"story":"Three big places that open as you level up.","steps":[
+		{"k":"lvl","n":4},
+		{"k":"go","t":"Harbor Galleria","p":Vector3(-330,0,-514)},
+		{"k":"lvl","n":7},
+		{"k":"go","t":"The Biosphere","p":Vector3(-500,0,-486)},
+		{"k":"lvl","n":10},
+		{"k":"go","t":"Sky Garden","p":Vector3(-403,0,-610)}]},
+	{"name":"Harbor Legend","pay":5000,"xp":250,"story":"Build a life: work, a home and a name.","steps":[
+		{"k":"jobs","n":10},
+		{"k":"home","n":1},
+		{"k":"lvl","n":15}]},
+]
+const CH_ARRIVE := 28.0
+var ch_idx := 0                    # current chapter (CHAPTERS.size() = all done), saved
+var ch_step := 0                   # current step inside it, saved
+var ch_chip: Button
+var ch_panel: PanelContainer
+var ch_list: Label
+var ch_t := 0.0
+
+func _ch_jobs() -> int:
+	var n := 0
+	for j in career_jobs:
+		n += int(j)
+	return n
+
+func _ch_homes() -> int:
+	var n := 0
+	for i in 8:
+		if homes_owned & (1 << i):
+			n += 1
+	return n
+
+func _ch_step_text(s: Dictionary) -> String:
+	match String(s["k"]):
+		"go": return "Go to %s" % String(s["t"])
+		"deliv": return "Complete %d deliveries (%d/%d)" % [int(s["n"]),mini(deliveries,int(s["n"])),int(s["n"])]
+		"cars": return "Own %d cars (%d/%d)" % [int(s["n"]),mini(_owned_count(),int(s["n"])),int(s["n"])]
+		"trials": return "Clear %d time trials (%d/%d)" % [int(s["n"]),mini(_trial_count(),int(s["n"])),int(s["n"])]
+		"lvl": return "Reach level %d (you are %d)" % [int(s["n"]),_level()]
+		"jobs": return "Finish %d career jobs (%d/%d)" % [int(s["n"]),mini(_ch_jobs(),int(s["n"])),int(s["n"])]
+		"home": return "Buy a home (Menu > ME > My Home)"
+	return ""
+
+func _ch_step_done(s: Dictionary) -> bool:
+	match String(s["k"]):
+		"go":
+			var me: Node3D = car if driving else player
+			var p: Vector3 = s["p"]
+			return Vector2(me.position.x-p.x,me.position.z-p.z).length() < CH_ARRIVE
+		"deliv": return deliveries >= int(s["n"])
+		"cars": return _owned_count() >= int(s["n"])
+		"trials": return _trial_count() >= int(s["n"])
+		"lvl": return _level() >= int(s["n"])
+		"jobs": return _ch_jobs() >= int(s["n"])
+		"home": return _ch_homes() >= int(s["n"])
+	return false
+
+func _ch_target() -> Variant:
+	# Where the guide arrow points for the chapter (lower priority than Directions, careers and quests).
+	if ch_idx >= CHAPTERS.size():
+		return null
+	var steps: Array = CHAPTERS[ch_idx]["steps"]
+	if ch_step >= steps.size() or String(steps[ch_step]["k"]) != "go":
+		return null
+	return steps[ch_step]["p"]
+
+func _ch_finish_chapter() -> void:
+	var C: Dictionary = CHAPTERS[ch_idx]
+	cash += int(C["pay"])
+	if not legacy_rules:
+		bonus_xp += int(C["xp"])
+	var nxt := ""
+	if ch_idx+1 < CHAPTERS.size():
+		nxt = "  Next: %s." % String(CHAPTERS[ch_idx+1]["name"])
+	else:
+		nxt = "  You finished every chapter. You are a Harbor City legend!"
+	_show_toast("CHAPTER %d COMPLETE: %s  +%s  +%d XP.%s" % [ch_idx+1,C["name"],_money(int(C["pay"])),int(C["xp"]),nxt])
+	ch_idx += 1
+	ch_step = 0
+	_save_progress()
+
+func _chapters_tick(delta: float) -> void:
+	if ch_chip == null or player == null:
+		return
+	ch_t -= delta
+	if ch_t > 0.0:
+		return
+	ch_t = 0.25
+	# Move through every step that is already done (several can finish at once).
+	var guard := 0
+	while ch_idx < CHAPTERS.size() and guard < 12:
+		guard += 1
+		var steps: Array = CHAPTERS[ch_idx]["steps"]
+		if ch_step >= steps.size():
+			_ch_finish_chapter()
+			continue
+		if _ch_step_done(steps[ch_step]):
+			if String(steps[ch_step]["k"]) == "go":
+				_show_toast("%s reached!" % String(steps[ch_step]["t"]))
+			ch_step += 1
+			continue
+		break
+	var show := ch_idx < CHAPTERS.size() and not paused and not sky_riding and not bus_riding
+	ch_chip.visible = show
+	if ch_idx >= CHAPTERS.size():
+		return
+	var s: Dictionary = (CHAPTERS[ch_idx]["steps"] as Array)[ch_step]
+	if String(s["k"]) == "go":
+		var p: Vector3 = s["p"]
+		var me: Node3D = car if driving else player
+		var d := Vector2(me.position.x-p.x,me.position.z-p.z).length()
+		ch_chip.text = "  CH %d · %s  ➜ %s · %s  " % [ch_idx+1,CHAPTERS[ch_idx]["name"],s["t"],_dir_fmt(d)]
+	else:
+		ch_chip.text = "  CH %d · %s  ➜ %s  " % [ch_idx+1,CHAPTERS[ch_idx]["name"],_ch_step_text(s)]
+	ch_chip.reset_size()
+	var view := get_viewport().get_visible_rect().size
+	ch_chip.position = Vector2((view.x-ch_chip.size.x)/2.0,138.0)
+
+func _build_chapters_ui(root: Control) -> void:
+	ch_chip = _button("",_open_chapters)
+	ch_chip.add_theme_font_size_override("font_size",17)
+	ch_chip.add_theme_stylebox_override("normal",_panel(Color(0.3,0.16,0.06,0.92),18))
+	ch_chip.custom_minimum_size = Vector2(0,42)
+	root.add_child(ch_chip)
+	ch_chip.hide()
+	ch_panel = PanelContainer.new()
+	ch_panel.add_theme_stylebox_override("panel",_panel(Color(0.06,0.11,0.16,0.97),26))
+	ch_panel.custom_minimum_size = Vector2(820,0)
+	root.add_child(ch_panel)
+	extra_panels.append(ch_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",10)
+	ch_panel.add_child(col)
+	col.add_child(_label("CHAPTERS",28,Color("f0bd62")))
+	ch_list = _label("",17,Color("dff3ff"))
+	ch_list.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ch_list.custom_minimum_size.x = 780
+	col.add_child(ch_list)
+	var foot := HBoxContainer.new()
+	col.add_child(foot)
+	var close := _button("Close",_chapters_close)
+	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(close)
+	ch_panel.hide()
+
+func _chapters_text() -> String:
+	var lines: Array = []
+	for i in CHAPTERS.size():
+		var C: Dictionary = CHAPTERS[i]
+		var steps: Array = C["steps"]
+		if i < ch_idx:
+			lines.append("[DONE]  %d. %s" % [i+1,C["name"]])
+		elif i == ch_idx:
+			lines.append("▶  %d. %s  ·  %s  (+%s, +%d XP)" % [i+1,C["name"],C["story"],_money(int(C["pay"])),int(C["xp"])])
+			for k in steps.size():
+				var mark := "[x]" if k < ch_step else ("[ > ]" if k == ch_step else "[  ]")
+				lines.append("      %s %s" % [mark,_ch_step_text(steps[k])])
+		else:
+			lines.append("      %d. %s  ·  %d steps" % [i+1,C["name"],steps.size()])
+	if ch_idx >= CHAPTERS.size():
+		lines.append("")
+		lines.append("All chapters complete. You have seen all of Harbor City!")
+	return "\n".join(lines)
+
+func _open_chapters() -> void:
+	if not paused:
+		_toggle_menu()
+	ch_list.text = _chapters_text()
+	_open_panel(ch_panel)
+
+func _chapters_close() -> void:
+	if paused:
+		_toggle_menu()
+
+func _smoke_chapters() -> void:
+	# v0.51: chapters cover the whole map, point the guide arrow, advance on arrival and pay out.
+	assert(Vector2(SPAWN_FOOD_COURT.x-FC_BLOCK.x,SPAWN_FOOD_COURT.z-FC_BLOCK.z).length() < 15.0 and SPAWN_FOOD_COURT.z > FC_Z+4.0,"v0.51: the spawn is in front of the food court stands")
+	assert(chat_quick != null and chat_quick.get_child_count() == 4 and HUB_PHRASES.size() == CHAT_SYM_END+4,"v0.51: four quick chat chips")
+	assert(HUB_PHRASES[CHAT_SYM_END] == "SCAN AND JOIN THE GAME" and HUB_PHRASES[CHAT_SYM_END+3] == "SUBSCRIBE & LIKE","v0.51: quick chat phrases")
+	for d in DIR_DESTS:
+		var found := false
+		for C in CHAPTERS:
+			for st in C["steps"]:
+				if String(st["k"]) == "go" and String(st["t"]) == String(d["name"]):
+					found = true
+		assert(found,"v0.51: chapters visit %s" % String(d["name"]))
+	var keep := [ch_idx,ch_step,cash,bonus_xp,player.position,driving,dir_custom,dir_target,quick_on]
+	driving = false
+	dir_target = -1
+	dir_custom = Vector3.INF
+	quick_on = false
+	ch_idx = 0
+	ch_step = 0
+	ch_t = 0.0
+	_chapters_tick(1.0)
+	var gt = _guide_target()
+	assert(gt != null and (gt as Vector3) == (CHAPTERS[0]["steps"][0]["p"] as Vector3),"v0.51: the guide arrow points at the first step")
+	dir_target = 12
+	gt = _guide_target()
+	assert(gt != null and (gt as Vector3).distance_to(_dir_pos(12)) < 0.1,"v0.51: Directions win over the chapter arrow")
+	dir_target = -1
+	player.position = Vector3((CHAPTERS[0]["steps"][0]["p"] as Vector3).x,player.position.y,(CHAPTERS[0]["steps"][0]["p"] as Vector3).z)
+	ch_t = 0.0
+	_chapters_tick(1.0)
+	assert(ch_step == 1,"v0.51: arriving completes the step")
+	ch_idx = CHAPTERS.size()-1
+	ch_step = (CHAPTERS[ch_idx]["steps"] as Array).size()
+	var before := cash
+	ch_t = 0.0
+	_chapters_tick(1.0)
+	assert(ch_idx == CHAPTERS.size() and cash == before+5000,"v0.51: a finished chapter pays out")
+	assert(_chapters_text().contains("All chapters complete"),"v0.51: chapter list shows completion")
+	ch_idx = keep[0]
+	ch_step = keep[1]
+	cash = keep[2]
+	bonus_xp = keep[3]
+	player.position = keep[4]
+	driving = keep[5]
+	dir_custom = keep[6]
+	dir_target = keep[7]
+	quick_on = keep[8]

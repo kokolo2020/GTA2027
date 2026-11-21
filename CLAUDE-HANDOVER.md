@@ -2,7 +2,9 @@
 
 ## START HERE (updated 2026-11-21, after v0.52.0)
 
-**Live version: 0.52.0, versionCode 86** (next is 87). Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
+**Live version: 0.52.0, versionCode 86** (next is 87).
+
+**Committed on main, not released yet: 0.52.1 streamer-mode clean-up** (commit 468f206). Streamer mode shows only the join card (with a ≡ menu button), the play controls, quick chat and active step bars; everything else goes into a hidden holder (`ST_HIDE`, `_st_hide_tick`, `_st_restore`). Open question for Koko: keep the "🎮 N viewers playing now!" badge in streamer mode or hide it too. Release as 0.52.1, versionCode 87, when Koko says "Release". Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
 
 - Repo: /Users/koko/GTA2027 (GitHub kokolo2020/GTA2027). Main script: game/main.gd (~32k lines, everything lives there; new systems are appended at the end with a `# ---- vX.Y: ...` banner). Blender generators: blender-src/*.py. Release notes: docs/releases/vX.Y.Z.md. Screenshots: docs/shots-X.Y.Z/.
 - Branches: develop and release on **main**. The folder is normally checked out on `character-redesign`, which belongs to another session: never merge or push it; `git checkout main` to work and switch back to `character-redesign` when done.

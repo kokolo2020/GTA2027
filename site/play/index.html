@@ -3,7 +3,10 @@
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<meta name="theme-color" content="#0b1620">
 		<title>Harbor City</title>
+		<!-- Harbor City web shell (v0.51.3): a branded loading screen with a real progress bar.
+		     Godot fills in the $GODOT_* placeholders on every web export. -->
 		<style>
 html, body, #canvas {
 	margin: 0;
@@ -13,7 +16,7 @@ html, body, #canvas {
 
 body {
 	color: white;
-	background-color: black;
+	background-color: #0b1620;
 	overflow: hidden;
 	touch-action: none;
 }
@@ -26,68 +29,103 @@ body {
 	outline: none;
 }
 
-#status, #status-splash, #status-progress {
-	position: absolute;
-	left: 0;
-	right: 0;
-}
-
-#status, #status-splash {
-	top: 0;
-	bottom: 0;
-}
-
 #status {
-	background-color: #242424;
+	position: absolute;
+	inset: 0;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;
-	visibility: hidden;
+	gap: 18px;
+	padding: 24px;
+	box-sizing: border-box;
+	background: radial-gradient(ellipse at 50% 35%, #173a52 0%, #0b1620 70%);
+	font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Arial, sans-serif;
+	text-align: center;
+	z-index: 2;
+	transition: opacity 0.5s ease;
 }
 
-#status-splash {
-	max-height: 100%;
-	max-width: 100%;
-	margin: auto;
+#status.done {
+	opacity: 0;
+	pointer-events: none;
 }
 
-#status-splash.show-image--false {
-	display: none;
+#hc-logo {
+	font-size: clamp(34px, 8vw, 64px);
+	font-weight: 800;
+	letter-spacing: 0.06em;
+	line-height: 1;
+	color: #ffe36b;
+	text-shadow: 0 0 24px rgba(79, 227, 255, 0.55), 0 3px 0 #13324a;
 }
 
-#status-splash.fullsize--true {
+#hc-logo span {
+	display: block;
+	margin-top: 10px;
+	font-size: 0.28em;
+	font-weight: 600;
+	letter-spacing: 0.35em;
+	color: #4fe3ff;
+	text-shadow: none;
+}
+
+#hc-loading {
+	font-size: 20px;
+	font-weight: 600;
+	color: #dff3ff;
+}
+
+#hc-bar {
+	width: min(440px, 80vw);
+	height: 16px;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.1);
+	border: 1px solid rgba(79, 227, 255, 0.45);
+	overflow: hidden;
+}
+
+#hc-fill {
 	height: 100%;
-	width: 100%;
-	object-fit: contain;
+	width: 0%;
+	border-radius: 999px;
+	background: linear-gradient(90deg, #4fe3ff, #ffe36b);
+	transition: width 0.2s ease;
 }
 
-#status-splash.use-filter--false {
-	image-rendering: pixelated;
+#hc-fill.busy {
+	width: 35%;
+	animation: hc-busy 1.2s ease-in-out infinite alternate;
 }
 
-#status-progress, #status-notice {
-	display: none;
+@keyframes hc-busy {
+	from { margin-left: 0%; }
+	to { margin-left: 65%; }
 }
 
-#status-progress {
-	bottom: 10%;
-	width: 50%;
-	margin: 0 auto;
+#hc-detail {
+	min-height: 1.3em;
+	font-size: 14px;
+	color: #9fc4d8;
+	font-variant-numeric: tabular-nums;
+}
+
+#hc-tip {
+	max-width: 440px;
+	font-size: 14px;
+	color: #7fa3b8;
 }
 
 #status-notice {
+	display: none;
+	max-width: 520px;
 	background-color: #5b3943;
 	border-radius: 0.5rem;
 	border: 1px solid #9b3943;
 	color: #e0e0e0;
-	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
 	line-height: 1.3;
-	margin: 0 2rem;
-	overflow: hidden;
 	padding: 1rem;
-	text-align: center;
-	z-index: 1;
+	white-space: pre-line;
 }
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
@@ -104,62 +142,82 @@ body {
 		</noscript>
 
 		<div id="status">
-			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="index.png" alt="">
-			<progress id="status-progress"></progress>
+			<div id="hc-logo">HARBOR CITY<span>NEO HARBOR</span></div>
+			<div id="hc-loading">Loading Harbor City…</div>
+			<div id="hc-bar"><div id="hc-fill"></div></div>
+			<div id="hc-detail"></div>
+			<div id="hc-tip">Walk: drag on the left of the screen (or WASD). Look around: drag on the right.</div>
 			<div id="status-notice"></div>
 		</div>
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":21749540,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":17762560,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
 (function () {
+	const params = new URLSearchParams(window.location.search);
+	const joining = params.get('join') === '1';
+	const timing = params.get('timing') === '1';
+	const t0 = performance.now();
 	const statusOverlay = document.getElementById('status');
-	const statusProgress = document.getElementById('status-progress');
+	const loadingText = document.getElementById('hc-loading');
+	const fill = document.getElementById('hc-fill');
+	const detail = document.getElementById('hc-detail');
 	const statusNotice = document.getElementById('status-notice');
+	const marks = {};
+	let done = false;
 
-	let initializing = true;
-	let statusMode = '';
-
-	function setStatusMode(mode) {
-		if (statusMode === mode || !initializing) {
-			return;
-		}
-		if (mode === 'hidden') {
-			statusOverlay.remove();
-			initializing = false;
-			return;
-		}
-		statusOverlay.style.visibility = 'visible';
-		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
-		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
-		statusMode = mode;
+	if (joining) {
+		loadingText.textContent = 'Loading Harbor City… joining the stream';
 	}
 
-	function setStatusNotice(text) {
-		while (statusNotice.lastChild) {
-			statusNotice.removeChild(statusNotice.lastChild);
+	function mark(name) {
+		if (!(name in marks)) {
+			marks[name] = Math.round(performance.now() - t0);
 		}
-		const lines = text.split('\n');
-		lines.forEach((line) => {
-			statusNotice.appendChild(document.createTextNode(line));
-			statusNotice.appendChild(document.createElement('br'));
+	}
+
+	function report() {
+		// Developer-only (?timing=1): send the load times to the local test server.
+		if (!timing || !('ready' in marks) || !('started' in marks) || report.sent) {
+			return;
+		}
+		report.sent = true;
+		const body = JSON.stringify({ marks: marks, ua: navigator.userAgent });
+		fetch('/__timing', { method: 'POST', body: body, keepalive: true }).finally(() => {
+			window.location.replace('about:blank');
 		});
 	}
 
+	function hide() {
+		if (done) {
+			return;
+		}
+		done = true;
+		mark('ready');
+		statusOverlay.classList.add('done');
+		setTimeout(() => statusOverlay.remove(), 600);
+		report();
+	}
+
+	// The game calls this once the city is built (main.gd, v0.51.3).
+	window.hcReady = hide;
+
 	function displayFailureNotice(err) {
 		console.error(err);
+		let text = 'An unknown error occurred.';
 		if (err instanceof Error) {
-			setStatusNotice(err.message);
+			text = err.message;
 		} else if (typeof err === 'string') {
-			setStatusNotice(err);
-		} else {
-			setStatusNotice('An unknown error occurred.');
+			text = err;
 		}
-		setStatusMode('notice');
-		initializing = false;
+		statusNotice.textContent = text;
+		statusNotice.style.display = 'block';
+		loadingText.textContent = 'Harbor City could not start';
+		fill.classList.remove('busy');
+		done = true;
 	}
 
 	const missing = Engine.getMissingFeatures({
@@ -167,52 +225,36 @@ const engine = new Engine(GODOT_CONFIG);
 	});
 
 	if (missing.length !== 0) {
-		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
-			let serviceWorkerRegistrationPromise;
-			try {
-				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
-			} catch (err) {
-				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
-			}
-			// There's a chance that installing the service worker would fix the issue
-			Promise.race([
-				serviceWorkerRegistrationPromise.then((registration) => {
-					if (registration != null) {
-						return Promise.reject(new Error('Service worker already exists.'));
-					}
-					return registration;
-				}).then(() => engine.installServiceWorker()),
-				// For some reason, `getRegistration()` can stall
-				new Promise((resolve) => {
-					setTimeout(() => resolve(), 2000);
-				}),
-			]).then(() => {
-				// Reload if there was no error.
-				window.location.reload();
-			}).catch((err) => {
-				console.error('Error while registering service worker:', err);
-			});
-		} else {
-			// Display the message as usual
-			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
-			displayFailureNotice(missingMsg + missing.join('\n'));
-		}
-	} else {
-		setStatusMode('progress');
-		engine.startGame({
-			'onProgress': function (current, total) {
-				if (current > 0 && total > 0) {
-					statusProgress.value = current;
-					statusProgress.max = total;
-				} else {
-					statusProgress.removeAttribute('value');
-					statusProgress.removeAttribute('max');
-				}
-			},
-		}).then(() => {
-			setStatusMode('hidden');
-		}, displayFailureNotice);
+		displayFailureNotice('Your browser is missing features Harbor City needs:\n' + missing.join('\n'));
+		return;
 	}
+
+	const totalBytes = Object.values(GODOT_CONFIG['fileSizes'] || {}).reduce((a, b) => a + b, 0);
+	engine.startGame({
+		'onProgress': function (current, total) {
+			const max = total > 0 ? total : totalBytes;
+			if (current > 0 && max > 0) {
+				fill.classList.remove('busy');
+				const pct = Math.min(100, Math.round((current / max) * 100));
+				fill.style.width = pct + '%';
+				detail.textContent = pct + '%  ·  ' + (current / 1048576).toFixed(1) + ' of ' + (max / 1048576).toFixed(1) + ' MB';
+				if (current >= max) {
+					mark('downloaded');
+				}
+			} else {
+				fill.classList.add('busy');
+			}
+		},
+	}).then(() => {
+		mark('started');
+		report();
+		// Downloaded; the city is being built now.
+		fill.style.width = '100%';
+		loadingText.textContent = joining ? 'Building the city… almost in the stream' : 'Building the city…';
+		detail.textContent = '';
+		// Safety net: never keep the screen up if the game forgets to say it's ready.
+		setTimeout(hide, 30000);
+	}, displayFailureNotice);
 }());
 		</script>
 	</body>

@@ -1,8 +1,8 @@
 # Harbor City — current handover
 
-## START HERE (updated 2026-11-21, after v0.51.2)
+## START HERE (updated 2026-11-21, after v0.51.3)
 
-**Live version: 0.51.2, versionCode 84** (next is 85). Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
+**Live version: 0.51.3, versionCode 85** (next is 86). Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
 
 - Repo: /Users/koko/GTA2027 (GitHub kokolo2020/GTA2027). Main script: game/main.gd (~32k lines, everything lives there; new systems are appended at the end with a `# ---- vX.Y: ...` banner). Blender generators: blender-src/*.py. Release notes: docs/releases/vX.Y.Z.md. Screenshots: docs/shots-X.Y.Z/.
 - Branches: develop and release on **main**. The folder is normally checked out on `character-redesign`, which belongs to another session: never merge or push it; `git checkout main` to work and switch back to `character-redesign` when done.
@@ -21,11 +21,12 @@
 8. Verify live: release.json version + sha256, page edition and button, /play/index.pck content-length, downloaded APK sha256. Append a "Released and verified" line here, commit, push, switch back to character-redesign.
 
 ### Developer tools in the game
-- `--city-shots` with HC_CAM="name;x,y,z;lx,ly,lz;hour[;extra frames]" and HC_SHOTS=<dir> saves one frame. Extras: HC_NOHUD=1 (no buttons), HC_PHOTO=1 (Photo mode), HC_FOLLOW=1 (Follow view, shows the screen arrow), HC_MENU=<tab>, HC_HOME=<i> (+HC_HOMETOP=1), HC_CAREER=<i>, HC_LEVEL=<n>, HC_SHOWOFF, HC_PEERS.
+- `--city-shots` with HC_CAM="name;x,y,z;lx,ly,lz;hour[;extra frames]" and HC_SHOTS=<dir> saves one frame. Extras: HC_NOHUD=1 (no buttons), HC_PHOTO=1 (Photo mode), HC_VIEWERS=<n> (streamer viewer badge), HC_SJ=<name> (stream-join welcome banner), HC_FOLLOW=1 (Follow view, shows the screen arrow), HC_MENU=<tab>, HC_HOME=<i> (+HC_HOMETOP=1), HC_CAREER=<i>, HC_LEVEL=<n>, HC_SHOWOFF, HC_PEERS.
 - `--bench --web-lite` with HC_BENCH_AT="x,z,yaw" prints fps, draw calls, primitives, process/physics ms; HC_SKIP="biosphere,galleria,..." skips building parts.
 - `--nav-check` (walk grids), `--home-check` (walking inside a home).
 
 ### What is in the game now (newest first)
+- 0.51.3: short link kokolo2020.github.io/GTA2027/p (site/p, site/join redirect to /play/?join=1); ?join=1 = `_stream_join_check()`: online at once, crate after 2 min, lands next to the latest peer with the `st` (streaming) flag + welcome banner; streamer viewer badge (`_viewer_count`, flashes on join); web shell game/web_shell.html (loading screen; game calls window.hcReady when built; ?timing=1 posts load marks to /__timing for local measuring); export excludes: web drops textures/*_nor.jpg, both drop models/player.glb + models/tex/*. Web pck 17.8 MB (was 21.7). Safari on the Mac: ~11.6 s to playable, mostly building the city in _ready (the next lever if loading needs to be faster); halving web textures would save ~5 MB more.
 - 0.51.2: Photo mode (camera button under the minimap; hides HUD CanvasLayers as a whole and drops render layer 20 = UI3D_LAYER from the camera; name tags/rings/bubbles/arrows are put on it with `_ui3d()`; new 3D overlays must call it too), Restart chapters (ch_best saved, no double pay), `_hud_top_stack()` lays out quest bar > chapter bar > screen arrow, quick chat chips hidden when `web_build`.
 - 0.51.1: chapter step bursts/chimes and chapter-complete confetti banner, chapter arrow before daily quests, chapter bar under the arrow, quick chat bubble at head height, join/leave messages in chat log and feed.
 - 0.51: Chapters (8 chapters visiting every district, Menu > PLAY > Chapters, chip under the top bar; `_ch_target()` is a low-priority guide target below Directions/careers/quests/trials), four always-on quick chat chips (HUB_PHRASES[CHAT_SYM_END..]), new players spawn at SPAWN_FOOD_COURT.
@@ -725,3 +726,7 @@ https://github.com/kokolo2020/GTA2027/releases/tag/v0.51.1 · source commit e316
 ## v0.51.2 — Released and verified 2026-11-21
 
 https://github.com/kokolo2020/GTA2027/releases/tag/v0.51.2 · source commit 0e0278e (tag v0.51.2) · APK SHA256 9ce8c0eab0a57294b68e630119a8e0916200189f0e0b32e0416a83477b807962 (50125693 bytes, code 84, cert 5168f1fa...547b). Smoke test passed with a time guard. Live release.json, page edition/button, /play/index.pck size and downloaded APK hash verified. Not checked on a phone.
+
+## v0.51.3 — Released and verified 2026-11-21
+
+https://github.com/kokolo2020/GTA2027/releases/tag/v0.51.3 · source commit 8351434 (tag v0.51.3) · APK SHA256 3e0d90c68813f4f1f70d6f8325acbfec239b961be4cd76e87bbf5d3f3afd783b (49633075 bytes, code 85, cert 5168f1fa...547b). Smoke test passed with a time guard. Live release.json, page edition/button, /play/index.pck size (17762560), new loading screen, /p redirect and downloaded APK hash verified. Joining a live stream from a second device not tested yet.

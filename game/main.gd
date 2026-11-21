@@ -334,6 +334,7 @@ func _ready() -> void:
 	add_child(radio_player)
 	_build_hud()
 	_load_progress()
+	_build_place_signs()
 	_quick_daily_check()
 	_web_perf_setup()
 	_night_setup()
@@ -352,7 +353,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.47: a new tidy menu, wider pavements downtown and open street stalls with hot dogs, drinks, news and flowers!")
+	_show_toast("Harbor City 0.48: runs about twice as fast in busy places. The Galleria, Biosphere and Sky Garden open at levels 4, 7 and 10.")
 	booted = true
 	_sg_boot_note()
 	_online_autostart()
@@ -8574,6 +8575,7 @@ func _process(delta: float) -> void:
 	_strollers_tick(delta)
 	_dir_tick(delta)
 	_gc_tick(delta)
+	_places_tick(delta)
 	_ga_inner_tick()
 	_cash_pill_tick()
 	_lb_tick(delta)
@@ -16882,6 +16884,9 @@ func _travel_block_reason() -> String:
 	return ""
 
 func _travel_open(i: int) -> bool:
+	var lk := _place_lock_of(String(CHECKPOINTS[i]["name"]))
+	if lk >= 0 and not place_open[lk]:
+		return false
 	return _area_open(int(TRAVEL_AREA[i])) or i == checkpoint_id
 
 func _open_travel() -> void:
@@ -20036,7 +20041,7 @@ func _bio_pass_ok() -> bool:
 	return bio_pass_day == _pz_today()
 
 func _ticket_near() -> bool:
-	if driving or player == null or paused:
+	if driving or player == null or paused or not place_open[1]:
 		return false
 	return Vector2(player.position.x-BIO_TICKET.x,player.position.z-BIO_TICKET.z).length() < 2.4
 
@@ -21101,7 +21106,7 @@ func _bio_make_butterfly(A: Dictionary) -> void:
 
 # ---------------- animation, spotting and rewards ----------------
 func _biosphere_tick(delta: float) -> void:
-	if bio_root == null or player == null or paused:
+	if bio_root == null or player == null or paused or not place_open[1]:
 		return
 	var me: Node3D = car if driving else player
 	var near := me.position.distance_to(BIO_C) < 170.0
@@ -23072,6 +23077,8 @@ func _build_ga_fun() -> void:
 	_ga_text("Step on the pads. Prize at the top, once a day!",SKY_PADS[0][0]+Vector3(0,2.0,0),Color("ffffff"),32,20.0,0.0,true).pixel_size = 0.006
 
 func _ga_fun_tick(delta: float) -> void:
+	if not place_open[0]:
+		return
 	for n in ga_spin:
 		(n as Node3D).rotation.y += delta*0.8
 	if player == null or driving or paused or ga_root == null:
@@ -23116,7 +23123,7 @@ func _sky_finish() -> void:
 	_save_progress()
 
 func _extra_near() -> int:
-	if driving or player == null or paused:
+	if driving or player == null or paused or not place_open[0]:
 		return -1
 	for i in ga_extra_spots.size():
 		var p: Vector3 = ga_extra_spots[i][1]
@@ -23134,7 +23141,7 @@ func _extra_open(i: int) -> void:
 		"seeds": _sg_open("shop",-1)
 
 func _store_near() -> int:
-	if driving or player == null or paused:
+	if driving or player == null or paused or not place_open[0]:
 		return -1
 	for e in ga_spots:
 		var p: Vector3 = e[1]
@@ -23524,7 +23531,7 @@ func _sg_refresh(p: int) -> void:
 	spark.visible = pr >= 1.0
 
 func _sky_garden_tick(delta: float) -> void:
-	if sg_root == null or player == null:
+	if sg_root == null or player == null or not place_open[2]:
 		return
 	if sg_rainbow != null:
 		var c := Color.from_hsv(fposmod(clock*0.15,1.0),0.75,1.0)
@@ -23561,7 +23568,7 @@ func _sg_boot_note() -> void:
 # ---------------- interacting ----------------
 func _sg_near() -> int:
 	# The bed (0-7), the Seed Stall (100) or the Codex (101) you are standing at; -1 for none.
-	if driving or player == null or paused or sg_root == null:
+	if driving or player == null or paused or sg_root == null or not place_open[2]:
 		return -1
 	if player.position.y < SG_TOP+0.4:
 		return -1
@@ -28886,6 +28893,7 @@ func _stroller(A: Dictionary, parent: Node3D, seed_i: int, kid := false) -> Dict
 	var pp := _cm_person(parent,s0["p"],0.0,seed_i,kid)
 	if pp.is_empty():
 		return {}
+	A["root"] = parent
 	pp["walk"] = true
 	var r := RandomNumberGenerator.new()
 	r.seed = seed_i*7919+13
@@ -29002,6 +29010,8 @@ func _strollers_tick(delta: float) -> void:
 	var cp := cam.global_position
 	if not nav_busy:
 		for A in nav_areas:
+			if A.has("root") and not (A["root"] as Node3D).is_visible_in_tree():
+				continue
 			if not bool(A["ready"]) and not bool(A["building"]) and Vector2(cp.x-(A["centre"] as Vector3).x,cp.z-(A["centre"] as Vector3).z).length() < NAV_NEAR+float(A["radius"]):
 				_nav_build(A)
 				break
@@ -29012,7 +29022,7 @@ func _strollers_tick(delta: float) -> void:
 		if not bool(W["placed"]):
 			continue
 		var nd: Node3D = W["node"]
-		if not is_instance_valid(nd):
+		if not is_instance_valid(nd) or not nd.is_visible_in_tree():
 			continue
 		var gp := nd.global_position
 		var far := gp.distance_squared_to(cp) > STROLL_FAR*STROLL_FAR
@@ -29133,6 +29143,7 @@ func _smoke_strollers() -> void:
 	var keep_cam := camera.global_transform
 	cam_lock = true
 	camera.global_position = Vector3(GA_C.x,4.0,-590.0)
+	_ga_inner_tick()
 	var who: Array = []
 	var before: Array = []
 	for W in strollers:
@@ -29176,6 +29187,22 @@ func _smoke_strollers() -> void:
 	assert(gi >= 0 and (sky_st_info[gi]["entrance"] as Vector3).z < -300.0,"v0.44: Grand Central station opens onto the plaza")
 	assert(lofts.size() >= 15,"v0.44: new lofts built (%d)" % lofts.size())
 	assert(street_stalls.size() >= 8,"v0.47: street stalls downtown (%d)" % street_stalls.size())
+	# v0.48: places lock below their level (nothing drawn or solid, sign shown) and open again.
+	place_test_level = 1
+	_places_refresh()
+	for i in PLACE_LOCKS.size():
+		assert(not place_open[i] and not _place_root(i).visible and (place_signs[i] as Node3D).visible,"v0.48: %s locked at level 1" % PLACE_LOCKS[i]["name"])
+		var ci := -1
+		for k in CHECKPOINTS.size():
+			if String(CHECKPOINTS[k]["name"]) == String(PLACE_LOCKS[i]["name"]):
+				ci = k
+		assert(ci < 0 or not _travel_open(ci) or ci == checkpoint_id,"v0.48: no fast travel to a locked place")
+	place_test_level = 20
+	_places_refresh()
+	for i in PLACE_LOCKS.size():
+		assert(place_open[i] and _place_root(i).visible and not (place_signs[i] as Node3D).visible,"v0.48: %s open at level 20" % PLACE_LOCKS[i]["name"])
+	place_test_level = -1
+	_places_refresh()
 	for c in street_stalls:
 		assert(not _on_road(c),"v0.47: stall at %s stands off the road" % str(c))
 	for L in lofts:
@@ -30502,3 +30529,102 @@ func _cull_people_in(root: Node3D, distance: float) -> void:
 		if c is MultiMeshInstance3D or c is CollisionObject3D or c is Label3D or c is MeshInstance3D:
 			continue
 		_cull_person(c,distance)
+
+# ---------------- v0.48: places that open as you level up ----------------
+# The Galleria, the Biosphere and the Sky Garden open at levels 4, 7 and 10. Until then they are a
+# fenced site with a sign; nothing inside is drawn, simulated or solid. Tests always see them open.
+const PLACE_LOCKS := [
+	{"name":"Harbor Galleria","level":4,"sign":Vector3(-330,0,-480)},
+	{"name":"The Biosphere","level":7,"sign":Vector3(-500,0,-480)},
+	{"name":"Sky Garden","level":10,"sign":Vector3(-403,0,-618)},
+]
+var place_open := [true,true,true]
+var place_signs: Array = []
+var place_t := 0.0
+var place_test_level := -1      # tests: pretend to be this level
+
+func _place_lock_of(nm: String) -> int:
+	for i in PLACE_LOCKS.size():
+		if String(PLACE_LOCKS[i]["name"]) == nm:
+			return i
+	return -1
+
+func _place_root(i: int) -> Node3D:
+	return [ga_root,bio_root,sg_root][i]
+
+func _place_unlocked(i: int) -> bool:
+	if place_test_level < 0 and OS.get_environment("HC_LEVEL") != "":
+		place_test_level = int(OS.get_environment("HC_LEVEL"))     # developer screenshots
+	if place_test_level < 0 and ("--smoke-test" in OS.get_cmdline_user_args() or "--nav-check" in OS.get_cmdline_user_args() or "--bake-map" in OS.get_cmdline_user_args() or "--city-shots" in OS.get_cmdline_user_args()):
+		return true
+	var lv := place_test_level if place_test_level >= 0 else _level_for(_xp())
+	return lv >= int(PLACE_LOCKS[i]["level"])
+
+func _build_place_signs() -> void:
+	for i in PLACE_LOCKS.size():
+		var L: Dictionary = PLACE_LOCKS[i]
+		var n := Node3D.new()
+		n.position = L["sign"]
+		add_child(n)
+		# A striped site fence with a big board.
+		for k in 7:
+			var b := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(1.6,0.9,0.18)
+			b.mesh = bm
+			b.material_override = _material(Color("f2b02e") if k % 2 == 0 else Color("f4f1ea"))
+			b.position = Vector3(-5.6+float(k)*1.85,0.6,0)
+			n.add_child(b)
+		var post := MeshInstance3D.new()
+		var pm := BoxMesh.new()
+		pm.size = Vector3(0.25,5.0,0.25)
+		post.mesh = pm
+		post.material_override = _fc_chrome()
+		post.position = Vector3(0,2.5,-0.4)
+		n.add_child(post)
+		var board := MeshInstance3D.new()
+		var bbm := BoxMesh.new()
+		bbm.size = Vector3(8.6,2.4,0.2)
+		board.mesh = bbm
+		board.material_override = _material(Color("1d2a33"))
+		board.position = Vector3(0,4.6,-0.4)
+		n.add_child(board)
+		var t := Label3D.new()
+		t.text = "%s\nOPENS AT LEVEL %d" % [String(L["name"]).to_upper(),int(L["level"])]
+		t.font_size = 72
+		t.pixel_size = 0.012
+		t.modulate = Color("ffd27a")
+		t.outline_size = 0
+		t.position = Vector3(0,4.6,-0.28)
+		n.add_child(t)
+		var t2 := t.duplicate() as Label3D
+		t2.rotation.y = PI
+		t2.position = Vector3(0,4.6,-0.52)
+		n.add_child(t2)
+		n.visible = false
+		place_signs.append(n)
+	_places_refresh(true)
+
+func _places_refresh(first := false) -> void:
+	for i in PLACE_LOCKS.size():
+		var root := _place_root(i)
+		if root == null:
+			continue
+		var open := _place_unlocked(i)
+		if open == bool(place_open[i]) and not first:
+			continue
+		place_open[i] = open
+		root.visible = open
+		root.process_mode = Node.PROCESS_MODE_INHERIT if open else Node.PROCESS_MODE_DISABLED
+		if i < place_signs.size():
+			(place_signs[i] as Node3D).visible = not open
+		if open and not first:
+			_show_toast("%s is open now! Find it with Menu > Directions." % PLACE_LOCKS[i]["name"])
+			_feed_add("NEW PLACE OPEN: %s" % PLACE_LOCKS[i]["name"],"")
+
+func _places_tick(delta: float) -> void:
+	place_t -= delta
+	if place_t > 0.0 or place_signs.is_empty():
+		return
+	place_t = 1.0
+	_places_refresh()

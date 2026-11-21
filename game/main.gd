@@ -2114,6 +2114,7 @@ func _online_handle(text: String) -> void:
 		if reply is Dictionary and String(reply.get("status","")) == "ok":
 			if online_state == 2:
 				online_state = 3
+				online_joined_at = Time.get_ticks_msec()/1000.0
 				_show_toast("Online! You are %s." % online_name)
 				_online_refresh_button()
 		elif reply is Dictionary and String(reply.get("status","")) == "error":
@@ -2144,6 +2145,7 @@ func _online_peer_update(p: Dictionary) -> void:
 			return
 		online_peers[id] = _online_make_peer(id,_online_clean_name(String(p.get("n","Driver"))),clampi(int(p.get("c",0)),0,CARS.size()-1))
 		(online_peers[id]["node"] as Node3D).position = pos
+		_announce_join(String(online_peers[id]["name"]),int(p.get("l",1)))
 	var peer: Dictionary = online_peers[id]
 	peer["target"] = pos
 	peer["yaw"] = float(p.get("r",0.0))
@@ -2386,6 +2388,7 @@ func _online_update_peers(delta: float) -> void:
 			lab.text = "%s · %d" % [tag,int(peer["lvl"])]+(" ★" if friends.has(String(peer.get("id",""))) else "")+("" if role == 0 else (" · THIEF" if role == 1 else " · POLICE"))
 			lab.modulate = Color("ffb020") if role == 1 else (Color("9cc4ff") if role == 2 else _tier_color(int(peer.get("at",-1))))
 	for id in gone:
+		_announce_leave(String(online_peers[id].get("name","")))
 		(online_peers[id]["node"] as Node3D).queue_free()
 		online_peers.erase(id)
 	if not gone.is_empty():
@@ -32299,6 +32302,17 @@ func _smoke_chapters() -> void:
 	_chapters_tick(1.0)
 	assert(ch_idx == CHAPTERS.size() and cash == before+5000,"v0.51: a finished chapter pays out")
 	assert(ch_fx_n > fx0 and lvl_root.visible and lvl_title.text.begins_with("CHAPTER"),"v0.51.1: finishing a chapter celebrates with a banner")
+	# v0.51.1: a player coming online is announced in the chat log and the feed.
+	var jm := join_msgs
+	var cl := chat_lines.size()
+	online_joined_at = -100.0
+	_online_peer_update({"i":"join1","n":"NeonPanda30","x":10.0,"y":0.9,"z":20.0,"r":0.0,"d":0,"l":7})
+	assert(join_msgs == jm+1 and chat_lines.size() == cl+1 and String(chat_lines[chat_lines.size()-1]["text"]).contains("NeonPanda30 joined"),"v0.51.1: joining players are announced")
+	_online_peer_update({"i":"join1","n":"NeonPanda30","x":11.0,"y":0.9,"z":20.0,"r":0.0,"d":0,"l":7})
+	assert(join_msgs == jm+1,"v0.51.1: only announced once")
+	if online_peers.has("join1"):
+		(online_peers["join1"]["node"] as Node3D).queue_free()
+		online_peers.erase("join1")
 	assert(_chapters_text().contains("All chapters complete"),"v0.51: chapter list shows completion")
 	ch_idx = keep[0]
 	ch_step = keep[1]
@@ -32336,3 +32350,40 @@ func _step_sound() -> AudioStreamWAV:
 	step_sound.mix_rate = sr
 	step_sound.data = data
 	return step_sound
+
+# ---------------- v0.51.1: join and leave messages ----------------
+# When a player comes online, everyone who is already playing sees it in the chat log and the feed,
+# with a chime. The players you find when you join yourself are listed once, quietly, instead.
+var online_joined_at := -100.0
+var join_quiet_list: Array = []
+var join_msgs := 0
+
+func _announce_join(who: String, lvl: int) -> void:
+	if who == "":
+		return
+	var now := Time.get_ticks_msec()/1000.0
+	if now-online_joined_at < 4.0:
+		# Already here when you came online.
+		join_quiet_list.append(who)
+		if join_quiet_list.size() == 1:
+			get_tree().create_timer(4.0).timeout.connect(_announce_already_here)
+		return
+	join_msgs += 1
+	_chat_log_add("★","%s joined the game! (Lv %d)" % [who,clampi(lvl,1,40)],false)
+	_feed_add_system("★ %s joined the game! Say hi with CHAT." % who)
+	if fx_player != null and "--smoke-test" not in OS.get_cmdline_user_args():
+		fx_player.stream = _step_sound()
+		fx_player.play()
+
+func _announce_already_here() -> void:
+	if join_quiet_list.is_empty():
+		return
+	var n := join_quiet_list.size()
+	var names := ", ".join(PackedStringArray(join_quiet_list.slice(0,3)))
+	_chat_log_add("★","Playing now: %s%s" % [names," and %d more" % (n-3) if n > 3 else ""],false)
+	join_quiet_list.clear()
+
+func _announce_leave(who: String) -> void:
+	if who == "" or not online_on:
+		return
+	_chat_log_add("★","%s left the game." % who,false)

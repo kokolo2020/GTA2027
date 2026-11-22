@@ -1,5 +1,10 @@
 extends Node3D
 
+const Careers := preload("res://careers.gd")
+var careers = Careers.new(self)
+const RoadBarrier := preload("res://road_barrier.gd")
+var road_barrier = RoadBarrier.new(self)
+
 const WorldBiosphere := preload("res://world_biosphere.gd")
 var world_bio
 ## Harbor City: original single-player driving prototype. No external assets or services.
@@ -344,8 +349,9 @@ func _ready() -> void:
 	_night_setup()
 	_refresh_time_button()
 	_refresh_checkpoints()
+	road_barrier.build()
 	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args()
-	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--style-shots"]:
+	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -357,7 +363,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.7: Trials and Chase removed from the menu, Ridge, Bay Promenade and Marina Heights no longer destinations.")
+	_show_toast("Harbor City 0.55.8: a glowing barrier keeps cars on the roads. Job stops and checkpoints sit beside the road.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()
@@ -415,6 +421,28 @@ func _ready() -> void:
 			var e: Vector3 = sky_st_info[i]["entrance"]
 			print("SKYST ",i," ",e," road=",_on_road(e)," blk=",_blocker(e+Vector3(0,1.0,0),0.6)," side=",sky_st_info[i]["side"])
 		print("SKYLEN ",sky_len," period ",sky_period," pillars ",sky_pillars.size())
+		get_tree().quit()
+	elif "--barrier-shots" in OS.get_cmdline_user_args():
+		driving = true
+		player.hide()
+		player.get_child(0).set_deferred("disabled",true)
+		var spots := [["rb-city-road",Vector3(-80,0.8,1),PI/2.0],["rb-junction",Vector3(20,0.8,0),PI/2.0],["rb-highway",Vector3(1,0.8,-110),0.0],["rb-park-edge",Vector3(-300,0.8,-141),PI/2.0],["rb-beach",Vector3(300,0.8,151),PI/2.0]]
+		for sp in spots:
+			car.position = sp[1]
+			car.rotation = Vector3(0,float(sp[2]),0)
+			car.velocity = Vector3.ZERO
+			for i in 50:
+				await get_tree().physics_frame
+			await _save_shot(String(sp[0]))
+		print("BARRIERSHOTS DONE")
+		get_tree().quit()
+	elif "--roads-dump" in OS.get_cmdline_user_args():
+		await get_tree().physics_frame
+		for r in road_rects:
+			print("RR ",snappedf(r[0].x,0.01)," ",snappedf(r[0].y,0.01)," ",snappedf(r[1].x,0.01)," ",snappedf(r[1].y,0.01)," ",snappedf(float(r[2]),0.001))
+		for c in CHECKPOINTS:
+			print("CP ",c["name"]," ",c["pos"].x," ",c["pos"].z)
+		print("ROADSDUMP DONE ",road_rects.size())
 		get_tree().quit()
 	elif "--road-check" in OS.get_cmdline_user_args():
 		await get_tree().physics_frame
@@ -7703,6 +7731,7 @@ func _physics_process(delta: float) -> void:
 	_treasure_tick(delta)
 	_fm_tick(delta)
 	_update_peds(delta)
+	road_barrier.tick(delta)
 	var keyboard := Vector2(
 		float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT))-float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)),
 		float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))-float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
@@ -9181,6 +9210,7 @@ func _smoke_test() -> void:
 	_smoke_sites_reachable()
 	_smoke_nick()
 	await _smoke_guidance_checkpoints()
+	road_barrier.smoke()
 	checkpoint_id = saved_checkpoint
 	_refresh_checkpoints()
 	_save_progress()
@@ -9957,6 +9987,8 @@ func _blocked_at(pos: Vector3, radius := 0.5) -> bool:
 	if blocked_skip_traffic:
 		for t in traffic:
 			skip.append((t["node"] as CollisionObject3D).get_rid())
+	if road_barrier.body != null:
+		skip.append(road_barrier.body.get_rid())
 	query.exclude = skip
 	return not get_world_3d().direct_space_state.intersect_shape(query,1).is_empty()
 
@@ -9966,7 +9998,7 @@ func _blocker(pos: Vector3, radius: float) -> String:
 	sphere.radius = radius
 	query.shape = sphere
 	query.transform = Transform3D(Basis.IDENTITY,pos)
-	query.exclude = [player.get_rid(),car.get_rid()]
+	query.exclude = [player.get_rid(),car.get_rid(),road_barrier.body.get_rid() if road_barrier.body != null else car.get_rid()]
 	var hits := get_world_3d().direct_space_state.intersect_shape(query,1)
 	if hits.is_empty():
 		return "nothing"
@@ -12868,8 +12900,8 @@ const CHECKPOINTS := [
 	{"name":"North Highway","pos":Vector3(12,0,-72)},
 	{"name":"Maple Suburbs","pos":Vector3(12,0,-206)},
 	{"name":"Harbor Airfield","pos":Vector3(13,0,-318)},
-	{"name":"Central Park","pos":Vector3(-430,0,-206)},
-	{"name":"Union Station","pos":Vector3(-196,0,-317)},
+	{"name":"Central Park","pos":Vector3(-368,0,-206)},
+	{"name":"Union Station","pos":Vector3(-196,0,-311)},
 	{"name":"Marina Heights","pos":Vector3(-10,0,116)},
 	{"name":"Harbor Dome","pos":Vector3(148,0,36)},
 	{"name":"Civic Center","pos":Vector3(-150,0,23)},
@@ -13108,7 +13140,7 @@ func _activate_checkpoint(i: int) -> void:
 func _checkpoint_spawn() -> Array:
 	# [player position, car position] for the saved checkpoint.
 	var pos: Vector3 = CHECKPOINTS[checkpoint_id]["pos"]
-	return [pos+Vector3(0,0.75,0),pos+Vector3(4.5,0.8,0)]
+	return [pos+Vector3(0,0.75,0),road_barrier.cp_car(pos)]
 
 func _spawn_at_checkpoint() -> void:
 	if checkpoint_id < 0 or checkpoint_id >= CHECKPOINTS.size():
@@ -16901,6 +16933,7 @@ func _call_car() -> bool:
 		_show_toast("No space for your car here. Step out into the open street.")
 		return false
 	_car_back()
+	spot = road_barrier.call_car_spot(spot)
 	car.position = spot
 	car.rotation = Vector3(0,player.rotation.y,0)
 	car.velocity = Vector3.ZERO
@@ -17200,7 +17233,7 @@ func _travel_to(i: int) -> void:
 	# v0.34.8: on foot you travel alone (your car stays home, CALL CAR brings it); driving, it comes too.
 	var with_car := driving
 	if with_car:
-		car.position = pos+Vector3(4.5,0.8,0)
+		car.position = road_barrier.cp_car(pos)
 		car.rotation = Vector3.ZERO
 		car.velocity = Vector3.ZERO
 		car_speed = 0.0
@@ -30848,141 +30881,26 @@ var career_rows: Array = []
 var career_spots: Array = []
 var career_test := false         # tests: no randomness in spot picks
 
-func _career_rank(i: int) -> int:
-	var r := 0
-	for k in CAREER_RANKS.size():
-		if int(career_jobs[i]) >= int(CAREER_RANKS[k][1]):
-			r = k
-	return r
 
 func _career_rank_name(i: int) -> String:
-	return String(CAREER_RANKS[_career_rank(i)][0])
+	return careers._career_rank_name(i)
 
 func _career_mult(i: int) -> float:
-	return float(CAREER_RANKS[_career_rank(i)][2])
+	return careers._career_mult(i)
 
-func _career_spots() -> Array:
-	# Places a job can be: quest stops, checkpoints and direction targets (all on walkable ground,
-	# off the road), minus the raceway and anything locked.
-	if not career_spots.is_empty():
-		return career_spots
-	var raw: Array = []
-	for q in QUICK:
-		raw.append(q["pos"])
-	for c in CHECKPOINTS:
-		if _place_lock_of(String(c["name"])) < 0 and not _hidden_place(String(c["name"])):
-			raw.append(c["pos"])
-	for d in DIR_DESTS:
-		if _place_lock_of(String(d["name"])) < 0:
-			raw.append(d["pos"])
-	for st in street_stalls:
-		raw.append((st as Vector3)+Vector3(0,0,0))
-	for p: Vector3 in raw:
-		if p.x > 200.0 and p.z < -35.0 and p.z > -445.0:
-			continue          # raceway
-		var dup := false
-		for q: Vector3 in career_spots:
-			if q.distance_to(p) < 20.0:
-				dup = true
-		if not dup:
-			career_spots.append(p)
-	return career_spots
 
-func _career_pick(from: Vector3, dmin: float, dmax: float) -> Vector3:
-	var spots := _career_spots()
-	var ok: Array = []
-	for p: Vector3 in spots:
-		var d := Vector2(p.x-from.x,p.z-from.z).length()
-		if d >= dmin and d <= dmax:
-			ok.append(p)
-	if ok.is_empty():
-		ok = spots
-	return ok[0] if career_test else ok[randi() % ok.size()]
 
 func _career_block_reason() -> String:
-	if race_car:
-		return "Finish or quit the race first."
-	if chase_mode != 0 or online_role != 0:
-		return "Finish the chase first."
-	if trial_active >= 0:
-		return "Cancel the time trial first."
-	if bus_riding or sky_riding:
-		return "Get off first."
-	if home_in >= 0:
-		return "Leave your home first."
-	return ""
+	return careers._career_block_reason()
 
 func _career_start(i: int) -> void:
-	if _level() < int(CAREERS[i]["level"]) and not career_test:
-		_show_toast("%s opens at level %d." % [CAREERS[i]["name"],int(CAREERS[i]["level"])])
-		return
-	var why := _career_block_reason()
-	if why != "":
-		_show_toast(why)
-		return
-	if career >= 0:
-		_career_end(false)
-	career = i
-	_apply_car()
-	if String(CAREERS[i]["id"]) == "police":
-		_career_lights(Color("ff3b3b"),Color("3b7bff"))
-	if paused:
-		_toggle_menu()
-	_career_next()
-	_show_toast("Shift started: %s (%s). %s" % [CAREERS[i]["name"],_career_rank_name(i),"Get in your car." if not driving else "Follow the arrow."])
+	careers._career_start(i)
 
-func _career_lights(left: Color, right: Color) -> void:
-	# Roof lights that flash (police from the start of the shift, the ambulance once the patient is on board).
-	if not career_light.is_empty():
-		return
-	for sd in [-1,1]:
-		var bl := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = Vector3(0.36,0.12,0.2)
-		bl.mesh = bm
-		bl.material_override = _fc_glow(left if sd < 0 else right)
-		bl.position = Vector3(float(sd)*0.24,1.27,0.25)
-		car.add_child(bl)
-		career_light.append(bl)
-		police_lights.append([bl,sd])
 
-func _career_lights_off() -> void:
-	for bl in career_light:
-		for L in police_lights.duplicate():
-			if L[0] == bl:
-				police_lights.erase(L)
-		if is_instance_valid(bl):
-			(bl as Node3D).queue_free()
-	career_light.clear()
 
 func _career_end(announce := true) -> void:
-	if career < 0:
-		return
-	if not cs.is_empty():
-		_cs_finish(false)
-	_career_clear_job()
-	_career_lights_off()
-	_siren(false)
-	var was := career
-	career = -1
-	_apply_car()
-	if cj_bar != null:
-		cj_bar.hide()
-	if announce:
-		_show_toast("Shift over. %s: %d jobs, %s rank." % [CAREERS[was]["name"],int(career_jobs[was]),_career_rank_name(was)])
+	careers._career_end(announce)
 
-func _career_clear_job() -> void:
-	for n in cj_nodes:
-		if is_instance_valid(n):
-			(n as Node).queue_free()
-	cj_nodes.clear()
-	if cj_hose != null and is_instance_valid(cj_hose):
-		cj_hose.queue_free()
-	cj_hose = null
-	if cj_jet != null and is_instance_valid(cj_jet):
-		cj_jet.queue_free()
-	cj_jet = null
-	cj = {}
 
 # ---------------- v0.52: careers as clear job loops ----------------
 # Every job runs the same way, shown in a step bar at the top: the job appears with a marker and
@@ -31012,777 +30930,61 @@ var siren_player: AudioStreamPlayer
 var siren_wav: AudioStreamWAV
 
 func _cid() -> String:
-	return String(CAREERS[career]["id"]) if career >= 0 else ""
+	return careers._cid()
 
-func _career_place_name(p: Vector3) -> String:
-	# The named place nearest a spot, for "Mia · to Grand Central".
-	var best := ""
-	var bd := 170.0
-	for d in DIR_DESTS:
-		var q: Vector3 = d["pos"]
-		var dd := Vector2(q.x-p.x,q.z-p.z).length()
-		if dd < bd:
-			bd = dd
-			best = String(d["name"])
-	return best if best != "" else "across town"
 
-func _career_tag(holder: Node3D, text: String, y: float, col: Color) -> Label3D:
-	var tag := Label3D.new()
-	tag.text = text
-	tag.font_size = 40
-	tag.outline_size = 10
-	tag.outline_modulate = Color("132b3a")
-	tag.modulate = col
-	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	tag.fixed_size = true
-	tag.pixel_size = 0.0009
-	tag.no_depth_test = true
-	tag.visibility_range_end = 120.0     # not seen through the whole city
-	tag.position = Vector3(0,y,0)
-	_ui3d(tag)
-	holder.add_child(tag)
-	return tag
 
-func _career_person(at: Vector3, seed_i: int, lying := false, ring_col := Color("ffd23f")) -> Node3D:
-	var holder := Node3D.new()
-	holder.position = at
-	add_child(holder)
-	var pp := _cm_person(holder,Vector3.ZERO,randf()*TAU if not career_test else 0.0,seed_i)
-	if not pp.is_empty():
-		pp["walk"] = true
-		_pose_person(pp,0.0,0.0)
-		cm_people.erase(pp)
-		if lying:
-			var r: Node3D = (pp["root"] as Node3D).get_parent()
-			r.rotation = Vector3(-PI/2.0,r.rotation.y,0)
-			r.position.y = 0.25
-	holder.set_meta("pp",pp)
-	if ring_col.a > 0.0:
-		var ring := MeshInstance3D.new()
-		var tm := TorusMesh.new()
-		tm.inner_radius = 1.3
-		tm.outer_radius = 1.6
-		ring.mesh = tm
-		ring.material_override = _fc_glow(ring_col)
-		ring.position = Vector3(0,0.12,0)
-		ring.name = "Ring"
-		holder.add_child(ring)
-	cj_nodes.append(holder)
-	return holder
 
-func _cj_pp(holder: Node3D) -> Dictionary:
-	return holder.get_meta("pp",{}) if is_instance_valid(holder) else {}
 
-func _cj_anim(holder: Node3D, anim: String) -> void:
-	# Career people are posed by code each frame (see _cj_pose_tick): Idle, Walk, Wave, HandsUp.
-	if is_instance_valid(holder):
-		holder.set_meta("anim",anim)
-		_cj_pose(holder)
 
-func _cj_pose(holder: Node3D) -> void:
-	var pp := _cj_pp(holder)
-	if pp.is_empty():
-		return
-	var anim := String(holder.get_meta("anim","Idle"))
-	if pp.get("ap") != null:
-		_kplay(pp,"Cheer" if anim == "HandsUp" else anim,1.0)
-		return
-	var limbs: Dictionary = pp.get("limbs",{})
-	match anim:
-		"Walk":
-			_pose_person(pp,clock*9.0,1.0)
-		_:
-			_pose_person(pp,0.0,0.0)
-	var arm_l: Node3D = limbs.get("ArmL")
-	var arm_r: Node3D = limbs.get("ArmR")
-	if arm_l == null or arm_r == null:
-		return
-	match anim:
-		"Wave":
-			arm_r.rotation = Vector3(-2.7,0,sin(clock*10.0)*0.45)
-		"HandsUp":
-			arm_l.rotation = Vector3(-2.9,0,-0.3)
-			arm_r.rotation = Vector3(-2.9,0,0.3)
 
-func _cj_pose_tick() -> void:
-	for n in cj_nodes:
-		if is_instance_valid(n) and (n as Node).has_meta("pp"):
-			_cj_pose(n)
 
-func _cj_hands_up(holder: Node3D) -> void:
-	_cj_anim(holder,"HandsUp")
 
-func _cj_face(holder: Node3D, at: Vector3) -> void:
-	# People face -z, like the player.
-	var to := at-holder.global_position
-	if Vector2(to.x,to.z).length() > 0.05:
-		holder.rotation.y = atan2(-to.x,-to.z)
 
-func _career_fire(at: Vector3) -> Node3D:
-	var holder := Node3D.new()
-	holder.position = at
-	add_child(holder)
-	var fl := CPUParticles3D.new()
-	fl.name = "Flames"
-	fl.amount = 40
-	fl.lifetime = 0.9
-	fl.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	fl.emission_sphere_radius = 1.2
-	fl.direction = Vector3.UP
-	fl.spread = 15.0
-	fl.initial_velocity_min = 2.0
-	fl.initial_velocity_max = 4.0
-	fl.gravity = Vector3(0,1.5,0)
-	fl.scale_amount_min = 0.5
-	fl.scale_amount_max = 1.1
-	var sm := SphereMesh.new()
-	sm.radius = 0.35
-	sm.height = 0.7
-	fl.mesh = sm
-	fl.material_override = _fc_glow(Color("ff7a1a"))
-	fl.position = Vector3(0,0.6,0)
-	holder.add_child(fl)
-	# v0.52: a tall dark smoke column you can see from far across the city.
-	var smoke := fl.duplicate() as CPUParticles3D
-	smoke.name = "Smoke"
-	smoke.amount = 46
-	smoke.lifetime = 7.0
-	smoke.spread = 8.0
-	smoke.initial_velocity_min = 4.0
-	smoke.initial_velocity_max = 6.0
-	smoke.gravity = Vector3(0.4,0.6,0)
-	smoke.damping_min = 0.2
-	smoke.damping_max = 0.4
-	smoke.scale_amount_min = 3.0
-	smoke.scale_amount_max = 6.5
-	smoke.material_override = _material(Color("3a3f45"))
-	smoke.position = Vector3(0,2.2,0)
-	holder.add_child(smoke)
-	var steam := fl.duplicate() as CPUParticles3D
-	steam.name = "Steam"
-	steam.amount = 36
-	steam.lifetime = 2.6
-	steam.initial_velocity_min = 2.0
-	steam.initial_velocity_max = 3.5
-	steam.scale_amount_min = 1.0
-	steam.scale_amount_max = 2.2
-	steam.material_override = _material(Color("eef4f7"))
-	steam.emitting = false
-	steam.position = Vector3(0,0.8,0)
-	holder.add_child(steam)
-	var ring := MeshInstance3D.new()
-	var tm := TorusMesh.new()
-	tm.inner_radius = 2.6
-	tm.outer_radius = 3.0
-	ring.mesh = tm
-	ring.material_override = _fc_glow(Color("ff5a1a"))
-	ring.position = Vector3(0,0.12,0)
-	ring.name = "Ring"
-	holder.add_child(ring)
-	cj_nodes.append(holder)
-	return holder
 
-func _career_next() -> void:
-	_career_clear_job()
-	if career < 0:
-		return
-	var me: Vector3 = car.position if driving else player.position
-	match _cid():
-		"taxi":
-			var a := _career_pick(me,80.0,380.0)
-			var b := _career_pick(a,260.0,900.0)
-			var nm: String = TAXI_NAMES[0 if career_test else randi() % TAXI_NAMES.size()]
-			var to := _career_place_name(b)
-			cj = {"stage":0,"step":0,"a":a,"b":b,"t":0.0,"name":nm,"to":to,"fare":0.0,"crash":0,"last":Vector3.INF}
-			var h := _career_person(a,3000+randi() % 500)
-			_cj_anim(h,"Wave")
-			_career_tag(h,"%s · to %s" % [nm,to],2.35,Color("ffe36b"))
-			cj["p"] = h
-		"medic":
-			var a := _career_pick(me,100.0,450.0)
-			cj = {"stage":0,"step":0,"a":a,"b":HOSPITAL_DROP,"t":0.0}
-			var pat := _career_person(a,3500+randi() % 500,true,Color("ff3b4a"))
-			_career_tag(pat,"Patient",1.3,Color("ff9aa5"))
-			var by := _career_person(a+Vector3(1.8,0,1.2),3600+randi() % 300,false,Color(0,0,0,0))
-			_cj_face(by,a+Vector3(0,0,8))
-			_cj_anim(by,"Wave")
-			_career_tag(by,"Over here!",2.35,Color("ffffff"))
-			cj["p"] = pat
-			cj["by"] = by
-		"police":
-			var a := _career_pick(me,120.0,450.0)
-			var call: String = ["Suspect in a red car","Stolen red car","Red getaway car","Red car ran a red light"][0 if career_test else randi() % 4]
-			var dir: String = ["north","south","east","west"][0 if career_test else randi() % 4]
-			cj = {"stage":0,"step":0,"a":a,"t":0.0,"call":"%s heading %s near %s" % [call,dir,_career_place_name(a)]}
-			_cs_police_radio()
-		"fire":
-			var a := _career_pick(me,100.0,450.0)
-			cj = {"stage":0,"step":0,"a":a,"t":0.0,"hp":1.0,"limit":me.distance_to(a)/9.0+35.0,"spray":0.0}
-			cj["p"] = _career_fire(a)
 
 func _career_target() -> Variant:
-	if career < 0 or cj.is_empty() or int(cj["stage"]) >= 3:
-		return null
-	match _cid():
-		"police":
-			return null if int(cj["stage"]) >= 1 else cj["a"]     # the chase guides you once it starts
-		"fire":
-			return cj["a"]
-	return cj["b"] if int(cj["stage"]) == 1 and cj.has("b") else cj["a"]
+	return careers._career_target()
 
-func _career_pay(base: int) -> int:
-	var pay := int(round(float(base)*_career_mult(career)))
-	cash += pay
-	bonus_xp += CAREER_XP
-	career_jobs[career] = int(career_jobs[career])+1
-	career_earned[career] = int(career_earned[career])+pay
-	return pay
 
-func _career_rank_line(i: int) -> String:
-	var r := _career_rank(i)
-	if r+1 >= CAREER_RANKS.size():
-		return "%s  ·  top rank" % _career_rank_name(i)
-	return "%s  ·  %d/%d jobs to %s" % [_career_rank_name(i),int(career_jobs[i]),int(CAREER_RANKS[r+1][1]),String(CAREER_RANKS[r+1][0])]
 
-func _career_job_done(base: int, tip: int, note: String) -> void:
-	# The big JOB DONE celebration, then the next job after 3 seconds.
-	var before := _career_rank(career)
-	var pay := _career_pay(base)
-	cash += tip
-	career_earned[career] = int(career_earned[career])+tip
-	var up := _career_rank(career) > before
-	var line1 := "Pay %s  ·  Tip %s  ·  +%d XP" % [_money(pay),_money(tip),CAREER_XP]
-	var line2 := ("PROMOTED to %s!" % _career_rank_name(career)) if up else _career_rank_line(career)
-	_level_up_fx(0,"JOB DONE!","%s\n%s%s" % [line1,line2,("\n"+note) if note != "" else ""])
-	cj_done_n += 1
-	if up:
-		_feed_add("%s was promoted to %s %s!" % [_my_name(),_career_rank_name(career),CAREERS[career]["name"]],"")
-	cj["stage"] = 3
-	cj["step"] = 3
-	cj["next"] = CJ_NEXT
-	_siren(false)
-	_save_progress()
 
-func _career_job_failed(msg: String) -> void:
-	_show_toast(msg)
-	cj["stage"] = 3
-	cj["step"] = 3
-	cj["next"] = CJ_NEXT
-	cj["failed"] = true
-	_siren(false)
 
 func _career_tick(delta: float) -> void:
-	_cs_tick(delta)
-	_cj_pose_tick()
-	_career_bar_tick()
-	if career < 0 or cj.is_empty() or paused or not cs.is_empty():
-		_fire_hose_tick(false)
-		return
-	cj["t"] = float(cj["t"])+delta
-	var me: Vector3 = car.position if driving else player.position
-	var slow := driving and absf(car_speed) < 3.5
-	var a: Vector3 = cj["a"]
-	var da := Vector2(me.x-a.x,me.z-a.z).length()
-	if int(cj["stage"]) == 3:
-		cj["next"] = float(cj["next"])-delta
-		if float(cj["next"]) <= 0.0:
-			_career_next()
-		_fire_hose_tick(false)
-		return
-	match _cid():
-		"taxi":
-			if int(cj["stage"]) == 0:
-				if driving and slow and da < 9.0:
-					_cs_taxi_pickup()
-			elif int(cj["stage"]) == 1:
-				_taxi_meter(delta)
-				var b: Vector3 = cj["b"]
-				if driving and slow and Vector2(me.x-b.x,me.z-b.z).length() < 9.0:
-					_cs_taxi_dropoff()
-		"medic":
-			if int(cj["stage"]) == 0:
-				if driving and slow and da < 10.0:
-					_cs_medic_load()
-			elif int(cj["stage"]) == 1:
-				if driving and slow and Vector2(me.x-HOSPITAL_DROP.x,me.z-HOSPITAL_DROP.z).length() < 12.0:
-					_cs_medic_unload()
-		"police":
-			if int(cj["stage"]) == 0 and driving and da < 40.0:
-				cj["stage"] = 1
-				cj["step"] = 1
-				cj["t"] = 0.0
-				_siren(true)
-				_chase_start(2)
-		"fire":
-			if int(cj["stage"]) == 0 and not driving and da < FIRE_SPRAY_RANGE:
-				cj["stage"] = 1
-				cj["step"] = 1
-				cj["late"] = float(cj["t"]) > float(cj["limit"])
-			if int(cj["stage"]) == 1:
-				var aim := _fire_aimed()
-				var spraying := not driving and da < FIRE_SPRAY_RANGE and aim
-				cj["spray"] = 1.0 if spraying else 0.0
-				if spraying:
-					cj["hp"] = maxf(0.0,float(cj["hp"])-delta/5.0)
-				var holder: Node3D = cj["p"]
-				var fl := holder.get_node_or_null("Flames") as CPUParticles3D
-				if fl != null:
-					fl.scale_amount_max = 0.3+0.8*float(cj["hp"])
-					fl.emission_sphere_radius = 0.4+0.8*float(cj["hp"])
-				if float(cj["hp"]) <= 0.0:
-					_cs_fire_out()
-	_fire_hose_tick(_cid() == "fire" and not cj.is_empty() and int(cj["stage"]) <= 1)
+	careers._career_tick(delta)
 
 # ---- taxi ----
 func _taxi_meter(delta: float) -> void:
-	# The fare grows with the distance you drive (up to 2.5x the direct route); bumps cost the tip.
-	var b: Vector3 = cj["b"]
-	var a: Vector3 = cj["a"]
-	var cap := a.distance_to(b)*0.45*2.5
-	var v := Vector2(car.velocity.x,car.velocity.z).length() if driving else 0.0
-	cj["fare"] = minf(cap,float(cj["fare"])+v*delta*0.45)
-	var hit := false
-	if driving:
-		for k in car.get_slide_collision_count():
-			var n := car.get_slide_collision(k).get_normal()
-			if absf(n.y) < 0.5:
-				hit = true
-	if hit and absf(float(cj.get("speed_was",0.0))) > 7.0 and float(cj.get("bump_cd",0.0)) <= 0.0:
-		cj["crash"] = int(cj["crash"])+1
-		cj["bump_cd"] = 1.5
-		_show_toast("Ouch! %s didn't like that (tip -%d%%)." % [cj["name"],25])
-	cj["bump_cd"] = maxf(0.0,float(cj.get("bump_cd",0.0))-delta)
-	cj["speed_was"] = car_speed
+	careers._taxi_meter(delta)
 
-func _taxi_tip() -> int:
-	var fare := 15.0+float(cj["fare"])
-	var on_time := float(cj["t"]) <= float(cj["par"])
-	var share := (0.35 if on_time else 0.1)-0.25*0.35*float(cj["crash"])
-	return maxi(0,int(round(fare*share)))
 
-func _cs_taxi_pickup() -> void:
-	var h: Node3D = cj["p"]
-	var start := h.global_position
-	var sx := 1.6 if car.global_basis.x.dot(start-car.global_position) >= 0.0 else -1.6
-	var door := car.global_transform*Vector3(sx,0,0.7)
-	door.y = start.y
-	cj["stage"] = 1
-	cj["step"] = 1
-	var b: Vector3 = cj["b"]
-	cj["par"] = (cj["a"] as Vector3).distance_to(b)/9.0+20.0
-	var ring := h.get_node_or_null("Ring")
-	if ring != null:
-		ring.queue_free()
-	_cs_play("taxi_pickup",3.6,func(t: float) -> void:
-		# 0-1.8 s: the passenger walks to the back door. 1.8-3.6 s: the rear-view mirror.
-		if t < 1.8:
-			var k := clampf(t/1.6,0.0,1.0)
-			h.global_position = start.lerp(door,k)
-			_cj_face(h,door if k < 1.0 else car.global_position)
-			_cj_anim(h,"Walk" if k < 1.0 else "Idle")
-			_cs_cam(car.global_transform*Vector3(-2.2,2.4,8.0),(start+door)/2.0+Vector3(0,0.9,0))
-			_cs_mirror(false)
-		else:
-			_taxi_seat(h)
-			_cs_mirror(true)
-			_cs_cam(car.global_transform*Vector3(-0.05,1.0,-0.5),car.global_transform*Vector3(0.38,0.72,0.95),false)
-			_cs_caption("%s:  \"To %s, please!\"" % [cj["name"],cj["to"]])
-	,func() -> void:
-		_taxi_seat(h)
-		_cs_mirror(false)
-		_show_toast("%s: \"To %s, please!\"  Beat %ds for a good tip." % [cj["name"],cj["to"],int(cj["par"])])
-	)
 
-func _taxi_seat(h: Node3D) -> void:
-	# Sitting in the back seat (behind the front passenger), riding along.
-	if h.get_parent() != car:
-		h.get_parent().remove_child(h)
-		car.add_child(h)
-	h.position = Vector3(0.38,-0.62,0.85)
-	h.rotation = Vector3.ZERO      # facing forward, towards the mirror
-	h.set_meta("anim","Idle")
-	for c in h.get_children():
-		if c is Label3D:
-			(c as Label3D).hide()
 
-func _cs_taxi_dropoff() -> void:
-	var h: Node3D = cj["p"]
-	# Out on the pavement side.
-	var sx := 1.0 if not _on_road(car.global_transform*Vector3(4.2,0,1.4)) or _on_road(car.global_transform*Vector3(-4.2,0,1.4)) else -1.0
-	var door := car.global_transform*Vector3(1.6*sx,0,0.7)
-	var kerb := car.global_transform*Vector3(4.2*sx,0,1.4)
-	door.y = 0.0
-	kerb.y = 0.0
-	cj["stage"] = 2
-	cj["step"] = 2
-	var tip := _taxi_tip()
-	var fare := int(round(15.0+float(cj["fare"])))
-	_cs_play("taxi_dropoff",3.0,func(t: float) -> void:
-		if h.get_parent() == car:
-			car.remove_child(h)
-			add_child(h)
-			h.rotation = Vector3.ZERO
-			h.scale = Vector3.ONE
-			for c in h.get_children():
-				if c is Label3D:
-					(c as Label3D).show()
-					(c as Label3D).text = "%s · thanks!" % cj["name"]
-		var k := clampf(t/1.7,0.0,1.0)
-		h.global_position = door.lerp(kerb,k)
-		if k < 1.0:
-			_cj_face(h,kerb)
-			_cj_anim(h,"Walk")
-		else:
-			_cj_face(h,car.global_position)
-			_cj_anim(h,"Wave")
-		_cs_cam(car.global_transform*Vector3(1.5,2.4,8.5),kerb+Vector3(0,1.0,0))
-	,func() -> void:
-		h.global_position = kerb
-		_cj_face(h,car.global_position)
-		_cj_anim(h,"Wave")
-		if tip > 0 and int(cj["crash"]) == 0:
-			_stat_add("taxi_tip_streak")
-		else:
-			stats["taxi_tip_streak"] = 0.0
-		stats["taxi_tip_best"] = maxf(float(stats.get("taxi_tip_best",0.0)),float(stats.get("taxi_tip_streak",0.0)))
-		var stars := 5 if tip > 0 and int(cj["crash"]) == 0 else (4 if tip > 0 else 3)
-		_career_job_done(fare,tip,"%s rated you %s" % [cj["name"],"★".repeat(stars)])
-	)
 
 # ---- paramedic ----
-func _stretcher(at: Vector3) -> Node3D:
-	var s := Node3D.new()
-	s.position = at
-	add_child(s)
-	_box(s,Vector3(0,0.75,0),Vector3(0.7,0.12,2.0),Color("f4f6f8"))
-	_box(s,Vector3(0,0.8,-0.85),Vector3(0.6,0.12,0.3),Color("ffffff"))
-	for x in [-0.28,0.28]:
-		for z in [-0.8,0.8]:
-			_box(s,Vector3(x,0.35,z),Vector3(0.06,0.7,0.06),Color("9aa3ab"))
-	cj_nodes.append(s)
-	return s
 
-func _cs_medic_load() -> void:
-	var pat: Node3D = cj["p"]
-	var at := pat.global_position
-	var st := _stretcher(at)
-	var back := car.global_transform*Vector3(0,0,3.4)
-	back.y = 0.0
-	cj["stage"] = 1
-	cj["step"] = 1
-	cj["t"] = 0.0
-	cj["limit"] = at.distance_to(HOSPITAL_DROP)/9.0+30.0
-	var ring := pat.get_node_or_null("Ring")
-	if ring != null:
-		ring.queue_free()
-	pat.get_parent().remove_child(pat)
-	st.add_child(pat)
-	pat.position = Vector3(0,0.65,0)
-	pat.rotation = Vector3.ZERO
-	cj["st"] = st
-	var cam_at := _cs_side_cam(at,back,8.0,3.0)
-	_cs_play("medic_load",3.2,func(t: float) -> void:
-		var k := clampf((t-0.5)/2.2,0.0,1.0)
-		st.global_position = at.lerp(back,k)
-		var to := back-at
-		if Vector2(to.x,to.z).length() > 0.1:
-			st.rotation.y = atan2(to.x,to.z)
-		_cs_cam(cam_at,(at+back)/2.0+Vector3(0,0.9,0))
-	,func() -> void:
-		st.hide()
-		var by: Node3D = cj.get("by")
-		if is_instance_valid(by):
-			_cj_anim(by,"Idle")
-			for c in by.get_children():
-				if c is Label3D:
-					(c as Label3D).hide()
-		_career_lights(Color("ff3b3b"),Color("f4f6f8"))
-		_siren(true)
-		_show_toast("Patient on board! Lights and siren on: get to Harbor General in %ds." % int(cj["limit"]))
-	)
 
-func _cs_medic_unload() -> void:
-	var st: Node3D = cj["st"]
-	var door := HOSPITAL_DOOR
-	var inside := HOSPITAL_DOOR+Vector3(0,0,3.5)
-	# Out of the back of the ambulance, wheeled to the doors and inside.
-	var back := car.global_transform*Vector3(0,0,4.6)
-	back.y = 0.0
-	var cam_at := _cs_side_cam(back,door,8.5,5.5)      # high enough to see over the ambulance
-	cj["stage"] = 2
-	cj["step"] = 2
-	var on_time := float(cj["t"]) <= float(cj["limit"])
-	_siren(false)
-	_career_lights_off()
-	_cs_play("medic_unload",3.0,func(t: float) -> void:
-		st.show()
-		var k := clampf(t/1.9,0.0,1.0)
-		var k2 := clampf((t-1.9)/0.8,0.0,1.0)
-		var from: Vector3 = back if k < 1.0 else door
-		var to: Vector3 = door if k < 1.0 else inside
-		st.global_position = back.lerp(door,k) if k < 1.0 else door.lerp(inside,k2)
-		if Vector2(to.x-from.x,to.z-from.z).length() > 0.1:
-			st.rotation.y = atan2(to.x-from.x,to.z-from.z)
-		_cs_cam(cam_at,(back+door)/2.0+Vector3(0,0.9,0))
-	,func() -> void:
-		st.global_position = inside
-		st.hide()
-		if on_time:
-			_stat_add("medic_ontime")
-		_career_job_done(260 if on_time else 140,90 if on_time else 0,"Arrived in time: bonus!" if on_time else "A bit late, but the patient is safe.")
-	)
 
 # ---- police ----
-func _cs_police_radio() -> void:
-	_cs_play("police_radio",3.4,func(t: float) -> void:
-		# A slow push in on the patrol car (or on you), lights flashing, while the call comes in.
-		var body: Node3D = car if driving else player
-		var k := t/3.4
-		var off := Vector3(lerpf(4.5,3.2,k),lerpf(1.9,1.5,k),lerpf(-7.0,-5.2,k))
-		_cs_cam(body.global_transform*off,body.global_position+Vector3(0,0.8,0))
-		_cs_caption("◉ DISPATCH:  %s. All units respond!" % String(cj["call"]),true)
-	,func() -> void:
-		_cs_caption("")
-		_show_toast("Call: %s. Follow the arrow." % String(cj["call"]))
-	)
 
 func _career_chase_over(won: bool) -> void:
-	# Called from _chase_end while on a police shift.
-	if career < 0 or _cid() != "police" or cj.is_empty():
-		return
-	if not won:
-		_career_job_failed("The suspect got away. Next call coming in.")
-		return
-	cj["stage"] = 2
-	cj["step"] = 2
-	var tr := chase_last_thief
-	var sus_car := Node3D.new()
-	add_child(sus_car)
-	sus_car.global_transform = tr
-	_box(sus_car,Vector3(0,0.35,0),Vector3(1.8,0.65,3.4),Color("b83a2c"))
-	_box(sus_car,Vector3(0,0.9,0.15),Vector3(1.45,0.65,1.6),Color("1f2a33"))
-	cj_nodes.append(sus_car)
-	var door := tr*Vector3(-1.4,0,0.2)
-	var out := tr*Vector3(-3.4,0,0.6)
-	door.y = 0.0
-	out.y = 0.0
-	var sus := _career_person(door,3900,false,Color(0,0,0,0))
-	_career_tag(sus,"Suspect",2.35,Color("ffb020"))
-	_cs_play("police_arrest",3.4,func(t: float) -> void:
-		var k := clampf(t/1.2,0.0,1.0)
-		sus.global_position = door.lerp(out,k)
-		_cj_face(sus,car.global_position)
-		if k < 1.0:
-			_cj_anim(sus,"Walk")
-		else:
-			_cj_hands_up(sus)
-		# From beside your car, swinging slowly round the suspect.
-		var back := car.global_position-out
-		back.y = 0.0
-		back = back.normalized() if back.length() > 0.1 else Vector3(0,0,1)
-		var c := out+back.rotated(Vector3.UP,0.5-t*0.25)*7.5+Vector3(0,2.6,0)
-		_cs_cam(c,out+Vector3(0,1.1,0))
-	,func() -> void:
-		sus.global_position = out
-		_cj_hands_up(sus)
-		_stat_add("police_catches")
-		_career_job_done(380,80 if chase_t < 45.0 else 0,"Suspect arrested. Quick catch bonus!" if chase_t < 45.0 else "Suspect arrested.")
-	)
+	careers._career_chase_over(won)
 
 # ---- firefighter ----
 func _fire_aimed() -> bool:
-	if driving or cj.is_empty() or not cj.has("a"):
-		return false
-	var a: Vector3 = cj["a"]
-	var to := Vector2(a.x-player.position.x,a.z-player.position.z)
-	if to.length() < 2.0:
-		return true
-	var fwd := -player.global_basis.z
-	return Vector2(fwd.x,fwd.z).normalized().dot(to.normalized()) > cos(deg_to_rad(40.0))
+	return careers._fire_aimed()
 
-func _fire_hose_tick(on: bool) -> void:
-	# A hose from the truck to you, and a water jet from your hands while you aim at the fire.
-	if not on or driving:
-		if cj_hose != null and is_instance_valid(cj_hose):
-			cj_hose.hide()
-		if cj_jet != null and is_instance_valid(cj_jet):
-			cj_jet.emitting = false
-		return
-	if cj_hose == null or not is_instance_valid(cj_hose):
-		cj_hose = MeshInstance3D.new()
-		var cyl := CylinderMesh.new()
-		cyl.top_radius = 0.06
-		cyl.bottom_radius = 0.06
-		cyl.height = 1.0
-		cyl.radial_segments = 6
-		cj_hose.mesh = cyl
-		cj_hose.material_override = _material(Color("c42b2b"))
-		add_child(cj_hose)
-	if cj_jet == null or not is_instance_valid(cj_jet):
-		cj_jet = CPUParticles3D.new()
-		cj_jet.amount = 70
-		cj_jet.lifetime = 0.75
-		cj_jet.direction = Vector3(0,0.06,-1)
-		cj_jet.spread = 4.0
-		cj_jet.initial_velocity_min = 9.0
-		cj_jet.initial_velocity_max = 10.5
-		cj_jet.gravity = Vector3(0,-9.0,0)
-		cj_jet.scale_amount_min = 0.5
-		cj_jet.scale_amount_max = 1.0
-		var sm := SphereMesh.new()
-		sm.radius = 0.09
-		sm.height = 0.18
-		cj_jet.mesh = sm
-		cj_jet.material_override = _fc_glow(Color("8fd8ff"))
-		cj_jet.local_coords = true
-		cj_jet.top_level = true
-		add_child(cj_jet)
-	var from := car.global_transform*Vector3(0,0.7,2.0)
-	var to := player.global_transform*Vector3(0.25,1.0,-0.35)
-	var mid := (from+to)/2.0
-	var len := from.distance_to(to)
-	cj_hose.show()
-	cj_hose.global_position = mid
-	if len > 0.1:
-		var dir := (to-from)/len
-		var up := Vector3.UP if absf(dir.dot(Vector3.UP)) < 0.99 else Vector3.FORWARD
-		var x := up.cross(dir).normalized()
-		cj_hose.global_basis = Basis(x,dir,x.cross(dir).normalized()*-1.0).orthonormalized()
-	cj_hose.scale = Vector3(1,maxf(len,0.1),1)
-	# The jet leaves your hands and points the way you face (at the fire when you aim).
-	var hand := player.global_transform*Vector3(0.0,1.05,-0.45)
-	var fwd := -player.global_basis.z
-	fwd.y = 0.0
-	if fwd.length() > 0.01:
-		cj_jet.global_transform = Transform3D(Basis.looking_at(fwd.normalized(),Vector3.UP),hand)
-	cj_jet.emitting = float(cj.get("spray",0.0)) > 0.0
 
-func _cs_fire_out() -> void:
-	var holder: Node3D = cj["p"]
-	cj["stage"] = 2
-	cj["step"] = 2
-	var late := bool(cj.get("late",false))
-	var at := holder.global_position
-	for n in ["Flames","Smoke"]:
-		var p := holder.get_node_or_null(n) as CPUParticles3D
-		if p != null:
-			p.emitting = false
-	var steam := holder.get_node_or_null("Steam") as CPUParticles3D
-	if steam != null:
-		steam.emitting = true
-	var ring := holder.get_node_or_null("Ring")
-	if ring != null:
-		ring.queue_free()
-	_cs_play("fire_out",3.2,func(t: float) -> void:
-		# From the truck's side of the fire, rising slowly with the steam.
-		var back := car.global_position-at
-		back.y = 0.0
-		back = back.normalized() if back.length() > 0.1 else Vector3(0,0,1)
-		_cs_cam(at+back.rotated(Vector3.UP,0.35-t*0.2)*12.0+Vector3(0,3.5+t*0.6,0),at+Vector3(0,1.8,0))
-	,func() -> void:
-		if steam != null:
-			steam.emitting = false
-		_stat_add("fire_out")
-		_career_job_done(240,0 if late else 70,"Fire's out! Fast response bonus." if not late else "Fire's out!")
-	)
 
 # ---- the step bar ----
-func _career_bar_build() -> void:
-	cj_bar = PanelContainer.new()
-	cj_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb := _panel(Color(0.05,0.1,0.15,0.9),16)
-	sb.set_content_margin_all(10)
-	sb.border_color = Color("f0bd62")
-	sb.set_border_width_all(2)
-	cj_bar.add_theme_stylebox_override("panel",sb)
-	hud.get_child(0).add_child(cj_bar)
-	var col := VBoxContainer.new()
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_theme_constant_override("separation",4)
-	cj_bar.add_child(col)
-	cj_bar_title = _label("",15,Color("f0bd62"))
-	cj_bar_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(cj_bar_title)
-	cj_bar_steps = RichTextLabel.new()
-	cj_bar_steps.bbcode_enabled = true
-	cj_bar_steps.fit_content = true
-	cj_bar_steps.scroll_active = false
-	cj_bar_steps.autowrap_mode = TextServer.AUTOWRAP_OFF
-	cj_bar_steps.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	cj_bar_steps.add_theme_font_size_override("normal_font_size",19)
-	cj_bar_steps.add_theme_font_size_override("bold_font_size",19)
-	col.add_child(cj_bar_steps)
-	cj_bar_detail = _label("",17,Color("dff3ff"))
-	cj_bar_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(cj_bar_detail)
-	cj_bar.hide()
 
-func _career_steps_bbcode() -> String:
-	var steps: Array = CAREER_STEPS[_cid()]
-	var cur := int(cj.get("step",0))
-	var parts: Array = []
-	for k in steps.size():
-		var txt := "%d %s" % [k+1,steps[k]]
-		if k < cur:
-			parts.append("[color=#5fe08a]✔ %s[/color]" % steps[k])
-		elif k == cur:
-			parts.append("[b][color=#ffe36b]%s[/color][/b]" % txt)
-		else:
-			parts.append("[color=#7f97a6]%s[/color]" % txt)
-	return "[center]%s[/center]" % "  [color=#7f97a6]→[/color]  ".join(PackedStringArray(parts))
 
 func _career_bar_text() -> String:
-	if cj.is_empty():
-		return ""
-	var me: Vector3 = car.position if driving else player.position
-	var tgt = _career_target()
-	var d := int(Vector2(me.x-(tgt as Vector3).x,me.z-(tgt as Vector3).z).length()) if tgt != null else 0
-	var t := float(cj["t"])
-	if int(cj["stage"]) == 3:
-		return ("Next call in %d…" if _cid() == "police" else "Next job in %d…") % int(ceil(maxf(float(cj["next"]),0.0)))
-	match _cid():
-		"taxi":
-			if int(cj["stage"]) == 0:
-				return "%s is waiting · to %s  ·  %d m  ·  stop next to them" % [cj["name"],cj["to"],d]
-			return "To %s  ·  %d m  ·  ⏱ %ds  ·  Meter %s%s" % [cj["to"],d,maxi(0,int(float(cj.get("par",0.0))-t)),_money(int(15.0+float(cj["fare"]))),"  ·  bumps %d" % int(cj["crash"]) if int(cj["crash"]) > 0 else ""]
-		"medic":
-			if int(cj["stage"]) == 0:
-				return "Patient down  ·  %d m  ·  stop by the red ring" % d
-			return "Harbor General  ·  %d m  ·  ⏱ %ds" % [d,maxi(0,int(float(cj.get("limit",0.0))-t))]
-		"police":
-			if int(cj["stage"]) == 0:
-				return "%s  ·  %d m" % [String(cj["call"]),d]
-			return "Catch the red car!  ·  ⏱ %ds" % maxi(0,int(CHASE_TIME-chase_t))
-		"fire":
-			if int(cj["stage"]) == 0:
-				return "Fire  ·  %d m  ·  ⏱ %ds  ·  %s" % [d,maxi(0,int(float(cj["limit"])-t)),"get out by the fire" if d < 30 else "follow the smoke"]
-			var meter := "▮".repeat(int(ceil(float(cj["hp"])*10.0)))+"▯".repeat(10-int(ceil(float(cj["hp"])*10.0)))
-			return "Fire %s %d%%  ·  %s" % [meter,int(float(cj["hp"])*100.0),"spraying!" if float(cj.get("spray",0.0)) > 0.0 else ("face the fire to spray" if d < FIRE_SPRAY_RANGE else "get closer")]
-	return ""
+	return careers._career_bar_text()
 
-func _career_bar_tick() -> void:
-	if career < 0 or cj.is_empty():
-		if cj_bar != null:
-			cj_bar.hide()
-		return
-	if cj_bar == null:
-		_career_bar_build()
-	cj_bar.visible = not paused and cs.is_empty() and not shot_on and not (lvl_root != null and lvl_root.visible)
-	if not cj_bar.visible:
-		return
-	cj_bar_title.text = "%s  ·  %s" % [String(CAREERS[career]["name"]).to_upper(),_career_rank_line(career)]
-	var bb := _career_steps_bbcode()
-	if cj_bar_steps.text != bb:
-		cj_bar_steps.text = bb
-	cj_bar_steps.custom_minimum_size.x = 560
-	cj_bar_detail.text = _career_bar_text()
 
 func _career_hud() -> void:
-	# The full-screen HUD's mission panel mirrors the step bar.
-	if career < 0 or cj.is_empty():
-		return
-	mission_label.text = "CAREER  /  %s  ·  %s" % [String(CAREERS[career]["name"]).to_upper(),_career_rank_name(career)]
-	objective.text = _career_bar_text()
+	careers._career_hud()
 
 # ---- cut scenes ----
 # A short scene (2-4 s): the car stops, black bars slide in, the camera moves on its own, and a tap
@@ -31800,327 +31002,33 @@ var cs_interior := false             # the mirror shot: car body hidden, cockpit
 var cs_hidden_parts: Array = []
 var cs_mask: Array = []              # darkens everything outside the mirror
 
-func _cs_play(id: String, dur: float, tick: Callable, end: Callable) -> void:
-	if not cs.is_empty():
-		_cs_finish(true)
-	cs = {"id":id,"t":0.0,"dur":dur,"tick":tick,"end":end}
-	cs_n += 1
-	cs_hid_hud = hud.visible
-	hud.visible = false
-	cam_lock = true
-	stick = Vector2.ZERO
-	car_speed = 0.0
-	car.velocity = Vector3.ZERO
-	_cs_ui(true)
-	tick.call(0.0)
 
-func _cs_tick(delta: float) -> void:
-	if cs.is_empty():
-		return
-	car_speed = 0.0
-	car.velocity.x = 0.0
-	car.velocity.z = 0.0
-	stick = Vector2.ZERO
-	if paused:
-		return
-	if cs_freeze:
-		(cs["tick"] as Callable).call(float(cs["t"]))
-		return
-	cs["t"] = float(cs["t"])+delta
-	(cs["tick"] as Callable).call(minf(float(cs["t"]),float(cs["dur"])))
-	if float(cs["t"]) >= float(cs["dur"]):
-		_cs_finish(true)
 
 func _cs_skip() -> void:
-	if cs.is_empty():
-		return
-	(cs["tick"] as Callable).call(float(cs["dur"]))
-	_cs_finish(true)
+	careers._cs_skip()
 
-func _cs_finish(run_end: bool) -> void:
-	if cs.is_empty():
-		return
-	var e: Callable = cs["end"]
-	cs = {}
-	if cs_hid_hud and not shot_on:
-		hud.visible = true
-	cs_hid_hud = false
-	cam_lock = false
-	_cs_ui(false)
-	_cs_caption("")
-	_cs_mirror(false)
-	if run_end:
-		e.call()
-	_follow_camera(1.0)
 
-func _cs_side_cam(a: Vector3, b: Vector3, dist: float, h: float) -> Vector3:
-	# A camera spot beside the path a→b, on whichever side has more open space.
-	var mid := (a+b)/2.0
-	var dir := Vector3(b.x-a.x,0,b.z-a.z)
-	dir = dir.normalized() if dir.length() > 0.1 else Vector3(0,0,1)
-	var perp := dir.cross(Vector3.UP)
-	var best := mid+perp*dist+Vector3(0,h,0)
-	var best_d := -1.0
-	for sd in [1.0,-1.0]:
-		var c: Vector3 = mid+perp*dist*sd+Vector3(0,h,0)
-		var q := PhysicsRayQueryParameters3D.create(mid+Vector3(0,1.0,0),c)
-		q.exclude = [car.get_rid(),player.get_rid()]
-		var hit := get_world_3d().direct_space_state.intersect_ray(q)
-		var free := dist if hit.is_empty() else (hit["position"] as Vector3).distance_to(mid)
-		if free > best_d:
-			best_d = free
-			best = c
-	return best
 
-func _cs_cam(from: Vector3, look: Vector3, safe := true) -> void:
-	if camera == null or from.distance_to(look) < 0.05:
-		return
-	if safe and is_inside_tree():
-		# Keep the camera out of walls: if something solid is between the subject and the camera
-		# spot, move the camera in front of it.
-		var q := PhysicsRayQueryParameters3D.create(look,from)
-		q.exclude = [car.get_rid(),player.get_rid()]
-		var hit := get_world_3d().direct_space_state.intersect_ray(q)
-		if not hit.is_empty():
-			from = (hit["position"] as Vector3)+(look-from).normalized()*0.4
-	var up := Vector3.UP if absf((look-from).normalized().dot(Vector3.UP)) < 0.98 else Vector3.FORWARD
-	camera.global_transform = Transform3D(Basis.looking_at(look-from,up),from)
 
-func _cs_ui(on: bool) -> void:
-	if cs_skip_label == null:
-		cs_layer = CanvasLayer.new()
-		cs_layer.layer = 3
-		add_child(cs_layer)
-		var root := Control.new()
-		root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		root.set_anchors_preset(Control.PRESET_FULL_RECT)
-		cs_layer.add_child(root)
-		for k in 2:
-			var bar := ColorRect.new()
-			bar.color = Color(0,0,0,0.92)
-			bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			root.add_child(bar)
-			cs_bars.append(bar)
-		cs_skip_label = _label("Tap to skip  ▸▸",17,Color(1,1,1,0.8))
-		cs_skip_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		root.add_child(cs_skip_label)
-		cs_caption_label = _label("",22,Color("ffe36b"))
-		cs_caption_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		cs_caption_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		cs_caption_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		root.add_child(cs_caption_label)
-		cs_mirror = Panel.new()
-		cs_mirror.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var ms := StyleBoxFlat.new()
-		ms.bg_color = Color(0,0,0,0)
-		ms.border_color = Color("15191d")
-		ms.set_border_width_all(18)
-		ms.set_corner_radius_all(60)
-		ms.shadow_color = Color(0,0,0,0.5)
-		ms.shadow_size = 10
-		cs_mirror.add_theme_stylebox_override("panel",ms)
-		root.add_child(cs_mirror)
-		cs_mirror.hide()
-	var view := get_viewport().get_visible_rect().size
-	var h := view.y*0.11
-	(cs_bars[0] as ColorRect).position = Vector2.ZERO
-	(cs_bars[0] as ColorRect).size = Vector2(view.x,h)
-	(cs_bars[1] as ColorRect).position = Vector2(0,view.y-h)
-	(cs_bars[1] as ColorRect).size = Vector2(view.x,h)
-	for b in cs_bars:
-		(b as ColorRect).visible = on
-		(b as ColorRect).move_to_front()
-	cs_skip_label.visible = on
-	cs_skip_label.reset_size()
-	cs_skip_label.position = Vector2(view.x-cs_skip_label.size.x-24.0,view.y-h/2.0-cs_skip_label.size.y/2.0)
-	cs_skip_label.move_to_front()
-	cs_caption_label.custom_minimum_size.x = view.x*0.8
-	cs_caption_label.move_to_front()
 
-func _cs_caption(text: String, radio := false) -> void:
-	if cs_caption_label == null:
-		return
-	if radio:
-		# Police radio: a dark box with a red edge behind the words.
-		var rb := _panel(Color(0.05,0.06,0.08,0.92),12)
-		rb.border_color = Color("d4223f")
-		rb.set_border_width_all(3)
-		rb.set_content_margin_all(14)
-		cs_caption_label.add_theme_stylebox_override("normal",rb)
-	else:
-		cs_caption_label.remove_theme_stylebox_override("normal")
-	cs_caption_label.text = text
-	cs_caption_label.visible = text != ""
-	if text != "":
-		var view := get_viewport().get_visible_rect().size
-		cs_caption_label.reset_size()
-		cs_caption_label.position = Vector2(view.x*0.1,view.y*0.89-cs_caption_label.size.y-12.0)
 
-func _cs_mirror(on: bool) -> void:
-	# The rear-view mirror shot: from the mirror, with the car body hidden like the in-car view.
-	if cs_mirror == null:
-		return
-	if on != cs_interior:
-		cs_interior = on
-		if on:
-			# Like the in-car view: hide the body (and its glow), show the cockpit and who's aboard.
-			cs_hidden_parts.clear()
-			for c in car.get_children():
-				if c is Node3D and c != cockpit and not cj_nodes.has(c) and (c as Node3D).visible:
-					(c as Node3D).visible = false
-					cs_hidden_parts.append(c)
-			if cockpit != null:
-				cockpit.visible = true
-		else:
-			for c in cs_hidden_parts:
-				if is_instance_valid(c):
-					(c as Node3D).visible = true
-			cs_hidden_parts.clear()
-			_apply_view()
-	cs_mirror.visible = on
-	for m in cs_mask:
-		(m as ColorRect).visible = on
-	if on:
-		var view := get_viewport().get_visible_rect().size
-		cs_mirror.size = Vector2(view.x*0.62,view.y*0.5)
-		cs_mirror.position = Vector2((view.x-cs_mirror.size.x)/2.0,view.y*0.16)
-		if cs_mask.is_empty():
-			for k in 4:
-				var m := ColorRect.new()
-				m.color = Color(0.02,0.03,0.04,0.93)
-				m.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				cs_mirror.get_parent().add_child(m)
-				cs_mask.append(m)
-		var r := Rect2(cs_mirror.position+Vector2(14,14),cs_mirror.size-Vector2(28,28))
-		var rects := [Rect2(0,0,view.x,r.position.y),Rect2(0,r.end.y,view.x,view.y-r.end.y),Rect2(0,r.position.y,r.position.x,r.size.y),Rect2(r.end.x,r.position.y,view.x-r.end.x,r.size.y)]
-		for k in 4:
-			(cs_mask[k] as ColorRect).position = rects[k].position
-			(cs_mask[k] as ColorRect).size = rects[k].size
-			(cs_mask[k] as ColorRect).move_to_front()
-		cs_mirror.move_to_front()
-		if cs_caption_label != null:
-			cs_caption_label.move_to_front()
-		if cs_skip_label != null:
-			cs_skip_label.move_to_front()
 
 # ---- siren ----
-func _siren_sound() -> AudioStreamWAV:
-	if siren_wav != null:
-		return siren_wav
-	var sr := 22050
-	var total := sr*2
-	var data := PackedByteArray()
-	data.resize(total*2)
-	var ph := 0.0
-	for i in total:
-		var t := float(i)/float(sr)
-		var f := 760.0 if fmod(t,1.0) < 0.5 else 590.0
-		ph += TAU*f/float(sr)
-		var v := (0.5*sin(ph)+0.25*sin(ph*2.0))*0.35
-		data.encode_s16(i*2,int(clampf(v,-1.0,1.0)*32767.0))
-	siren_wav = AudioStreamWAV.new()
-	siren_wav.format = AudioStreamWAV.FORMAT_16_BITS
-	siren_wav.mix_rate = sr
-	siren_wav.data = data
-	siren_wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	siren_wav.loop_end = total
-	return siren_wav
 
-func _siren(on: bool) -> void:
-	if siren_player == null:
-		siren_player = AudioStreamPlayer.new()
-		siren_player.volume_db = -14.0
-		add_child(siren_player)
-	if on and "--smoke-test" not in OS.get_cmdline_user_args():
-		if not siren_player.playing:
-			siren_player.stream = _siren_sound()
-			siren_player.play()
-	else:
-		siren_player.stop()
-	siren_on = on
 
 var siren_on := false
 
 # ---- the Careers panel ----
 func _build_career_panel(root: Control) -> void:
-	career_panel = PanelContainer.new()
-	career_panel.add_theme_stylebox_override("panel",_panel(Color(0.06,0.11,0.16,0.97),26))
-	career_panel.custom_minimum_size = Vector2(820,0)
-	root.add_child(career_panel)
-	extra_panels.append(career_panel)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation",10)
-	career_panel.add_child(col)
-	col.add_child(_label("CAREERS",28,Color("f0bd62")))
-	var info := _label("Start a shift and your car becomes the work vehicle. Every job raises your rank: Rookie, Pro (5 jobs), Expert (15), Chief (30), Legend (60). Higher ranks pay more, and every job gives XP.",16,Color("cbd8de"))
-	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	info.custom_minimum_size.x = 780
-	col.add_child(info)
-	for i in CAREERS.size():
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation",10)
-		col.add_child(row)
-		var t := _label("",17,Color("dff3ff"))
-		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		t.custom_minimum_size.x = 560
-		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(t)
-		var b := _button("Start",_career_start.bind(i))
-		b.custom_minimum_size = Vector2(190,64)
-		b.add_theme_stylebox_override("normal",_panel((CAREERS[i]["body"] as Color).darkened(0.45),16))
-		row.add_child(b)
-		career_rows.append([t,b])
-	var foot := HBoxContainer.new()
-	foot.add_theme_constant_override("separation",10)
-	col.add_child(foot)
-	var stop := _button("End shift",_career_end_close)
-	stop.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	foot.add_child(stop)
-	var close := _button("Close",_career_close)
-	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	foot.add_child(close)
-	career_panel.hide()
+	careers._build_career_panel(root)
 
 func _open_careers() -> void:
-	if not paused:
-		_toggle_menu()
-	var lv := _level()
-	for i in CAREERS.size():
-		var C: Dictionary = CAREERS[i]
-		var r := _career_rank(i)
-		var nxt := "  ·  next rank at %d jobs" % int(CAREER_RANKS[r+1][1]) if r+1 < CAREER_RANKS.size() else "  ·  top rank"
-		(career_rows[i][0] as Label).text = "%s  ·  %s  ·  %d jobs  ·  pay x%.2f%s\n%s\n%s" % [C["name"],_career_rank_name(i),int(career_jobs[i]),_career_mult(i),nxt,C["desc"],_career_ach_line(i)]
-		var b: Button = career_rows[i][1]
-		if lv < int(C["level"]):
-			b.text = "Level %d" % int(C["level"])
-			b.disabled = true
-		else:
-			b.disabled = false
-			b.text = "On shift" if career == i else "Start shift"
-	_open_panel(career_panel)
+	careers._open_careers()
 
-func _career_ach_line(i: int) -> String:
-	# v0.52: this career's achievements and how far along you are.
-	var id := String(CAREERS[i]["id"])
-	var parts: Array = []
-	for a in ACH:
-		var key := String(a[3])
-		if key != "job_"+id and key != String(CAREER_SPECIAL[id]):
-			continue
-		var nm := String(a[1]).trim_prefix(String(CAREERS[i]["name"]).split(" ")[0]+": ")
-		if ach_got.has(String(a[0])):
-			parts.append("✔ %s" % nm)
-		else:
-			parts.append("%s %d/%d" % [nm,mini(int(_ach_value(key)),int(a[4])),int(a[4])])
-	return "◆ "+"  ·  ".join(PackedStringArray(parts))
 
 func _career_close() -> void:
-	if paused:
-		_toggle_menu()
+	careers._career_close()
 
-func _career_end_close() -> void:
-	_career_end()
-	_career_close()
 
 # ---------------- v0.50: homes ----------------
 # Five homes from $55,000. Buy one at its front door (FOR SALE sign), then ENTER HOME. Inside: a

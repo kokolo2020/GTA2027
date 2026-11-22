@@ -1,6 +1,6 @@
 # World Biosphere entrance collision fix
 
-Status: Koko authorized publication as 0.54.4 / code 95. Release preparation in progress.
+Status: released and verified as 0.54.4 / code 95.
 
 The gate was already open. The hub and dome floor cylinders ended 14 cm above the surrounding ground. Moving the player capsule into that vertical edge stopped it, so buying a pass or removing a gate could not solve the problem.
 

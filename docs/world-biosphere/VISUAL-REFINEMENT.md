@@ -1,6 +1,6 @@
 # World Biosphere conservatory refinement
 
-Status: Koko authorized publication as 0.54.4 / code 95. Release preparation in progress.
+Status: released and verified as 0.54.4 / code 95.
 
 Koko supplied screenshots of the older Biosphere as the quality reference: lush Blender planting, triangular glass framing, elevated glass-sided terraces and large landscape features. This revision brings those elements into the continent layout:
 
@@ -16,7 +16,7 @@ Koko supplied screenshots of the older Biosphere as the quality reference: lush 
 
 Only the current dome interior is shown in detail. Mist emitters stop outside their dome. Actual movement tests cover the entrances, floes, canopy and new terrace junctions in both directions at walking, running and hoverboard speeds. See ENTRY-FIX.md for the floor-rim diagnosis and fix.
 
-Screenshots in shots/ are actual Godot renders. Performance figures are local Mac Web-lite measurements, not phone validation. Android/Web exports are being prepared for the authorized release.
+Screenshots in shots/ are actual Godot renders. Performance figures are local Mac Web-lite measurements, not phone validation. Android/Web exports, Android signing/version/integrity and public APK/Web package checksums verified. Not phone-tested.
 
 ## Vertical habitat layers
 

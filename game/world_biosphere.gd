@@ -966,10 +966,18 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
  for k in a.wings.size():
   a.wings[k].rotation.z = sin(ph*7)*0.4*(1 if k==0 else -1)
 
+func reset_stick() -> void:
+ # The panel swallows the finger-up of the joystick touch; without this the joystick ignores new touches.
+ g.stick = Vector2.ZERO
+ g.touch_id = -1
+ g.mouse_stick = false
+ g.joystick.queue_redraw()
+
 func close_panel() -> void:
  if panel!=null:
   panel.hide()
  g.paused = false
+ reset_stick()
 
 func open_panel() -> void:
  if g.menu!=null:
@@ -993,6 +1001,7 @@ func open_panel() -> void:
  panel.size = size-Vector2(48,48)
  panel.show()
  g.paused = true
+ reset_stick()
  refresh_panel()
 
 func ui_label(value: String,color := Color.WHITE,size := 20) -> void:
@@ -1012,10 +1021,18 @@ func select_page(i: int) -> void:
  page = i
  refresh_panel()
 
+func forget_buttons(n: Node) -> void:
+ # Freed buttons must leave the game's touch-button list, or every later screen touch errors out.
+ if n is Button:
+  g.touch_buttons.erase(n)
+ for c in n.get_children():
+  forget_buttons(c)
+
 func refresh_panel() -> void:
  if panel_body==null or not panel.visible:
   return
  for child in panel_body.get_children():
+  forget_buttons(child)
   panel_body.remove_child(child)
   child.queue_free()
  ui_label("WORLD BIOSPHERE · PASSPORT",Color("bdffe1"),28)

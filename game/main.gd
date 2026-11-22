@@ -357,7 +357,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.54.0: World Biosphere, seven continents, four open now. Opens at level 7.")
+	_show_toast("Harbor City 0.54.1: World Biosphere fix, the joystick works after closing the passport.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()
@@ -7616,6 +7616,9 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			# Godot mouse emulation handles only the first finger; dispatch touch UI explicitly.
+			for ti in range(touch_buttons.size()-1,-1,-1):
+				if not is_instance_valid(touch_buttons[ti]):
+					touch_buttons.remove_at(ti)
 			for button: Button in touch_buttons:
 				if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
 					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button)) or (quest_panel != null and quest_panel.is_ancestor_of(button)) or (social_panel != null and social_panel.is_ancestor_of(button)) or (ach_panel != null and ach_panel.is_ancestor_of(button))

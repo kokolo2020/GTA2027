@@ -1,6 +1,11 @@
 extends Node3D
 ## Harbor City: original single-player driving prototype. No external assets or services.
 
+# Playable-character trial. Settings > Character, this flag, or --classic-player restores Classic.
+const TRY_NATURAL_PLAYER := true
+const NaturalPlayerTrial := preload("res://natural_player_trial.gd")
+var natural_player_pref := true
+
 # v0.23: job stops sit on the pavement beside the road (6.5 m from the road centre), not in the lanes.
 const PICKUP := Vector3(-25.5, 0, 26)
 const DROPOFF := Vector3(25.5, 0, -22)
@@ -341,7 +346,7 @@ func _ready() -> void:
 	_night_setup()
 	_refresh_time_button()
 	_refresh_checkpoints()
-	var dev_mode := false
+	var dev_mode := "--natural-player-check" in OS.get_cmdline_user_args()
 	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--style-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
@@ -354,7 +359,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.52.1: cleaner streamer mode, just the join card, controls and quick chat.")
+	_show_toast("Harbor City 0.53.0: a new character to try. Menu > Settings > Character switches back to Classic.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()
@@ -364,7 +369,9 @@ func _ready() -> void:
 	if OS.has_feature("web"):
 		# v0.51.3: tell the loading screen the city is built, so it can fade out.
 		JavaScriptBridge.eval("window.hcReady && window.hcReady()",true)
-	if "--smoke-test" in OS.get_cmdline_user_args():
+	if "--natural-player-check" in OS.get_cmdline_user_args():
+		await NaturalPlayerTrial.check(self)
+	elif "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
 	elif "--shots" in OS.get_cmdline_user_args():
 		await _shots()
@@ -4140,7 +4147,27 @@ func _build_player() -> void:
 	player.add_child(collision)
 	hat_holder = Node3D.new()
 	player.add_child(hat_holder)
-	player_person = _make_person(player,0,{"Shirt":Color("f2b24a"),"Pants":Color("263d54"),"Skin":Color("ac7552"),"Hair":Color("2b1d14"),"Shoes":Color("eef1f2"),"Eye":Color("1c1c22")},true)
+	var saved_character := ConfigFile.new()
+	if saved_character.load(SAVE_PATH) == OK and "--natural-player-check" not in OS.get_cmdline_user_args():
+		natural_player_pref = bool(saved_character.get_value("progress","natural_player",true))
+	_build_player_appearance()
+	# Real players stand on a glowing ring (yours gold, other players cyan); NPC walkers have none.
+	my_ring = _player_ring(player,Color("ffcf4a"))
+	my_ring.position.y = -0.58
+	camera = Camera3D.new()
+	camera.fov = 55
+	camera.far = 340
+	add_child(camera)
+	camera.current = true
+	_follow_camera(1.0)
+
+func _build_player_appearance() -> void:
+	if TRY_NATURAL_PLAYER and natural_player_pref and "--classic-player" not in OS.get_cmdline_user_args():
+		player_person = NaturalPlayerTrial.create(player)
+		if not player_person.is_empty():
+			kpeople.append(player_person)
+	if player_person.is_empty():
+		player_person = _make_person(player,0,{"Shirt":Color("f2b24a"),"Pants":Color("263d54"),"Skin":Color("ac7552"),"Hair":Color("2b1d14"),"Shoes":Color("eef1f2"),"Eye":Color("1c1c22")},true)
 	if player_person.is_empty():
 		shirt_mat = _box(player, Vector3(0,0,0),Vector3(0.65,0.85,0.4),Color("f2b24a")).material_override as StandardMaterial3D
 		_box(player, Vector3(0,0.68,0),Vector3(0.46,0.46,0.46),Color("ac7552"))
@@ -4151,19 +4178,12 @@ func _build_player() -> void:
 		(player_person["root"] as Node3D).position.y = -0.7
 		shirt_mat = player_person["mats"]["Shirt"]
 		pants_mats.append(player_person["mats"]["Pants"])
-		hat_holder.position.y = _hat_y(-0.7)
-		if player_person.has("ap"):
+		hat_holder.position.y = _player_hat_y(-0.7)
+		if player_person.get("natural_trial",false):
+			hat_holder.scale = Vector3.ONE*0.83
+		elif player_person.has("ap"):
 			hat_holder.position.z = K_HEAD_Z
 			hat_holder.scale = Vector3.ONE*K_HAT_SCALE
-	# Real players stand on a glowing ring (yours gold, other players cyan); NPC walkers have none.
-	my_ring = _player_ring(player,Color("ffcf4a"))
-	my_ring.position.y = -0.58
-	camera = Camera3D.new()
-	camera.fov = 55
-	camera.far = 340
-	add_child(camera)
-	camera.current = true
-	_follow_camera(1.0)
 
 func _build_car() -> void:
 	car = CharacterBody3D.new()
@@ -4374,6 +4394,9 @@ func _make_kperson(parent: Node3D, variant: int, colors: Dictionary, tint: bool)
 # Hat holder height for feet at feet_y (the hats were made for the old head, 0.555 m below its centre).
 func _hat_y(feet_y: float) -> float:
 	return feet_y+(K_HEAD_Y-K_HAT_SCALE*0.555 if kperson_scene != null else 0.99)
+
+func _player_hat_y(feet_y: float) -> float:
+	return feet_y+1.14 if player_person.get("natural_trial",false) else _hat_y(feet_y)
 
 func _sit_drop() -> float:
 	return K_HIP if kperson_scene != null else 0.86
@@ -4817,12 +4840,13 @@ func _build_hud() -> void:
 	menu_online_button = _button("Online",_menu_stay.bind(_online_toggle))
 	menu_run_button = _button("Run: ON",_menu_stay.bind(_toggle_run))
 	menu_screen_button = _button("Screen: Clean",_menu_stay.bind(_toggle_clean_hud))
+	menu_character_button = _button("Character: New",_menu_stay.bind(_toggle_character))
 	var pages := [
 		["GO",Color("2f8fb8"),[["Map",_menu_go.bind(_open_map)],["Travel",_menu_go.bind(_open_travel)],["Directions",_menu_go.bind(_open_dir)],["Call car",_menu_go.bind(_menu_call_car)],["Quests",_menu_go.bind(_open_quests)],["Back to my car",_rescue]]],
 		["PLAY",Color("c9612f"),[["Chapters",_open_chapters],["Careers",_open_careers],["Trials",_open_trials],["Chase",_chase_open],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
 		["ME",Color("8a5ad0"),[["My Home",_open_homes],["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
 		["FRIENDS",Color("2fa37a"),[["Chat",_menu_go.bind(_toggle_chat)],["Players & friends",_open_social],[menu_online_button]]],
-		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[time_button]]],
+		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[menu_character_button],[time_button]]],
 	]
 	var page_box := MarginContainer.new()
 	page_box.custom_minimum_size = Vector2(0,210)
@@ -4899,6 +4923,35 @@ var menu_radio_button: Button
 var menu_online_button: Button
 var menu_run_button: Button
 var menu_screen_button: Button
+var menu_character_button: Button
+
+func _toggle_character() -> void:
+	if not TRY_NATURAL_PLAYER or "--classic-player" in OS.get_cmdline_user_args():
+		return
+	if not cs.is_empty():
+		_show_toast("Finish the scene before changing character.")
+		return
+	if seat_id >= 0:
+		_stand_up()
+	var was_new := bool(player_person.get("natural_trial",false))
+	for i in range(hub_emotes.size()-1,-1,-1):
+		if hub_emotes[i]["person"] == player_person:
+			hub_emotes.remove_at(i)
+	kpeople.erase(player_person)
+	if is_instance_valid(player_person.get("root")):
+		(player_person["root"] as Node).queue_free()
+	player_person = {}
+	pants_mats.clear()
+	hat_holder.transform = Transform3D.IDENTITY
+	natural_player_pref = not was_new
+	_build_player_appearance()
+	_apply_avatar()
+	_person_lift(player_person)
+	if eye_view:
+		(player_person["root"] as Node3D).hide()
+	_refresh_menu_buttons()
+	_save_progress()
+	_show_toast("New character on. Your wardrobe is saved." if player_person.get("natural_trial",false) else "Classic character on. Your saved wardrobe is back.")
 
 var online_pill: Button
 # v0.33.1: while you're offline the game quietly listens to the online lobby (it never shows you),
@@ -7492,6 +7545,7 @@ func _refresh_menu_buttons() -> void:
 	menu_online_button.text = online_button.text
 	menu_run_button.text = "Run: ON" if run_on else "Run: OFF"
 	menu_screen_button.text = "Screen: Clean" if hud_clean else "Screen: Full"
+	menu_character_button.text = "Character: New" if player_person.get("natural_trial",false) else "Character: Classic"
 
 func _clean_hud_tick() -> void:
 	if hud == null or action_button == null:
@@ -8228,8 +8282,11 @@ func _show_toast(message: String) -> void:
 	toast_time = 6.0
 
 func _save_progress() -> void:
+	if "--natural-player-check" in OS.get_cmdline_user_args():
+		return
 	var file := ConfigFile.new()
 	file.set_value("progress","cash",cash)
+	file.set_value("progress","natural_player",natural_player_pref)
 	file.set_value("progress","deliveries",deliveries)
 	file.set_value("progress","found_mask",found_mask)
 	file.set_value("progress","route_index",route_index)
@@ -13404,7 +13461,7 @@ func _sit_pose(person: Dictionary, h: float, base_y: float) -> void:
 	if person.has("ap"):
 		person["idle"] = "Sit"
 		_kplay(person,"Sit")
-		(person["root"] as Node3D).position.y = base_y-(K_HIP-(h+0.06))
+		(person["root"] as Node3D).position.y = base_y-(float(person.get("sit_hip",K_HIP))-(h+0.06))
 		return
 	person["sat"] = true
 	var limbs: Dictionary = person["limbs"]
@@ -13651,7 +13708,7 @@ func _sit(i: int) -> void:
 	player.get_child(0).set_deferred("disabled",true)
 	_sit_pose(player_person,float(seat["h"]),-0.7)
 	if hat_holder != null:
-		hat_holder.position.y = _hat_y(-0.7)-(_sit_drop()-(float(seat["h"])+0.06))
+		hat_holder.position.y = _player_hat_y(-0.7)-(float(player_person.get("sit_hip",_sit_drop()))-(float(seat["h"])+0.06))
 	var kind := String(seat["kind"])
 	var t := int(seat["table"])
 	if kind == "ttt":
@@ -13702,7 +13759,7 @@ func _stand_up() -> void:
 		player_person["idle"] = "Idle"
 	_pose_person(player_person,0.0,0.0)
 	if hat_holder != null:
-		hat_holder.position.y = _hat_y(-0.7)
+		hat_holder.position.y = _player_hat_y(-0.7)
 	game_panel.hide()
 
 func _seated_tick(delta: float) -> void:
@@ -22484,6 +22541,8 @@ func _refresh_style() -> void:
 		if style_tab == "relic":
 			extra = "  %d relics in stock today; new stock every day." % RELIC_STOCK
 		style_info.text = "%s. Tap an item to try it on, then buy it. Today's deal is 30%% off.%s You have %s." % [S["sub"],extra,_money(cash)]
+	if player_person.get("natural_trial",false):
+		style_info.text += "\nCharacter trial: the tech outfit stays on; your wardrobe choices remain saved."
 	if wardrobe:
 		style_title.add_theme_color_override("font_color",Color("f0bd62"))
 	for c in style_tabs.get_children():
@@ -25083,7 +25142,7 @@ func _board_tick(delta: float) -> void:
 	var riding := board_on and not driving and not eye_view and seat_id < 0
 	board_node.visible = riding
 	if not player_person.is_empty() and hat_holder != null:
-		hat_holder.position.y = _hat_y(-0.52 if riding else -0.7)
+		hat_holder.position.y = _player_hat_y(-0.52 if riding else -0.7)
 	if not player_person.is_empty():
 		var root := player_person["root"] as Node3D
 		player_person["base_y"] = -0.52 if riding else -0.7

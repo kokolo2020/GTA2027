@@ -1,0 +1,11 @@
+integration-backup/
+*.blend1
+*.blend
+*.glb
+*.gif
+*.png
+frames/
+run-frames/
+authored-run-frames/
+refined-run-frames/
+in-game/

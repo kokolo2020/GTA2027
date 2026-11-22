@@ -1,8 +1,10 @@
 # Harbor City — current handover
 
-## START HERE (updated 2026-11-21, after v0.52.0)
+## START HERE (updated 2026-11-22, 0.53.0 release prepared)
 
 **Live version: 0.52.1, versionCode 87** (next is 88).
+
+**0.53.0 prepared for release (code 88):** new rigged playable character with a fixed futuristic outfit. Menu > Settings > Character switches New / Classic immediately and remembers the preference; Classic restores the full saved wardrobe. NPCs and online peers stay classic. Runtime: `game/natural_player_trial.gd` + `game/models/natural_player_trial.glb`; source/previews: `prototypes/natural-character/`. Idle/walk/run/sit/wave/talk/cheer included. Import, focused checks (including the Settings switch), full desktop smoke, rendered in-game screenshots, classic startup fallback, Android/Web exports and APK package/version/signing verification passed. Desktop save restored byte for byte. Not checked on Fold5. Publication and live checks still pending. No player progress migration.
 
 **Last release: 0.52.1.** Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
 

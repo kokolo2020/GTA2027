@@ -1,5 +1,7 @@
 # Natural character 01
 
+> Rolled back in 0.53.2 at Koko's request after broken clothing/shoulder shapes were reported on a phone. The game now uses the original 0.52.1 characters; these studies and assets are retained as history and excluded from release exports.
+
 An original character study for Harbor City, subsequently integrated as the 0.53.0 player
 trial. Earlier studies below are retained for comparison; the latest expansion is
 described at the end. Existing wardrobe assets and saved progress are preserved.

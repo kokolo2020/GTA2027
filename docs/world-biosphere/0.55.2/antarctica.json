@@ -1,0 +1,40 @@
+[
+  {
+    "alpha_scissor_surfaces": 1,
+    "animal_glb_file_bytes": 266580,
+    "animal_models": 4,
+    "audio_resources": 0,
+    "audio_wav_bytes": 0,
+    "buffer_bytes": 36995760.0,
+    "dome": 3,
+    "heap_peak": 538791596,
+    "interior_nodes": [
+      1,
+      1,
+      1,
+      340,
+      1,
+      1,
+      1
+    ],
+    "labels": 62,
+    "mesh_resources": 66,
+    "mesh_triangles": 26086,
+    "multimesh_buffer_bytes": 386832,
+    "multimesh_instances": 8059,
+    "multimeshes": 65,
+    "nodes": 571,
+    "stream_load_us": 171803,
+    "texture_bytes": 114792347.0,
+    "tick_us_avg": 97.5835209365151,
+    "tick_us_max": 544,
+    "transparent_surfaces": 8,
+    "video_bytes": 151788107.0,
+    "visible_transparent_surfaces": 0,
+    "name": "Antarctica",
+    "bench": "HC_BENCH fps=227.8 lite=true scale=1.00 draws=114 prims=23324 objs=616 proc_ms=10.85 phys_ms=3.92 nodes=18745 at=(-810.0, 1.0, -546.0)",
+    "rss_peak_bytes": 730906624,
+    "fps": 227.8,
+    "footprint_peak_bytes": 1463817152
+  }
+]

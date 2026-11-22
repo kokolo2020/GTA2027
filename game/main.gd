@@ -357,7 +357,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.1: smooth Biosphere rims, safe pens, enclosed continent loop and lighter mobile rendering.")
+	_show_toast("Harbor City 0.55.2: open Biosphere paths, smooth ramps, dome directions and automatic Daily Keeper tasks.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()

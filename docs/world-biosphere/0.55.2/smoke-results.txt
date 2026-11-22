@@ -1,0 +1,28 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+ERROR: Parse JSON failed. Error at line 0: Expected 'true', 'false', or 'null', got 'not'
+   at: parse_string (core/io/json.cpp:629)
+   GDScript backtrace (most recent call first):
+       [0] _online_handle (res://main.gd:2091)
+       [1] _smoke_garage_ridge (res://main.gd:10447)
+radio station 1 ok: 7.7s peak 20222 | ♪ Harbor FM  ·  Salt and Chrome
+radio station 2 ok: 12.6s peak 21235 | ♪ Bay Waves  ·  Morning Haze
+radio station 3 ok: 5.0s peak 13024 | Forecast: sunny, with a gentle chance of seagulls.
+models ok
+SEA_TOW_FROM (-3.543322, 0.600942, 47.0)
+FEET_CHECK standing=53 buried=0
+WB_CHECK_DOME Africa
+WB_CHECK_DOME Asia
+WB_CHECK_DOME South America
+WB_CHECK_DOME Antarctica
+WB_CHECK_DOME Europe
+WB_CHECK_DOME North America
+WB_CHECK_DOME Oceania
+WORLD_BIOSPHERE_OK: 24-angle hub/seven-dome bevels; sealed doors and open spokes; real-body walk/run/BOARD paths/deck edges; every pen side and rescue; supported wildlife; scenery clearance; one resident interior; quests/photos/passport/daily/save
+NAV Galleria ready at 96063 ms
+NAV World Biosphere Hub ready at 96242 ms
+NAV Grand Central ready at 96243 ms
+NAV Grand Central Shops ready at 96244 ms
+NAV Harbor Gardens ready at 97612 ms
+NAV Fan Plaza ready at 97999 ms
+HARBOR_SMOKE_OK: Harbor International Airport, no walls and joined roads, sea tow, Harbor Loop sky train, City Tour, day and night, find me, treasure hunt, player rings, name tag, quests list, quick quests, 40 levels, all towns open, starter crate, QR join code, graphics, RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models

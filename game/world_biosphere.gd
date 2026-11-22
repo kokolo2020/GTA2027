@@ -108,6 +108,7 @@ var walk_surfaces: Array = []
 var raised_boundaries: Array = []
 var scenery_bounds: Array = []
 var scenery_group := ""
+var rail_mesh: BoxMesh
 var parked_nests := {}
 var loaded_dome := -1
 var exterior_visuals: Array = []
@@ -164,8 +165,6 @@ func local_point(i: int, x: float, z: float, y := 0.0) -> Vector3:
  return dome_c(i)+right*x+forward*z+Vector3(0,y,0)
 
 func inside(p: Vector3) -> bool:
- if absf(Vector2(p.x-C.x,p.z-C.z).length()-69.0)<4.5:
-  return true
  if Vector2(p.x-C.x,p.z-C.z).length() < 20.5:
   return true
  for i in 7:
@@ -220,8 +219,20 @@ func ball(parent: Node3D,p: Vector3,size: Vector3,col: Color) -> void:
 
 func beam(parent: Node3D,a: Vector3,b: Vector3,w: float,col: Color,solid := false) -> void:
  var d = b-a
- var b0 = Basis.looking_at(d.normalized(),Vector3.UP) if absf(d.normalized().dot(Vector3.UP)) < 0.99 else Basis.from_euler(Vector3(PI/2,0,0))
- box(parent,(a+b)*0.5,Vector3(w,w,d.length()),col,solid,b0.get_euler())
+ if d.length()<0.0001:
+  return
+ if rail_mesh==null:
+  rail_mesh = BoxMesh.new()
+  rail_mesh.size = Vector3.ONE
+ var z = d.normalized()
+ var x = Vector3.UP.cross(z).normalized() if absf(z.dot(Vector3.UP))<0.99 else Vector3.RIGHT
+ var y = z.cross(x).normalized()
+ var basis = Basis(x,y,z)
+ shape(parent,rail_mesh,(a+b)*0.5,Vector3(w,w,d.length()),col,solid,basis.get_euler())
+ var mat = material(col)
+ var key = "%d:%d:%d" % [parent.get_instance_id(),rail_mesh.get_instance_id(),mat.get_instance_id()]
+ batches[key].xs[-1] = Transform3D(Basis(x*w,y*w,d),(a+b)*0.5)
+
 
 func text(parent: Node3D,label: String,pos: Vector3,col := Color.WHITE,size := 40,range_m := 65.0) -> Label3D:
  var n = Label3D.new()
@@ -292,7 +303,7 @@ func build() -> void:
  box(root,Vector3(-760,0.01,-458),Vector3(210,0.08,12),Color("728c80"))
  g._collider(root,Vector3(-760,-0.3,-458),Vector3(210,0.6,14))
  g._floor_note(Vector3(-760,0.01,-458),Vector3(210,0.08,12))
- box(root,C+Vector3(0,-0.08,102),Vector3(7,0.06,163),Color("e4e5d5"))
+ box(root,C+Vector3(0,-0.065,102),Vector3(7,0.06,163),Color("e4e5d5"))
  disc(root,C+Vector3(0,0.03,0),18.5,0.12,Color("e9ecde"),true)
  rim_bevel(root,C,20,Color("e9ecde"))
  # Vehicle-only bollards preserve the car exclusion now that the floor rim is walkable.
@@ -323,8 +334,8 @@ func build() -> void:
   var b = c-dir*(RADIUS-0.5)
   beam(root,a+Vector3(0,-0.04,0),b+Vector3(0,-0.04,0),0.12,Color("a7ddc3"))
   var yaw = atan2(dir.x,dir.z)
-  box(root,(a+b)*0.5+Vector3(0,-0.08,0),Vector3(5.6,0.06,a.distance_to(b)+1),Color("e7e9db"),false,Vector3(0,yaw,0))
-  # The enclosed concourse below owns all tunnel side boundaries and junctions.
+  box(root,(a+b)*0.5+Vector3(0,-0.065,0),Vector3(5.6,0.06,a.distance_to(b)+1),Color("e7e9db"),false,Vector3(0,yaw,0))
+  # The open paths below retain low side guards without roofs.
   text(root,NAMES[i],C+dir*28+Vector3(0,3.8,0),COLORS[i],38,60)
   text(root,"FREE ENTRY",C+dir*23+Vector3(0,3.5,0),COLORS[i],28,24)
   disc(root,c+Vector3(0,0.03,0),RADIUS-1.5,0.12,GROUNDS[i],true)
@@ -349,7 +360,7 @@ func build() -> void:
   var b = OCEAN+Vector3(cos((k+1)*TAU/24),0,sin((k+1)*TAU/24))*49.1
   beam(root,a+Vector3(0,1.2,0),b+Vector3(0,1.2,0),0.16,Color("d9be69"),true)
  text(root,"WORLD BIOSPHERE · LEVEL 7",ENTRY+Vector3(0,4,0),Color("d5fff0"),54,90)
- build_ring_concourse()
+ build_open_paths()
  register_habitats()
  flush_guard_batches(root)
  flush()
@@ -376,7 +387,8 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
     beam(parent,points[0] if (j+k)%2==0 else points[1],points[3] if (j+k)%2==0 else points[2],0.11,frame)
  st.generate_normals()
  var mi = MeshInstance3D.new()
- mi.mesh = st.commit()
+ var shell_mesh = st.commit()
+ mi.mesh = shell_mesh
  mi.material_override = g._bio_glass_mat(col.lightened(0.4),0.09)
  mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
  if detail_index(parent)<0:
@@ -385,6 +397,17 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
   mi.free()
  if not wall:
   return
+ # The upper glass is solid too; elevated decks cannot create an exit above
+ # the sealed lower perimeter. Only the 5.6 m door below remains open.
+ var roof_body = StaticBody3D.new()
+ roof_body.name = "ClosedDomeShell"+str(dome_at(c))
+ var roof_shape = CollisionShape3D.new()
+ var roof_collision = ConcavePolygonShape3D.new()
+ roof_collision.backface_collision = true
+ roof_collision.set_faces(shell_mesh.get_faces())
+ roof_shape.shape = roof_collision
+ roof_body.add_child(roof_shape)
+ parent.add_child(roof_body)
  var toward = (C-c).normalized()
  var centre_angle = atan2(toward.z,toward.x)
  var half_door = asin(2.8/r)
@@ -851,8 +874,6 @@ func prompt() -> String:
    if task==4 and not dusk():
     return "LANTERNS · COME AT DUSK"
    return ["COUNT WILDLIFE","CHECK LOOKOUT","STAMP TRAIL"][task%3] if active==0 else ("LIGHT LANTERN" if task==4 else "RANGER TASK")
- if active>=0 and keeper_here():
-  return "KEEPER: "+keeper().kind.to_upper()
  return ""
 
 func dusk() -> bool:
@@ -904,8 +925,6 @@ func interact() -> bool:
    return true
   advance_quest(task)
   return true
- if keeper_here():
-  finish_keeper()
  return true
 
 func keeper(day := "") -> Dictionary:
@@ -920,6 +939,10 @@ func keeper(day := "") -> Dictionary:
 func keeper_here() -> bool:
  var k = keeper()
  return state.keeper_day!=today() and active==int(k.dome) and g.player.position.distance_to(k.p+Vector3(0,0.8,0))<3
+
+func auto_keeper() -> void:
+ if g.player!=null and not g.paused and not g.driving and g.place_open[1] and keeper_here():
+  finish_keeper()
 
 func finish_keeper() -> void:
  if not keeper_here():
@@ -1015,6 +1038,7 @@ func tick_impl(delta: float) -> void:
  if current<0 and loaded_dome>=0 and g.player.position.distance_to(dome_c(loaded_dome))>RADIUS+10.0:
   unload_detail()
  safety_net(delta)
+ auto_keeper()
  if current>=0:
   apply_dome_quality()
  # Distance/frustum LOD preserves near motion without posing every far animal each frame.
@@ -1103,7 +1127,7 @@ func tick_impl(delta: float) -> void:
  for station in shelters:
   station.node.visible = active==int(station.dome) and active==int(keeper_task.dome) and int(station.step)==int(keeper_task.step) and state.keeper_day!=today()
   if station.node.visible:
-   station.label.text = "DAILY KEEPER · "+keeper_task.kind.to_upper()+" · %d/3"%(int(keeper_task.step)+1)
+   station.label.text = "DAILY KEEPER · "+keeper_task.kind.to_upper()+" · %d/3\nWalk here · automatic check"%(int(keeper_task.step)+1)
  for l in lanterns:
   if int(state.steps.get("4",0))>int(l.step):
    l.node.material_override = g._fc_glow(Color("ffd283"))
@@ -1364,10 +1388,7 @@ func smoke() -> void:
     wall.collision_layer = 1
    await g.get_tree().physics_frame
    walk_route("hub ENTRY "+mode,[ENTRY+Vector3(0,-0.05,0),C+Vector3(0,-0.05,36),C+Vector3(0,0.09,12),C+Vector3(0,0.09,0)],speed)
-   var circle = []
-   for k in 85:
-    circle.append(C+Vector3(cos(-PI/2+k*TAU/84),0,sin(-PI/2+k*TAU/84))*69.0+Vector3(0,-0.05,0))
-   walk_route("enclosed seven-dome ring "+mode,circle,speed)
+   assert(campus_paths.size()==8,"Only ENTRY and seven original open spokes")
  for i in range(start_dome,7):
   print("WB_CHECK_DOME "+NAMES[i])
   g.player.position = dome_c(i)+Vector3(0,0.79,0)
@@ -1469,12 +1490,22 @@ func smoke() -> void:
      g.player.velocity = Vector3.ZERO
      drive_body(-dir,speed,60)
      assert(Vector2(g.player.position.x-f.c.x,g.player.position.z-f.c.z).length()>=float(f.r)+0.15,"Solid pen from every side: "+str(f.si)+mode)
-   for angle in [0.18,0.45,0.9,1.5,2.2,PI-0.18,PI+0.18,-0.18,-0.9,-2.2]:
-    var dir = direction.rotated(Vector3.UP,angle)
-    g.player.position = dome_c(i)+dir*(RADIUS-2.0)+Vector3(0,0.79,0)
-    g.player.velocity = Vector3.ZERO
-    drive_body(dir,speed,90)
-    assert(Vector2(g.player.position.x-dome_c(i).x,g.player.position.z-dome_c(i).z).length()<RADIUS-0.1,"Sealed wall: only tunnel exit %s %s angle %.2f at %s"%[NAMES[i],mode,angle,g.player.position])
+   for angle in 48:
+    var turn = angle*TAU/48.0
+    if absf(wrapf(turn-PI,-PI,PI))<asin(3.4/RADIUS):
+     continue # exact door opening is verified separately, both directions
+    var dir = direction.rotated(Vector3.UP,turn)
+    for entering in [false,true]:
+     g.player.position = dome_c(i)+dir*(RADIUS+(2.0 if entering else -2.0))+Vector3(0,0.79,0)
+     g.player.velocity = Vector3.ZERO
+     drive_body(-dir if entering else dir,speed,60)
+     var distance = Vector2(g.player.position.x-dome_c(i).x,g.player.position.z-dome_c(i).z).length()
+     assert(distance>RADIUS+0.1 if entering else distance<RADIUS-0.1,"Sealed perimeter: only door entry/exit %s %s angle %.2f entering=%s"%[NAMES[i],mode,turn,entering])
+   for height in [8.0,16.0,26.0]:
+    var roof_point = dome_c(i)+Vector3(0,height,0)
+    var roof_ray = PhysicsRayQueryParameters3D.create(roof_point+direction*50,roof_point,1)
+    var roof_hit = g.get_world_3d().direct_space_state.intersect_ray(roof_ray)
+    assert(not roof_hit.is_empty() and str(roof_hit.collider.name).begins_with("ClosedDomeShell"),"Upper dome shell is closed "+NAMES[i])
    # Explicitly inject the real body into every pen; rescue must work in each mode.
    safety_enabled = true
    for f in fences:
@@ -1581,7 +1612,10 @@ func smoke() -> void:
   await g.get_tree().physics_frame
   for step in 3:
    g.player.position = keeper().p+Vector3(0,0.8,0)
-   finish_keeper()
+   auto_keeper()
+   var paid_once = g.cash
+   auto_keeper()
+   assert(g.cash==paid_once,"Daily proximity does not pay twice")
   assert(state.keeper_day==day,"Daily task completes")
   assert(int(state.streak)==(1 if day=="2026-11-24" else day_number(day)-day_number("2026-11-20")+1),"Daily streak")
  var file = ConfigFile.new()
@@ -1618,7 +1652,7 @@ func smoke() -> void:
  activate_dome(int(keep.active))
  g.set_process(keep.process)
  g.set_physics_process(keep.physics)
- print("WORLD_BIOSPHERE_OK: 24-angle hub/seven-dome bevels; sealed doors and ring; real-body walk/run/BOARD paths/deck edges; every pen side and rescue; supported wildlife; scenery clearance; one resident interior; quests/photos/passport/daily/save")
+ print("WORLD_BIOSPHERE_OK: 24-angle hub/seven-dome bevels; sealed doors and open spokes; real-body walk/run/BOARD paths/deck edges; every pen side and rescue; supported wildlife; scenery clearance; one resident interior; quests/photos/passport/daily/save")
 
 func drive_body(direction: Vector3,speed: float,steps: int) -> void:
  var delta = maxf(g.get_physics_process_delta_time(),0.001)
@@ -1648,6 +1682,12 @@ func screenshots() -> void:
   g.camera.global_position = local_point(i,0,-30,2.4)
   g.camera.look_at(local_point(i,0,8,3.5))
   await g._save_shot(NAMES[i].to_lower().replace(" ","-"))
+  if i in [1,3]:
+   var route = visitor_stage_route(i)
+   var at = maxi(0,route.size()/3)
+   g.camera.global_position = route[at]+Vector3(0,2.3,0)
+   g.camera.look_at(route[mini(at+2,route.size()-1)]+Vector3(0,1.0,0))
+   await g._save_shot(NAMES[i].to_lower()+"-smooth-ramp")
   if i==0:
    var elephant = animals.filter(func(a):return a.kind=="elephant")[0]
    var point: Vector3 = elephant.node.position
@@ -1659,10 +1699,13 @@ func screenshots() -> void:
  g.player.position = C
  activate_dome(-1)
  unload_detail()
+ g.camera.global_position = C+Vector3(0,2.4,42)
+ g.camera.look_at(C+Vector3(0,2.5,0))
+ await g._save_shot("open-entry-directions")
  g.camera.far = 1200
  g.camera.global_position = C+Vector3(5,270,310)
  g.camera.look_at(C)
- await g._save_shot("enclosed-ring-campus")
+ await g._save_shot("open-campus")
  print("WORLD_BIOSPHERE_SHOTS_OK")
 
 func backdrop(i: int,parent: Node3D) -> void:
@@ -2358,40 +2401,74 @@ func phase2_layers(i: int,parent: Node3D) -> void:
  text(parent,["WOODLAND OWL NESTS","EAGLE CLIFF NESTS","KOALA TREE HABITAT"][i-4],home+Vector3(0,height+2,0),Color("ecf8dc"),24,45)
 
 func phase2_walkway(parent: Node3D,a: Vector3,b: Vector3,width: float,open_start: float,open_end: float) -> void:
- # Flat tangents at landings avoid the capsule catching a higher mesh edge.
- var d = b-a
- var side = Vector3(d.z,0,-d.x).normalized()*width*0.5
- var count = maxi(2,ceili(Vector2(d.x,d.z).length()/0.45))
- var left = []
- var right = []
- for k in count+1:
-  var t = float(k)/count
-  var centre = a.lerp(b,t)
-  centre.y = lerpf(a.y,b.y,t*t*(3.0-2.0*t))
-  left.append(centre-side)
-  right.append(centre+side)
- var id = parent.get_instance_id()
- if not walk_meshes.has(id):
-  walk_meshes[id] = {"parent":parent,"top":PackedVector3Array(),"visual":PackedVector3Array()}
- var top: PackedVector3Array = walk_meshes[id].top
- var visual: PackedVector3Array = walk_meshes[id].visual
- for k in count:
-  var faces = PackedVector3Array([left[k],right[k],left[k+1],right[k],right[k+1],left[k+1]])
-  top.append_array(faces)
-  visual.append_array(faces)
-  for edge in [[left[k],left[k+1]],[right[k+1],right[k]]]:
-   var p: Vector3 = edge[0]
-   var q: Vector3 = edge[1]
-   visual.append_array(PackedVector3Array([p,q,p-Vector3(0,0.22,0),p-Vector3(0,0.22,0),q,q-Vector3(0,0.22,0)]))
- walk_meshes[id].top = top
- walk_meshes[id].visual = visual
  var previous = walk_surfaces.size()
  register_walk(parent,a,b,width,"raised")
  if walk_surfaces.size()>previous:
+  walk_surfaces[-1]["swept"] = true
+  walk_surfaces[-1]["parent"] = parent
+
+func sweep_join(surface: Dictionary,at_start: bool) -> Dictionary:
+ var d: Vector3 = surface.b-surface.a
+ var horizontal = Vector3(d.x,0,d.z)
+ var normal = Vector3(d.z,0,-d.x).normalized()
+ var point: Vector3 = surface.a if at_start else surface.b
+ var joins = []
+ for other in walk_surfaces:
+  if other==surface or not other.get("swept",false) or other.parent!=surface.parent or absf(float(other.width)-float(surface.width))>0.01:
+   continue
+  if point.distance_to(other.a)<0.02:
+   joins.append(other.b)
+  elif point.distance_to(other.b)<0.02:
+   joins.append(other.a)
+ var slope = 0.0
+ var offset = normal*float(surface.width)*0.5
+ if joins.size()==1:
+  var next: Vector3 = point-joins[0] if at_start else joins[0]-point
+  var next_flat = Vector3(next.x,0,next.z)
+  if next_flat.normalized().dot(horizontal.normalized())>0.0:
+   var tangent = (horizontal.normalized()+next_flat.normalized()).normalized()
+   var miter = Vector3(tangent.z,0,-tangent.x)
+   offset = miter*float(surface.width)*0.5/maxf(miter.dot(normal),0.6)
+   var current_slope = d.y/maxf(horizontal.length(),0.01)
+   var next_slope = next.y/maxf(next_flat.length(),0.01)
+   if current_slope*next_slope>0:
+    slope = (current_slope+next_slope)*0.5
+ return {"side":offset,"slope":slope}
+
+func build_sweeps(parent: Node3D) -> void:
+ for surface in walk_surfaces:
+  if not surface.get("swept",false) or surface.parent!=parent:
+   continue
+  var a: Vector3 = surface.a
+  var b: Vector3 = surface.b
+  var length = Vector2(b.x-a.x,b.z-a.z).length()
+  var first = sweep_join(surface,true)
+  var last = sweep_join(surface,false)
+  var count = maxi(2,ceili(length/0.3))
+  var left = []
+  var right = []
+  for k in count+1:
+   var t = float(k)/count
+   var centre = a.lerp(b,t)
+   centre.y = (2*t*t*t-3*t*t+1)*a.y+(t*t*t-2*t*t+t)*length*float(first.slope)+(-2*t*t*t+3*t*t)*b.y+(t*t*t-t*t)*length*float(last.slope)
+   var side: Vector3 = first.side.lerp(last.side,t)
+   left.append(centre-side)
+   right.append(centre+side)
+  var id = parent.get_instance_id()
+  if not walk_meshes.has(id):
+   walk_meshes[id] = {"parent":parent,"top":PackedVector3Array(),"visual":PackedVector3Array()}
+  for k in count:
+   var faces = PackedVector3Array([left[k],right[k],left[k+1],right[k],right[k+1],left[k+1]])
+   walk_meshes[id].top.append_array(faces)
+   walk_meshes[id].visual.append_array(faces)
+   for edge in [[left[k],left[k+1]],[right[k+1],right[k]]]:
+    var p: Vector3 = edge[0]
+    var q: Vector3 = edge[1]
+    walk_meshes[id].visual.append_array(PackedVector3Array([p,q,p-Vector3(0,0.22,0),p-Vector3(0,0.22,0),q,q-Vector3(0,0.22,0)]))
   right.reverse()
-  var polygon = left.duplicate()
-  polygon.append_array(right)
-  walk_surfaces[-1].poly = polygon
+  surface.poly = left.duplicate()
+  surface.poly.append_array(right)
+
 
 func refined_coat(n: Node) -> void:
  # Imported colour attributes need explicit albedo use on Compatibility materials.
@@ -2573,6 +2650,9 @@ func finish_guards(i: int,parent: Node3D) -> void:
    edge_direction.y = 0
    if not surface.has("radius") and absf(edge_direction.normalized().dot(along.normalized()))<0.25 and maxf(a.y,b.y)<0.45:
     continue # open ramp foot joins the continuous ground floor
+   var outward = Vector3(b.z-a.z,0,a.x-b.x).normalized()
+   if outward.dot((a+b)*0.5-(surface.a+surface.b)*0.5)<0:
+    outward = -outward
    var count = maxi(1,ceili(a.distance_to(b)/0.30))
    var run_start = -1
    for sample in count+1:
@@ -2583,7 +2663,7 @@ func finish_guards(i: int,parent: Node3D) -> void:
       if neighbour==surface or int(neighbour.dome)!=i:
        continue
       var q = project_segment(p,neighbour.a,neighbour.b)
-      if absf(p.y-q.y)<0.45 and surface_distance(p,neighbour)<0.12:
+      if absf(p.y-q.y)<0.45 and surface_distance(p+outward*0.03,neighbour)<0.005:
        enclosed = true
        break
     if not enclosed and run_start<0:
@@ -2902,57 +2982,28 @@ func campus_surface(a: Vector3,b: Vector3,width: float,join_only := false) -> Di
  var side = Vector3(b.z-a.z,0,a.x-b.x).normalized()*width*0.5
  return {"a":a,"b":b,"width":width,"poly":[a-side,b-side,b+side,a+side],"join_only":join_only}
 
-func build_ring_concourse() -> void:
- var surfaces = []
- # An enclosed, level ring links the existing entrances; no new holes in dome walls.
+func build_open_paths() -> void:
+ # Original open hub-and-spoke garden layout: no roof or circular connector.
+ campus_paths.append([ENTRY+Vector3(0,-0.05,0),C+Vector3(0,0.09,0)])
  for i in 7:
-  var first = -PI/2.0+i*TAU/7.0
-  for k in 12:
-   var a = C+Vector3(cos(first+k*TAU/84),0,sin(first+k*TAU/84))*69.0+Vector3(0,-0.05,0)
-   var b = C+Vector3(cos(first+(k+1)*TAU/84),0,sin(first+(k+1)*TAU/84))*69.0+Vector3(0,-0.05,0)
-   surfaces.append(campus_surface(a,b,5.6))
-  var direction = (dome_c(i)-C).normalized()
-  surfaces.append(campus_surface(C+direction*18.0+Vector3(0,-0.05,0),dome_c(i)-direction*(RADIUS-2.0)+Vector3(0,-0.05,0),5.6))
-  surfaces.append(campus_surface(dome_c(i)-direction*(RADIUS+2.0)+Vector3(0,-0.05,0),dome_c(i)-direction*(RADIUS-4.0)+Vector3(0,-0.05,0),5.8,true))
- surfaces.append(campus_surface(ENTRY+Vector3(0,-0.05,0),C+Vector3(0,-0.05,18),7.0))
- surfaces.append(campus_surface(ENTRY+Vector3(0,-0.05,5),ENTRY+Vector3(0,-0.05,-3),7.2,true))
- # Hub floor acts as an open junction rather than a tunnel dead-end.
- surfaces.append({"a":C,"b":C,"width":38.0,"radius":19.0,"poly":[],"join_only":true})
- for surface in surfaces:
-  if surface.join_only:
-   continue
-  var a: Vector3 = surface.a
-  var b: Vector3 = surface.b
-  var d = b-a
-  var yaw = atan2(d.x,d.z)
-  box(root,(a+b)*0.5-Vector3(0,0.03,0),Vector3(surface.width,0.06,d.length()+0.10),Color("e4e5d5"),false,Vector3(0,yaw,0))
-  box(root,(a+b)*0.5+Vector3(0,3.65,0),Vector3(surface.width+0.15,0.12,d.length()+0.15),Color("b9cdc7"),false,Vector3(0,yaw,0))
+  var outward = (dome_c(i)-C).normalized()
+  var a = C+outward*18.0+Vector3(0,-0.05,0)
+  var b = dome_c(i)-outward*(RADIUS-2.0)+Vector3(0,-0.05,0)
   campus_paths.append([a,b])
-  for edge in surface.poly.size():
-   var from: Vector3 = surface.poly[edge]
-   var to: Vector3 = surface.poly[(edge+1)%4]
-   var count = maxi(1,ceili(from.distance_to(to)/0.25))
-   var start = -1
-   for sample in count+1:
-    var covered = sample==count
-    if not covered:
-     var p = from.lerp(to,(sample+0.5)/count)
-     for neighbour in surfaces:
-      if neighbour==surface:
-       continue
-      if surface_distance(p,neighbour)<0.12:
-       covered = true
-       break
-    if not covered and start<0:
-     start = sample
-    if covered and start>=0:
-     var p = from.lerp(to,float(start)/count)
-     var q = from.lerp(to,float(sample)/count)
-     collision_wall(root,p,q,3.6)
-     for height in [0.25,1.0,2.2,3.5]:
-      beam(root,p+Vector3(0,height,0),q+Vector3(0,height,0),0.10,Color("86bcb0"))
-     start = -1
- text(root,"CONTINENT LOOP · ALL SEVEN DOMES",C+Vector3(0,3.0,69),Color("d8fff1"),36,45)
+  var side = Vector3(outward.z,0,-outward.x)*2.8
+  for sign in [-1,1]:
+   collision_wall(root,a+side*sign,b+side*sign,1.2)
+   beam(root,a+side*sign+Vector3(0,1.0,0),b+side*sign+Vector3(0,1.0,0),0.08,Color("a7ddc3"))
+  # Text describes left/right while facing the hub from this dome's entrance.
+  var left = (i+1)%7
+  var right = (i+6)%7
+  var sign_at = dome_c(i)-outward*(RADIUS+4.0)
+  var direction_sign = text(root,"← "+NAMES[left]+"    HUB    "+NAMES[right]+" →",sign_at+Vector3(0,3.1,0),Color("244b3c"),46,40)
+  direction_sign.pixel_size = 0.012
+  text(root,"↑ "+NAMES[i],C+outward*16+Vector3(0,3.8,0),COLORS[i],40,35)
+ var welcome_sign = text(root,"← OCEANIA · NORTH AMERICA · EUROPE\n↑ AFRICA\nASIA · SOUTH AMERICA · ANTARCTICA →",C+Vector3(0,3.4,25),Color("244b3c"),44,45)
+ welcome_sign.pixel_size = 0.012
+
 
 func foliage_mesh(name: String) -> Mesh:
  if g.bio_model_mesh.has(name):
@@ -3078,6 +3129,7 @@ func path_floor(p: Vector3) -> Vector3:
  return p
 
 func flush_walk_meshes(parent: Node3D) -> void:
+ build_sweeps(parent)
  for key in walk_meshes.keys():
   var entry = walk_meshes[key]
   if entry.parent!=parent and not parent.is_ancestor_of(entry.parent):

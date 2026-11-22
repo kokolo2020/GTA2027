@@ -1,0 +1,40 @@
+[
+  {
+    "alpha_scissor_surfaces": 3,
+    "animal_glb_file_bytes": 472024,
+    "animal_models": 5,
+    "audio_resources": 0,
+    "audio_wav_bytes": 0,
+    "buffer_bytes": 37615232.0,
+    "dome": 1,
+    "heap_peak": 544449518,
+    "interior_nodes": [
+      1,
+      334,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "labels": 64,
+    "mesh_resources": 136,
+    "mesh_triangles": 37118,
+    "multimesh_buffer_bytes": 529008,
+    "multimesh_instances": 11021,
+    "multimeshes": 117,
+    "nodes": 565,
+    "stream_load_us": 674415,
+    "texture_bytes": 114617585.0,
+    "tick_us_avg": 89.3858784893268,
+    "tick_us_max": 1145,
+    "transparent_surfaces": 8,
+    "video_bytes": 152232817.0,
+    "visible_transparent_surfaces": 0,
+    "name": "Asia",
+    "bench": "HC_BENCH fps=201.4 lite=true scale=1.00 draws=186 prims=139560 objs=668 proc_ms=8.48 phys_ms=3.62 nodes=18739 at=(-770.0, 1.0, -722.0)",
+    "rss_peak_bytes": 662208512,
+    "fps": 201.4,
+    "footprint_peak_bytes": 1475908736
+  }
+]

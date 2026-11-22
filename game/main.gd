@@ -1,4 +1,7 @@
 extends Node3D
+
+const WorldBiosphere := preload("res://world_biosphere.gd")
+var world_bio
 ## Harbor City: original single-player driving prototype. No external assets or services.
 
 # v0.23: job stops sit on the pavement beside the road (6.5 m from the road centre), not in the lanes.
@@ -341,7 +344,7 @@ func _ready() -> void:
 	_night_setup()
 	_refresh_time_button()
 	_refresh_checkpoints()
-	var dev_mode := false
+	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args()
 	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--style-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
@@ -354,7 +357,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.53.2: original characters restored. Your wardrobe and progress are kept.")
+	_show_toast("World Biosphere preview: seven continents, four new adventures. Opens at level 7.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()
@@ -364,7 +367,16 @@ func _ready() -> void:
 	if OS.has_feature("web"):
 		# v0.51.3: tell the loading screen the city is built, so it can fade out.
 		JavaScriptBridge.eval("window.hcReady && window.hcReady()",true)
-	if "--smoke-test" in OS.get_cmdline_user_args():
+	if "--world-bio-check" in OS.get_cmdline_user_args():
+		place_test_level = 40
+		_places_refresh()
+		await get_tree().physics_frame
+		world_bio.smoke()
+		get_tree().quit()
+	elif "--world-bio-shots" in OS.get_cmdline_user_args():
+		await world_bio.screenshots()
+		get_tree().quit()
+	elif "--smoke-test" in OS.get_cmdline_user_args():
 		await _smoke_test()
 	elif "--shots" in OS.get_cmdline_user_args():
 		await _shots()
@@ -2038,7 +2050,7 @@ func _online_pos_frame() -> Dictionary:
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
 		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
-		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"qc":1 if my_bubble_crew else 0,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on],"lk":_look_pack(look),"st":1 if streamer_on else 0}
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"qc":1 if my_bubble_crew else 0,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on],"lk":_look_pack(look),"st":1 if streamer_on else 0,"wr":world_bio.rank_index() if world_bio != null else 0,"we":bool(world_bio.state.world) if world_bio != null else false}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -2155,6 +2167,10 @@ func _online_peer_update(p: Dictionary) -> void:
 	peer["target"] = pos
 	peer["yaw"] = float(p.get("r",0.0))
 	peer["seen"] = Time.get_ticks_msec()/1000.0
+	peer["wr"] = clampi(int(p.get("wr",-1)),-1,3)
+	if bool(peer.get("we",false)) != bool(p.get("we",false)):
+		peer["ring_lv"] = -1
+	peer["we"] = bool(p.get("we",false))
 	peer["driving"] = int(p.get("d",1)) == 1
 	peer["role"] = clampi(int(p.get("t",0)),0,2)
 	peer["lvl"] = clampi(int(p.get("l",1)),1,40)
@@ -2385,10 +2401,14 @@ func _online_update_peers(delta: float) -> void:
 		var flash := int(clock*6.0) % 2 == 0
 		(peer["red"] as Node3D).visible = cop and flash
 		(peer["blue"] as Node3D).visible = cop and not flash
-		var key := "%d|%d|%s|%d" % [role,int(peer["lvl"]),_social_tag(peer),int(peer.get("at",-1))]
+		var key := "%d|%d|%s|%d|%d|%s" % [role,int(peer["lvl"]),_social_tag(peer),int(peer.get("at",-1)),int(peer.get("wr",0)),str(peer.get("we",false))]
 		if key != str(peer["shown"]):
 			peer["shown"] = key
 			var tag := String(peer["name"])
+			if int(peer.get("wr",-1)) >= 0:
+				tag += " · "+WorldBiosphere.RANKS[int(peer.wr)]
+			if peer.get("we",false):
+				tag += " · World Explorer"
 			var lab: Label3D = peer["label"]
 			# v0.33.7: short tags (name and level, ★ for friends); crew, hearts and diamonds are in PLAYERS.
 			lab.text = "%s · %d" % [tag,int(peer["lvl"])]+(" ★" if friends.has(String(peer.get("id",""))) else "")+("" if role == 0 else (" · THIEF" if role == 1 else " · POLICE"))
@@ -4819,7 +4839,7 @@ func _build_hud() -> void:
 	menu_screen_button = _button("Screen: Clean",_menu_stay.bind(_toggle_clean_hud))
 	var pages := [
 		["GO",Color("2f8fb8"),[["Map",_menu_go.bind(_open_map)],["Travel",_menu_go.bind(_open_travel)],["Directions",_menu_go.bind(_open_dir)],["Call car",_menu_go.bind(_menu_call_car)],["Quests",_menu_go.bind(_open_quests)],["Back to my car",_rescue]]],
-		["PLAY",Color("c9612f"),[["Chapters",_open_chapters],["Careers",_open_careers],["Trials",_open_trials],["Chase",_chase_open],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
+		["PLAY",Color("c9612f"),[["World Biosphere Passport",_menu_go.bind(_world_bio_passport)],["Chapters",_open_chapters],["Careers",_open_careers],["Trials",_open_trials],["Chase",_chase_open],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
 		["ME",Color("8a5ad0"),[["My Home",_open_homes],["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
 		["FRIENDS",Color("2fa37a"),[["Chat",_menu_go.bind(_toggle_chat)],["Players & friends",_open_social],[menu_online_button]]],
 		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[time_button]]],
@@ -5706,6 +5726,9 @@ func _style_ring(ring: MeshInstance3D, lv: int, tier: int, crew_col: Variant) ->
 	elif inner != null:
 		inner.visible = false
 
+	if bool(ring.get_meta("world_explorer",false)):
+		ring.material_override = _halo_mat(Color("ffd34e"))
+
 func _social_peer_extras(peer: Dictionary, p: Dictionary) -> void:
 	var cr := _clean_nick(String(p.get("cr","")))
 	peer["crew"] = cr
@@ -5733,7 +5756,9 @@ func _social_tag(peer: Dictionary) -> String:
 	return t
 
 func _my_tag_extra() -> String:
-	var t := ""
+	var t: String = (" · "+world_bio.rank_name()) if world_bio != null else ""
+	if world_bio != null and bool(world_bio.state.world):
+		t += " · World Explorer"
 	if crew_name != "":
 		t += "  [%s]" % crew_name
 	if kindness > 0:
@@ -6231,6 +6256,7 @@ func _social_tick(delta: float) -> void:
 		var peer: Dictionary = online_peers[id]
 		if peer.has("ring") and int(peer.get("ring_lv",-1)) != int(peer.get("lvl",1)):
 			peer["ring_lv"] = int(peer.get("lvl",1))
+			(peer["ring"] as Node).set_meta("world_explorer",bool(peer.get("we",false)))
 			_style_ring(peer["ring"],int(peer["lvl"]),int(peer.get("at",-1)),CREW_COLORS[int(peer.get("cc",0))] if String(peer.get("crew","")) != "" else null)
 
 func _photo() -> void:
@@ -7082,9 +7108,27 @@ const ACH_TIERS := {
 }
 # [id, name, what to do, value it tracks, goal, tier]
 const ACH := [
+	["wb_visit", "Continent Visitor", "Visit a continent", "wb_visit", 1, "b"],
+	["wb_first_quest", "Ranger Helper", "Finish a ranger quest", "wb_first_quest", 1, "b"],
+	["wb_feeding", "Feeding Time", "Attend a feeding show", "wb_feeding", 1, "b"],
+	["wb_photo", "Photo Safari", "Photograph a centered animal", "wb_photo", 1, "b"],
+	["wb_photo10", "Wildlife Photographer", "Photograph ten animal species", "wb_photo10", 1, "g"],
+	["wb_keeper", "Daily Keeper", "Finish a daily keeper task", "wb_keeper", 1, "b"],
+	["wb_streak", "Three Day Keeper", "Help keepers three consecutive days", "wb_streak", 1, "s"],
+	["wb_rare", "Rare Encounter", "Spot a rare animal", "wb_rare", 1, "g"],
+	["wb_baby", "Welcome Baby", "Collect a baby animal sticker", "wb_baby", 1, "b"],
+	["wb_coop", "Ranger Teamwork", "Finish a quest near another ranger", "wb_coop", 1, "s"],
+	["wb_rank_1", "Ranger", "Finish three ranger quests", "wb_rank_1", 1, "s"],
+	["wb_rank_2", "Head Ranger", "Finish eight ranger quests", "wb_rank_2", 1, "g"],
+	["wb_rank_3", "Wildlife Legend", "Finish twelve ranger quests", "wb_rank_3", 1, "l"],
+	["wb_world", "World Explorer", "Complete the seven-page passport", "wb_world", 1, "l"],
+	["wb_page_0", "Africa Passport", "Complete the Africa passport page", "wb_page_0", 1, "g"],
+	["wb_page_1", "Asia Passport", "Complete the Asia passport page", "wb_page_1", 1, "g"],
+	["wb_page_2", "South America Passport", "Complete the South America passport page", "wb_page_2", 1, "g"],
+	["wb_page_3", "Antarctica Passport", "Complete the Antarctica passport page", "wb_page_3", 1, "g"],
 	["lv2","First Steps","Reach level 2","level",2,"b"],
 	["bio4","Animal Spotter","Spot 4 animals in the Biosphere","bio",4,"b"],
-	["bio16","Biosphere Explorer","Spot all 16 animals in the Biosphere","bio",16,"g"],
+	["bio16","Biosphere Explorer","Spot 16 animals in World Biosphere","bio",16,"g"],
 	["lv5","Getting Around","Reach level 5","level",5,"b"],
 	["lv10","City Regular","Reach level 10","level",10,"s"],
 	["lv15","Local Hero","Reach level 15","level",15,"g"],
@@ -7228,6 +7272,8 @@ func _bits(mask: int) -> int:
 	return n
 
 func _ach_value(key: String) -> float:
+	if key.begins_with("wb_"):
+		return 1.0 if world_bio != null and world_bio.state.ach.has(key.substr(3)) else 0.0
 	match key:
 		"level":
 			return float(_level())
@@ -7540,6 +7586,10 @@ func _draw_joystick() -> void:
 	joystick.draw_circle(Vector2(90,90)+stick*58,32,Color(0.6,0.87,0.88,0.85))
 
 func _input(event: InputEvent) -> void:
+	if world_bio != null and world_bio.panel != null and world_bio.panel.visible and event is InputEventKey and event.pressed and (event.keycode == KEY_ESCAPE or event.keycode == KEY_BACK):
+		world_bio.close_panel()
+		get_viewport().set_input_as_handled()
+		return
 	if not cs.is_empty() and not paused:
 		# v0.52: a tap, click or key skips the cut scene.
 		if (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed) or (event is InputEventKey and event.pressed and not event.echo):
@@ -7837,6 +7887,8 @@ func _follow_walk_camera(weight: float) -> void:
 func _interact() -> void:
 	if paused:
 		return
+	if world_bio != null and world_bio.interact():
+		return
 	if race_car:
 		if rec_act > 0:
 			_rec_stop()
@@ -8093,6 +8145,8 @@ func _refresh_hud() -> void:
 		action_button.text = "EXIT CAR" if driving else ("CALL CAR" if far_car else "ENTER CAR")
 	mode_button.text = "Switch to delivery jobs" if quick_on else ("Switch to quick quests" if exploring else "Switch to exploring")
 	_rw_hud()
+	if world_bio != null and world_bio.prompt() != "":
+		action_button.text = world_bio.prompt()
 	_refresh_nick_button()
 	var discovered: PackedStringArray = []
 	for find_index in FINDS.size():
@@ -8279,6 +8333,8 @@ func _save_progress() -> void:
 	file.set_value("progress","day_default_v036",true)
 	file.set_value("progress","pz_day",pz_day)
 	file.set_value("progress","bio_seen",bio_seen)
+	if world_bio != null:
+		world_bio.save_state(file)
 	file.set_value("progress","bio_pass_day",bio_pass_day)
 	file.set_value("progress","pz_streak",pz_streak)
 	file.set_value("progress","pz_total",pz_total)
@@ -8325,6 +8381,8 @@ func _load_progress() -> void:
 		pz_day = String(file.get_value("progress","pz_day",""))
 		bio_seen = int(file.get_value("progress","bio_seen",0)) & ((1 << BIO_SPECIES.size())-1)
 		bio_pass_day = String(file.get_value("progress","bio_pass_day",""))
+		if world_bio != null:
+			world_bio.load_state(file)
 		ch_idx = clampi(int(file.get_value("chapters","idx",0)),0,CHAPTERS.size())
 		ch_step = maxi(0,int(file.get_value("chapters","step",0)))
 		ch_best = clampi(maxi(int(file.get_value("chapters","best",0)),ch_idx),0,CHAPTERS.size())
@@ -11806,13 +11864,13 @@ func _skyline_shots() -> void:
 	get_tree().quit()
 
 # ---------- v0.17.0: minimap, full map and camera views (Far / Close / In-car) ----------
-const MAP_CENTER := Vector2(-25.0,-185.0)
-const MAP_SIZE := 1360.0
+const MAP_CENTER := Vector2(-220.0,-240.0)
+const MAP_SIZE := 1860.0
 const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
 const VIEW_NAMES := ["Far","Close","In-car"]
-const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["BIOSPHERE",Vector2(-500,-600)],["GALLERIA",Vector2(-330,-600)],["SKY GARDEN",Vector2(-402,-636)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)],["GRAND CENTRAL",Vector2(-380,-340)]]
+const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["WORLD BIOSPHERE",Vector2(BIO_C.x,BIO_C.z)],["GALLERIA",Vector2(-330,-600)],["SKY GARDEN",Vector2(-402,-636)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)],["GRAND CENTRAL",Vector2(-380,-340)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
 uniform vec2 center = vec2(0.5);
@@ -12797,7 +12855,7 @@ const CHECKPOINTS := [
 	{"name":"Sunset Beach","pos":Vector3(300,0,158)},
 	{"name":"Westside","pos":Vector3(-270,0,80)},
 	{"name":"Harbor Airport","pos":Vector3(52,0,-470)},
-	{"name":"The Biosphere","pos":Vector3(-500,0,-486)},
+	{"name":"World Biosphere","pos":WorldBiosphere.ENTRY},
 	{"name":"Harbor Galleria","pos":Vector3(-330,0,-514)},
 	{"name":"Sky Garden","pos":Vector3(-403,0,-610)},
 ]
@@ -17153,9 +17211,9 @@ func _smoke_travel() -> void:
 	assert(STOP_CLOCK.x > 4.5 and absf(STOP_WEST.x+32.0) > 4.5,"Job stops are beside the road, not on it")
 	travel_ready_at = 0.0
 	var bi := CHECKPOINTS.size()-3
-	assert(String(CHECKPOINTS[bi]["name"]) == "The Biosphere" and _travel_open(bi),"v0.37.1: fast travel to the Biosphere is open")
+	assert(String(CHECKPOINTS[bi]["name"]) == "World Biosphere" and _travel_open(bi),"v0.37.1: fast travel to the Biosphere is open")
 	_travel_to(bi)
-	assert(Vector2(player.position.x-BIO_C.x,player.position.z+486.0).length() < 0.5 and not _blocked_at(player.position,0.3),"v0.37.1: fast travel lands on the Biosphere walk")
+	assert(Vector2(player.position.x-WorldBiosphere.ENTRY.x,player.position.z-WorldBiosphere.ENTRY.z).length() < 0.5 and not _blocked_at(player.position,0.3),"v0.37.1: fast travel lands on the Biosphere walk")
 	travel_ready_at = 0.0
 	var gi := CHECKPOINTS.size()-2
 	assert(String(CHECKPOINTS[gi]["name"]) == "Harbor Galleria" and _travel_open(gi),"v0.40: fast travel to the Galleria is open")
@@ -19406,52 +19464,22 @@ func _smoke_commons() -> void:
 #   Summer: Safari Bridge - a long bridge over the savanna to a round lookout, and a macaw aviary dome.
 #   Autumn: Canopy Terrace - a wide round terrace with two giant maples growing through it, a spiral
 #   ramp down through its middle and lookout balconies over the habitats.
-const BIO_C := Vector3(-500,0,-600)
-const BIO_A := 27.0           # dome apothem: centre to the middle of a wall
-const BIO_OFF := 44.0         # dome centres sit at hub +/- 44 m on x and z
-const BIO_HUB_A := 12.0       # hub apothem
+const BIO_C := WorldBiosphere.C
+const BIO_A := WorldBiosphere.RADIUS           # dome apothem: centre to the middle of a wall
+const BIO_OFF := WorldBiosphere.ORBIT         # dome centres sit at hub +/- 44 m on x and z
+const BIO_HUB_A := 20.0       # hub apothem
 const BIO_TAN := 0.57735      # tan 30 degrees
 const BIO_JOIN := [12.0,13.5,12.5,11.5]   # each dome's doorway paths run in from the wall to here
 const BIO_HUB_D := {"glass":Color("e8fbff"),"frame":Color("f3f6fb"),"rib":Color("7dff9a"),"wall":4.0,"roof":6.5,"prof":1.0}
-const BIO_DOMES := [
-	{"name":"WINTER DOME","sub":"Glacier Mountain","dir":Vector2(-1,-1),"glass":Color("bfe8ff"),"rib":Color("8fe3ff"),"frame":Color("eef8ff"),
-		"ground":Color("dbe6ef"),"path":Color("9fb6c8"),"wall":6.0,"roof":24.0,"prof":1.7,"m":8,"deck":Color("e3f4ff"),"rail":Color("bfe9ff"),"base":Color("cfdde8"),
-		"look":"SUMMIT CAFE","inspired":"Inspired by the sub-polar zone of the Biodome de Montreal"},
-	{"name":"SPRING DOME","sub":"Vortex Terrace","dir":Vector2(1,-1),"glass":Color("ffd6ec"),"rib":Color("ff8fc8"),"frame":Color("fff2f8"),
-		"ground":Color("62a64c"),"path":Color("e9dcc4"),"wall":4.5,"roof":22.0,"prof":0.7,"m":10,"deck":Color("f4f1ea"),"rail":Color("c8f0b0"),"base":Color("f2e6ea"),
-		"look":"VORTEX TERRACE","inspired":"Inspired by the Cloud Forest at Gardens by the Bay and the Jewel rain vortex, Singapore"},
-	{"name":"SUMMER DOME","sub":"Safari Bridge","dir":Vector2(1,1),"glass":Color("ffeeb0"),"rib":Color("ffd23f"),"frame":Color("ffd86a"),
-		"ground":Color("e2c98e"),"path":Color("f4e7cf"),"wall":5.0,"roof":15.0,"prof":0.8,"m":6,"deck":Color("f2e6cc"),"rail":Color("fff0c0"),"base":Color("e8d2a8"),
-		"look":"SAFARI LOOKOUT","inspired":"Inspired by the savanna and ocean of Biosphere 2, Arizona"},
-	{"name":"AUTUMN DOME","sub":"Canopy Terrace","dir":Vector2(-1,1),"glass":Color("ffd9b8"),"rib":Color("ff8a3c"),"frame":Color("c8743a"),
-		"ground":Color("6a8a40"),"path":Color("d9c3a2"),"wall":6.0,"roof":19.0,"prof":1.15,"m":8,"deck":Color("f3efe8"),"rail":Color("ffd9b0"),"base":Color("d8c2a6"),
-		"look":"CANOPY TERRACE","inspired":"Inspired by the Laurentian maple forest of the Biodome de Montreal"},
-]
+const BIO_DOMES := WorldBiosphere.DOMES
 # Tunnels between neighbouring domes (the south side stays open for the entrance walk).
-const BIO_LINKS := [[0,1],[1,2],[3,0]]
+const BIO_LINKS := []
 # zone sets how an animal stands: "in" on ice, "swim" on water, "out" on the ground, "fly", "flutter".
 # Where each one lives is set by its dome's layout (bio_hab). Keep the order: bio_seen has a bit each.
-const BIO_SPECIES := [
-	{"dome":0,"name":"Emperor Penguin","fact":"The biggest penguin: up to 1.2 m tall. Dads keep the egg warm on their feet.","kind":"penguin","n":6,"zone":"in","hab":"Penguin Bay"},
-	{"dome":0,"name":"Polar Bear","fact":"Its fur looks white, but its skin is black to soak up the sun.","kind":"polarbear","n":2,"zone":"out","hab":"Polar Coast"},
-	{"dome":0,"name":"Arctic Fox","fact":"Its fur turns from brown in summer to snow-white in winter.","kind":"arcticfox","n":2,"zone":"out","hab":"Arctic Tundra"},
-	{"dome":0,"name":"Snowy Owl","fact":"Hunts in daylight in the Arctic summer, when the sun never sets.","kind":"owl","n":2,"zone":"fly","hab":"Snowy Owl Peak"},
-	{"dome":1,"name":"Spotted Deer","fact":"Fawns are born with white spots that help them hide.","kind":"deer","n":3,"zone":"out","hab":"Blossom Meadow"},
-	{"dome":1,"name":"Rabbit","fact":"Rabbits can turn their long ears to hear in every direction.","kind":"rabbit","n":5,"zone":"out","hab":"Bunny Burrows"},
-	{"dome":1,"name":"Mallard Duck","fact":"Only the male has the shiny green head.","kind":"duck","n":4,"zone":"swim","hab":"Rain Vortex Pool"},
-	{"dome":1,"name":"Butterfly","fact":"Butterflies taste with their feet.","kind":"butterfly","n":10,"zone":"flutter","hab":"Butterfly House"},
-	{"dome":2,"name":"Giraffe","fact":"The tallest animal: its tongue is about 50 cm long.","kind":"giraffe","n":2,"zone":"out","hab":"Acacia Plains"},
-	{"dome":2,"name":"Zebra","fact":"No two zebras have the same stripes.","kind":"zebra","n":4,"zone":"out","hab":"Zebra Grassland"},
-	{"dome":2,"name":"Flamingo","fact":"Flamingos are pink because of the shrimp they eat.","kind":"flamingo","n":6,"zone":"swim","hab":"Coral Lagoon"},
-	{"dome":2,"name":"Macaw Parrot","fact":"Macaws can live for 60 years.","kind":"parrot","n":3,"zone":"fly","hab":"Macaw Aviary"},
-	{"dome":3,"name":"Moose","fact":"The biggest deer: a male's antlers can be 1.8 m wide.","kind":"moose","n":2,"zone":"out","hab":"Maple Forest"},
-	{"dome":3,"name":"Raccoon","fact":"Raccoons feel their food with their sensitive front paws.","kind":"raccoon","n":2,"zone":"out","hab":"Raccoon Hollow"},
-	{"dome":3,"name":"Beaver","fact":"Beavers build dams and lodges, and their teeth never stop growing.","kind":"beaver","n":2,"zone":"swim","hab":"Beaver Pond"},
-	{"dome":3,"name":"Canada Goose","fact":"Geese fly south in a V shape to save energy.","kind":"goose","n":5,"zone":"out","hab":"Goose Marsh"},
-]
-# v0.39: the hub is the ticket hall. A day pass ($50) opens the gates to all four domes until midnight.
+const BIO_SPECIES := WorldBiosphere.SPECIES
+# v0.39: the hub is the ticket hall. A day pass ($50) opens the gates to all open continent domes until midnight.
 const BIO_PASS_PRICE := 50
-const BIO_TICKET := Vector3(-506.4,0,-596.0)   # where you stand at the ticket desk (hub + (-6.4, 4))
+const BIO_TICKET := BIO_C+Vector3(-6.4,0,4.0)   # where you stand at the ticket desk (hub + (-6.4, 4))
 const BIO_DOME_PAY := 300
 const BIO_DOME_XP := 60
 const BIO_ALL_PAY := 1000
@@ -19481,8 +19509,8 @@ var bio_gates: Array = []       # one per tunnel out of the hub
 var bio_gate_nag := 0.0
 
 func _bio_dome_c(i: int) -> Vector3:
-	var d: Vector2 = BIO_DOMES[i]["dir"]
-	return BIO_C+Vector3(d.x*BIO_OFF,0,d.y*BIO_OFF)
+	var a := -PI/2.0+float(i)*TAU/7.0
+	return BIO_C+Vector3(cos(a),0,sin(a))*BIO_OFF
 
 func _bio_theta(i: int) -> float:
 	# Each hexagon faces the hub: its entrance side points straight at it.
@@ -19982,6 +20010,10 @@ func _bio_pen(i: int, si: int, p: Vector3, r: float, rmin: float, fence: Array) 
 
 # ---------------- building ----------------
 func _build_biosphere() -> void:
+	world_bio = WorldBiosphere.new(self)
+	world_bio.build()
+
+func _build_biosphere_legacy() -> void:
 	bio_root = Node3D.new()
 	bio_root.name = "Biosphere"
 	bio_root.set_meta("static_floor",true)
@@ -20159,7 +20191,7 @@ func _bio_ticket_hall(hub_open: Array) -> void:
 	t1.rotation.y = PI/2.0
 	var t2 := _bio_text("DAY PASS  $%d" % BIO_PASS_PRICE,back+Vector3(0.12,2.1,0),Color("ffffff"),44,25.0,false)
 	t2.rotation.y = PI/2.0
-	var t3 := _bio_text("All four domes, all day",back+Vector3(0.12,1.75,0),Color("cfe9da"),26,15.0,false)
+	var t3 := _bio_text("All open continent domes, all day",back+Vector3(0.12,1.75,0),Color("cfe9da"),26,15.0,false)
 	t3.rotation.y = PI/2.0
 	bio_people.append(_cm_person(bio_root,BIO_C+Vector3(-8.5,0,4.0),-PI/2.0,77))
 	var post := _fc_pearl()
@@ -20210,28 +20242,7 @@ func _on_foot_collision_guard() -> void:
 		sh.disabled = false
 
 func _bio_inside(p: Vector3) -> bool:
-	# In the hub, a dome or a tunnel between them.
-	if bio_root == null:
-		return false
-	if Vector2(p.x-BIO_C.x,p.z-BIO_C.z).length() < BIO_HUB_A/cos(PI/6.0)+1.0:
-		return true
-	for i in BIO_DOMES.size():
-		var c := _bio_dome_c(i)
-		if Vector2(p.x-c.x,p.z-c.z).length() < BIO_A/cos(PI/6.0)+1.0 and _bio_apo(i,p) < BIO_A+1.0:
-			return true
-	var links: Array = []
-	for i in BIO_DOMES.size():
-		links.append([BIO_C,_bio_dome_c(i)])
-	for l in BIO_LINKS:
-		links.append([_bio_dome_c(int(l[0])),_bio_dome_c(int(l[1]))])
-	for l in links:
-		var a: Vector3 = l[0]
-		var b: Vector3 = l[1]
-		var ab := Vector2(b.x-a.x,b.z-a.z)
-		var u := clampf(Vector2(p.x-a.x,p.z-a.z).dot(ab)/ab.length_squared(),0.0,1.0)
-		if Vector2(p.x-a.x-ab.x*u,p.z-a.z-ab.y*u).length() < 3.6:
-			return true
-	return false
+	return world_bio != null and world_bio.inside(p)
 
 func _bio_pass_ok() -> bool:
 	return bio_pass_day == _pz_today()
@@ -20243,7 +20254,7 @@ func _ticket_near() -> bool:
 
 func _bio_buy_pass() -> void:
 	if _bio_pass_ok():
-		_show_toast("Your day pass is good for all four domes until midnight. Enjoy!")
+		_show_toast("Your day pass is good for all open continent domes until midnight. Enjoy!")
 		return
 	if cash < BIO_PASS_PRICE:
 		_show_toast("A day pass is $%d: you have %s. Do a few jobs and come back!" % [BIO_PASS_PRICE,_money(cash)])
@@ -20251,7 +20262,7 @@ func _bio_buy_pass() -> void:
 	cash -= BIO_PASS_PRICE
 	bio_pass_day = _pz_today()
 	_bio_gates_update()
-	_show_toast("DAY PASS bought: -$%d. The gates to all four domes are open until midnight!" % BIO_PASS_PRICE)
+	_show_toast("DAY PASS bought: -$%d. The gates to all open continent domes are open until midnight!" % BIO_PASS_PRICE)
 	_feed_add("Biosphere day pass: -$%d" % BIO_PASS_PRICE,"")
 	if not ("--smoke-test" in OS.get_cmdline_user_args()):
 		_play_coin()
@@ -21302,33 +21313,10 @@ func _bio_make_butterfly(A: Dictionary) -> void:
 
 # ---------------- animation, spotting and rewards ----------------
 func _biosphere_tick(delta: float) -> void:
-	if bio_root == null or player == null or paused or not place_open[1]:
-		return
-	var me: Node3D = car if driving else player
-	var near := me.position.distance_to(BIO_C) < 170.0
-	if near:
-		_bio_gate_tick(delta)
-	for f in bio_fx:
-		var c := _bio_dome_c(int(f[1]))
-		(f[0] as CPUParticles3D).emitting = me.position.distance_to(c) < 70.0
-	if not near:
-		return
-	for s in bio_spin:
-		(s as Node3D).rotation.y += delta*0.5
-	for m in bio_scroll:
-		# The rain vortex pours down.
-		(m as StandardMaterial3D).uv1_offset.y -= delta*0.9
-	for k in bio_aurora.size():
-		var au: MeshInstance3D = bio_aurora[k]
-		au.rotation.y = 0.5*float(k)+sin(clock*0.15+float(k))*0.35
-		var m := au.material_override as StandardMaterial3D
-		m.albedo_color.a = 0.22+0.14*sin(clock*0.7+float(k)*1.7)
-	for A in bio_animals:
-		_bio_animate(A,delta)
-	bio_check_t -= delta
-	if bio_check_t <= 0.0:
-		bio_check_t = 0.4
-		_bio_spot_check(me)
+	if world_bio != null:
+		if place_open[1] and not paused:
+			_bio_gate_tick(delta)
+		world_bio.tick(delta)
 
 func _bio_animate(A: Dictionary, delta: float) -> void:
 	var n: Node3D = A["node"]
@@ -21423,212 +21411,12 @@ func _bio_spot_check(me: Node3D) -> void:
 		_bio_spotted(si)
 
 func _bio_spotted(si: int) -> void:
-	bio_seen |= 1 << si
-	var S: Dictionary = BIO_SPECIES[si]
-	var dome := int(S["dome"])
-	var in_dome := 0
-	for k in BIO_SPECIES.size():
-		if int(BIO_SPECIES[k]["dome"]) == dome and (bio_seen & (1 << k)):
-			in_dome += 1
-	_show_toast("SPOTTED: %s!  %s  (%d/4 in the %s)" % [S["name"],S["fact"],in_dome,String(BIO_DOMES[dome]["name"]).capitalize()])
-	if in_dome == 4:
-		cash += BIO_DOME_PAY
-		bonus_xp += BIO_DOME_XP
-		_feed_add("%s complete: +$%d  +%d XP" % [String(BIO_DOMES[dome]["name"]).capitalize(),BIO_DOME_PAY,BIO_DOME_XP],"")
-		_show_toast("%s COMPLETE!  +$%d  +%d XP" % [BIO_DOMES[dome]["name"],BIO_DOME_PAY,BIO_DOME_XP])
-	if _bits(bio_seen) == BIO_SPECIES.size():
-		cash += BIO_ALL_PAY
-		bonus_xp += BIO_ALL_XP
-		_show_toast("BIOSPHERE EXPLORER!  All 16 animals spotted: +$%d  +%d XP" % [BIO_ALL_PAY,BIO_ALL_XP])
-		_feed_add("Biosphere Explorer: all 16 animals spotted!","")
-	if not ("--smoke-test" in OS.get_cmdline_user_args()):
-		_play_coin()
-	_save_progress()
+	if world_bio != null:
+		world_bio.spot(si)
 
 func _smoke_biosphere() -> void:
-	assert(bio_root != null and bio_animals.size() >= 50,"v0.37: the Biosphere has its animals (%d)" % bio_animals.size())
-	var rc := BIO_A/cos(PI/6.0)
-	for i in BIO_DOMES.size():
-		var c := _bio_dome_c(i)
-		assert(c.distance_to(BIO_C) > rc+BIO_HUB_A/cos(PI/6.0)+5.0,"v0.38: domes don't overlap the hub")
-		for j in range(i+1,BIO_DOMES.size()):
-			assert(c.distance_to(_bio_dome_c(j)) > 2.0*rc+10.0,"v0.38: domes don't overlap each other")
-	for si in BIO_SPECIES.size():
-		assert(bio_hab.has(si),"v0.39: %s has a home" % BIO_SPECIES[si]["name"])
-	# Habitats sit inside their dome, apart from each other and clear of the doorway paths.
-	for P in bio_pens:
-		var i := int(P[0])
-		var p: Vector3 = P[1]
-		var r: float = P[2]
-		var c := _bio_dome_c(i)
-		var nm: String = BIO_DOMES[i]["name"]
-		var a := atan2(p.z-c.z,p.x-c.x)
-		assert(Vector2(p.x-c.x,p.z-c.z).length()+r < _bio_hex_r(_bio_theta(i),BIO_A,a)-0.8 or p.distance_to(c) < 0.5,"v0.39: %s habitat at %s is inside the dome" % [nm,str(p)])
-		for Q in bio_pens:
-			if Q != P and int(Q[0]) == i:
-				assert(p.distance_to(Q[1]) > r+float(Q[2])+0.5,"v0.39: %s habitats don't overlap" % nm)
-		for o in _bio_open_angles(i):
-			var dv := _bio_dir(float(o))
-			var rel := p-c
-			rel.y = 0.0
-			var along := clampf(rel.dot(dv),float(BIO_JOIN[i]),BIO_A)
-			assert((rel-dv*along).length() > r+2.0,"v0.39: %s habitat at %s is clear of the doorway path" % [nm,str(p)])
-	# You can walk in: entrance walk, the hub, each tunnel and every doorway path.
-	for p in [Vector3(BIO_C.x,1.0,-480.0),Vector3(BIO_C.x,1.0,BIO_C.z+BIO_HUB_A+2.0),BIO_C+Vector3(0,1,6)]:
-		assert(not _blocked_at(p,0.3),"v0.37: Biosphere path blocked at %s by %s" % [str(p),_blocker(p,0.3)])
-	var space := get_world_3d().direct_space_state
-	var ray := func(a: Vector3, b: Vector3) -> Dictionary:
-		var q := PhysicsRayQueryParameters3D.create(a,b)
-		q.exclude = [player.get_rid(),car.get_rid()]
-		return space.intersect_ray(q)
-	for i in BIO_DOMES.size():
-		var c := _bio_dome_c(i)
-		var nm: String = BIO_DOMES[i]["name"]
-		for o in _bio_open_angles(i):
-			var dv := _bio_dir(float(o))
-			for r in [float(BIO_JOIN[i])+0.6,18.0,BIO_A-1.0,BIO_A+3.0]:
-				var p := c+dv*_bio_hex_r(_bio_theta(i),float(r),float(o))+Vector3(0,1,0)
-				assert(not _blocked_at(p,0.3),"v0.39: %s doorway path blocked at %.1f by %s" % [nm,r,_blocker(p,0.3)])
-	# Every habitat with animals on the ground is fenced all round.
-	for P in bio_pens:
-		var p: Vector3 = P[1]
-		var r: float = P[2]
-		for k in 4:
-			var d := _bio_dir(float(k)*PI/2.0+0.3)
-			assert(not (ray.call(p+d*(r+1.4)+Vector3(0,0.8,0),p+d*(r-1.4)+Vector3(0,0.8,0)) as Dictionary).is_empty(),"v0.39: habitat at %s is fenced" % str(p))
-	# Walk every ramp for real, from the garden floor up to its deck.
-	var keep_p := player.position
-	var keep_v := player.velocity
-	var pshape: CollisionShape3D = null
-	for ch in player.get_children():
-		if ch is CollisionShape3D:
-			pshape = ch
-	var keep_dis := pshape.disabled
-	pshape.disabled = false
-	assert(bio_routes.size() >= 4,"v0.39: every dome has a way up")
-	for R in bio_routes:
-		var pts: Array = R[1]
-		var p0: Vector3 = pts[0]
-		player.position = Vector3(p0.x,0.8,p0.z)
-		player.velocity = Vector3.ZERO
-		var stuck := ""
-		for w in range(1,pts.size()):
-			var wp: Vector3 = pts[w]
-			var ok := false
-			for step in 480:
-				var d := Vector3(wp.x-player.position.x,0,wp.z-player.position.z)
-				if d.length() < 0.45:
-					ok = true
-					break
-				var v := d.normalized()*minf(4.0,d.length()*10.0)
-				player.velocity = Vector3(v.x,player.velocity.y-24.0/60.0,v.z)
-				player.move_and_slide()
-			if not ok and stuck == "":
-				var ahead := Vector3(wp.x-player.position.x,0,wp.z-player.position.z).normalized()*0.4
-				stuck = "waypoint %d (at %s, feet %.2f, blocked by %s)" % [w,str(player.position),player.position.y-0.7,_blocker(player.position+ahead,0.36)]
-		var feet := player.position.y-0.7
-		assert(stuck == "" and absf(feet-float(R[2])) < 0.3,"v0.39: %s: walked up to the deck (feet %.2f) %s" % [R[0],feet,stuck])
-	pshape.disabled = keep_dis
-	player.position = keep_p
-	player.velocity = keep_v
-	# Tickets: the gates stay shut without today's day pass, it costs $50 once a day, and from inside a
-	# dome the way out is always open.
-	var tk := [cash,bio_pass_day,player.position,pz_test_day]
-	assert(bio_gates.size() == BIO_DOMES.size(),"v0.39: a ticket gate on every tunnel")
-	bio_pass_day = ""
-	player.position = BIO_C+Vector3(0,0.8,4)
-	_bio_gates_update()
-	for G in bio_gates:
-		var gp: Vector3 = G["pos"]
-		var gd: Vector3 = G["dir"]
-		assert((G["body"] as StaticBody3D).collision_layer == 1,"v0.39: gate shut without a pass")
-		assert(not (ray.call(gp-gd*1.2+Vector3(0,1,0),gp+gd*1.2+Vector3(0,1,0)) as Dictionary).is_empty(),"v0.39: the shut gate blocks the tunnel")
-	# No slipping in beside a tunnel: the dome and hub walls are solid right up to each tunnel.
-	for i in BIO_DOMES.size():
-		var c := _bio_dome_c(i)
-		for o in _bio_open_angles(i):
-			var dp := c+_bio_dir(float(o))*_bio_hex_r(_bio_theta(i),BIO_A,float(o))
-			var n := _bio_sec_n(i,_bio_sec_of(i,float(o)))
-			var nv := _bio_dir(n)
-			var tv := Vector3(-nv.z,0,nv.x)
-			for sd: float in [-1.0,1.0]:
-				for off: float in [3.3,4.5]:
-					var q := dp+tv*sd*off+Vector3(0,1,0)
-					assert(not (ray.call(q+nv*1.5,q-nv*1.5) as Dictionary).is_empty(),"v0.39.1: %s has no gap beside its doorway (%.1f m)" % [BIO_DOMES[i]["name"],off*sd])
-	# Walk into a shut gate for real: it stops you.
-	var pshape2: CollisionShape3D = player.get_child(0) as CollisionShape3D
-	var keep_dis2 := pshape2.disabled
-	pshape2.disabled = false
-	var g0: Dictionary = bio_gates[0]
-	player.position = (g0["pos"] as Vector3)-(g0["dir"] as Vector3)*3.0+Vector3(0,0.8,0)
-	player.velocity = Vector3.ZERO
-	for step in 120:
-		_bio_gates_update()
-		var v: Vector3 = (g0["dir"] as Vector3)*9.0
-		player.velocity = Vector3(v.x,player.velocity.y-0.4,v.z)
-		player.move_and_slide()
-	var past := (player.position-(g0["pos"] as Vector3)).dot(g0["dir"] as Vector3)
-	assert(past < 0.0,"v0.39.1: a shut gate stops you even on the hoverboard (%.2f m past)" % past)
-	pshape2.disabled = keep_dis2
-	player.position = BIO_TICKET+Vector3(0,0.8,0)
-	assert(_ticket_near(),"v0.39: the ticket desk is reachable")
-	assert(_call_block_reason().begins_with("Cars can't come into the Biosphere"),"v0.39.1: no calling the car in the hub")
-	for i in BIO_DOMES.size():
-		assert(_bio_inside(_bio_dome_c(i)+Vector3(5,0,3)),"v0.39.1: inside a dome counts as the Biosphere")
-	assert(not _bio_inside(Vector3(BIO_C.x,0,-480.0)),"v0.39.1: the entrance walk outside is not inside")
-	assert(not _blocked_at(BIO_TICKET+Vector3(0,1,0),0.3),"v0.39: room to stand at the ticket desk (%s)" % _blocker(BIO_TICKET+Vector3(0,1,0),0.3))
-	cash = 30
-	_bio_buy_pass()
-	assert(cash == 30 and not _bio_pass_ok(),"v0.39: no pass without $50")
-	cash = 500
-	_bio_buy_pass()
-	_bio_buy_pass()
-	assert(cash == 500-BIO_PASS_PRICE and _bio_pass_ok(),"v0.39: the day pass costs $50 once")
-	_bio_gates_update()
-	for G in bio_gates:
-		var gp: Vector3 = G["pos"]
-		var gd: Vector3 = G["dir"]
-		assert((G["body"] as StaticBody3D).collision_layer == 0,"v0.39: gates open with a pass")
-		assert((ray.call(gp-gd*1.2+Vector3(0,1,0),gp+gd*1.2+Vector3(0,1,0)) as Dictionary).is_empty(),"v0.39: the open gate lets you through")
-	pz_test_day = "2099-01-01"
-	_bio_gates_update()
-	assert(not _bio_pass_ok() and (bio_gates[0]["body"] as StaticBody3D).collision_layer == 1,"v0.39: yesterday's pass doesn't work today")
-	player.position = _bio_dome_c(0)+Vector3(0,0.8,0)
-	_bio_gates_update()
-	for G in bio_gates:
-		assert((G["body"] as StaticBody3D).collision_layer == 0,"v0.39: from inside a dome the way out is open")
-	cash = tk[0]
-	bio_pass_day = tk[1]
-	player.position = tk[2]
-	pz_test_day = tk[3]
-	_bio_gates_update()
-	_save_progress()
-	# Spotting: one species, a full dome and all sixteen pay once each.
-	var keep := [bio_seen,cash,bonus_xp]
-	bio_seen = 0
-	var c0 := cash
-	for si in 4:
-		_bio_spotted(si)
-	assert(cash == c0+BIO_DOME_PAY,"v0.37: a complete dome pays once")
-	for si in range(4,BIO_SPECIES.size()):
-		_bio_spotted(si)
-	assert(cash == c0+BIO_DOME_PAY*4+BIO_ALL_PAY and _ach_value("bio") == 16.0,"v0.37: all 16 animals pay the explorer bonus")
-	bio_seen = keep[0]
-	cash = keep[1]
-	bonus_xp = keep[2]
-	# Animals stay in their habitats while they wander.
-	for t in 120:
-		for A in bio_animals:
-			_bio_animate(A,0.1)
-	for A in bio_animals:
-		var S: Dictionary = BIO_SPECIES[int(A["si"])]
-		var p := (A["node"] as Node3D).position
-		if A.has("fr"):
-			var fc: Vector3 = A["fc"]
-			assert(Vector2(p.x-fc.x,p.z-fc.z).length() < float(A["fr"])+0.5,"v0.39: %s flies over its home" % S["name"])
-		elif A.has("rmax"):
-			var r := Vector2(p.x-(A["c"] as Vector3).x,p.z-(A["c"] as Vector3).z).length()
-			assert(r >= float(A["rmin"])-0.6 and r <= float(A["rmax"])+0.6,"v0.39: %s stays in its habitat (r=%.1f)" % [S["name"],r])
+	assert(world_bio != null,"World Biosphere exists")
+	world_bio.smoke()
 
 # ---------- v0.40: STYLE - hair, faces, builds, clothes, accessories and relics ----------
 # People are a hairless body (models/person_N.glb) plus pieces from models/wear/*.glb (made by
@@ -24173,7 +23961,7 @@ func _album_pages() -> Array:
 		wear += _bits(int(look_own.get(String(e[0]),0)) & ((1 << int(e[1]))-1))
 		wear_total += int(e[1])
 	return [
-		["Biosphere Animals",_bits(bio_seen),BIO_SPECIES.size(),"Spot every animal in the four domes."],
+		["Biosphere Animals",_bits(bio_seen),BIO_SPECIES.size(),"Spot wildlife across the continent domes."],
 		["Sky Garden Plants",_bits(sg_codex),SG_PLANTS.size(),"Grow every exotic plant."],
 		["Relics",_bits(int(look_own.get("r",0))),RELICS.size(),"Collect relics at Relic & Curio (new stock daily)."],
 		["Wardrobe",wear,wear_total,"Own every top, bottom, shoe and accessory."],
@@ -26990,14 +26778,14 @@ const SKY_TRAINS := 3
 # v0.44: the loop runs up Raceway Road to Airport Road, along it past the airport, the Galleria and
 # the Biosphere, down the west avenue by the stadium and back along the z -300 street through
 # Grand Central, so every part of town has a station.
-const SKY_CORNERS := [Vector2(-95,32),Vector2(130,32),Vector2(130,150),Vector2(530,150),Vector2(530,-28),Vector2(197,-28),Vector2(197,-458),Vector2(-620,-458),Vector2(-620,-300),Vector2(-300,-300),Vector2(-300,72),Vector2(-95,72)]
+const SKY_CORNERS := [Vector2(-95,32),Vector2(130,32),Vector2(130,150),Vector2(530,150),Vector2(530,-28),Vector2(197,-28),Vector2(197,-458),Vector2(-860,-458),Vector2(-860,-390),Vector2(-620,-390),Vector2(-620,-300),Vector2(-300,-300),Vector2(-300,72),Vector2(-95,72)]
 const SKY_STATIONS := [
 	{"name":"Harbor Waterfront","at":Vector2(22,32)},
 	{"name":"Sunset Beach","at":Vector2(380,150)},
 	{"name":"Harbor Raceway","at":Vector2(197,-178)},
 	{"name":"Harbor Airport","at":Vector2(30,-458)},
 	{"name":"Harbor Galleria","at":Vector2(-318,-458)},
-	{"name":"The Biosphere","at":Vector2(-512,-458)},
+	{"name":"World Biosphere","at":Vector2(-848,-458)},
 	{"name":"Harbor Stadium","at":Vector2(-620,-385)},
 	{"name":"Grand Central","at":Vector2(-420,-300),"side":-1.0},
 	{"name":"Westside Market","at":Vector2(-300,46)},
@@ -29541,7 +29329,7 @@ const DIR_DESTS := [
 	{"name":"Union Station","pos":Vector3(-196,0,-317),"col":Color("5fd0ff")},
 	{"name":"Harbor Airport","pos":Vector3(52,0,-470),"col":Color("5fd0ff")},
 	{"name":"Harbor Galleria","pos":Vector3(-330,0,-514),"col":Color("ff8ad8")},
-	{"name":"The Biosphere","pos":Vector3(-500,0,-486),"col":Color("7dff9a")},
+	{"name":"World Biosphere","pos":WorldBiosphere.ENTRY,"col":Color("7dff9a")},
 	{"name":"Sky Garden","pos":Vector3(-403,0,-610),"col":Color("7dff9a")},
 	{"name":"Civic Center","pos":Vector3(-150,0,23),"col":Color("5fd0ff")},
 	{"name":"Westside Market","pos":Vector3(-330,0,111),"col":Color("f0bd62")},
@@ -29790,7 +29578,7 @@ func _dir_tick(delta: float) -> void:
 const GC_C := Vector3(-420,0,-340)
 const GC_T := Vector3(-340,0,-340)
 const GC_WALKERS := 28
-const GC_SCREEN := ["GRAND CENTRAL\nThe heart of Harbor City","HARBOR LOOP\n10 stations · all of town","AURORA RESIDENCES\nSky homes now open","TONIGHT\nGame night at the stadium","CAFE ORBIT\nCold brew on the plaza","THE MERIDIAN\nOffices with a view","HARBOR GALLERIA\nNew looks every day","THE BIOSPHERE\nFour domes · one ticket"]
+const GC_SCREEN := ["GRAND CENTRAL\nThe heart of Harbor City","HARBOR LOOP\n10 stations · all of town","AURORA RESIDENCES\nSky homes now open","TONIGHT\nGame night at the stadium","CAFE ORBIT\nCold brew on the plaza","THE MERIDIAN\nOffices with a view","HARBOR GALLERIA\nNew looks every day","WORLD BIOSPHERE\nSeven continents · one passport"]
 const GC_SHOPS := ["MAISON LUMA","ATELIER NOVA","BLOOM & CO","VELVET","KAI SUSHI","NORTHWIND","PIXEL HOUSE","SOLENE","THE BAKERY","OPTIQUE","GREEN TABLE","HARBOR BOOKS","LUX TECH","GELATO 21","STUDIO MODA","CAFE ORBIT"]
 # v0.46: which shops open in the podium (12 bays) and what each one sells.
 const GC_SHOP_PICK := [0,1,2,3,4,5,6,7,8,11,12,13]
@@ -30854,7 +30642,7 @@ func _cull_people_in(root: Node3D, distance: float) -> void:
 # fenced site with a sign; nothing inside is drawn, simulated or solid. Tests always see them open.
 const PLACE_LOCKS := [
 	{"name":"Harbor Galleria","level":4,"sign":Vector3(-330,0,-480)},
-	{"name":"The Biosphere","level":7,"sign":Vector3(-500,0,-480)},
+	{"name":"World Biosphere","level":7,"sign":WorldBiosphere.ENTRY+Vector3(0,0,-5)},
 	{"name":"Sky Garden","level":10,"sign":Vector3(-403,0,-618)},
 ]
 var place_open := [true,true,true]
@@ -33184,7 +32972,7 @@ const CHAPTERS := [
 		{"k":"lvl","n":4},
 		{"k":"go","t":"Harbor Galleria","p":Vector3(-330,0,-514)},
 		{"k":"lvl","n":7},
-		{"k":"go","t":"The Biosphere","p":Vector3(-500,0,-486)},
+		{"k":"go","t":"World Biosphere","p":WorldBiosphere.ENTRY},
 		{"k":"lvl","n":10},
 		{"k":"go","t":"Sky Garden","p":Vector3(-403,0,-610)}]},
 	{"name":"Harbor Legend","pay":5000,"xp":250,"story":"Build a life: work, a home and a name.","steps":[
@@ -33759,6 +33547,8 @@ func _shot_input(event: InputEvent) -> void:
 				look_id = -1
 				mouse_look = false
 			if tap:
+				if world_bio != null:
+					world_bio.photo_capture()
 				_shot_exit()
 		return
 	var did := -999
@@ -34287,3 +34077,7 @@ func _smoke_streamer_clean() -> void:
 	if keep[1] and not paused:
 		_toggle_menu()
 
+
+func _world_bio_passport() -> void:
+	if world_bio != null:
+		world_bio.open_panel()

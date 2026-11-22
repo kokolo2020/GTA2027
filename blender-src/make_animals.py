@@ -605,17 +605,120 @@ def build_bird(kind):
     if RENDER:
         render(kind, {"penguin": 1.1, "flamingo": 2.1}.get(kind, 0.8))
 
-calibrate()
-for kind in ("penguin", "flamingo", "owl", "parrot", "duck", "goose"):
-    try:
-        build_bird(kind)
-    except Exception:
-        import traceback
-        print("HARBOR_ANIMAL ERROR %s\n%s" % (kind, traceback.format_exc()))
-for kind in SPECIES:
-    try:
-        build(kind)
-    except Exception:
-        import traceback
-        print("HARBOR_ANIMAL ERROR %s\n%s" % (kind, traceback.format_exc()))
-print("HARBOR_ANIMAL DONE")
+# World Biosphere: compact original models, shared material slots and explicit animation pivots.
+WORLD_ANIMALS = {
+ 'elephant':('8d9598',(1.4,2.0,2.6),1.2), 'lion':('c99b51',(0.8,0.9,1.6),0.65),
+ 'rhino':('92968c',(1.2,1.2,2.2),0.7), 'meerkat':('bda477',(0.25,0.55,0.3),0.15),
+ 'panda':('f1efe1',(0.9,1.0,1.3),0.5), 'tiger':('d9893f',(0.75,0.8,1.6),0.6),
+ 'redpanda':('a85b36',(0.42,0.45,0.8),0.3), 'snowleopard':('c2c9c9',(0.65,0.65,1.3),0.5),
+ 'crane':('ecebe2',(0.35,0.5,0.65),0.85), 'jaguar':('cda352',(0.65,0.7,1.4),0.55),
+ 'sloth':('8f8773',(0.45,0.6,0.5),0.35), 'toucan':('20282c',(0.3,0.4,0.5),0.25),
+ 'monkey':('9a7048',(0.35,0.55,0.4),0.4), 'frog':('52b6ca',(0.2,0.16,0.27),0.08),
+ 'seal':('8d9da6',(0.7,0.5,1.6),0.05), 'orca':('202d35',(1.5,1.2,4.0),0.0),
+ 'albatross':('e9eee9',(0.4,0.4,0.8),0.22),
+}
+
+def build_world_animal(kind):
+    clear()
+    fur, size, leg = WORLD_ANIMALS[kind]
+    W,H,L=size
+    M=[mat('World_'+kind,fur),mat('World_dark','252c30'),mat('World_light','eee8d5'),mat('World_accent','e5ac3c')]
+    pieces=[]
+    def ell(name, co, dims, material=0):
+        bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=1, location=co)
+        o=bpy.context.object; o.name=name; o.scale=dims
+        bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
+        o.data.materials.append(M[material])
+        for p in o.data.polygons:p.use_smooth=True
+        pieces.append(o)
+        return o
+    def horn(base,tip,r,material=2):
+        o=cone(base,tip,r);o.data.materials.append(M[material]);pieces.append(o)
+    z=leg+H*0.6
+    ell('Body',(0,0,z),(W*0.5,L*0.5,H*0.55))
+    bird=kind in ('crane','toucan','albatross')
+    marine=kind in ('seal','orca')
+    headz=z+H*0.4+(0.45 if kind=='crane' else 0)
+    hy=L*0.4
+    hr=min(W*0.42,0.38)
+    if kind=='meerkat':headz=z+0.45;hr=0.13
+    if kind=='frog':headz=z+0.06;hr=0.1
+    if marine:headz=z+0.1;hr=W*0.27
+    if kind=='crane':ell('Neck',(0,hy,headz-0.2),(0.1,0.1,0.5))
+    ell('Head',(0,hy,headz),(hr,hr*1.2,hr))
+    for side in (-1,1):
+        ell('Eye',(side*hr*0.76,hy+hr*0.82,headz+hr*0.22),(hr*0.15,hr*0.12,hr*0.15),1)
+        if not bird and not marine and kind!='frog':
+            ell('Ear',(side*hr*0.8,hy-hr*0.25,headz+hr*0.7),(hr*0.4,hr*0.23,hr*0.5),1 if kind in ('panda','redpanda') else 0)
+    if bird:
+        bill=hr*(3.5 if kind=='toucan' else 2.5)
+        ell('Beak',(0,hy+hr+bill*0.4,headz),(hr*0.75,bill*0.6,hr*0.55),3)
+        for side in (-1,1):
+            ell('Wing'+str(side),(side*W*0.65,0,z),(W*(2.5 if kind=='albatross' else 0.55),L*0.35,0.08),1 if kind!='crane' else 0)
+    elif marine:
+        for side in (-1,1):
+            ell('Flipper',(side*W*0.55,L*0.1,z-H*0.3),(W*0.55,L*0.22,0.08),1)
+            ell('Tail',(side*W*0.4,-L*0.56,z),(W*0.55,L*0.16,0.08),1)
+        if kind=='orca':
+            ell('Belly',(0,L*0.1,z-H*0.43),(W*0.35,L*0.36,H*0.12),2)
+            horn((0,0,z+H*0.3),(0,-0.15,z+H*1.2),0.35,1)
+            for side in (-1,1):ell('EyePatch',(side*W*0.47,L*0.3,z+0.15),(0.04,0.32,0.16),2)
+    elif kind=='elephant':
+        for side in (-1,1):
+            ell('FanEar',(side*0.62,hy-0.15,headz),(0.58,0.16,0.7))
+            horn((side*0.25,hy+0.3,headz-0.1),(side*0.35,hy+0.95,headz-0.35),0.08)
+        for j in range(5):ell('Trunk',(0,hy+hr+0.08*j,headz-0.22*j),(0.16-0.015*j,0.18,0.27))
+    elif kind=='rhino':
+        horn((0,hy+hr*0.8,headz+0.02),(0,hy+hr*1.5,headz+0.7),0.17)
+    elif kind=='lion':
+        ell('Mane',(0,hy-0.13,headz),(hr*1.55,hr*0.8,hr*1.55),3)
+        ell('Muzzle',(0,hy+hr,headz-hr*0.2),(hr*0.65,hr*0.5,hr*0.45),2)
+    elif kind=='panda':
+        for side in (-1,1):ell('EyePatch',(side*hr*0.72,hy+hr*0.76,headz),(hr*0.28,hr*0.15,hr*0.4),1)
+        ell('ShoulderBand',(0,0.15,z),(W*0.51,L*0.12,H*0.56),1)
+    elif kind in ('tiger','jaguar','snowleopard'):
+        for side in (-1,1):
+            for j in range(7):
+                yy=-L*0.35+j*L*0.105
+                ell('Mark',(side*W*0.48,yy,z+H*0.1*math.sin(j)),(0.025,L*0.018,H*(0.38 if kind=='tiger' else 0.07)),1)
+    elif kind in ('sloth','monkey'):
+        ell('Face',(0,hy+hr*0.7,headz),(hr*0.85,hr*0.4,hr*0.85),2)
+        for side in (-1,1):ell('Arm',(side*W*0.65,0.12,z+0.05),(0.09,0.12,0.4))
+    if not marine and not bird and kind not in ('panda','meerkat','frog','sloth'):
+        for j in range(5):
+            ell('Tail',(0.07*math.sin(j),-L*0.5-j*0.1,z+0.06*j),(0.075,0.16,0.075),1 if kind=='redpanda' and j%2 else 0)
+    bodypieces=list(pieces)
+    select_only(bodypieces);bpy.ops.object.join();body=bpy.context.object;body.name='Body'
+    # Keep legs separate with hip origins for the game's gait.
+    legs=[]
+    if not marine:
+        for side in (-1,1):
+            for front in ((1,) if bird or kind=='meerkat' else (-1,1)):
+                x=side*W*0.33;y=front*L*0.29
+                o=ell('Leg'+('F' if front==1 else 'B')+('L' if side<0 else 'R'),(x,y,leg*0.5),(max(0.035,W*0.12),max(0.05,L*0.12),max(0.06,leg*0.55)),1 if kind=='panda' else 0)
+                pivot(o,Vector((x,y,leg)));legs.append(o)
+    select_only([body]+legs)
+    path=OUT/('animal_'+kind+'.glb')
+    bpy.ops.export_scene.gltf(filepath=str(path),export_format='GLB',use_selection=True,export_yup=True)
+    print('WORLD_ANIMAL',kind,path.stat().st_size,flush=True)
+
+if os.environ.get('HARBOR_WORLD_ANIMALS_ONLY'):
+    for kind in WORLD_ANIMALS:
+        build_world_animal(kind)
+    print('WORLD_ANIMALS_DONE',flush=True)
+
+else:
+    calibrate()
+    for kind in ("penguin", "flamingo", "owl", "parrot", "duck", "goose"):
+        try:
+            build_bird(kind)
+        except Exception:
+            import traceback
+            print("HARBOR_ANIMAL ERROR %s\n%s" % (kind, traceback.format_exc()))
+    for kind in SPECIES:
+        try:
+            build(kind)
+        except Exception:
+            import traceback
+            print("HARBOR_ANIMAL ERROR %s\n%s" % (kind, traceback.format_exc()))
+    print("HARBOR_ANIMAL DONE")

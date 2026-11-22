@@ -1738,6 +1738,10 @@ func screenshots() -> void:
   g.camera.global_position = local_point(i,0,-30,2.4)
   g.camera.look_at(local_point(i,0,8,3.5))
   await g._save_shot(NAMES[i].to_lower().replace(" ","-"))
+  if i!=1:
+   g.camera.global_position = local_point(i,0,-32,14.0)
+   g.camera.look_at(local_point(i,0,10,3.0))
+   await g._save_shot(NAMES[i].to_lower().replace(" ","-")+"-gallery")
   if i==1:
    g.camera.global_position = local_point(i,0,-18,2.6)
    g.camera.look_at(local_point(i,0,-RADIUS+1.0,3.0))
@@ -1778,6 +1782,9 @@ func screenshots() -> void:
  g.camera.global_position = sp-so*7.0+sr*3.0+Vector3(0,2.2,0)
  g.camera.look_at(sp+Vector3(0,3.6,0))
  await g._save_shot("asia-sign-outside")
+ g.camera.global_position = C-so*8.0+Vector3(0,2.3,0)
+ g.camera.look_at(C+so*20.0+Vector3(0,2.8,0))
+ await g._save_shot("hub-doors")
  var loop_mid = C+Vector3(cos(-PI/2.0+TAU/14.0),0,sin(-PI/2.0+TAU/14.0))*RING_R
  g.camera.global_position = loop_mid+Vector3(0,2.6,0)+(C-loop_mid).normalized()*-10.0
  g.camera.look_at(dome_c(0)-(dome_c(0)-C).normalized()*RADIUS+Vector3(0,3.0,0))
@@ -1967,6 +1974,63 @@ func rain_ring(parent: Node3D) -> void:
    nature(parent,"nature_bush_flower" if i==1 else ("nature_bush_snow" if i==3 else "nature_bush_dry"),ornament,0.45,float(k))
  text(parent,"CLOUD WATERFALL TERRACE",centre+Vector3(0,height+2.3,0),Color("f0fff7"),28,50)
 
+func gallery_points(i: int,radius: float,dir: float,top: float) -> Array:
+ var pts = []
+ var n = 40
+ for k in n+1:
+  var u = float(k)/n
+  var a = deg_to_rad(-45.0)+dir*u*deg_to_rad(250.0)
+  if dir<0.0:
+   a = deg_to_rad(205.0)+dir*u*deg_to_rad(250.0)
+  pts.append(local_point(i,cos(a)*radius,sin(a)*radius,lerpf(0.09,top,minf(u*1.08,1.0))))
+ return pts
+
+func gallery_clear(i: int,pts: Array) -> bool:
+ for f in fences:
+  if int(f.dome)!=i:
+   continue
+  for k in range(1,pts.size()):
+   var q = project_segment(f.c,pts[k-1],pts[k])
+   if Vector2(q.x-f.c.x,q.z-f.c.z).length()<float(f.r)+3.2:
+    return false
+ for surface in walk_surfaces:
+  if int(surface.dome)!=i or surface.kind!="raised":
+   continue
+  for k in range(1,pts.size()):
+   if surface_distance(pts[k],surface)<3.5:
+    return false
+ for k in range(0,pts.size(),4):
+  for q in 3:
+   for step in 3:
+    if pts[k].distance_to(quest_point(i,q,step)+Vector3(0,pts[k].y,0))<3.0:
+     return false
+ return true
+
+func sky_gallery(i: int,parent: Node3D) -> void:
+ # v0.55.5: a second layer in every dome: a gentle spiral walkway climbs the dome wall to a lookout.
+ var top = 8.0
+ var pts = []
+ for radius in [27.0,25.0,29.0,23.0]:
+  for dir in [1.0,-1.0]:
+   var cand = gallery_points(i,radius,dir,top)
+   if gallery_clear(i,cand):
+    pts = cand
+    break
+  if not pts.is_empty():
+   break
+ if pts.is_empty():
+  print("WB_GALLERY_SKIPPED "+NAMES[i])
+  return
+ for k in range(1,pts.size()):
+  var last = k==pts.size()-1
+  walkway(parent,pts[k-1],pts[k],3.0,0.0,0.0)
+  glass_edge(parent,pts[k-1],pts[k],3.0,COLORS[i])
+  if k%5==0 and not last:
+   beam(parent,Vector3(pts[k].x,0.1,pts[k].z),pts[k]-Vector3(0,0.13,0),0.3,Color("e3e9e2"))
+ var end = pts[-1]
+ disc(parent,end+Vector3(0,-0.15,0),2.2,0.3,Color("e3e9e2"),true)
+ text(parent,"SKY GALLERY · "+NAMES[i].to_upper(),end+Vector3(0,2.6,0),Color("fff3b0"),30,55)
+
 func route_clear(i: int,p: Vector3) -> bool:
  # Phase 2 domes (Europe, North America, Oceania) use phase2_route; keep decoration 3 m off it.
  if i<4:
@@ -2003,6 +2067,18 @@ func build_dome_loop() -> void:
      var q = (p0+p1)*0.5+out*(2.9*sg)
      shape(root,g._bcone(0.06,0.09,3.2),q+Vector3(0,1.6,0),Vector3.ONE,Color("c8d4da"))
      shape(root,g._bsph(0.26),q+Vector3(0,3.3,0),Vector3.ONE,Color("bff6ff"))
+  # v0.55.5: solid rails along both edges of the loop stop cars and hoverboards cutting across the lawns.
+ # They leave an opening at every dome axis, where the hub spoke and the dome door line up.
+  for k in range(1,steps-1):
+   var r0 = -PI/2.0+float(i)*TAU/7.0+float(k)*TAU/7.0/float(steps)
+   var r1 = r0+TAU/7.0/float(steps)
+   if absf(angle_difference((r0+r1)*0.5,PI/2.0))*RING_R<4.0:
+    continue # the ENTRY walk from the south crosses the loop here
+   for edge in [RING_R-2.8,RING_R+2.8]:
+    var e0 = C+Vector3(cos(r0),0,sin(r0))*edge+Vector3(0,-0.05,0)
+    var e1 = C+Vector3(cos(r1),0,sin(r1))*edge+Vector3(0,-0.05,0)
+    collision_wall(root,e0,e1,1.2)
+    beam(root,e0+Vector3(0,1.0,0),e1+Vector3(0,1.0,0),0.08,Color("a7ddc3"))
   var mid = a0+TAU/14.0
   var mp = C+Vector3(cos(mid),0,sin(mid))*RING_R
   var sign_node = text(root,"⇄ "+NAMES[i]+" · "+NAMES[j]+" ⇄",mp+Vector3(0,3.9,0),Color("244b3c"),46,45)
@@ -3193,6 +3269,8 @@ func load_dome(i: int) -> void:
  quest_markers(i,detail)
  garden_ring(i,detail)
  colonnade(i,detail)
+ if i!=1:
+  sky_gallery(i,detail)
  door_markers(i,detail)
  inside_signpost(i,detail)
  if i<7:

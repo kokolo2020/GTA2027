@@ -357,7 +357,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.4: gold ENTER and EXIT doors, visible dome walls, an open path linking every dome, and signposts with distances.")
+	_show_toast("Harbor City 0.55.5: sky galleries on a second level in the domes, hub doors to every dome, rails and car fence to stop shortcuts.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()
@@ -19485,6 +19485,7 @@ func _smoke_commons() -> void:
 const BIO_C := WorldBiosphere.C
 const BIO_A := WorldBiosphere.RADIUS           # dome apothem: centre to the middle of a wall
 const BIO_OFF := WorldBiosphere.ORBIT         # dome centres sit at hub +/- 44 m on x and z
+const BIO_CAR_FENCE_R := 168.0
 const BIO_HUB_A := 20.0       # hub apothem
 const BIO_TAN := 0.57735      # tan 30 degrees
 const BIO_JOIN := [12.0,13.5,12.5,11.5]   # each dome's doorway paths run in from the wall to here
@@ -20125,9 +20126,41 @@ func _build_biosphere_legacy() -> void:
 		var tb := b-dv*_bio_hex_r(_bio_theta(i1),BIO_A,atan2(-dv.z,-dv.x))
 		_bio_tunnel(ta,tb,BIO_DOMES[i0]["rib"].lerp(BIO_DOMES[i1]["rib"],0.5),walls,rng)
 		tubes.append([ta,tb])
+	# v0.55.5: every opening in the hub wall gets a proper door frame (gold posts, lintel and a glowing
+	# threshold) so the doorways to the entrance walk and to each dome read as doors, not gaps in a wall.
+	for di in hub_open.size():
+		var dp: Vector3 = hub_open[di]
+		var dd := (dp-BIO_C).normalized()
+		var best_n := PI/2.0
+		var best_d := 99.0
+		for sk in 6:
+			var na := PI/2.0+float(sk)*PI/3.0
+			var df := absf(angle_difference(na,atan2(dd.z,dd.x)))
+			if df < best_d:
+				best_d = df
+				best_n = na
+		var tang := Vector3(-sin(best_n),0,cos(best_n))
+		var dyaw := atan2(-tang.z,tang.x)
+		var gold := Color("ffe08a")
+		for sg: float in [-1.0,1.0]:
+			var post := _fc_part(bio_root,_bbox(),dp+tang*2.95*sg+Vector3(0,2.35,0),_fc_glow(gold),Vector3(0.5,4.7,0.6))
+			post.rotation.y = dyaw
+		var lint := _fc_part(bio_root,_bbox(),dp+Vector3(0,4.55,0),_fc_glow(gold),Vector3(6.4,0.5,0.6))
+		lint.rotation.y = dyaw
+		var mat := _fc_part(bio_root,_bbox(),dp+Vector3(0,0.15,0),_fc_glow(gold),Vector3(5.4,0.03,0.7))
+		mat.rotation.y = dyaw
+		var dn := _bio_text("ENTRANCE · outside" if di == 0 else "⬇ "+String(BIO_DOMES[di-1]["name"])+" ⬇",dp-dd*0.2+Vector3(0,5.4,0),gold,44,40.0,true)
+		dn.pixel_size = 0.012
 	_bio_ticket_hall(hub_open)
 	# Bollards across the entrance walk: people only from here on.
 	_car_barrier([[Vector3(BIO_C.x,0.9,BIO_C.z+BIO_HUB_A+3.0),Vector3(7.6,1.8,0.5),0.0]])
+	# v0.55.5: no driving across the dome lawns: an invisible car-only fence rings the whole campus
+	# (people and hoverboards are not affected by it; the ring-path rails stop hoverboards).
+	var fence_items: Array = []
+	for k in 48:
+		var fa := (float(k)+0.5)*TAU/48.0
+		fence_items.append([BIO_C+Vector3(cos(fa)*BIO_CAR_FENCE_R,2.0,sin(fa)*BIO_CAR_FENCE_R),Vector3(23.0,4.0,0.6),-(fa+PI/2.0)])
+	_multi_collider(fence_items,HUB_CAR_LAYER)
 	_bio_grounds(tubes,rng)
 	_bio_flush()
 	# ---- Domes ----

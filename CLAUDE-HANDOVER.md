@@ -873,3 +873,9 @@ Release https://github.com/kokolo2020/GTA2027/releases/tag/v0.55.0, APK SHA256 c
 - Gold ENTER/EXIT door markers (door_markers, build()), visible plinth+glass walls in shell(), open ring loop at RING_R=72 (build_dome_loop) linking domes. This REVERSES the old "no circular connector" rule at Koko's request; the loop is open, roofless and ground level; hub spoke walls have a 7 m gap.
 - City-style signposts (dome_signpost, outside_signposts, inside_signpost): name + distance blades.
 - Next: multi-level terraces, columns and rain vortex for the other six domes (Asia already has terrace and waterfall).
+
+
+## 0.55.5
+- sky_gallery(i): spiral raised walkway + 8 m lookout in domes except Asia (candidate radius/direction search keeps it clear of pens, raised surfaces and quest points). Rest of the multi-level plan (columns, rain vortex for other domes) still open.
+- Hub doors: gold frames + name signs at every hub wall opening (main.gd, before _bio_ticket_hall).
+- Ring rails (collision_wall) on both edges of the loop with openings at dome axes and the south ENTRY walk; invisible car-layer fence at BIO_CAR_FENCE_R=168 around the campus. Do NOT widen _people_only to the campus disc: it breaks the v0.41 bollard smoke test.

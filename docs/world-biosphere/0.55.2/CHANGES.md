@@ -1,6 +1,6 @@
 # Open Biosphere paths and automatic Daily Keeper — 0.55.2
 
-Release authorized by Koko: 0.55.2 / code 98. Version/toast/site metadata updated for the tested implementation; Android and Web release exports are handled by `export.py`.
+Released and publicly verified: 0.55.2 / code 98. Version/toast/site metadata updated for the tested implementation; Android and Web release exports are handled by `export.py`.
 
 ## Changes
 
@@ -41,3 +41,5 @@ python3 docs/world-biosphere/0.55.2/profile.py antarctica --dome 3
 Implementation: `game/world_biosphere.gd`; regenerated `game/map/world_map.png`; docs/handover. The only additional `main.gd` change for release is its startup version toast. Unrelated user files left in place; branch stays main.
 
 Release exports passed, desktop save restored byte for byte. APK package/version/signature/ZIP checks passed; SHA256 `196a7969792d1d8b674834814697eda5030aadd2e4fe26f7f93610071d66f1c1`, 53,158,394 bytes.
+
+[Published v0.55.2](https://github.com/kokolo2020/GTA2027/releases/tag/v0.55.2). Public APK checksum, live page metadata, gameplay screenshot and complete Web PCK checksum verified; Pages run 45021981019 succeeded. See `public-verification.json`.

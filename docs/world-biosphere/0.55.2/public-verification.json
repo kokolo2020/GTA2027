@@ -1,0 +1,18 @@
+{
+  "verified_utc": "2026-11-22T12:24:17.862645+00:00",
+  "release": "https://github.com/kokolo2020/GTA2027/releases/tag/v0.55.2",
+  "source_commit": "09eb23de007626c2f12820de401017467b64aec6",
+  "pages_run": 45021981019,
+  "apk": {
+    "version": "0.55.2",
+    "filename": "Harbor-City-Android-debug.apk",
+    "bytes": 53158394,
+    "sha256": "196a7969792d1d8b674834814697eda5030aadd2e4fe26f7f93610071d66f1c1",
+    "url": "https://github.com/kokolo2020/GTA2027/releases/download/v0.55.2/Harbor-City-Android-debug.apk"
+  },
+  "web_pck_sha256": "0f3ff471d60dc127b760b9c050f7f9b493f4a8eb3b845e0e411fb2a9e8aced49",
+  "web_pck_bytes": 21272520,
+  "page_version": "0.55.2",
+  "public_gameplay_matches": true,
+  "remote_apk_checksum_verified_by_publisher": true
+}

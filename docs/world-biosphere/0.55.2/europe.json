@@ -1,0 +1,40 @@
+[
+  {
+    "alpha_scissor_surfaces": 4,
+    "animal_glb_file_bytes": 1496132,
+    "animal_models": 8,
+    "audio_resources": 0,
+    "audio_wav_bytes": 0,
+    "buffer_bytes": 38979136.0,
+    "dome": 4,
+    "heap_peak": 539514193,
+    "interior_nodes": [
+      1,
+      1,
+      1,
+      1,
+      373,
+      1,
+      1
+    ],
+    "labels": 64,
+    "mesh_resources": 110,
+    "mesh_triangles": 71988,
+    "multimesh_buffer_bytes": 438528,
+    "multimesh_instances": 9136,
+    "multimeshes": 81,
+    "nodes": 616,
+    "stream_load_us": 146578,
+    "texture_bytes": 115098181.0,
+    "tick_us_avg": 102.986777668952,
+    "tick_us_max": 691,
+    "transparent_surfaces": 8,
+    "video_bytes": 154077317.0,
+    "visible_transparent_surfaces": 0,
+    "name": "Europe",
+    "bench": "HC_BENCH fps=204.9 lite=true scale=1.00 draws=287 prims=62332 objs=859 proc_ms=6.85 phys_ms=3.38 nodes=18792 at=(-910.0, 1.0, -546.0)",
+    "rss_peak_bytes": 747814912,
+    "fps": 204.9,
+    "footprint_peak_bytes": 1508677824
+  }
+]

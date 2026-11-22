@@ -2,6 +2,15 @@
 
 ## START HERE — Claude continuation (22 November 2026)
 
+### 0.55.3 in progress (Claude, 22 Nov evening) — UNCOMMITTED, UNTESTED
+Koko wants the domes to match the OLD Biosphere look (thick saturated coloured ribs, leafy oaks, flower hedges, lamp posts). ChatGPT could not match it; Claude took over. Claude's shell here is Linux and cannot run Godot/Mac tools (computer-use cannot type into Terminal), so Koko runs the test commands.
+- `game/world_biosphere.gd` `shell()`: frame beams now saturated dome colour, ~3x thicker (0.42/0.52/0.30 m, scaled by r/38.5, min 0.6).
+- `game/world_biosphere.gd` new `build_garden_edges()` (called in `build()` after `build_open_paths()`): flower hedges at ±4.3 m, lamp posts at ±5.4 m, `nature_oak2` trees at ±9 m along the entry walk and the 7 spokes. Decoration only, no collision (animal_structure flag set so no scenery/walk registration).
+- `game/world_biosphere.gd` new `garden_ring(i,detail)` (called in `load_dome` for all 7 domes; replaces the Asia-only `blossom_ring`): ring of per-dome leafy trees, flower beds and lanterns (Asia: cherry blossoms round the rain terrace) via `route_clear`/`planting_clear` (decoration only, uses `planting_clear`); `glass_edge` rails now 0.09 m (was 0.06). UNTESTED (no Godot in Claude's shell).
+- `colonnade(i,detail)` (called in `load_dome` after `garden_ring`): coloured columns + glass-rail arcs around the back rim of every dome, decoration only; Europe/North America also get a back-wall waterfall when clear of pens. Checks on 20:01 run (before colonnade): smoke passed, Asia 208.6 FPS.
+- Still to do: check renders (`python3 docs/world-biosphere/0.55.2/preview.py`, then view shots), tune thickness/colours, interior look per dome (Asia first: blossom ring terrace, waterfall, glass rails), run `verify.py` smoke + `profile.py` (5% FPS budget), then bump to 0.55.3 / code 99 ONLY when Koko says "Release".
+- Planned next (needs Koko's OK per AGENTS.md): cloud saves via Supabase anonymous login + `player_saves` table (RLS), leaderboard policies tied to auth, fix leaderboard.sql level check (1-20) vs 40 levels.
+
 ### Current state
 
 - Canonical repo: `/Users/koko/GTA2027`, GitHub `kokolo2020/GTA2027`. **Stay on main.** Read `AGENTS.md`, `CLAUDE.md` and `PUBLISHING.md` before work. This section supersedes conflicting historical instructions below.

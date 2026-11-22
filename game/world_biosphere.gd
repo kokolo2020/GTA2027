@@ -7,7 +7,7 @@ const ENTRY := C+Vector3(0,0,181)
 const OCEAN := C+Vector3(-225,0,0)
 const NAMES := ["Africa","Asia","South America","Antarctica","Europe","North America","Oceania"]
 const COLORS := [Color("e9b75e"),Color("7fbc9c"),Color("4cbf94"),Color("9be6ff"),Color("b2cc7a"),Color("d29562"),Color("64d7d0")]
-const GROUNDS := [Color("c6ac67"),Color("508166"),Color("32694a"),Color("dae9f2"),Color("8eaa70"),Color("738b66"),Color("b87a52")]
+const GROUNDS := [Color("b4923c"),Color("508166"),Color("32694a"),Color("dae9f2"),Color("8eaa70"),Color("738b66"),Color("b87a52")]
 const DOMES := [{"name":"AFRICA"},{"name":"ASIA"},{"name":"SOUTH AMERICA"},{"name":"ANTARCTICA"},{"name":"EUROPE"},{"name":"NORTH AMERICA"},{"name":"OCEANIA"}]
 const SPECIES := [
 	{"dome":3,"name":"Emperor Penguin","fact":"The biggest penguin: up to 1.2 m tall. Dads keep the egg warm on their feet.","kind":"penguin","n":6,"zone":"in","hab":"Penguin Bay"},
@@ -311,10 +311,13 @@ func build() -> void:
   disc(root,C+Vector3(x,0.5,24),0.13,1.1,Color("a6d9c8"),true)
  # Entrance gate arch where the walk from the city meets the hub.
  for gx in [-6.5,6.5]:
-  beam(root,C+Vector3(gx,0,34),C+Vector3(gx,7,34),0.7,Color("94e8cf"))
- beam(root,C+Vector3(-6.5,7,34),C+Vector3(6.5,7,34),0.7,Color("94e8cf"))
+  # v0.55.3 old look: pearl pillars with a glowing green strip and a pearl sign bar.
+  shape(root,g._bcone(0.45,0.6,7.2),C+Vector3(gx,3.6,34),Vector3.ONE,Color("f4f7f9"))
+  beam(root,C+Vector3(gx,0.2,33.6),C+Vector3(gx,6.8,33.6),0.12,Color("7dff9a"))
+ box(root,C+Vector3(0,7.3,34),Vector3(14.2,1.3,0.7),Color("f4f7f9"))
+ beam(root,C+Vector3(-6.8,6.7,33.6),C+Vector3(6.8,6.7,33.6),0.1,Color("7dff9a"))
  text(root,"WORLD BIOSPHERE",C+Vector3(0,8.4,34),Color("c4fff1"),56,90)
- shell(root,C,20,14,Color("94e8cf"),false)
+ shell(root,C,20,14,Color("35d6a4"),false)
  text(root,"WORLD BIOSPHERE",C+Vector3(0,10,8),Color("c4fff1"),72,220)
  text(root,"One world · Seven continents",C+Vector3(0,7.8,8),Color.WHITE,34,100)
  text(root,"PASSPORT & RANGER DESK\nSpot wildlife · Help keepers · Take photos",C+Vector3(-6,2.6,5),Color("244b3c"),36,35)
@@ -361,6 +364,7 @@ func build() -> void:
   beam(root,a+Vector3(0,1.2,0),b+Vector3(0,1.2,0),0.16,Color("d9be69"),true)
  text(root,"WORLD BIOSPHERE · LEVEL 7",ENTRY+Vector3(0,4,0),Color("d5fff0"),54,90)
  build_open_paths()
+ build_garden_edges()
  register_habitats()
  flush_guard_batches(root)
  flush()
@@ -380,11 +384,13 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
     points.append(c+Vector3(cos(ang)*r*cos(t),4+h*sin(t),sin(ang)*r*cos(t)))
    for idx in [0,2,1,1,2,3]:
     st.add_vertex(points[idx])
-   var frame = col.lightened(0.45)
-   beam(parent,points[0],points[1],0.14,frame)
-   beam(parent,points[0],points[2],0.18,frame)
+   # v0.55.3: the old Biosphere look: thick, saturated coloured ribs (not thin pale lines).
+   var frame = Color.from_hsv(col.h,minf(1.0,col.s*1.35+0.12),minf(1.0,col.v*1.05+0.05))
+   var sc = clampf(r/38.5,0.6,1.0)
+   beam(parent,points[0],points[1],0.42*sc,frame)
+   beam(parent,points[0],points[2],0.52*sc,frame)
    if j<6:
-    beam(parent,points[0] if (j+k)%2==0 else points[1],points[3] if (j+k)%2==0 else points[2],0.11,frame)
+    beam(parent,points[0] if (j+k)%2==0 else points[1],points[3] if (j+k)%2==0 else points[2],0.30*sc,frame)
  st.generate_normals()
  var mi = MeshInstance3D.new()
  var shell_mesh = st.commit()
@@ -1887,13 +1893,92 @@ func rain_ring(parent: Node3D) -> void:
    nature(parent,"nature_bush_flower" if i==1 else ("nature_bush_snow" if i==3 else "nature_bush_dry"),ornament,0.45,float(k))
  text(parent,"CLOUD WATERFALL TERRACE",centre+Vector3(0,height+2.3,0),Color("f0fff7"),28,50)
 
+func route_clear(i: int,p: Vector3) -> bool:
+ # Phase 2 domes (Europe, North America, Oceania) use phase2_route; keep decoration 3 m off it.
+ if i<4:
+  return true
+ var pts = phase2_route(i)
+ for k in range(1,pts.size()):
+  var a: Vector3 = pts[k-1]
+  var b: Vector3 = pts[k]
+  var ab = b-a
+  var t = clampf((p-a).dot(ab)/maxf(ab.length_squared(),0.001),0,1)
+  if Vector2(p.x-(a+ab*t).x,p.z-(a+ab*t).z).length()<3.0:
+   return false
+ return true
+
+func colonnade(i: int,parent: Node3D) -> void:
+ # v0.55.3: old Biosphere look: coloured columns joined by glass-rail arcs around the back of the dome.
+ # Decoration only: no collision, sits at the rim away from routes, pens and the door side.
+ var old_flag = animal_structure
+ animal_structure = true
+ var col = Color.from_hsv(COLORS[i].h,minf(1.0,COLORS[i].s*1.3+0.1),minf(1.0,COLORS[i].v+0.05))
+ var prev = Vector3.ZERO
+ var have = false
+ for k in 19:
+  var a = lerpf(0.12,PI-0.12,float(k)/18.0)
+  var q = local_point(i,cos(a)*34.0,sin(a)*34.0,0.1)
+  var ok = planting_clear(i,q) and route_clear(i,q)
+  if ok:
+   beam(parent,q,q+Vector3(0,4.2,0),0.5,col)
+   shape(parent,g._bsph(0.42),q+Vector3(0,4.3,0),Vector3.ONE,col.lightened(0.35))
+   if have:
+    beam(parent,prev+Vector3(0,1.2,0),q+Vector3(0,1.2,0),0.1,col)
+    beam(parent,prev+Vector3(0,3.9,0),q+Vector3(0,3.9,0),0.14,col)
+   prev = q
+   have = true
+  else:
+   have = false
+ if i==4 or i==5:
+  var wp = local_point(i,0,31,0.1)
+  var wide = true
+  for f in fences:
+   if int(f.dome)==i and wp.distance_to(f.c)<float(f.r)+6.0:
+    wide = false
+  if wide and planting_clear(i,wp) and route_clear(i,wp):
+   waterfall(i,parent,wp,5.0,14.0)
+   soft_mist(i,parent,wp+Vector3(0,0.8,0),Vector3(3,0.4,2))
+ animal_structure = old_flag
+
+func garden_ring(i: int,parent: Node3D) -> void:
+ # v0.55.3: old Biosphere look: a ring of leafy trees, flower beds and lanterns inside every dome.
+ # Decoration only (no collision, no scenery registration); skips anything near routes/quests/pens.
+ var rng = RandomNumberGenerator.new()
+ rng.seed = 5531+i
+ var old_flag = animal_structure
+ animal_structure = true
+ var trees = [["nature_acacia","nature_acacia"],["nature_cherry","nature_cherry2"],["nature_oak2","nature_oak"],["nature_pine_snow","nature_pine"],["nature_oak","nature_maple"],["nature_maple","nature_maple2"],["nature_acacia","nature_bush_dry"]][i]
+ var tints = [[Color("ffb347"),Color("ffd23f"),Color("ff7a3d"),Color("fff0b0")],[Color("ff8fc2"),Color("ffc2dd"),Color("ffd23f"),Color("ffffff")],[Color("ff4f9a"),Color("ffd23f"),Color("9b5cff"),Color("ffffff")],[Color("e6f6ff"),Color("bfe9ff"),Color("ffffff"),Color("9be6ff")],[Color("ff6b6b"),Color("ffd23f"),Color("c254ff"),Color("ffffff")],[Color("ff8a1c"),Color("ffd23f"),Color("e63946"),Color("ffffff")],[Color("ff7a59"),Color("ffd23f"),Color("ff4f9a"),Color("fff0b0")]][i]
+ var centre = local_point(i,0,16) if i==1 else dome_c(i)
+ var toward = (dome_c(i)-C).normalized()
+ var right = Vector3(toward.z,0,-toward.x)
+ var ring = 17.0 if i==1 else 28.0
+ var count = 28 if i==1 else 36
+ for k in count:
+  var a = float(k)*TAU/float(count)
+  var q = centre+right*cos(a)*ring+toward*sin(a)*ring
+  q.y = 0.1
+  if Vector2(q.x-dome_c(i).x,q.z-dome_c(i).z).length()>RADIUS-5.0 or not planting_clear(i,q) or not route_clear(i,q):
+   continue
+  if k%2==0:
+   nature(parent,trees[0] if k%4==0 else trees[1],q,0.95+rng.randf()*0.35,rng.randf()*TAU)
+  else:
+   var bed = centre+right*cos(a)*(ring-1.8)+toward*sin(a)*(ring-1.8)
+   bed.y = 0.1
+   if planting_clear(i,bed) and route_clear(i,bed):
+    shape(parent,g._blow(0.5),bed+Vector3(0,0.25,0),Vector3(1.3,0.8,1.3),Color("3f9450") if i!=3 else Color("e8f3f8"))
+    shape(parent,g._bsph(0.22),bed+Vector3(0.1,0.75,0.0),Vector3.ONE,tints[k%4])
+    shape(parent,g._bcone(0.05,0.08,2.6),bed+right*0.9+Vector3(0,1.3,0),Vector3.ONE,Color("c8d4da"))
+    shape(parent,g._bsph(0.24),bed+right*0.9+Vector3(0,2.7,0),Vector3.ONE,COLORS[i].lightened(0.5))
+ animal_structure = old_flag
+
 func glass_edge(parent: Node3D,a: Vector3,b: Vector3,width: float,col: Color,open_start := 0.0,open_end := 0.0) -> void:
  var axis = (b-a).normalized()
  a += axis*open_start
  b -= axis*open_end
  var sideways = Vector3(b.z-a.z,0,a.x-b.x).normalized()
  for side in [-1,1]:
-  beam(parent,a+sideways*width*0.5*side+Vector3(0,1.25,0),b+sideways*width*0.5*side+Vector3(0,1.25,0),0.06,col)
+  beam(parent,a+sideways*width*0.5*side+Vector3(0,1.25,0),b+sideways*width*0.5*side+Vector3(0,1.25,0),0.09,col)
 
 func waterfall(i: int,parent: Node3D,p: Vector3,width: float,height: float) -> void:
  var old_group = scenery_group
@@ -2931,6 +3016,8 @@ func load_dome(i: int) -> void:
   phase2_landscape(i,detail)
   phase2_layers(i,detail)
  quest_markers(i,detail)
+ garden_ring(i,detail)
+ colonnade(i,detail)
  if i<7:
   for step in 3:
    var p = local_point(i,7,-29+step*20)
@@ -3004,6 +3091,47 @@ func build_open_paths() -> void:
  var welcome_sign = text(root,"← OCEANIA · NORTH AMERICA · EUROPE\n↑ AFRICA\nASIA · SOUTH AMERICA · ANTARCTICA →",C+Vector3(0,3.4,25),Color("244b3c"),44,45)
  welcome_sign.pixel_size = 0.012
 
+
+func build_garden_edges() -> void:
+ # v0.55.3: the old Biosphere look outside the domes: flower hedges, lamp posts and leafy oaks
+ # along every path. Decoration only: no collision, nothing on the walking surface (rails sit at 2.8 m).
+ var rng = RandomNumberGenerator.new()
+ rng.seed = 5530
+ var flowers = [Color("ff7ab8"),Color("ffd23f"),Color("c254ff"),Color("ffffff"),Color("ff8a1c")]
+ var old_flag = animal_structure
+ animal_structure = true
+ var lines = []
+ lines.append([C+Vector3(0,0,38),C+Vector3(0,0,176),Vector3(1,0,0)])
+ for i in 7:
+  var out = (dome_c(i)-C).normalized()
+  lines.append([C+out*24.0,C+out*72.0,Vector3(out.z,0,-out.x)])
+ for line in lines:
+  var a: Vector3 = line[0]
+  var b: Vector3 = line[1]
+  var side: Vector3 = line[2]
+  var length = a.distance_to(b)
+  var along = (b-a).normalized()
+  var count = int(length/2.2)
+  for k in count+1:
+   var base = a+along*(float(k)*2.2)
+   for sg in [-1,1]:
+    var q = base+side*(4.3*sg)
+    shape(root,g._blow(0.55),q+Vector3(0,0.3,0),Vector3(1,0.85,1),[Color("3f9450"),Color("2f7d45")][k%2])
+    shape(root,g._bsph(0.2),q+Vector3(rng.randf_range(-0.3,0.3),0.8,rng.randf_range(-0.3,0.3)),Vector3.ONE,flowers[(k+(1 if sg>0 else 0))%5])
+  var lamps = int(length/14.0)
+  for k in lamps+1:
+   var base = a+along*(float(k)*14.0+3.0)
+   for sg in [-1,1]:
+    var q = base+side*(5.4*sg)
+    shape(root,g._bcone(0.06,0.09,3.6),q+Vector3(0,1.8,0),Vector3.ONE,Color("c8d4da"))
+    shape(root,g._bsph(0.28),q+Vector3(0,3.7,0),Vector3.ONE,Color("bff6ff"))
+  # A few leafy oaks set back from the path.
+  var trees = int(length/16.0)
+  for k in trees:
+   var base = a+along*(float(k)*16.0+8.0)
+   var sg = 1 if k%2==0 else -1
+   nature(root,"nature_oak2",base+side*(9.0*sg),1.1+rng.randf()*0.5,rng.randf()*TAU)
+ animal_structure = old_flag
 
 func foliage_mesh(name: String) -> Mesh:
  if g.bio_model_mesh.has(name):

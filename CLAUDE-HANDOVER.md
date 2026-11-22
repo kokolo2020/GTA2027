@@ -879,3 +879,11 @@ Release https://github.com/kokolo2020/GTA2027/releases/tag/v0.55.0, APK SHA256 c
 - sky_gallery(i): spiral raised walkway + 8 m lookout in domes except Asia (candidate radius/direction search keeps it clear of pens, raised surfaces and quest points). Rest of the multi-level plan (columns, rain vortex for other domes) still open.
 - Hub doors: gold frames + name signs at every hub wall opening (main.gd, before _bio_ticket_hall).
 - Ring rails (collision_wall) on both edges of the loop with openings at dome axes and the south ENTRY walk; invisible car-layer fence at BIO_CAR_FENCE_R=168 around the campus. Do NOT widen _people_only to the campus disc: it breaks the v0.41 bollard smoke test.
+
+
+## 0.55.6 (in progress, NOT released; Koko feedback after 0.55.5)
+- Dome entrances: dark sign board over each door with "<NAME> BIODOME" and ENTER / FREE ENTRY (build()).
+- Hub wall (world_biosphere.gd shell(...gaps)): was visual only. Now solid (collision_wall) except 8 doors (south entry + 7 dome axes), each with gold frame, lintel, name board, open glass leaves (hub_doors()).
+- Visitors: build_visitors()/tick_visitors(): 23 waypoint walkers (spokes into domes, ring loop, hub). Only those within 110 m of the camera move.
+- Quests: entering a dome auto-starts its next unfinished quest (auto_quest/auto_dome); standing on the marker auto-runs interact() every 4 s; HUD quest_guide() shows arrow + distance; markers have a tall light beam and ring. smoke() sets auto_quest=false.
+- Tests added in smoke: hub wall solid between doors, doors open, quest auto-start + guide. Focused + full smoke passed on Mac. Not on a phone. Shots in docs/world-biosphere/0.55.2/shots (modified, uncommitted).

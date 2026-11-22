@@ -357,7 +357,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.5: sky galleries on a second level in the domes, hub doors to every dome, rails and car fence to stop shortcuts.")
+	_show_toast("Harbor City 0.55.6: dome name signs, solid hub wall with real doors, visitors in the biosphere, quests that start on entry and point the way.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()

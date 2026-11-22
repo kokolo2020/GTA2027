@@ -88,6 +88,10 @@ var active := -1
 var task := -1
 var tick_time := 0.0
 var interval := 0.0
+var visitors: Array = []
+var auto_quest := true
+var auto_dome := -1
+var auto_cd := 0.0
 var last_slot := -1
 var test_time := -1.0
 var test_day := ""
@@ -318,7 +322,11 @@ func build() -> void:
  box(root,C+Vector3(0,7.3,34),Vector3(14.2,1.3,0.7),Color("f4f7f9"))
  beam(root,C+Vector3(-6.8,6.7,33.6),C+Vector3(6.8,6.7,33.6),0.1,Color("7dff9a"))
  text(root,"WORLD BIOSPHERE",C+Vector3(0,8.4,34),Color("c4fff1"),56,90)
- shell(root,C,20,14,Color("35d6a4"),false)
+ var hub_gaps = [[PI/2.0,asin(3.5/20.0),"ENTRANCE\nfrom the city",Color("c4fff1")]]
+ for hi in 7:
+  var hd = (dome_c(hi)-C).normalized()
+  hub_gaps.append([atan2(hd.z,hd.x),asin(2.8/20.0),"⬇ "+NAMES[hi].to_upper()+" ⬇",COLORS[hi]])
+ shell(root,C,20,14,Color("35d6a4"),false,hub_gaps)
  text(root,"WORLD BIOSPHERE",C+Vector3(0,10,8),Color("c4fff1"),72,220)
  text(root,"One world · Seven continents",C+Vector3(0,7.8,8),Color.WHITE,34,100)
  text(root,"PASSPORT & RANGER DESK\nSpot wildlife · Help keepers · Take photos",C+Vector3(-6,2.6,5),Color("244b3c"),36,35)
@@ -350,13 +358,21 @@ func build() -> void:
   beam(root,door_p+door_s,door_p+door_s+Vector3(0,6.5,0),0.6,COLORS[i])
   beam(root,door_p-door_s,door_p-door_s+Vector3(0,6.5,0),0.6,COLORS[i])
   beam(root,door_p+door_s+Vector3(0,6.5,0),door_p-door_s+Vector3(0,6.5,0),0.6,COLORS[i])
-  text(root,NAMES[i].to_upper()+" DOME",door_p+Vector3(0,7.8,0),COLORS[i],44,60)
+  # v0.55.6: a solid dark sign board over every dome door, readable from far away.
+  var sign_yaw = atan2(-door_s.z,door_s.x)
+  box(root,door_p+Vector3(0,9.0,0),Vector3(17.0,3.4,0.5),Color("14232b"),false,Vector3(0,sign_yaw,0))
+  beam(root,door_p+door_s.normalized()*8.7+Vector3(0,7.3,0),door_p-door_s.normalized()*8.7+Vector3(0,7.3,0),0.3,COLORS[i])
+  var sign_name = text(root,NAMES[i].to_upper()+" BIODOME",door_p+Vector3(0,9.6,0),Color.WHITE,90,170)
+  sign_name.pixel_size = 0.016
+  sign_name.outline_size = 10
   # v0.55.3: bright gold door frame and ENTER sign so the door is easy to find from outside.
   var gold_door = Color("ffe08a")
   beam(root,door_p+door_s*0.45,door_p+door_s*0.45+Vector3(0,5.6,0),0.35,gold_door)
   beam(root,door_p-door_s*0.45,door_p-door_s*0.45+Vector3(0,5.6,0),0.35,gold_door)
   beam(root,door_p+door_s*0.45+Vector3(0,5.6,0),door_p-door_s*0.45+Vector3(0,5.6,0),0.35,gold_door)
-  text(root,"⬇ ENTER ⬇",door_p+Vector3(0,9.4,0),Color("fff3b0"),80,100).pixel_size = 0.014
+  var sign_enter = text(root,"⬇ ENTER ⬇   FREE ENTRY",door_p+Vector3(0,8.2,0),Color("fff3b0"),60,120)
+  sign_enter.pixel_size = 0.012
+  sign_enter.outline_size = 8
   var detail = Node3D.new()
   detail.name = NAMES[i].replace(" ","")+"Interior"
   root.add_child(detail)
@@ -373,13 +389,14 @@ func build() -> void:
  build_open_paths()
  build_dome_loop()
  outside_signposts()
+ build_visitors()
  build_garden_edges()
  register_habitats()
  flush_guard_batches(root)
  flush()
  capture_exterior(root)
 
-func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) -> void:
+func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool,gaps := []) -> void:
  var st = SurfaceTool.new()
  st.begin(Mesh.PRIMITIVE_TRIANGLES)
  var sides = 32
@@ -422,9 +439,27 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
  glaze.begin(Mesh.PRIMITIVE_TRIANGLES)
  var wall_frame = Color.from_hsv(col.h,minf(1.0,col.s*1.35+0.12),minf(1.0,col.v*1.05+0.05))
  var wall_segments = 96
- for k in wall_segments:
-  var wa = door_angle+door_half+float(k)*(TAU-2*door_half)/wall_segments
-  var wb = door_angle+door_half+float(k+1)*(TAU-2*door_half)/wall_segments
+ var wall_pairs: Array = []
+ if gaps.is_empty():
+  for k in wall_segments:
+   wall_pairs.append([door_angle+door_half+float(k)*(TAU-2*door_half)/wall_segments,door_angle+door_half+float(k+1)*(TAU-2*door_half)/wall_segments])
+ else:
+  # v0.55.6: a hub wall with several doors: one solid arc between each pair of neighbouring gaps.
+  var sorted_gaps = gaps.duplicate()
+  sorted_gaps.sort_custom(func(x,y):return fposmod(float(x[0]),TAU)<fposmod(float(y[0]),TAU))
+  for gi in sorted_gaps.size():
+   var this_gap = sorted_gaps[gi]
+   var next_gap = sorted_gaps[(gi+1)%sorted_gaps.size()]
+   var arc_start = fposmod(float(this_gap[0]),TAU)+float(this_gap[1])
+   var arc_end = fposmod(float(next_gap[0]),TAU)-float(next_gap[1])
+   if gi==sorted_gaps.size()-1:
+    arc_end += TAU
+   var pieces = maxi(2,int(ceil((arc_end-arc_start)/(TAU/96.0))))
+   for k in pieces:
+    wall_pairs.append([arc_start+(arc_end-arc_start)*float(k)/pieces,arc_start+(arc_end-arc_start)*float(k+1)/pieces])
+ for pk in wall_pairs.size():
+  var wa: float = wall_pairs[pk][0]
+  var wb: float = wall_pairs[pk][1]
   var pa = c+Vector3(cos(wa)*r,0,sin(wa)*r)
   var pb = c+Vector3(cos(wb)*r,0,sin(wb)*r)
   for quad in [[-0.05,1.1,plinth],[1.1,4.2,glaze]]:
@@ -433,10 +468,11 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
    var st2: SurfaceTool = quad[2]
    for v in [pa+Vector3(0,lo,0),pb+Vector3(0,lo,0),pa+Vector3(0,hi,0),pa+Vector3(0,hi,0),pb+Vector3(0,lo,0),pb+Vector3(0,hi,0)]:
     st2.add_vertex(v)
-  if k%4==0:
+  if pk%4==0:
    beam(parent,pa+Vector3(0,-0.05,0),pa+Vector3(0,4.4,0),0.34,wall_frame)
- beam(parent,c+Vector3(cos(door_angle+door_half),0,sin(door_angle+door_half))*r+Vector3(0,-0.05,0),c+Vector3(cos(door_angle+door_half),0,sin(door_angle+door_half))*r+Vector3(0,5.0,0),0.55,Color("ffe08a"))
- beam(parent,c+Vector3(cos(door_angle-door_half),0,sin(door_angle-door_half))*r+Vector3(0,-0.05,0),c+Vector3(cos(door_angle-door_half),0,sin(door_angle-door_half))*r+Vector3(0,5.0,0),0.55,Color("ffe08a"))
+ var jamb_angles = [door_angle+door_half,door_angle-door_half] if gaps.is_empty() else []
+ for ja in jamb_angles:
+  beam(parent,c+Vector3(cos(ja),0,sin(ja))*r+Vector3(0,-0.05,0),c+Vector3(cos(ja),0,sin(ja))*r+Vector3(0,5.0,0),0.55,Color("ffe08a"))
  plinth.generate_normals()
  glaze.generate_normals()
  var plinth_mi = MeshInstance3D.new()
@@ -451,6 +487,12 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
  glaze_mi.material_override = g._bio_glass_mat(col.lightened(0.3),0.32)
  glaze_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
  parent.add_child(glaze_mi)
+ if not gaps.is_empty():
+  # The hub's low wall is solid everywhere except its doors, so nobody walks through it.
+  for pair in wall_pairs:
+   collision_wall(parent,c+Vector3(cos(float(pair[0]))*r,-0.05,sin(float(pair[0]))*r),c+Vector3(cos(float(pair[1]))*r,-0.05,sin(float(pair[1]))*r),4.2)
+  hub_doors(parent,c,r,gaps)
+  return
  if not wall:
   return
  # The upper glass is solid too; elevated decks cannot create an exit above
@@ -482,6 +524,32 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
   var dir = Vector3(cos(centre_angle+side*half_door),0,sin(centre_angle+side*half_door))
   var jamb = c+dir*r
   beam(parent,jamb,jamb+Vector3(0,4.2,0),0.16,col)
+
+func hub_doors(parent: Node3D,c: Vector3,r: float,gaps: Array) -> void:
+ # v0.55.6: a real door at every opening of the hub wall: gold frame, lintel, a name board, a glowing
+ # threshold and two glass leaves swung open against the wall. Decoration only: the gap stays open.
+ var gold = Color("ffe08a")
+ for gap in gaps:
+  var ang: float = gap[0]
+  var half: float = gap[1]
+  var dir = Vector3(cos(ang),0,sin(ang))
+  var tang = Vector3(-dir.z,0,dir.x)
+  var mid = c+dir*r
+  var yaw = atan2(-tang.z,tang.x)
+  var width = sin(half)*r
+  for sg in [-1.0,1.0]:
+   var jamb = mid+tang*width*sg
+   beam(parent,jamb,jamb+Vector3(0,5.2,0),0.6,gold)
+   # Open glass leaf folded back along the inside of the wall.
+   var leaf = jamb-tang*width*0.0*sg-dir*0.9
+   box(parent,leaf+Vector3(0,1.8,0),Vector3(0.08,3.6,1.7),Color("bfeee3"),false,Vector3(0,atan2(-dir.z,dir.x)+PI/2.0,0))
+  beam(parent,mid+tang*width+Vector3(0,5.2,0),mid-tang*width+Vector3(0,5.2,0),0.6,gold)
+  box(parent,mid+Vector3(0,0.06,0),Vector3(width*2.0,0.05,1.6),gold,false,Vector3(0,yaw,0))
+  box(parent,mid+Vector3(0,6.2,0),Vector3(width*2.0+0.8,1.5,0.3),Color("14232b"),false,Vector3(0,yaw,0))
+  beam(parent,mid+tang*(width+0.4)+Vector3(0,5.45,0),mid-tang*(width+0.4)+Vector3(0,5.45,0),0.12,gap[3])
+  var label = text(parent,str(gap[2]),mid+Vector3(0,6.2,0)-dir*0.25,Color.WHITE,52,60)
+  label.pixel_size = 0.011
+  label.outline_size = 8
 
 func gate(i: int,p: Vector3,dir: Vector3) -> void:
  var n = Node3D.new()
@@ -757,7 +825,10 @@ func quest_markers(i: int,parent: Node3D) -> void:
    n.position = p
    parent.add_child(n)
    g._fc_part(n,g._bsph(0.22),Vector3(0,0.5,0),g._fc_glow(COLORS[i]))
-   var label = text(n,"",Vector3(0,1.25,0),Color.WHITE,28,18)
+   var label = text(n,"",Vector3(0,1.25,0),Color.WHITE,34,70)
+   label.visibility_range_end = 70.0
+   g._fc_part(n,g._bcone(0.1,0.1,16.0),Vector3(0,8.0,0),g._fc_glow(COLORS[i].lightened(0.3)))
+   g._fc_part(n,g._fc_torus(0.9,1.15),Vector3(0,0.08,0),g._fc_glow(Color("ffe08a")))
    markers.append({"node":n,"label":label,"dome":i,"q":q,"step":step})
    n.visible = false
    if i==1 and q==1:
@@ -1094,6 +1165,7 @@ func tick_impl(delta: float) -> void:
  if current<0 and loaded_dome>=0 and g.player.position.distance_to(dome_c(loaded_dome))>RADIUS+10.0:
   unload_detail()
  safety_net(delta)
+ tick_visitors(delta)
  auto_keeper()
  if current>=0:
   apply_dome_quality()
@@ -1128,6 +1200,26 @@ func tick_impl(delta: float) -> void:
    achieve("visit","First Continent")
    g._show_toast("Passport visit stamp: "+NAMES[active])
    changed()
+  # v0.55.6: entering a dome picks up its next ranger quest for you; the HUD says where to walk.
+  if auto_quest and auto_dome!=active:
+   auto_dome = active
+   if task<0 or task/3!=active:
+    for aq in 3:
+     if not state.quests.has(str(active*3+aq)):
+      start_quest(active,aq)
+      break
+  if auto_quest and task>=0 and task/3==active and not g.driving:
+   auto_cd -= dt
+   var arrive = quest_point(active,task%3,quest_step(task))+Vector3(0,0.8,0)
+   if auto_cd<=0.0 and g.player.position.distance_to(arrive)<2.8 and not (task==4 and not dusk()):
+    var arrive_label = prompt()
+    if arrive_label!="" and arrive_label!="BIOSPHERE PASSPORT":
+     auto_cd = 4.0
+     interact()
+ if active<0:
+  auto_dome = -1
+ if active>=0 and not g.paused:
+  pass
   var baby_day = today()
   if baby_dome(baby_day)==active and not state.babies.has(baby_day):
    state.babies[baby_day] = active
@@ -1212,9 +1304,11 @@ func tick_impl(delta: float) -> void:
  if active>=0:
   safari_hint.text = NAMES[active]+" · "+rank_name()+"\n"+("Feeding now!" if show.active else "Feeding in %ds" % ceili(show.left))
   if task>=0:
-   safari_hint.text += "\n"+QUESTS[task/3][task%3]+" · %d/3"%quest_step(task)
+   safari_hint.text += "\n"+quest_guide()
  else:
   safari_hint.text = "World Biosphere · Visit the ranger desk"
+  if task>=0:
+   safari_hint.text += "\n"+quest_guide()
  if g.shot_on:
   # A centered animal is captured on the normal Photo-mode tap to return.
   safari_hint.visible = false
@@ -1395,6 +1489,7 @@ func smoke() -> void:
  var keep = {"state":state.duplicate(true),"seen":g.bio_seen,"cash":g.cash,"xp":g.bonus_xp,"pass":g.bio_pass_day,"player":g.player.transform,"velocity":g.player.velocity,"board":g.board_on,"run":g.run_on,"driving":g.driving,"paused":g.paused,"active":active,"task":task,"day":test_day,"time":test_time,"hour":g.day_hour_override,"peers":g.online_peers.duplicate(),"shot":g.shot_on,"camera":g.camera.global_transform,"process":g.is_processing(),"physics":g.is_physics_processing(),"disabled":g.player.get_child(0).disabled,"place_level":g.place_test_level}
  g.set_process(false)
  g.set_physics_process(false)
+ auto_quest = false
  g.place_test_level = 40
  g._places_refresh()
  g.player.get_child(0).disabled = false
@@ -1580,6 +1675,17 @@ func smoke() -> void:
     safety_net(0.2)
    assert(g.stick==Vector2.ZERO and rescue_cooldown>0,"Held-stick recovery "+mode)
    safety_enabled = false
+  # v0.55.6: entering a dome picks up its next quest, and the HUD guide says where to walk.
+  auto_quest = true
+  auto_dome = -1
+  task = -1
+  interval = 0.0
+  g.player.position = local_point(i,0,-RADIUS+12.0,0.8)
+  tick_impl(0.3)
+  assert(task>=0 and task/3==i,"Entering dome %d starts one of its quests"%i)
+  assert(quest_guide().contains(" m") and quest_guide().contains("marker"),"Quest guide gives a direction and distance")
+  auto_quest = false
+  task = -1
   # Complete every real quest and passport page without repeat rewards.
   state.visits = int(state.visits)|(1<<i)
   for q in 3:
@@ -2083,6 +2189,122 @@ func build_dome_loop() -> void:
   var mp = C+Vector3(cos(mid),0,sin(mid))*RING_R
   var sign_node = text(root,"⇄ "+NAMES[i]+" · "+NAMES[j]+" ⇄",mp+Vector3(0,3.9,0),Color("244b3c"),46,45)
   sign_node.pixel_size = 0.012
+
+func quest_guide() -> String:
+ var di = task/3
+ var tp = quest_point(di,task%3,quest_step(task))
+ var inside_dome = active==di
+ if not inside_dome:
+  tp = door_point(di)
+ var from = g.player.global_position
+ var d = Vector2(tp.x-from.x,tp.z-from.z)
+ var fwd3 = -g.camera.global_transform.basis.z
+ var fwd = Vector2(fwd3.x,fwd3.z)
+ var arrow = "⬆"
+ if fwd.length()>0.01 and d.length()>0.01:
+  var rel = fwd.normalized().angle_to(d.normalized())
+  arrow = ["⬆","↗","➡","↘","⬇","↙","⬅","↖"][posmod(int(round(rel/(PI/4.0))),8)]
+ var head = QUESTS[di][task%3]+" · %d/3" % quest_step(task)
+ if inside_dome:
+  return head+"\n"+arrow+" Walk to the glowing marker · %d m" % int(d.length())
+ return head+"\n"+arrow+" Go to the "+NAMES[di]+" dome door · %d m" % int(d.length())
+
+func visitor_y(p: Vector3) -> float:
+ if Vector2(p.x-C.x,p.z-C.z).length()<19.5:
+  return 0.09
+ for i in 7:
+  var c = dome_c(i)
+  if Vector2(p.x-c.x,p.z-c.z).length()<RADIUS-1.5:
+   return 0.09
+ return 0.0
+
+func add_visitor(route: Array, circle_c: Vector3, circle_r: float, seed_i: int) -> void:
+ var start = route[0] if not route.is_empty() else circle_c+Vector3(circle_r,0,0)
+ var pp = g._cm_person(root,start,0.0,seed_i,seed_i%5==4)
+ if pp.is_empty():
+  return
+ g.cm_people.erase(pp)
+ g._cull_person(pp["root"],90.0)
+ var node = (pp["root"] as Node3D).get_parent()
+ var rng = RandomNumberGenerator.new()
+ rng.seed = seed_i*7919+31
+ var lengths = [0.0]
+ for k in range(1,route.size()):
+  lengths.append(float(lengths[k-1])+route[k].distance_to(route[k-1]))
+ var total = float(lengths[-1]) if not route.is_empty() else 0.0
+ visitors.append({"pp":pp,"node":node,"route":route,"lens":lengths,"total":total,"s":rng.randf()*total,"dir":1.0 if rng.randf()<0.5 else -1.0,
+  "wait":rng.randf_range(0.0,3.0),"speed":rng.randf_range(1.05,1.45),"phase":rng.randf()*TAU,"yaw":0.0,"rng":rng,
+  "c":circle_c,"rad":circle_r,"ang":rng.randf()*TAU,"pos":start})
+
+func build_visitors() -> void:
+ # v0.55.6: the biosphere was empty. Visitors stroll the spokes in and out of every dome, round the
+ # open loop and across the hub. Plain waypoint walkers: no grids, and only those near the camera move.
+ var n = 0
+ for i in 7:
+  var out = (dome_c(i)-C).normalized()
+  var side = Vector3(out.z,0,-out.x)
+  for v in 2:
+   var lat = 1.5 if v==0 else -1.5
+   var route = [C+out*12.0+side*lat,C+out*(RING_R-5.0)+side*lat,dome_c(i)-out*(RADIUS+2.0)+side*lat,dome_c(i)-out*(RADIUS-18.0)+side*lat]
+   add_visitor(route,Vector3.ZERO,0.0,400+n*13)
+   n += 1
+ for k in 7:
+  add_visitor([],C,RING_R+(1.3 if k%2==0 else -1.3),500+k*17)
+  visitors[-1].dir = 1.0 if k%2==0 else -1.0
+ for k in 3:
+  add_visitor([],C,12.0+3.0*float(k%2),600+k*19)
+  visitors[-1].dir = 1.0 if k%2==0 else -1.0
+
+func tick_visitors(delta: float) -> void:
+ if visitors.is_empty() or g.paused or g.camera==null:
+  return
+ var cam = g.camera.global_position
+ for V in visitors:
+  var pos: Vector3 = V.pos
+  var dist2 = pos.distance_squared_to(cam)
+  if dist2>110.0*110.0:
+   continue
+  var near = dist2<45.0*45.0
+  var node: Node3D = V.node
+  if float(V.wait)>0.0:
+   V.wait = float(V.wait)-delta
+   if near:
+    g._pose_person(V.pp,float(V.phase),0.0)
+   continue
+  var heading = Vector3.ZERO
+  var speed = float(V.speed)
+  if (V.route as Array).is_empty():
+   var rad = float(V.rad)
+   V.ang = float(V.ang)+float(V.dir)*speed/rad*delta
+   var a = float(V.ang)
+   pos = V.c+Vector3(cos(a),0,sin(a))*rad
+   heading = Vector3(-sin(a),0,cos(a))*float(V.dir)
+  else:
+   var s = float(V.s)+float(V.dir)*speed*delta
+   var total = float(V.total)
+   if s<=0.0 or s>=total:
+    V.dir = -float(V.dir)
+    s = clampf(s,0.0,total)
+    V.wait = (V.rng as RandomNumberGenerator).randf_range(2.0,5.0)
+   V.s = s
+   var lens: Array = V.lens
+   var route: Array = V.route
+   var seg = 1
+   while seg<lens.size()-1 and float(lens[seg])<s:
+    seg += 1
+   var span = maxf(0.001,float(lens[seg])-float(lens[seg-1]))
+   var t = clampf((s-float(lens[seg-1]))/span,0.0,1.0)
+   pos = (route[seg-1] as Vector3).lerp(route[seg],t)
+   heading = ((route[seg] as Vector3)-(route[seg-1] as Vector3)).normalized()*float(V.dir)
+  pos.y = visitor_y(pos)
+  V.pos = pos
+  node.global_position = pos
+  if heading.length()>0.01:
+   V.yaw = lerp_angle(float(V.yaw),atan2(-heading.x,-heading.z),minf(1.0,delta*6.0))
+  node.rotation.y = float(V.yaw)
+  V.phase = float(V.phase)+delta*speed*4.5
+  if near:
+   g._pose_person(V.pp,float(V.phase),1.0)
 
 func door_point(i: int) -> Vector3:
  return local_point(i,0,-RADIUS-2.0)

@@ -2,7 +2,7 @@
 
 ## START HERE (updated 2026-11-22, 0.53.2 character rollback)
 
-**Live version: 0.53.2, versionCode 90** (next is 91).
+**Live version: 0.54.0, versionCode 91** (next is 92).
 
 **0.53.2 rollback (2026-11-22):** Koko rejected the new characters after a phone screenshot showed broken shoulder/clothing shapes. Released 0.53.2 / code 90: `game/main.gd` restored from v0.52.1, including original player/NPC/online character behavior. New rig assets retained only as history and excluded from exports. Saved progress untouched. This supersedes the character trial descriptions below.
 
@@ -771,3 +771,7 @@ Release https://github.com/kokolo2020/GTA2027/releases/tag/v0.53.1 · source/tag
 
 ## Released and verified 0.53.2 rollback (2026-11-22)
 Koko requested rollback after reporting malformed shoulder/clothing shapes. Restored `game/main.gd` from v0.52.1, with only the startup version message changed. Original player, city NPCs, online avatars, wardrobe and animation behavior restored; trial selection removed. Trial assets retained as history and excluded from exports. Release https://github.com/kokolo2020/GTA2027/releases/tag/v0.53.2 · source/tag `ba812c8518d4d9c4c49b0aa8bf8b3fb3d98a7b9a` · APK SHA256 `d64a6106cfca254896097bb74b864f2680675b150f419c5fa71dc975b42c0b81` (49,686,557 bytes, code 90, same package/certificate). Import, full smoke and real gameplay screenshot passed; Android/Web exports and APK verification passed. Desktop save restored byte for byte. Remote APK checksum verified by publisher. First Pages run 44978735835 hit known missing-artifact error; metadata run 44978760498 succeeded. Live page, metadata and Web PCK checksum verified (17,815,784 bytes). Not phone-tested. Main retained; unrelated untracked files including docs/plans/ and original Git exclusions preserved.
+
+
+## Released and verified 0.54.0 (2026-11-22)
+Release https://github.com/kokolo2020/GTA2027/releases/tag/v0.54.0, APK SHA256 78747b48bae6b4e67d840513411de013384a1d4fffbced22f25ab37995a2c2df. Desktop smoke test passed; not checked on a phone.

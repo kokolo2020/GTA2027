@@ -2,7 +2,7 @@
 
 ## START HERE (updated 2026-11-22, 0.53.2 character rollback)
 
-**Live version: 0.54.0, versionCode 91** (next is 92).
+**Live version: 0.54.1, versionCode 92** (next is 93).
 
 **0.53.2 rollback (2026-11-22):** Koko rejected the new characters after a phone screenshot showed broken shoulder/clothing shapes. Released 0.53.2 / code 90: `game/main.gd` restored from v0.52.1, including original player/NPC/online character behavior. New rig assets retained only as history and excluded from exports. Saved progress untouched. This supersedes the character trial descriptions below.
 
@@ -775,3 +775,7 @@ Koko requested rollback after reporting malformed shoulder/clothing shapes. Rest
 
 ## Released and verified 0.54.0 (2026-11-22)
 Release https://github.com/kokolo2020/GTA2027/releases/tag/v0.54.0, APK SHA256 78747b48bae6b4e67d840513411de013384a1d4fffbced22f25ab37995a2c2df. Desktop smoke test passed; not checked on a phone.
+
+
+## Released and verified 0.54.1 (2026-11-22)
+Release https://github.com/kokolo2020/GTA2027/releases/tag/v0.54.1, APK SHA256 b8e70f28bdc83b8d9ca563ed55a1b5c08a5937e57a23bdb3b79aa8b684aaf846. Desktop smoke test passed; not checked on a phone.

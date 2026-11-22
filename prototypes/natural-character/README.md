@@ -1,7 +1,8 @@
 # Natural character 01
 
-An isolated, original character study for Harbor City. The production game, existing character
-redesign files, wardrobe assets, saves, and version numbers are untouched.
+An original character study for Harbor City, subsequently integrated as the 0.53.0 player
+trial. Earlier studies below are retained for comparison; the latest local expansion is
+described at the end. Existing wardrobe assets and saved progress are preserved.
 
 - `full-body.png` and `face.png`: studio renders, not in-game screenshots.
 - `neo-harbor-walk.gif`: current looping walk study, rendered from the character's source rig.
@@ -59,3 +60,24 @@ phone. Android and Web 0.53.0 exports now pass verification. Publishing was auth
 
 Published as 0.53.0 / code 88. Android checksum/signing and live Web package verified; the
 public browser New / Classic switch was tested. See CLAUDE-HANDOVER.md for release evidence.
+
+## Local city-wide expansion (not released)
+
+`blender-src/make_city_people.py` creates athletic male and fuller adult female variants,
+including separate one-surface crowd assets (about 6k triangles) and full player models.
+All seven animation clips are retained. Settings now cycles Male / Female / Classic, and
+city NPCs and online avatars use the new variants. New outfits retain their designed colors
+on the player; city outfits have varied palettes. Classic retains the saved wardrobe.
+
+Run playback follows actual ground displacement and smooths cadence; walking is unchanged.
+Standing crowds hold varied resting poses, while moving and working actors animate. The
+single-surface shader is `game/natural_crowd.gdshader`. A local M1 food-court Web-lite benchmark
+measured 50.7 FPS versus 45.9 for Classic; this does not establish phone performance.
+
+Import, focused appearance/network/movement checks, full smoke, gameplay screenshots and
+Classic rollback passed. `verify_in_game.py --bench` measures the new city; add `--classic-city`
+for the baseline. Desktop saves are restored after every run. No phone test, APK/Web export,
+commit or release for this expansion. Live remains 0.53.0 / code 88.
+
+Updated livestream artwork: `docs/stream/harbor-city-live-new-characters-v3.jpg` (1280x720),
+with its source PNG and exact image-generation prompt alongside it.

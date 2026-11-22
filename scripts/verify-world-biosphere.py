@@ -17,7 +17,7 @@ steps=[('import',['--headless','--editor','--import','--quit'],None,120),
 if '--smoke' in sys.argv:steps.append(('smoke',['--headless','--','--smoke-test'],'HARBOR_SMOKE_OK',240))
 if '--shots' in sys.argv:
     steps=[('shots',['--resolution','1280x720','--','--world-bio-shots'],'WORLD_BIOSPHERE_SHOTS_OK',150)]
-    env['HC_SHOTS']=str(ROOT/'docs/world-biosphere/shots')
+    env['HC_SHOTS']=str(ROOT/('docs/world-biosphere/phase2/shots' if '--phase2' in sys.argv else 'docs/world-biosphere/shots'))
 if '--map' in sys.argv:steps=[('map',['--resolution','1024x1024','--','--bake-map'],None,150)]
 if '--bench' in sys.argv:
     at=sys.argv[sys.argv.index('--bench')+1] if len(sys.argv)>sys.argv.index('--bench')+1 else '-17,-6,0'

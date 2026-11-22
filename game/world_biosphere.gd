@@ -1,5 +1,5 @@
 extends RefCounted
-# World Biosphere Phase 1. Stable first 16 species = existing bio_seen save bits.
+# World Biosphere Phases 1 and 2. Stable first 16 species = existing bio_seen save bits.
 const C := Vector3(-860,0,-650)
 const RADIUS := 38.5
 const ORBIT := 115.0
@@ -7,14 +7,14 @@ const ENTRY := C+Vector3(0,0,181)
 const OCEAN := C+Vector3(-225,0,0)
 const NAMES := ["Africa","Asia","South America","Antarctica","Europe","North America","Oceania"]
 const COLORS := [Color("e9b75e"),Color("7fbc9c"),Color("4cbf94"),Color("9be6ff"),Color("b2cc7a"),Color("d29562"),Color("64d7d0")]
-const GROUNDS := [Color("c6ac67"),Color("508166"),Color("32694a"),Color("dae9f2"),Color("8eaa70"),Color("738b66"),Color("cbd3b1")]
+const GROUNDS := [Color("c6ac67"),Color("508166"),Color("32694a"),Color("dae9f2"),Color("8eaa70"),Color("738b66"),Color("b87a52")]
 const DOMES := [{"name":"AFRICA"},{"name":"ASIA"},{"name":"SOUTH AMERICA"},{"name":"ANTARCTICA"},{"name":"EUROPE"},{"name":"NORTH AMERICA"},{"name":"OCEANIA"}]
 const SPECIES := [
 	{"dome":3,"name":"Emperor Penguin","fact":"The biggest penguin: up to 1.2 m tall. Dads keep the egg warm on their feet.","kind":"penguin","n":6,"zone":"in","hab":"Penguin Bay"},
 	{"dome":5,"name":"Polar Bear","fact":"Its fur looks white, but its skin is black to soak up the sun.","kind":"polarbear","n":2,"zone":"out","hab":"Polar Coast"},
 	{"dome":5,"name":"Arctic Fox","fact":"Its fur turns from brown in summer to snow-white in winter.","kind":"arcticfox","n":2,"zone":"out","hab":"Arctic Tundra"},
 	{"dome":5,"name":"Snowy Owl","fact":"Hunts in daylight in the Arctic summer, when the sun never sets.","kind":"owl","n":2,"zone":"fly","hab":"Snowy Owl Peak"},
-	{"dome":1,"name":"Spotted Deer","fact":"Fawns are born with white spots that help them hide.","kind":"deer","n":3,"zone":"out","hab":"Blossom Meadow"},
+	{"dome":4,"name":"Spotted Deer","fact":"Fawns are born with white spots that help them hide.","kind":"deer","n":3,"zone":"out","hab":"Blossom Meadow"},
 	{"dome":4,"name":"Rabbit","fact":"Rabbits can turn their long ears to hear in every direction.","kind":"rabbit","n":5,"zone":"out","hab":"Bunny Burrows"},
 	{"dome":4,"name":"Mallard Duck","fact":"Only the male has the shiny green head.","kind":"duck","n":4,"zone":"swim","hab":"Rain Vortex Pool"},
 	{"dome":2,"name":"Butterfly","fact":"Butterflies taste with their feet.","kind":"butterfly","n":10,"zone":"flutter","hab":"Butterfly House"},
@@ -43,15 +43,33 @@ const SPECIES := [
 	{"dome": 3, "name": "Seal", "fact": "Seals can rest on ice and hunt beneath it.", "kind": "seal", "n": 4, "zone": "out", "hab": "Seal Habitat"},
 	{"dome": 3, "name": "Orca", "fact": "Orcas are the largest members of the dolphin family.", "kind": "orca", "n": 2, "zone": "swim", "hab": "Orca Habitat"},
 	{"dome": 3, "name": "Albatross", "fact": "Albatrosses glide long distances over the ocean.", "kind": "albatross", "n": 3, "zone": "fly", "hab": "Albatross Habitat"},
+	{"dome": 4, "name": "Woodland Owl", "fact": "Owls fly quietly thanks to soft feather edges.", "kind": "europeanowl", "n": 2, "zone": "fly", "hab": "Woodland Owl Habitat"},
+	{"dome": 4, "name": "Brown Bear", "fact": "Brown bears use their strong sense of smell to find food.", "kind": "brownbear", "n": 2, "zone": "out", "hab": "Brown Bear Habitat"},
+	{"dome": 4, "name": "Wolf", "fact": "Wolf families communicate with calls and body language.", "kind": "wolf", "n": 3, "zone": "out", "hab": "Wolf Habitat"},
+	{"dome": 4, "name": "Hedgehog", "fact": "A hedgehog curls up to protect its soft belly.", "kind": "hedgehog", "n": 4, "zone": "out", "hab": "Hedgehog Habitat"},
+	{"dome": 4, "name": "White Stork", "fact": "Storks build large nests and return to them each year.", "kind": "stork", "n": 3, "zone": "out", "hab": "White Stork Habitat"},
+	{"dome": 5, "name": "Bald Eagle", "fact": "Bald eagles use broad wings to soar above water.", "kind": "baldeagle", "n": 2, "zone": "fly", "hab": "Bald Eagle Habitat"},
+	{"dome": 5, "name": "Bison", "fact": "Bison graze together and help maintain grasslands.", "kind": "bison", "n": 3, "zone": "out", "hab": "Bison Habitat"},
+	{"dome": 6, "name": "Kangaroo and Joey", "fact": "A young kangaroo is called a joey and grows in a pouch.", "kind": "kangaroo", "n": 3, "zone": "out", "hab": "Kangaroo and Joey Habitat"},
+	{"dome": 6, "name": "Koala", "fact": "Koalas rest in eucalyptus trees and eat their leaves.", "kind": "koala", "n": 3, "zone": "out", "hab": "Koala Habitat"},
+	{"dome": 6, "name": "Emu", "fact": "Emus cannot fly but can run on powerful legs.", "kind": "emu", "n": 3, "zone": "out", "hab": "Emu Habitat"},
+	{"dome": 6, "name": "Platypus", "fact": "Platypuses find underwater food using their sensitive bills.", "kind": "platypus", "n": 3, "zone": "swim", "hab": "Platypus Habitat"},
+	{"dome": 6, "name": "Wombat", "fact": "Wombats dig burrows with strong claws.", "kind": "wombat", "n": 3, "zone": "out", "hab": "Wombat Habitat"},
+	{"dome": 6, "name": "Cockatoo", "fact": "Cockatoos use their crests to communicate.", "kind": "cockatoo", "n": 4, "zone": "fly", "hab": "Cockatoo Habitat"},
 ]
 const QUESTS := [
  ["Watering Hole Count","Lion Pride Lookout","Savanna Ranger Trail"],
  ["Panda Snack Run","Lantern Path","Mountain Pavilion Trail"],
  ["Canopy Climb","Frog Hunt","River Rescue"],
- ["Penguin Parade","Ice Floe Hop","Seal Watch"]]
+ ["Penguin Parade","Ice Floe Hop","Seal Watch"],
+ ["Wolf Pack Tracker","Meadow Ranger","Stork Supper Watch"],
+ ["Beaver Dam Builder","Eagle Rim Trail","Arctic Patrol"],
+ ["Joey Hide and Seek","Billabong Health Check","Coastal Cockatoo Trail"]]
 const RANKS := ["Junior Ranger","Ranger","Head Ranger","Wildlife Legend"]
 const RANK_AT := [0,3,8,12]
-const RARES := ["White Lion","Golden Monkey","Emperor Penguin Chick"]
+const RARES := ["White Lion","Golden Monkey","Emperor Penguin Chick","White Stag","Spirit Bison","Golden Wombat"]
+const RARE_DOMES := [0,2,3,4,5,6]
+const RARE_SPECIES := [17,28,0,4,39,44]
 var g
 var root: Node3D
 var interiors: Array = []
@@ -82,6 +100,7 @@ var announced_baby_day := ""
 var atmospheres: Array = []
 var pending_save := false
 var saved_delay := 0.0
+var keeper_projects: Array = []
 
 func _init(game) -> void:
  g = game
@@ -266,7 +285,7 @@ func build() -> void:
    for side in [-1,1]:
     beam(root,p+Vector3(dir.z,0,-dir.x)*side*2.9,p+Vector3(dir.z,0,-dir.x)*side*2.9+Vector3(0,4.4,0),0.13,COLORS[i])
    beam(root,p+Vector3(dir.z,0,-dir.x)*2.9+Vector3(0,4.4,0),p-Vector3(dir.z,0,-dir.x)*2.9+Vector3(0,4.4,0),0.13,COLORS[i])
-  text(root,NAMES[i]+(" · PHASE 2" if i>=4 else ""),C+dir*28+Vector3(0,3.8,0),COLORS[i],38,60)
+  text(root,NAMES[i],C+dir*28+Vector3(0,3.8,0),COLORS[i],38,60)
   gate(i,C+dir*23,dir)
   disc(root,c+Vector3(0,0.03,0),RADIUS,0.12,GROUNDS[i],true)
   shell(root,c,RADIUS,30,COLORS[i],true)
@@ -286,11 +305,11 @@ func build() -> void:
   if i<4:
    rich_landscape(i,detail)
    habitat_layers(i,detail)
-  if i<4:
-   quest_markers(i,detail)
-  else:
-   text(detail,"CONSERVATION PREVIEW\nMore habitats & quests in Phase 2",c+Vector3(0,4,0),Color.WHITE,40,50)
-  if i<4:
+  if i>=4:
+   phase2_landscape(i,detail)
+   phase2_layers(i,detail)
+  quest_markers(i,detail)
+  if i<7:
    for step in 3:
     var p = local_point(i,7,-29+step*20)
     var marker = Node3D.new()
@@ -404,7 +423,7 @@ func landscape(i: int,parent: Node3D) -> void:
  ground_trails(i,parent)
  var rng = RandomNumberGenerator.new()
  rng.seed = 5300+i
- for k in (65 if i==1 or i==2 else 28):
+ for k in (65 if i==1 or i==2 else 28 if i<4 else 0):
   var a = rng.randf()*TAU
   var r = rng.randf_range(26,35)
   var p = c+Vector3(cos(a),0,sin(a))*r
@@ -485,9 +504,18 @@ func habitats(i: int,parent: Node3D) -> void:
    ids.append(si)
  for k in ids.size():
   var si = ids[k]
+  if i>=4 and str(SPECIES[si].zone)=="fly":
+   var sky = local_point(i,-4,0,17) if si==3 else local_point(i,-20,5,13)
+   g.bio_hab[si] = {"type":"pen","c":sky,"r":6.0,"rmin":0.0,"sign":local_point(i,-10,5)}
+   for n in int(SPECIES[si].n):
+    upper_animal(si,n,parent,sky,6.0,"glide")
+   continue
   var side = -1 if k%2==0 else 1
   var row = k/2
   var p = local_point(i,side*18,-22+row*14)
+  if i>=4:
+   var layout = phase2_pen(si)
+   p = local_point(i,layout.x,layout.y)
   var r = 5.6
   if i==3 and SPECIES[si].kind=="orca":
    p = local_point(i,22,17)
@@ -526,9 +554,17 @@ func habitats(i: int,parent: Node3D) -> void:
   a.baby = true
   baby_nodes.append(a)
  # Rare models are original variants, attached to the proper dome, never outside a fence.
- var rare_index = [0,2,3].find(i)
+ if i>=4:
+  var si = [4,39,40][i-4]
+  var home = g.bio_hab[si]
+  for k in 3:
+   var baby = spawn_animal(si,60+k,parent,home.c,float(home.r))
+   baby.node.scale = Vector3.ONE*0.4
+   baby.baby = true
+   baby_nodes.append(baby)
+ var rare_index = RARE_DOMES.find(i)
  if rare_index>=0:
-  var si = [17,28,0][rare_index]
+  var si = RARE_SPECIES[rare_index]
   var home = g.bio_hab[si]
   var a = spawn_animal(si,50,parent,home.c,float(home.r))
   a.rare = rare_index
@@ -537,14 +573,14 @@ func habitats(i: int,parent: Node3D) -> void:
   if rare_index==2:
    a.node.scale = Vector3.ONE*0.45
   else:
-   recolor(a.node,Color("f3ead5") if rare_index==0 else Color("edc45d"))
+   recolor(a.node,Color("f3ead5") if rare_index in [0,3] else Color("c5dfd8") if rare_index==4 else Color("edc45d"))
   rare_nodes.append(a)
 
 func recolor(n: Node,col: Color) -> void:
  if n is MeshInstance3D and n.mesh!=null:
   for surface in n.mesh.get_surface_count():
    var mat = n.mesh.surface_get_material(surface)
-   if mat!=null and (mat.resource_name.begins_with("World_lion") or mat.resource_name.begins_with("World_monkey")):
+   if mat!=null and (mat.resource_name.begins_with("World_lion") or mat.resource_name.begins_with("World_monkey") or mat.resource_name.begins_with("Fur_deer") or mat.resource_name.begins_with("World_bison") or mat.resource_name.begins_with("World_wombat")):
     n.set_surface_override_material(surface,material(col))
  for child in n.get_children():
   recolor(child,col)
@@ -590,6 +626,8 @@ func quest_markers(i: int,parent: Node3D) -> void:
     floe_approach(parent,Vector3(p.x,0,p.z))
 
 func quest_point(i: int,q: int,step: int) -> Vector3:
+ if i>=4:
+  return phase2_quest_point(i,q,step)
  if i==2 and q==0:
   return local_point(i,[-9.5,-4.0,-4.0][step],[-24.0,-8.0,22.0][step],[0.314,5.5,5.5][step])
  if i==3 and q==1:
@@ -625,10 +663,10 @@ func rare_event(t := -1.0) -> Dictionary:
  var slot = floori(n/300.0)
  var rng = RandomNumberGenerator.new()
  rng.seed = slot*7919+5301
- return {"slot":slot,"kind":int(rng.randi()%3),"active":rng.randf()<0.42 and fposmod(n,300)<75}
+ return {"slot":slot,"kind":int(rng.randi()%RARES.size()),"active":rng.randf()<0.42 and fposmod(n,300)<75}
 
 func baby_dome(day: String) -> int:
- return posmod(day_number(day)*17+53,4)
+ return posmod(day_number(day)*17+53,7)
 
 func rank_index() -> int:
  var result = 0
@@ -661,8 +699,6 @@ func species_mask(i: int) -> int:
  return mask
 
 func page_ready(i: int) -> bool:
- if i>=4:
-  return false # Phase 2 pages cannot claim unfinished habitats or quests.
  var all_quests = true
  for q in 3:
   all_quests = all_quests and state.quests.has(str(i*3+q))
@@ -692,7 +728,7 @@ func spot(si: int) -> void:
  changed()
 
 func start_quest(i: int,q: int) -> void:
- if i>=4 or state.quests.has(str(i*3+q)):
+ if i<0 or i>=7 or state.quests.has(str(i*3+q)):
   return
  task = i*3+q
  close_panel()
@@ -727,6 +763,8 @@ func advance_quest(id: int) -> void:
    state.coop = int(state.coop)+1
    achieve("coop","Ranger Teamwork")
   achieve("first_quest","Helping Hand")
+  if i>=4:
+   achieve("quest_%d"%id,QUESTS[i][q])
   if rank_index()>0:
    achieve("rank_%d"%rank_index(),rank_name(),200)
   task = -1
@@ -794,6 +832,8 @@ func interact() -> bool:
     if a.node.position.distance_to(a.c)>0.7:
      g._show_toast("The chick is following the keeper home. Stay close and check again.")
      return true
+  if active>=4 and not phase2_interact():
+   return true
   advance_quest(task)
   return true
  if keeper_here():
@@ -804,7 +844,7 @@ func keeper(day := "") -> Dictionary:
  var date = today() if day=="" else day
  var rng = RandomNumberGenerator.new()
  rng.seed = day_number(date)*31+5300
- var i = int(rng.randi()%4)
+ var i = int(rng.randi()%7)
  var kind = ["feed","clean","count","rescue"][int(rng.randi()%4)]
  var step = int(state.keeper_step) if state.keeper_work_day==date else 0
  return {"dome":i,"kind":kind,"p":local_point(i,7,-29+step*20),"step":step}
@@ -922,7 +962,7 @@ func tick(delta: float) -> void:
  var rare = rare_event()
  if rare.active and int(rare.slot)!=last_rare:
   last_rare = int(rare.slot)
-  g._feed_add("RARE SIGHTING: "+RARES[int(rare.kind)]+" · "+NAMES[[0,2,3][int(rare.kind)]],"")
+  g._feed_add("RARE SIGHTING: "+RARES[int(rare.kind)]+" · "+NAMES[RARE_DOMES[int(rare.kind)]],"")
  for f in atmospheres:
   f.node.emitting = int(f.dome)==active
   f.node.process_mode = Node.PROCESS_MODE_INHERIT if int(f.dome)==active else Node.PROCESS_MODE_DISABLED
@@ -937,6 +977,7 @@ func tick(delta: float) -> void:
      state.rare.erase(state.rare.keys()[0])
     reward(600,100,"Rare spotted: "+RARES[int(rare.kind)])
     achieve("rare","Rare Encounter",250)
+    achieve("rare_%d"%int(rare.kind),RARES[int(rare.kind)])
  var show = feeding(maxi(active,0))
  if active>=0:
   var showkey = "%d:%d" % [active,int(show.slot)]
@@ -957,6 +998,10 @@ func tick(delta: float) -> void:
   m.node.visible = active==int(m.dome) and task==int(m.dome)*3+int(m.q) and quest_step(task)==int(m.step)
   if m.node.visible:
    m.label.text = QUESTS[active][task%3]+" · %d/3" % (int(m.step)+1)
+   if active>=4:
+    m.label.text += "\n"+phase2_action(task,int(m.step))
+ for project in keeper_projects:
+  project.node.visible = quest_step(int(project.quest))>=int(project.step)
  var keeper_task = keeper()
  for station in shelters:
   station.node.visible = active==int(station.dome) and active==int(keeper_task.dome) and int(station.step)==int(keeper_task.step) and state.keeper_day!=today()
@@ -1126,19 +1171,19 @@ func refresh_panel() -> void:
   var b = g._button(NAMES[i]+(" ✓" if int(state.pages)&(1<<i) else ""),select_page.bind(i))
   choices.add_child(b)
  ui_label(NAMES[page].to_upper(),COLORS[page],26)
+ if page>=4:
+  ui_label(["Woodland, wildflower meadow and river garden · owl nests · meadow amphitheatre","Maple lake, canyon ledges and Arctic corner · eagle nests · high ranger overlook","Australian outback, eucalyptus and billabong · koala trees · forked beach pier"][page-4],Color("b4e5d6"),18)
  if page<4:
   ui_label(["LAYERS · grassland, kopje ledges and flamingo flight zone","LAYERS · bamboo forest, snow-leopard cliffs, red-panda trees and crane flight zone","LAYERS · forest floor, sloth branches, monkey canopy and macaw sky habitat","LAYERS · frozen shore, raised penguin colony, albatross cliffs and flight zone"][page],Color("b4e5d6"),18)
  ui_button("FREE ENTRY ✓",g._bio_buy_pass)
  var mask = species_mask(page)
  var count = g._bits(int(g.bio_seen)&mask)
  var completed = 0
- if page<4:
+ if page<7:
   for q in 3:
    completed += 1 if state.quests.has(str(page*3+q)) else 0
  ui_label("VISIT %s   ·   WILDLIFE %d/%d   ·   QUESTS %d/3" % ["STAMPED" if int(state.visits)&(1<<page) else "NOT YET",count,g._bits(mask),completed])
- if page>=4:
-  ui_label("Phase 2 preview. Existing conservation animals remain here so older spotting progress stays useful. Full habitat quests and page completion open in Phase 2. Ocean World is reserved for Phase 3.")
- else:
+ if page<7:
   for q in 3:
    var id = page*3+q
    ui_button(QUESTS[page][q]+(" · DONE ✓" if state.quests.has(str(id)) else " · START / CONTINUE %d/3"%quest_step(id)),start_quest.bind(page,q))
@@ -1157,7 +1202,7 @@ func refresh_panel() -> void:
  ui_label("WILDLIFE BADGES · %d earned"%state.ach.size(),Color("ffe09b"),22)
  for id in state.ach:
   ui_label("✓ "+str(state.ach[id]),Color("d2e8bb"),17)
- ui_label("Full seven-page passport: World Explorer title + gold ring. Phase 1 includes four quest pages; remaining pages arrive in Phase 2.")
+ ui_label("Full seven-page passport: World Explorer title + gold ring. All seven continent pages are open. Ocean World is reserved for Phase 3.")
 func smoke() -> void:
  var keep = {"state":state.duplicate(true),"seen":g.bio_seen,"cash":g.cash,"xp":g.bonus_xp,"pass":g.bio_pass_day,"player":g.player.transform,"driving":g.driving,"paused":g.paused,"active":active,"task":task,"day":test_day,"time":test_time,"hour":g.day_hour_override,"peers":g.online_peers.duplicate(),"shot":g.shot_on}
  reset_state()
@@ -1223,9 +1268,16 @@ func smoke() -> void:
   var c = dome_c(int(a.dome))
   assert(Vector2(a.node.position.x-c.x,a.node.position.z-c.z).length()<RADIUS-2,"Flying wildlife remains inside its glass dome")
  assert(upper_count>=24,"Four domes have populated upper habitat layers")
+ var legacy = ConfigFile.new()
+ legacy.set_value("world_biosphere","state",{"pages":15,"quests":{"3":true},"photos":{"4":2},"rank_jobs":12})
+ g.bio_seen = (1<<32)|(1<<4)
+ load_state(legacy)
+ assert(g.bio_seen==((1<<32)|(1<<4)) and int(state.pages)==15 and state.photos.has("4") and state.quests.has("3"),"Phase 1 discoveries, earned pages, quests and photo indices remain stable")
+ reset_state()
+ state.visits = 127
  # Every quest goes through the same proximity and interaction actions as play.
  g.bio_seen = (1<<SPECIES.size())-1
- for i in 4:
+ for i in 7:
   active = i
   g.player.position = dome_c(i)+Vector3(0,0.9,0)
   for q in 3:
@@ -1235,6 +1287,10 @@ func smoke() -> void:
     g.day_hour_override = 13
     g.player.position = quest_point(i,q,0)+Vector3(0,0.8,0)
     assert(interact() and quest_step(id)==0,"Lanterns require dusk")
+   if id==14:
+    test_time = 18000+4*35+26
+    g.player.position = quest_point(i,q,0)+Vector3(0,0.8,0)
+    assert(interact() and quest_step(id)==0,"Stork counting requires the feeding show")
    g.day_hour_override = 18.5
    test_time = 18000+i*35+20
    for a in animals:
@@ -1319,9 +1375,57 @@ func smoke() -> void:
  assert(state.photos.size()==photos and g.cash==photo_cash,"Photo rewards once")
  g.camera.rotate_y(PI)
  assert(photo_target()==-1,"Off-center animal is not photographed")
+ # Every appended model is loaded and can be recognized by the real Photo Safari camera.
+ for si in range(33,SPECIES.size()):
+  assert(g.animal_scenes.get(str(SPECIES[si].kind)) is PackedScene,"Phase 2 Blender model loaded")
+  var subject = animals.filter(func(an):return int(an.si)==si and not an.has("rare"))[0]
+  active = int(subject.dome)
+  for i in 7:
+   interiors[i].visible = i==active
+  var aim: Vector3 = subject.node.global_position+Vector3(0,0.65,0)
+  g.camera.global_position = aim+Vector3(0,0.1,2.0)
+  g.camera.look_at(aim)
+  assert(photo_target()==si,"New animal centered photo detection: "+str(SPECIES[si].name))
+  photo_capture()
+  assert(state.photos.has(str(si)),"New animal photo album entry")
+ # Check new shows and all new rare variants through real tick/once-only reward paths.
+ for i in range(4,7):
+  active = i
+  g.player.position = dome_c(i)+Vector3(0,0.8,0)
+  test_time = 36000+i*35+20
+  interval = 0
+  tick(0.2)
+  assert(state.shows.has("%d:%d"%[i,int(feeding(i).slot)]),"Phase 2 feeding show attendance")
+  var show_cash = g.cash
+  interval = 0
+  tick(0.2)
+  assert(g.cash==show_cash,"New show rewards once")
+ for rare_kind in range(3,6):
+  var event_time = -1.0
+  for slot in 1000:
+   var event = rare_event(slot*300+20)
+   if event.active and int(event.kind)==rare_kind:
+    event_time = slot*300+20
+    break
+  assert(event_time>=0,"New rare can be scheduled")
+  test_time = event_time
+  var rare_subject = rare_nodes.filter(func(an):return int(an.rare)==rare_kind)[0]
+  active = int(rare_subject.dome)
+  for i in 7:
+   interiors[i].visible = i==active
+  g.player.position = rare_subject.node.position+Vector3(0,0.7,7)
+  g.camera.global_position = rare_subject.node.position+Vector3(0,2,7)
+  g.camera.look_at(rare_subject.node.position+Vector3(0,0.7,0))
+  interval = 0
+  tick(0.2)
+  assert(state.ach.has("rare_%d"%rare_kind),"New rare sighting earns its achievement")
+  var rare_cash = g.cash
+  interval = 0
+  tick(0.2)
+  assert(g.cash==rare_cash,"Rare sighting reward once per event")
  g.camera.global_transform = camera_keep
- # Future completion logic is available but Phase 2 pages cannot be claimed early.
- state.pages = 127
+ # All seven pages must now complete through actual quest interactions.
+ assert(int(state.pages)==127,"All seven pages completed through their real quests")
  finish_passport()
  assert(state.world and state.ach.has("world"),"Full passport title and gold ring")
  var world_cash = g.cash
@@ -1352,7 +1456,7 @@ func smoke() -> void:
  g._bio_gates_update()
  for i in 7:
   interiors[i].visible = i==active
- print("WORLD_BIOSPHERE_OK: seven walkable domes, fenced wildlife, 12 quest flows, passport rewards once, feeding clock, photos, keeper streak, co-op, legacy save bits")
+ print("WORLD_BIOSPHERE_OK: seven walkable domes, fenced wildlife, 21 quest flows, passport rewards once, feeding clock, photos, keeper streak, co-op, legacy save bits")
 
 func screenshots() -> void:
  g.place_test_level = 40
@@ -1382,11 +1486,22 @@ func screenshots() -> void:
   g.camera.global_position = local_point(i,0,-30,2.4)
   g.camera.look_at(local_point(i,0,8,3.5))
   await g._save_shot(NAMES[i].to_lower().replace(" ","-"))
+ # Close habitat views make the new original animal models reviewable.
+ for si in [35,39,40]:
+  var i = int(SPECIES[si].dome)
+  for j in 7:
+   interiors[j].visible = j==i
+  var home = g.bio_hab[si]
+  var subject = animals.filter(func(a):return int(a.si)==si and not a.has("rare"))[0]
+  var p: Vector3 = subject.node.position
+  g.camera.global_position = p+(dome_c(i)-home.c).normalized()*6+Vector3(0,2.2,0)
+  g.camera.look_at(p+Vector3(0,1.0,0))
+  await g._save_shot(NAMES[i].to_lower().replace(" ","-")+"-wildlife")
  # Views from the actual upper visitor stages show the occupied vertical layers.
  g.player.hide()
- var viewpoints = [Vector3(9.5,6.2,20),Vector3(8.5,8.0,16),Vector3(15.5,7.0,21),Vector3(-28,9.8,11)]
- var targets = [Vector3(-10,10,4),Vector3(-14,13,3),Vector3(10,13,-5),Vector3(-15,15,14)]
- for i in 4:
+ var viewpoints = [Vector3(9.5,6.2,20),Vector3(8.5,8.0,16),Vector3(15.5,7.0,21),Vector3(-28,9.8,11),Vector3(-18,5,6),Vector3(-20,7.8,14),Vector3(7,3.2,28)]
+ var targets = [Vector3(-10,10,4),Vector3(-14,13,3),Vector3(10,13,-5),Vector3(-15,15,14),Vector3(12,5,13),Vector3(12,8,13),Vector3(-16,7,-3)]
+ for i in 7:
   for j in 7:
    interiors[j].visible = j==i
   g.camera.fov = 70
@@ -1443,19 +1558,27 @@ func smoke_entry_movement() -> void:
   g.board_on = mode=="board"
   g.run_on = mode=="run"
   var speed = g._walk_speed()
-  # A legacy paid pass still allows access; the current free-entry policy is unchanged.
-  g.bio_pass_day = today()
+  # Entry is free even for an empty/expired legacy day-pass save.
+  g.bio_pass_day = ""
   g._bio_gates_update()
-  walk_route(mode+" hub",[C+Vector3(0,0,36),C+Vector3(0,0.09,12)],speed)
+  assert(g._bio_pass_ok(),"Free entry without a day pass")
+  for gate_data in g.bio_gates:
+   assert(gate_data.body.collision_layer==0 and gate_data.body.collision_mask==0 and not gate_data.panels.visible,"Gate colliders off, panels open")
+  walk_route(mode+" ENTRY to hub",[ENTRY+Vector3(0,0.06,0),C+Vector3(0,0.06,36),C+Vector3(0,0.09,12),C+Vector3(0,0.09,0)],speed)
   for i in 7:
    var c = dome_c(i)
-   walk_route(mode+" "+NAMES[i],[C+Vector3(0,0.09,0),c+Vector3(0,0.09,0)],speed)
+   var door_route = [C+Vector3(0,0.09,0),c+Vector3(0,0.09,0)]
+   if i>=4:
+    door_route = [ENTRY+Vector3(0,0.06,0),C+Vector3(0,0.06,36),C+Vector3(0,0.09,12),C+Vector3(0,0.09,0),c+Vector3(0,0.09,0)]
+   walk_route(mode+" ENTRY to "+NAMES[i],door_route,speed)
   for i in 7:
    walk_route(mode+" visitor trail "+NAMES[i],ground_route(i),speed)
   walk_route(mode+" canopy",[local_point(2,-9.5,-25,0.09),local_point(2,-9.5,-12,3.0),local_point(2,-4,-8,5.5),local_point(2,-4,23,5.5),local_point(2,15.5,23,5.5)],speed)
   walk_route(mode+" safari lookout",[local_point(0,9.5,-25,0.09),local_point(0,9.5,-3,4.5),local_point(0,9.5,24,4.5),local_point(0,7,24,4.5)],speed)
   walk_route(mode+" cloud forest",asia_route(),speed)
   walk_route(mode+" glacier climb",antarctic_route(),speed)
+  for i in range(4,7):
+   walk_route(mode+" "+NAMES[i]+" stage",phase2_route(i),speed)
 
  g.bio_pass_day = keep.pass
  g.board_on = keep.board
@@ -1464,7 +1587,7 @@ func smoke_entry_movement() -> void:
  player.velocity = keep.velocity
  player.get_child(0).disabled = keep.shape_disabled
  g._bio_gates_update()
- print("WORLD_BIOSPHERE_ENTRY_OK: hub, seven distinct visitor trails, safari lookout, rain-vortex terrace, tree fort and glacier summit; both directions, walk/run/hoverboard")
+ print("WORLD_BIOSPHERE_ENTRY_OK: hub, seven distinct visitor trails, safari lookout, rain-vortex terrace, tree fort and glacier summit; both directions, walk/run/hoverboard; Phase 2 stages and free ENTRY-to-centre routes")
 
 func walk_route(label: String,points: Array,speed: float) -> void:
  var player: CharacterBody3D = g.player
@@ -1685,8 +1808,8 @@ func ground_route(i: int) -> Array:
   [Vector2(0,-36),Vector2(0,-20),Vector2(-7,-9),Vector2(0,2),Vector2(7,14),Vector2(0,31)],
   [Vector2(0,-36),Vector2(0,-14),Vector2(0,0),Vector2(-12,-1),Vector2(-26,-1),Vector2(-26,9),Vector2(-20,9),Vector2(-26,9),Vector2(-26,-1),Vector2(-12,-1),Vector2(0,0),Vector2(0,14),Vector2(0,31)],
   [Vector2(0,-36),Vector2(0,-12),Vector2(-10,-2),Vector2(-10,15),Vector2(0,28),Vector2(10,15),Vector2(10,-2),Vector2(0,-12)],
-  [Vector2(0,-36),Vector2(7,-25),Vector2(-7,-12),Vector2(7,2),Vector2(-7,15),Vector2(0,31)],
-  [Vector2(0,-36),Vector2(0,-12),Vector2(-12,5),Vector2(0,24),Vector2(12,5),Vector2(0,-12)]
+  [Vector2(0,-36),Vector2(0,-23),Vector2(-7,-12),Vector2(0,-1),Vector2(9,9),Vector2(9,21),Vector2(0,31)],
+  [Vector2(0,-36),Vector2(0,-12),Vector2(-10,4),Vector2(0,10),Vector2(10,4),Vector2(0,-12)]
  ]
  var result = []
  for p in routes[i]:
@@ -1915,3 +2038,206 @@ func tall_tree(parent: Node3D,p: Vector3,scale_value: float,raise: float,kind: S
  # down to the floor, so the new upper paths do not disappear inside leaf cards.
  nature(parent,kind,p+Vector3(0,raise,0),scale_value,0.5)
  shape(parent,g._bcone(0.42,0.68,raise+0.5),p+Vector3(0,(raise+0.5)/2,0),Vector3.ONE,Color("795d40"))
+
+# ---- 0.55.0: three new continents, stable appended animal and quest IDs.
+func phase2_pen(si: int) -> Vector2:
+ var positions = {4:Vector2(-18,-22),5:Vector2(18,-22),6:Vector2(-18,-8),34:Vector2(18,20),35:Vector2(-18,20),36:Vector2(18,-8),37:Vector2(18,6),1:Vector2(-18,20),2:Vector2(18,20),12:Vector2(-18,-22),13:Vector2(18,-22),14:Vector2(-18,-8),15:Vector2(18,-8),39:Vector2(18,6),40:Vector2(-18,-22),41:Vector2(18,6),42:Vector2(18,-22),43:Vector2(-18,-8),44:Vector2(18,-8)}
+ return positions.get(si,Vector2(-18,6))
+
+func phase2_route(i: int) -> Array:
+ var coords = [Vector3(-9.5,0.09,-25),Vector3(-9.5,1.6,-8),Vector3(-12,3.2,3),Vector3(-18,3.2,6)]
+ if i==5:
+  coords = [Vector3(-9.5,0.09,-25),Vector3(-9.5,3,-5),Vector3(-18,3,0),Vector3(-20,6,9),Vector3(-21.12,6,14)]
+ elif i==6:
+  coords = [Vector3(0,0.09,12),Vector3(0,1.4,22),Vector3(7,1.4,28)]
+ var result = []
+ for p in coords:
+  result.append(local_point(i,p.x,p.z,p.y))
+ return result
+
+func phase2_quest_point(i: int,q: int,step: int) -> Vector3:
+ if (i==5 and q==1) or (i==6 and q==2):
+  return phase2_route(i)[[1,2,4][step] if i==5 else step]
+ var xs = [-7.0,7.0,0.0]
+ var zs = [-22.0,-1.0,21.0]
+ if i==4:
+  if q==0:
+   return local_point(i,-10,[-24.0,5.0,20.0][step])
+  if q==1:
+   return local_point(i,[7.0,0.0,-18.0][step],[-24.0,-5.0,6.0][step],[0.09,0.09,3.2][step])
+  return local_point(i,10,[-4.0,2.0,9.0][step])
+ if i==5:
+  if q==0:
+   return local_point(i,[-7.0,7.0,-10.0][step],[-24.0,-12.0,-8.0][step])
+  return local_point(i,[0.0,9.0,10.0][step],[0.0,12.0,21.0][step])
+ if q==0:
+  return local_point(i,-10,[-25.0,-22.0,-19.0][step])
+ if q==1:
+  return local_point(i,[-7.0,-10.0,0.0][step],[-24.0,-8.0,10.0][step])
+ return local_point(i,xs[step],zs[step])
+
+func phase2_interact() -> bool:
+ var step = quest_step(task)
+ if task==14:
+  if not feeding(4).active:
+   g._show_toast("Stork Supper: return during the Europe feeding show.")
+   return false
+  var arrivals = 0
+  for a in animals:
+   if int(a.si)==37 and bool(a.feeding) and a.node.position.distance_to(a.target)<0.6:
+    arrivals += 1
+  if arrivals<step+1:
+   g._show_toast("Watch the storks gather, then count the next arrival.")
+   return false
+ if task==18:
+  var joeys = baby_nodes.filter(func(a):return int(a.dome)==6)
+  if joeys.is_empty() or joeys[step%joeys.size()].node.global_position.distance_to(g.player.position)>17:
+   g._show_toast("Look towards the kangaroo family from this viewing marker.")
+   return false
+ if (task==15 and step==2) or (task==19 and step==1):
+  for a in animals:
+   if int(a.si)==(14 if task==15 else 43):
+    a["manual_feed"] = now()+30
+ g._show_toast(phase2_action(task,step)+" ✓")
+ return true
+
+func phase2_action(id: int,step: int) -> String:
+ var actions = [
+  ["Check the first pawprints","Follow the woodland tracks","Identify the wolf family"],
+  ["Collect meadow seeds","Check the river planting bed","Plant the stage meadow"],
+  ["Count the first stork","Count the next stork","Record the whole flock"],
+  ["Collect a fallen branch","Collect willow poles","Help the beavers repair their dam"],
+  ["Reach the lower canyon ledge","Check the eagle lookout","Reach the high ranger overlook"],
+  ["Check the ice tracks","Follow the fox trail","Check the Arctic fox family"],
+  ["Find the first joey","Find the second joey","Find the last joey"],
+  ["Collect the keeper kit","Feed the platypuses","Check billabong water"],
+  ["Reach the beach pier","Listen for cockatoos","Record the coastal flock"]]
+ return actions[id-12][step]
+
+func phase2_landscape(i: int,parent: Node3D) -> void:
+ var rng = RandomNumberGenerator.new()
+ rng.seed = 54400+i
+ # Vegetation is batched per active interior; no distant continent vegetation draws.
+ for k in 230:
+  var p = local_point(i,rng.randf_range(-34,34),rng.randf_range(-32,32),0.1)
+  if (p-dome_c(i)).length()>35 or not planting_clear(i,p):
+   continue
+  var name = "nature_bush_flower" if i==4 else "nature_fern" if i==5 else "nature_grass_dry"
+  nature(parent,name,p,rng.randf_range(0.6,1.15),rng.randf()*TAU)
+ for side in [-1,1]:
+  for z in [-23,-11,0,11,23]:
+   var p = local_point(i,side*28,z)
+   if i==6:
+    # Original eucalyptus silhouette: pale trunk and sparse, long leaf sprays.
+    beam(parent,p,p+Vector3(0,11,0),0.45,Color("d7cab6"))
+    for branch in 5:
+     var tip = p+Vector3(cos(branch*2.4)*3,7+branch,sin(branch*2.4)*3)
+     beam(parent,p+Vector3(0,5+branch,0),tip,0.17,Color("d7cab6"))
+     ball(parent,tip,Vector3(3,0.6,1.2),Color("7a9981"))
+   else:
+    nature(parent,"nature_oak2" if i==4 else "nature_maple2",p,1.3,float(z))
+    if i==4:
+     nature(parent,"nature_oak",local_point(i,side*31,z+3),1.1,float(z)*0.6)
+ var route = phase2_route(i)
+ for k in range(1,route.size()):
+  phase2_walkway(parent,route[k-1],route[k],3.2,0.0 if k==1 else 2.5,2.5)
+  glass_edge(parent,route[k-1],route[k],3.2,COLORS[i],0.0 if k==1 else 2.5,2.5)
+ var top: Vector3 = route[-1]
+ var outward = (dome_c(i)-C).normalized()
+ var deck_rotation = Vector3(0,atan2(outward.x,outward.z),0)
+ if i==4:
+  disc(parent,top-Vector3(0,0.15,0),3.2,0.3,Color("b6a27c"),true)
+ else:
+  # Canyon: wide angular lookout. Coast: a compact rectangular pier head.
+  box(parent,top-Vector3(0,0.15,0),Vector3(8 if i==5 else 5,0.3,5 if i==5 else 4),Color("9caaa4") if i==5 else Color("c6ad7b"),true,deck_rotation)
+ if i==4:
+  # An open meadow amphitheatre faces a river, with terraced flower seating.
+  for k in 12:
+   var p = local_point(i,25-k*0.7,-27+k*4.3,0.14)
+   disc(parent,p,2.5,0.08,Color("619ba7"))
+   nature(parent,"nature_reeds",p+Vector3(2,0,0),0.9,float(k))
+  # A visible river bend and flush stone crossing on the meadow circuit.
+  for k in 7:
+   disc(parent,local_point(i,-8+k*2.8,20+sin(k*0.7)*3,0.12),2.4,0.04,Color("619ba7"))
+  box(parent,local_point(i,-4.5,22.2,0.055),Vector3(4.3,0.07,6),Color("c6c8b3"))
+  for side in [-1,1]:
+   beam(parent,local_point(i,-4.5+side*2,19.2,0.8),local_point(i,-4.5+side*2,25.2,0.8),0.12,Color("a9afa0"))
+  for ring in 3:
+   for k in 7:
+    var a = PI*float(k)/6
+    var p = top+Vector3(cos(a)*(4+ring),-3.05+ring*0.14,sin(a)*(4+ring))
+    box(parent,p,Vector3(1.8,0.28,0.65),Color("b5b5a0"))
+  for side in [-1,1]:
+   for z in range(-16,20,4):
+    nature(parent,"nature_bush_flower",local_point(i,side*8,z,0.1),0.8,float(z))
+  text(parent,"EUROPE · WOODLAND & MEADOW\nRIVER GARDEN · MEADOW AMPHITHEATRE",local_point(i,0,29,8),Color("f0f6c7"),30)
+ elif i==5:
+  disc(parent,local_point(i,-1,16,0.15),7,0.08,Color("598fa5"))
+  for k in 6:
+   var rock = local_point(i,-26+k*0.5,3+k*3,2+k*0.6)
+   shape(parent,g._blow(1.0),rock,Vector3(4,3+k*0.4,3),Color("89918e"))
+  for si in [1,2]:
+   var c: Vector3 = g.bio_hab[si].c
+   disc(parent,c+Vector3(0,0.11,0),5.3,0.025,Color("e4f1f3"))
+   for k in 3:
+    ball(parent,c+Vector3(-3+k*3,1,3),Vector3(1.4,1.6,1.6),Color("d5e7ed"))
+  var dam: Vector3 = g.bio_hab[14].c
+  for k in 8:
+   var log_root = Node3D.new()
+   parent.add_child(log_root)
+   beam(log_root,dam+Vector3(-3+k*0.8,0.5,-1.5),dam+Vector3(-2+k*0.8,0.5,1.5),0.22,Color("7e634a"))
+   keeper_projects.append({"node":log_root,"quest":15,"step":1+k/3})
+  text(parent,"NORTH AMERICA · MAPLE LAKE\nCANYON LEDGES · ARCTIC CORNER",local_point(i,0,29,8),Color("ffe2bc"),30)
+ else:
+  disc(parent,local_point(i,-18,-8,0.17),5.2,0.08,Color("638f91"))
+  disc(parent,local_point(i,0,29,0.13),8.5,0.06,Color("dcd2a4"))
+  disc(parent,local_point(i,0,32,0.16),6,0.05,Color("6bb5bc"))
+  for k in 6:
+   shape(parent,g._blow(1),local_point(i,23+k%2*3,-1+k*3,1+k%3),Vector3(2.7,1.8,2),Color("b66e47"))
+  var branch = local_point(i,-5,28,1.4)
+  phase2_walkway(parent,route[1],branch,2.8,2.5,2.5)
+  box(parent,branch-Vector3(0,0.15,0),Vector3(4,0.3,4),Color("c6ad7b"),true,deck_rotation)
+  text(parent,"OCEANIA · AUSTRALIAN OUTBACK TO OCEAN\nEUCALYPTUS · BILLABONG · COASTAL PIER",local_point(i,0,29,8),Color("ffedce"),30)
+ # Small original quest props explain what each marker does before interacting.
+ for q in 3:
+  for step in 3:
+   var p = phase2_quest_point(i,q,step)
+   text(parent,phase2_action(i*3+q,step),p+Vector3(0,1.7,0),Color("fff3cf"),20,12)
+   if i==4 and q==0 or i==5 and q==2:
+    for toe in 3:
+     ball(parent,p+Vector3(0.15*toe,0.12,0.2),Vector3(0.08,0.025,0.12),Color("725b46"))
+   elif i==5 and q==0 and step<2:
+    beam(parent,p+Vector3(-0.6,0.3,-0.5),p+Vector3(0.6,0.3,-0.5),0.22,Color("8a6b48"))
+   elif i==4 and q==1 and step<2:
+    box(parent,p+Vector3(0,0.28,-0.6),Vector3(0.6,0.4,0.5),Color("bba36c"))
+
+func phase2_layers(i: int,parent: Node3D) -> void:
+ var si = 33 if i==4 else 38 if i==5 else 41
+ var home = local_point(i,-24,5) if i!=6 else g.bio_hab[41].c
+ var height = 9.0 if i!=6 else 7.0
+ high_habitat(parent,home,height,2.8,Color("9a8664"),i!=5)
+ for k in 2:
+  upper_animal(si,70+k,parent,home+Vector3(0,height,0),1.4,"perch" if i!=6 else "walk")
+ if i==6:
+  tall_tree(parent,home,2.2,6,"nature_oak2")
+ text(parent,["WOODLAND OWL NESTS","EAGLE CLIFF NESTS","KOALA TREE HABITAT"][i-4],home+Vector3(0,height+2,0),Color("ecf8dc"),24,45)
+
+func phase2_walkway(parent: Node3D,a: Vector3,b: Vector3,width: float,open_start: float,open_end: float) -> void:
+ # A continuous top surface has no vertical box end-face at a ramp/deck joint.
+ var d = b-a
+ var across = Vector3(d.z,0,-d.x).normalized()*width*0.5
+ var x = d.normalized()
+ var z = x.cross(Vector3.UP).normalized()
+ var y = z.cross(x).normalized()
+ box(parent,(a+b)*0.5-y*0.11,Vector3(d.length(),0.22,width),Color("b29462"),false,Basis(x,y,z).get_euler())
+ var surface = ConcavePolygonShape3D.new()
+ surface.backface_collision = true
+ surface.set_faces(PackedVector3Array([a-across,b-across,a+across,a+across,b-across,b+across]))
+ var body = StaticBody3D.new()
+ var collision = CollisionShape3D.new()
+ collision.shape = surface
+ body.add_child(collision)
+ parent.add_child(body)
+ if d.length()>open_start+open_end:
+  for side in [-1,1]:
+   beam(parent,a+x*open_start+across*side+Vector3(0,1.1,0),b-x*open_end+across*side+Vector3(0,1.1,0),0.12,Color("dfcd9e"),true)

@@ -618,6 +618,24 @@ WORLD_ANIMALS = {
  'albatross':('e9eee9',(0.4,0.4,0.8),0.22),
 }
 
+# Phase 2 is generated separately so existing animal/player assets stay untouched.
+PHASE2_ANIMALS = {
+ 'europeanowl':('8f7253',(0.45,0.65,0.45),0.18),
+ 'brownbear':('79543b',(1.15,1.2,2.0),0.7),
+ 'wolf':('828780',(0.55,0.65,1.35),0.65),
+ 'hedgehog':('8b7357',(0.32,0.26,0.5),0.09),
+ 'stork':('f0eee3',(0.4,0.55,0.7),1.1),
+ 'baldeagle':('514431',(0.55,0.6,0.85),0.25),
+ 'bison':('74523b',(1.25,1.4,2.15),0.75),
+ 'kangaroo':('b38a62',(0.65,1.2,0.75),0.65),
+ 'koala':('929b9c',(0.48,0.6,0.5),0.25),
+ 'emu':('77746a',(0.72,0.9,1.2),1.0),
+ 'platypus':('806547',(0.4,0.25,0.85),0.08),
+ 'wombat':('8c765c',(0.65,0.55,0.95),0.22),
+ 'cockatoo':('f2f0e4',(0.3,0.42,0.48),0.18),
+}
+WORLD_ANIMALS.update(PHASE2_ANIMALS)
+
 def build_world_animal(kind):
     clear()
     fur, size, leg = WORLD_ANIMALS[kind]
@@ -636,15 +654,15 @@ def build_world_animal(kind):
         o=cone(base,tip,r);o.data.materials.append(M[material]);pieces.append(o)
     z=leg+H*0.6
     ell('Body',(0,0,z),(W*0.5,L*0.5,H*0.55))
-    bird=kind in ('crane','toucan','albatross')
+    bird=kind in ('crane','toucan','albatross','europeanowl','stork','baldeagle','emu','cockatoo')
     marine=kind in ('seal','orca')
-    headz=z+H*0.4+(0.45 if kind=='crane' else 0)
+    headz=z+H*0.4+(0.65 if kind in ('crane','stork','emu') else 0)
     hy=L*0.4
     hr=min(W*0.42,0.38)
     if kind=='meerkat':headz=z+0.45;hr=0.13
     if kind=='frog':headz=z+0.06;hr=0.1
     if marine:headz=z+0.1;hr=W*0.27
-    if kind=='crane':ell('Neck',(0,hy,headz-0.2),(0.1,0.1,0.5))
+    if kind in ('crane','stork','emu'):ell('Neck',(0,hy,headz-0.2),(0.1,0.1,0.5))
     ell('Head',(0,hy,headz),(hr,hr*1.2,hr))
     for side in (-1,1):
         ell('Eye',(side*hr*0.76,hy+hr*0.82,headz+hr*0.22),(hr*0.15,hr*0.12,hr*0.15),1)
@@ -654,7 +672,7 @@ def build_world_animal(kind):
         bill=hr*(3.5 if kind=='toucan' else 2.5)
         ell('Beak',(0,hy+hr+bill*0.4,headz),(hr*0.75,bill*0.6,hr*0.55),3)
         for side in (-1,1):
-            ell('Wing'+str(side),(side*W*0.65,0,z),(W*(2.5 if kind=='albatross' else 0.55),L*0.35,0.08),1 if kind!='crane' else 0)
+            ell('Wing'+str(side),(side*W*0.65,0,z),(W*(2.5 if kind in ('albatross','baldeagle') else (0.45 if kind=='emu' else 0.9)),L*0.35,0.08),1 if kind!='crane' else 0)
     elif marine:
         for side in (-1,1):
             ell('Flipper',(side*W*0.55,L*0.1,z-H*0.3),(W*0.55,L*0.22,0.08),1)
@@ -684,25 +702,82 @@ def build_world_animal(kind):
     elif kind in ('sloth','monkey'):
         ell('Face',(0,hy+hr*0.7,headz),(hr*0.85,hr*0.4,hr*0.85),2)
         for side in (-1,1):ell('Arm',(side*W*0.65,0.12,z+0.05),(0.09,0.12,0.4))
-    if not marine and not bird and kind not in ('panda','meerkat','frog','sloth'):
+    if not marine and not bird and kind not in ('panda','meerkat','frog','sloth','kangaroo','koala','wombat','hedgehog','platypus'):
         for j in range(5):
             ell('Tail',(0.07*math.sin(j),-L*0.5-j*0.1,z+0.06*j),(0.075,0.16,0.075),1 if kind=='redpanda' and j%2 else 0)
+    # Recognizable Phase 2 silhouettes and markings, still using compact original meshes.
+    if kind=='europeanowl':
+        ell('FacialDisk',(0,hy+hr*0.8,headz),(hr*1.1,hr*0.32,hr*1.15),2)
+        for side in (-1,1):
+            ell('LargeEye',(side*hr*0.5,hy+hr*1.1,headz+hr*0.12),(hr*0.23,hr*0.12,hr*0.26),3)
+            ell('Pupil',(side*hr*0.5,hy+hr*1.2,headz+hr*0.12),(hr*0.12,hr*0.08,hr*0.17),1)
+    elif kind=='brownbear':
+        ell('Shoulders',(0,L*0.2,z+H*0.15),(W*0.53,L*0.3,H*0.58))
+        ell('Muzzle',(0,hy+hr,headz-hr*0.15),(hr*0.7,hr*0.5,hr*0.45),3)
+    elif kind=='wolf':
+        ell('LongMuzzle',(0,hy+hr*1.2,headz-hr*0.2),(hr*0.55,hr*0.85,hr*0.45),2)
+        for side in (-1,1):
+            horn((side*hr*0.65,hy,headz+hr*0.5),(side*hr*0.8,hy,headz+hr*1.8),hr*0.3,0)
+    elif kind=='hedgehog':
+        for j in range(36):
+            a=j*2.39996
+            xx=math.cos(a)*W*0.4; yy=math.sin(a)*L*0.39
+            base=(xx,yy,z+H*0.22)
+            horn(base,(xx*1.3,yy*1.2,z+H*0.95),0.025,1)
+    elif kind=='stork':
+        ell('RedBill',(0,hy+hr*2.5,headz),(0.055,0.45,0.055),3)
+        for side in (-1,1):ell('BlackFeather',(side*W*0.6,0,z),(W*0.65,L*0.35,0.06),1)
+    elif kind=='baldeagle':
+        ell('WhiteHead',(0,hy,headz),(hr*1.05,hr*1.2,hr*1.05),2)
+        ell('GoldenBeak',(0,hy+hr*1.2,headz-hr*0.05),(hr*0.6,hr*0.55,hr*0.45),3)
+    elif kind=='bison':
+        ell('ShoulderHump',(0,L*0.2,z+H*0.3),(W*0.52,L*0.35,H*0.62))
+        ell('HeavyHead',(0,hy,headz-hr*0.25),(hr*1.4,hr*1.35,hr*1.3),1)
+        for side in (-1,1):horn((side*hr,hy,headz),(side*hr*1.7,hy+0.06,headz+0.3),0.1)
+    elif kind=='kangaroo':
+        for side in (-1,1):
+            ell('TallEar',(side*0.13,hy-0.02,headz+0.24),(0.07,0.07,0.35))
+            ell('Thigh',(side*W*0.48,-L*0.2,0.55),(0.2,0.28,0.42))
+            ell('LongFoot',(side*W*0.42,L*0.12,0.11),(0.11,0.38,0.1),1)
+            ell('ShortArm',(side*W*0.5,L*0.3,z),(0.08,0.12,0.3))
+        ell('PowerTail',(0,-L*0.7,0.3),(0.16,0.8,0.16))
+        ell('Pouch',(0,L*0.4,z-H*0.15),(0.24,0.13,0.26),2)
+        ell('JoeyHead',(0,L*0.47,z+0.08),(0.11,0.11,0.14))
+        for side in (-1,1):ell('JoeyEar',(side*0.065,L*0.47,z+0.25),(0.035,0.04,0.13))
+    elif kind=='koala':
+        for side in (-1,1):ell('FluffyEar',(side*hr*1.1,hy-0.02,headz+hr*0.35),(hr*0.75,hr*0.4,hr*0.75),2)
+        ell('BlackNose',(0,hy+hr*1.05,headz),(hr*0.35,hr*0.2,hr*0.6),1)
+    elif kind=='platypus':
+        ell('DuckBill',(0,hy+hr*1.25,headz-0.03),(0.19,0.28,0.055),1)
+        ell('PaddleTail',(0,-L*0.62,z),(0.2,0.35,0.06),1)
+    elif kind=='wombat':
+        ell('BroadSnout',(0,hy+hr,headz-0.04),(hr*0.9,hr*0.35,hr*0.6),1)
+    elif kind=='cockatoo':
+        for j in range(5):ell('YellowCrest',(0,hy-0.08-j*0.03,headz+0.15+j*0.055),(0.035,0.08,0.18),3)
     bodypieces=list(pieces)
     select_only(bodypieces);bpy.ops.object.join();body=bpy.context.object;body.name='Body'
     # Keep legs separate with hip origins for the game's gait.
     legs=[]
     if not marine:
         for side in (-1,1):
-            for front in ((1,) if bird or kind=='meerkat' else (-1,1)):
+            for front in ((-1,) if kind=='kangaroo' else (1,) if bird or kind=='meerkat' else (-1,1)):
                 x=side*W*0.33;y=front*L*0.29
-                o=ell('Leg'+('F' if front==1 else 'B')+('L' if side<0 else 'R'),(x,y,leg*0.5),(max(0.035,W*0.12),max(0.05,L*0.12),max(0.06,leg*0.55)),1 if kind=='panda' else 0)
-                pivot(o,Vector((x,y,leg)));legs.append(o)
+                # Overlap the curved belly at the hip: stopping at its lowest point
+                # leaves a gap where a side leg meets an ellipsoidal body.
+                hip=0.72 if kind=='kangaroo' else leg+H*0.45 if kind in PHASE2_ANIMALS else leg
+                o=ell('Leg'+('F' if front==1 else 'B')+('L' if side<0 else 'R'),(x,y,hip*0.5),(max(0.035,W*0.12),max(0.05,L*0.12),max(0.06,hip*0.55)),1 if kind=='panda' else 0)
+                pivot(o,Vector((x,y,hip)));legs.append(o)
     select_only([body]+legs)
     path=OUT/('animal_'+kind+'.glb')
     bpy.ops.export_scene.gltf(filepath=str(path),export_format='GLB',use_selection=True,export_yup=True)
     print('WORLD_ANIMAL',kind,path.stat().st_size,flush=True)
 
-if os.environ.get('HARBOR_WORLD_ANIMALS_ONLY'):
+if os.environ.get('HARBOR_PHASE2_ANIMALS_ONLY'):
+    for kind in PHASE2_ANIMALS:
+        build_world_animal(kind)
+    print('PHASE2_ANIMALS_DONE',flush=True)
+
+elif os.environ.get('HARBOR_WORLD_ANIMALS_ONLY'):
     for kind in WORLD_ANIMALS:
         build_world_animal(kind)
     print('WORLD_ANIMALS_DONE',flush=True)

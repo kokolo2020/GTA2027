@@ -216,6 +216,11 @@ func build() -> void:
  g._floor_note(Vector3(-760,0.01,-458),Vector3(210,0.08,12))
  box(root,C+Vector3(0,0.02,102),Vector3(7,0.08,163),Color("e4e5d5"))
  disc(root,C+Vector3(0,0.03,0),20,0.12,Color("e9ecde"),true)
+ # Entrance gate arch where the walk from the city meets the hub.
+ for gx in [-6.5,6.5]:
+  beam(root,C+Vector3(gx,0,34),C+Vector3(gx,7,34),0.7,Color("94e8cf"))
+ beam(root,C+Vector3(-6.5,7,34),C+Vector3(6.5,7,34),0.7,Color("94e8cf"))
+ text(root,"WORLD BIOSPHERE",C+Vector3(0,8.4,34),Color("c4fff1"),56,90)
  shell(root,C,20,14,Color("94e8cf"),false)
  text(root,"WORLD BIOSPHERE",C+Vector3(0,10,8),Color("c4fff1"),72,220)
  text(root,"One world · Seven continents",C+Vector3(0,7.8,8),Color.WHITE,34,100)
@@ -249,6 +254,13 @@ func build() -> void:
   gate(i,C+dir*23,dir)
   disc(root,c+Vector3(0,0.03,0),RADIUS,0.12,GROUNDS[i],true)
   shell(root,c,RADIUS,30,COLORS[i],true)
+  # Each dome's own gate arch over its door.
+  var door_p = c-dir*RADIUS
+  var door_s = Vector3(dir.z,0,-dir.x)*6.5
+  beam(root,door_p+door_s,door_p+door_s+Vector3(0,6.5,0),0.6,COLORS[i])
+  beam(root,door_p-door_s,door_p-door_s+Vector3(0,6.5,0),0.6,COLORS[i])
+  beam(root,door_p+door_s+Vector3(0,6.5,0),door_p-door_s+Vector3(0,6.5,0),0.6,COLORS[i])
+  text(root,NAMES[i].to_upper()+" DOME",door_p+Vector3(0,7.8,0),COLORS[i],44,60)
   var detail = Node3D.new()
   detail.name = NAMES[i].replace(" ","")+"Interior"
   root.add_child(detail)
@@ -309,7 +321,8 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
  for k in 48:
   var u = (k+0.5)*TAU/48
   var dir = Vector3(cos(u),0,sin(u))
-  if dir.dot(toward)>0.992:
+  # A clear door, centred on the tunnel axis: about 15 m wide, whichever way the dome faces.
+  if absf(angle_difference(atan2(toward.z,toward.x),u))<deg_to_rad(11.0):
    continue
   var p = c+dir*r
   box(parent,p+Vector3(0,2,0),Vector3(0.22,4,r*TAU/48+0.05),col.darkened(0.25),true,Vector3(0,-u,0))

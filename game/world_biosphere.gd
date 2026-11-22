@@ -101,6 +101,9 @@ var atmospheres: Array = []
 var pending_save := false
 var saved_delay := 0.0
 var keeper_projects: Array = []
+var dome_animals := [[],[],[],[],[],[],[]]
+var wildlife_motion_clock := 0.0
+var refined_materials := {}
 
 func _init(game) -> void:
  g = game
@@ -595,10 +598,21 @@ func spawn_animal(si: int,k: int,parent: Node3D,p: Vector3,r: float) -> Dictiona
  elif not g._bio_load_animal(a):
   # Deterministic lightweight fallback when a model is unavailable.
   g._bio_make_quad(a,{"body":Vector3(0.5,0.6,1.0),"col":COLORS[int(s.dome)],"leg":0.5,"legr":0.09,"head":0.25,"neck":0.2,"necka":0.8,"ears":0.12,"tail":0.2,"snout":Color("32291f")})
+ if si>=33:
+  refined_coat(node)
+  a["flight_wings"] = []
+  for wing_name in ["WingL","WingR"]:
+   var wing = node.find_child(wing_name,true,false)
+   if wing!=null:
+    a.flight_wings.append(wing)
+    a.wings.append(wing)
+    wing.hide()
+  a["folded_wings"] = node.find_child("FoldedWings",true,false)
  var ang = k*2.3
  node.position = p+Vector3(cos(ang),0.1,sin(ang))*r*0.65
  a.target = node.position
  animals.append(a)
+ dome_animals[int(s.dome)].append(a)
  g.bio_animals.append(a)
  return a
 
@@ -929,6 +943,18 @@ func photo_capture() -> void:
 func tick(delta: float) -> void:
  if g.player==null or not g.place_open[1]:
   return
+ # Smooth motion for the refined wildlife; rewards/UI still tick at 5 Hz.
+ if active>=4 and not g.paused:
+  wildlife_motion_clock += delta
+  if wildlife_motion_clock>=1.0/60.0:
+   var motion_delta = floorf(wildlife_motion_clock*60.0)/60.0
+   wildlife_motion_clock -= motion_delta
+   var gathering = bool(feeding(active).active)
+   for a in dome_animals[active]:
+    if a.node.visible:
+     animate_animal(a,motion_delta,gathering)
+ else:
+  wildlife_motion_clock = 0.0
  if pending_save:
   saved_delay -= delta
   if saved_delay<=0:
@@ -990,7 +1016,8 @@ func tick(delta: float) -> void:
  for a in animals:
   if int(a.dome)!=active or not a.node.visible or g.paused:
    continue
-  animate_animal(a,dt,bool(show.active))
+  if active<4:
+   animate_animal(a,dt,bool(show.active))
   var p = a.node.global_position+Vector3(0,0.7,0)
   if not a.has("rare") and me.position.distance_to(p)<17 and g.camera.is_position_in_frustum(p):
    spot(int(a.si))
@@ -1057,7 +1084,7 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
   for leg in a.legs:
    leg.rotation.x = 0.55
   for k in a.wings.size():
-   a.wings[k].rotation.z = sin(ph*4)*0.45*(1 if k==0 else -1)
+   a.wings[k].rotation.z = sin(ph*(2.4 if int(a.si)>=33 else 4.0))*(0.16 if int(a.si)>=33 else 0.45)*(1 if k==0 else -1)
   return
  if a.get("upper_motion","")=="hang":
   node.position = centre+Vector3(sin(ph*0.4)*0.12,-0.15,cos(ph*0.3)*0.12)
@@ -1089,7 +1116,15 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
  if zone=="fly":
   node.position.y = base+3.0+0.4*sin(ph*1.3)
  for k in a.legs.size():
-  a.legs[k].rotation.x = sin(ph*4.2)*0.28*(1 if k%2==0 else -1) if moving else 0
+  var gait_sign = (1 if k%2==0 else -1)
+  if int(a.si)>=33 and a.legs.size()==4:
+   gait_sign = [1,-1,-1,1][k]
+  if a.kind=="kangaroo":
+   gait_sign = 1
+  a.legs[k].rotation.x = sin(ph*4.2)*(0.24 if int(a.si)>=33 else 0.28)*gait_sign if moving else 0
+ if a.kind=="kangaroo":
+  node.position.y = base+0.1+(maxf(0,sin(ph*4.2))*0.10 if moving else 0)
+  node.rotation.x = -0.045 if moving else 0
  for k in a.wings.size():
   a.wings[k].rotation.z = sin(ph*7)*0.4*(1 if k==0 else -1)
 
@@ -1268,6 +1303,36 @@ func smoke() -> void:
   var c = dome_c(int(a.dome))
   assert(Vector2(a.node.position.x-c.x,a.node.position.z-c.z).length()<RADIUS-2,"Flying wildlife remains inside its glass dome")
  assert(upper_count>=24,"Four domes have populated upper habitat layers")
+ assert(not refined_materials.is_empty(),"Refined coats are configured")
+ for coat in refined_materials.values():
+  assert(coat.vertex_color_use_as_albedo,"Coat colour attributes are used in game")
+ # New bird poses and anatomical gait stay consistent in the actual game models.
+ for subject in animals:
+  if int(subject.si)<33:
+   continue
+  var flying = subject.get("upper_motion","")=="glide"
+  for wing in subject.get("flight_wings",[]):
+   assert(wing.visible==flying,"Flight wings shown only for flying birds")
+  if subject.get("folded_wings")!=null:
+   assert(subject.folded_wings.visible!=flying,"Resting birds have folded wings")
+ var wolf = animals.filter(func(an):return an.kind=="wolf")[0]
+ wolf.node.position = wolf.c+Vector3(-0.7,0.1,-0.4)
+ wolf.target = wolf.c+Vector3(0.7,0.1,0.4)
+ animate_animal(wolf,0.05,false)
+ assert(wolf.legs.size()==4 and is_equal_approx(wolf.legs[0].rotation.x,wolf.legs[3].rotation.x) and is_equal_approx(wolf.legs[1].rotation.x,wolf.legs[2].rotation.x),"Refined quadrupeds use opposing diagonal pairs")
+ var roo = animals.filter(func(an):return an.kind=="kangaroo")[0]
+ roo.node.position = roo.c+Vector3(-0.7,0.1,-0.4)
+ roo.target = roo.c+Vector3(0.7,0.1,0.4)
+ animate_animal(roo,0.05,false)
+ assert(roo.legs.size()==2 and is_equal_approx(roo.legs[0].rotation.x,roo.legs[1].rotation.x),"Kangaroo hind legs move together")
+ active = 6
+ interval = 1.0
+ wildlife_motion_clock = 0.0
+ var previous_phase = float(roo.phase)
+ var previous_cash = g.cash
+ tick(1.0/30.0)
+ assert(float(roo.phase)>previous_phase and g.cash==previous_cash,"Smooth animal motion runs between reward/UI ticks")
+
  var legacy = ConfigFile.new()
  legacy.set_value("world_biosphere","state",{"pages":15,"quests":{"3":true},"photos":{"4":2},"rank_jobs":12})
  g.bio_seen = (1<<32)|(1<<4)
@@ -2001,6 +2066,11 @@ func upper_animal(si: int,k: int,parent: Node3D,c: Vector3,r: float,motion: Stri
  a["upper"] = true
  a["upper_motion"] = motion
  a["base_y"] = c.y
+ if si>=33:
+  for wing in a.get("flight_wings",[]):
+   wing.visible = motion=="glide"
+  if a.get("folded_wings")!=null:
+   a.folded_wings.visible = motion!="glide"
  if motion=="glide":
   # The outer glass dome is the flight enclosure; keep the whole circuit inside it.
   a.node.rotation.z = 0.1*sin(float(k))
@@ -2217,7 +2287,7 @@ func phase2_layers(i: int,parent: Node3D) -> void:
  var height = 9.0 if i!=6 else 7.0
  high_habitat(parent,home,height,2.8,Color("9a8664"),i!=5)
  for k in 2:
-  upper_animal(si,70+k,parent,home+Vector3(0,height,0),1.4,"perch" if i!=6 else "walk")
+  upper_animal(si,70+k,parent,home+Vector3(0,height,0),1.4,"perch")
  if i==6:
   tall_tree(parent,home,2.2,6,"nature_oak2")
  text(parent,["WOODLAND OWL NESTS","EAGLE CLIFF NESTS","KOALA TREE HABITAT"][i-4],home+Vector3(0,height+2,0),Color("ecf8dc"),24,45)
@@ -2241,3 +2311,21 @@ func phase2_walkway(parent: Node3D,a: Vector3,b: Vector3,width: float,open_start
  if d.length()>open_start+open_end:
   for side in [-1,1]:
    beam(parent,a+x*open_start+across*side+Vector3(0,1.1,0),b-x*open_end+across*side+Vector3(0,1.1,0),0.12,Color("dfcd9e"),true)
+
+func refined_coat(n: Node) -> void:
+ # Imported colour attributes need explicit albedo use on Compatibility materials.
+ if n is MeshInstance3D and n.mesh!=null:
+  for surface in n.mesh.get_surface_count():
+   var source = n.mesh.surface_get_material(surface)
+   if source is StandardMaterial3D and source.resource_name.begins_with("World_"):
+    var key = source.get_instance_id()
+    if not refined_materials.has(key):
+     var coat = source.duplicate() as StandardMaterial3D
+     coat.vertex_color_use_as_albedo = true
+     coat.vertex_color_is_srgb = false
+     coat.roughness = 0.92
+     coat.metallic_specular = 0.15
+     refined_materials[key] = coat
+    n.set_surface_override_material(surface,refined_materials[key])
+ for child in n.get_children():
+  refined_coat(child)

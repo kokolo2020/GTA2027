@@ -637,6 +637,12 @@ PHASE2_ANIMALS = {
 WORLD_ANIMALS.update(PHASE2_ANIMALS)
 
 def build_world_animal(kind):
+    if kind in PHASE2_ANIMALS:
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('animals_phase2',Path(__file__).with_name('animals_phase2.py'))
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        module.build(kind,OUT)
+        return
     clear()
     fur, size, leg = WORLD_ANIMALS[kind]
     W,H,L=size
@@ -774,7 +780,8 @@ def build_world_animal(kind):
 
 if os.environ.get('HARBOR_PHASE2_ANIMALS_ONLY'):
     for kind in PHASE2_ANIMALS:
-        build_world_animal(kind)
+        if not os.environ.get("HARBOR_PHASE2_KIND") or kind==os.environ["HARBOR_PHASE2_KIND"]:
+            build_world_animal(kind)
     print('PHASE2_ANIMALS_DONE',flush=True)
 
 elif os.environ.get('HARBOR_WORLD_ANIMALS_ONLY'):

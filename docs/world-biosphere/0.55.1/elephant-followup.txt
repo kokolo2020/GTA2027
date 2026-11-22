@@ -1,0 +1,11 @@
+Targeted follow-up after rendered elephant correction. Previously passed rim/ring sweep skipped; all seven dome/body/animal/quest checks executed.
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+WB_CHECK_DOME Africa
+WB_CHECK_DOME Asia
+WB_CHECK_DOME South America
+WB_CHECK_DOME Antarctica
+WB_CHECK_DOME Europe
+WB_CHECK_DOME North America
+WB_CHECK_DOME Oceania
+WORLD_BIOSPHERE_OK: 24-angle hub/seven-dome bevels; sealed doors and ring; real-body walk/run/BOARD paths/deck edges; every pen side and rescue; supported wildlife; scenery clearance; one resident interior; quests/photos/passport/daily/save

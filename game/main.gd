@@ -357,7 +357,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.0: World Biosphere Phase 2, Europe, North America and Oceania domes are open.")
+	_show_toast("Harbor City 0.55.1: smooth Biosphere rims, safe pens, enclosed continent loop and lighter mobile rendering.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()
@@ -371,7 +371,7 @@ func _ready() -> void:
 		place_test_level = 40
 		_places_refresh()
 		await get_tree().physics_frame
-		world_bio.smoke()
+		await world_bio.smoke()
 		get_tree().quit()
 	elif "--world-bio-shots" in OS.get_cmdline_user_args():
 		await world_bio.screenshots()
@@ -825,7 +825,7 @@ func _real_setup(mat: BaseMaterial3D, kind: String, tint: Color, scale := -1.0) 
 	mat.albedo_color = tint
 	# The browser version skips the bump detail (normal maps) to keep the frame rate up; since
 	# v0.51.3 they are not even packed into the web build, so it downloads faster.
-	var lite := OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()
+	var lite := OS.has_feature("android") or OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()
 	var nor := _real_tex(kind+"_nor") if not lite else null
 	if nor != null and not lite:
 		mat.normal_enabled = true
@@ -11955,7 +11955,7 @@ func _web_perf_setup() -> void:
 					int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)),int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)),
 					Performance.get_monitor(Performance.TIME_PROCESS)*1000.0,Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)*1000.0,int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),str(player.position.round())])
 				get_tree().quit()))
-	web_lite = OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()
+	web_lite = OS.has_feature("android") or OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()
 	if not web_lite:
 		return
 	if sun_light != null:
@@ -21459,7 +21459,7 @@ func _bio_spotted(si: int) -> void:
 
 func _smoke_biosphere() -> void:
 	assert(world_bio != null,"World Biosphere exists")
-	world_bio.smoke()
+	await world_bio.smoke()
 
 # ---------- v0.40: STYLE - hair, faces, builds, clothes, accessories and relics ----------
 # People are a hairless body (models/person_N.glb) plus pieces from models/wear/*.glb (made by
@@ -27942,7 +27942,7 @@ func _smoke_v27() -> void:
 	_smoke_commons()
 	_smoke_chat()
 	_smoke_feet()
-	_smoke_biosphere()
+	await _smoke_biosphere()
 	_smoke_style()
 	_smoke_sky_garden()
 	_smoke_car_barriers()

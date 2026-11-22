@@ -1,0 +1,40 @@
+[
+  {
+    "alpha_scissor_surfaces": 10,
+    "animal_glb_file_bytes": 6622656,
+    "animal_models": 45,
+    "audio_resources": 0,
+    "audio_wav_bytes": 0,
+    "buffer_bytes": 47397972.0,
+    "dome": 0,
+    "heap_peak": 553525129,
+    "interior_nodes": [
+      689,
+      843,
+      682,
+      605,
+      664,
+      652,
+      479
+    ],
+    "labels": 200,
+    "mesh_resources": 366,
+    "mesh_triangles": 268701,
+    "multimesh_buffer_bytes": 538320,
+    "multimesh_instances": 11215,
+    "multimeshes": 277,
+    "nodes": 5518,
+    "stream_load_us": 0,
+    "texture_bytes": 109331015.0,
+    "tick_us_avg": 15.8211845102506,
+    "tick_us_max": 1023,
+    "transparent_surfaces": 152,
+    "video_bytes": 156728987.0,
+    "visible_transparent_surfaces": 152,
+    "name": "Africa",
+    "bench": "HC_BENCH fps=192.9 lite=true scale=1.00 draws=179 prims=47305 objs=667 proc_ms=11.85 phys_ms=4.12 nodes=23692 at=(-860.0, 1.0, -765.0)",
+    "rss_peak_bytes": 718897152,
+    "fps": 192.9,
+    "footprint_peak_bytes": 1572279744
+  }
+]

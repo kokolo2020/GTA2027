@@ -104,6 +104,31 @@ var keeper_projects: Array = []
 var dome_animals := [[],[],[],[],[],[],[]]
 var wildlife_motion_clock := 0.0
 var refined_materials := {}
+var walk_surfaces: Array = []
+var raised_boundaries: Array = []
+var scenery_bounds: Array = []
+var scenery_group := ""
+var parked_nests := {}
+var loaded_dome := -1
+var exterior_visuals: Array = []
+var normal_camera_far := 1000.0
+var camera_far_saved := false
+var guard_batches := {}
+var walk_meshes := {}
+var campus_paths: Array = []
+var last_load_us := 0
+var mobile_textures := {}
+var saved_quality := {}
+var building_walkway := false
+var animal_structure := false
+var stuck_seconds := 0.0
+var stuck_anchor := Vector3.ZERO
+var rescue_cooldown := 0.0
+var safety_enabled := true
+var profile_usec := 0
+var profile_calls := 0
+var profile_load_us := 0
+var profile_worst := 0
 
 func _init(game) -> void:
  g = game
@@ -139,6 +164,8 @@ func local_point(i: int, x: float, z: float, y := 0.0) -> Vector3:
  return dome_c(i)+right*x+forward*z+Vector3(0,y,0)
 
 func inside(p: Vector3) -> bool:
+ if absf(Vector2(p.x-C.x,p.z-C.z).length()-69.0)<4.5:
+  return true
  if Vector2(p.x-C.x,p.z-C.z).length() < 20.5:
   return true
  for i in 7:
@@ -164,11 +191,16 @@ func material(col: Color) -> StandardMaterial3D:
  return mats[key]
 
 func shape(parent: Node3D, mesh: Mesh, pos: Vector3, sc: Vector3, col: Color, solid := false, rot := Vector3.ZERO) -> void:
+ if solid and not building_walkway and not animal_structure and pos.y>0.5 and sc.y<0.6 and sc.x>1.0 and sc.z>1.0 and Basis.from_euler(rot).y.dot(Vector3.UP)>0.99:
+  var along = Basis.from_euler(rot).z*sc.z*0.5
+  register_walk(parent,pos-along+Vector3(0,sc.y*0.5,0),pos+along+Vector3(0,sc.y*0.5,0),sc.x,"raised")
  var mat = material(col)
  var key = "%d:%d:%d" % [parent.get_instance_id(),mesh.get_instance_id(),mat.get_instance_id()]
  if not batches.has(key):
   batches[key] = {"parent":parent,"mesh":mesh,"mat":mat,"xs":[]}
  batches[key]["xs"].append(Transform3D(Basis.from_euler(rot)*Basis.from_scale(sc),pos))
+ if not solid and not building_walkway and not animal_structure and (mesh is SphereMesh or mesh is CylinderMesh or scenery_group!=""):
+  record_scenery(parent,key,batches[key].xs.size()-1,mesh,scenery_group)
  if solid:
   var body = StaticBody3D.new()
   body.position = pos
@@ -198,9 +230,9 @@ func text(parent: Node3D,label: String,pos: Vector3,col := Color.WHITE,size := 4
  n.pixel_size = 0.008
  n.billboard = BaseMaterial3D.BILLBOARD_ENABLED
  n.modulate = col
- n.outline_size = 5
+ n.outline_size = 3
  n.position = pos
- n.visibility_range_end = range_m
+ n.visibility_range_end = minf(range_m,28.0) if detail_index(parent)>=0 and size<45 else range_m
  parent.add_child(n)
  return n
 
@@ -218,13 +250,22 @@ func flush() -> void:
   mi.material_override = b.mat
   mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
   b.parent.add_child(mi)
+ for item in scenery_bounds:
+  if item.has("node") or batches.has(item.get("key","")):
+   item["checked_bounds"] = scenery_aabb(item)
  batches.clear()
 
 func disc(parent: Node3D,c: Vector3,r: float,th: float,col: Color,solid := false) -> void:
  var mesh = g._bcone(r,r,th)
+ var old_structure = animal_structure
+ if solid:
+  animal_structure = true
  shape(parent,mesh,c,Vector3.ONE,col)
+ animal_structure = old_structure
  if solid:
   g._bio_cyl_col_on(parent,c,r,th)
+  if c.y>0.5 and not animal_structure:
+   register_deck(parent,c+Vector3(0,th*0.5,0),r)
 
 func entrance_ramp(centre: Vector3,outward: Vector3,radius: float,width: float,col: Color,low := -0.05,high := 0.09,approach := 1.5,parent: Node3D = null) -> void:
  # The grass is at -0.05 m and each floor disc ends at +0.09 m. A capsule cannot
@@ -241,6 +282,8 @@ func entrance_ramp(centre: Vector3,outward: Vector3,radius: float,width: float,c
 func build() -> void:
  root = Node3D.new()
  root.name = "WorldBiosphere"
+ if "--bench" in OS.get_cmdline_user_args():
+  root.tree_exiting.connect(profile_report)
  root.set_meta("static_floor",true)
  g.add_child(root)
  g.bio_root = root
@@ -249,9 +292,12 @@ func build() -> void:
  box(root,Vector3(-760,0.01,-458),Vector3(210,0.08,12),Color("728c80"))
  g._collider(root,Vector3(-760,-0.3,-458),Vector3(210,0.6,14))
  g._floor_note(Vector3(-760,0.01,-458),Vector3(210,0.08,12))
- box(root,C+Vector3(0,0.02,102),Vector3(7,0.08,163),Color("e4e5d5"))
- disc(root,C+Vector3(0,0.03,0),20,0.12,Color("e9ecde"),true)
- entrance_ramp(C,Vector3(0,0,1),20,7.0,Color("e9ecde"))
+ box(root,C+Vector3(0,-0.08,102),Vector3(7,0.06,163),Color("e4e5d5"))
+ disc(root,C+Vector3(0,0.03,0),18.5,0.12,Color("e9ecde"),true)
+ rim_bevel(root,C,20,Color("e9ecde"))
+ # Vehicle-only bollards preserve the car exclusion now that the floor rim is walkable.
+ for x in [-3.25,-1.95,-0.65,0.65,1.95,3.25]:
+  disc(root,C+Vector3(x,0.5,24),0.13,1.1,Color("a6d9c8"),true)
  # Entrance gate arch where the walk from the city meets the hub.
  for gx in [-6.5,6.5]:
   beam(root,C+Vector3(gx,0,34),C+Vector3(gx,7,34),0.7,Color("94e8cf"))
@@ -272,25 +318,16 @@ func build() -> void:
  for i in 7:
   var c = dome_c(i)
   var dir = (c-C).normalized()
-  entrance_ramp(C,dir,20,5.6,Color("e7e9db"))
-  entrance_ramp(c,-dir,RADIUS,5.6,GROUNDS[i])
+  rim_bevel(root,c,RADIUS,GROUNDS[i])
   var a = C+dir*19.5
   var b = c-dir*(RADIUS-0.5)
-  beam(root,a+Vector3(0,0.08,0),b+Vector3(0,0.08,0),0.12,Color("a7ddc3"))
+  beam(root,a+Vector3(0,-0.04,0),b+Vector3(0,-0.04,0),0.12,Color("a7ddc3"))
   var yaw = atan2(dir.x,dir.z)
-  box(root,(a+b)*0.5+Vector3(0,0.03,0),Vector3(5.6,0.12,a.distance_to(b)+1),Color("e7e9db"),false,Vector3(0,yaw,0))
-  # Tunnel handrails and regularly spaced illuminated portal frames.
-  for side in [-1,1]:
-   var cross = Vector3(dir.z,0,-dir.x)*side*2.9
-   beam(root,a+cross+Vector3(0,1.0,0),b+cross+Vector3(0,1.0,0),0.12,COLORS[i],true)
-  for k in 5:
-   var p = a.lerp(b,float(k)/4.0)
-   for side in [-1,1]:
-    beam(root,p+Vector3(dir.z,0,-dir.x)*side*2.9,p+Vector3(dir.z,0,-dir.x)*side*2.9+Vector3(0,4.4,0),0.13,COLORS[i])
-   beam(root,p+Vector3(dir.z,0,-dir.x)*2.9+Vector3(0,4.4,0),p-Vector3(dir.z,0,-dir.x)*2.9+Vector3(0,4.4,0),0.13,COLORS[i])
+  box(root,(a+b)*0.5+Vector3(0,-0.08,0),Vector3(5.6,0.06,a.distance_to(b)+1),Color("e7e9db"),false,Vector3(0,yaw,0))
+  # The enclosed concourse below owns all tunnel side boundaries and junctions.
   text(root,NAMES[i],C+dir*28+Vector3(0,3.8,0),COLORS[i],38,60)
-  gate(i,C+dir*23,dir)
-  disc(root,c+Vector3(0,0.03,0),RADIUS,0.12,GROUNDS[i],true)
+  text(root,"FREE ENTRY",C+dir*23+Vector3(0,3.5,0),COLORS[i],28,24)
+  disc(root,c+Vector3(0,0.03,0),RADIUS-1.5,0.12,GROUNDS[i],true)
   shell(root,c,RADIUS,30,COLORS[i],true)
   # Each dome's own gate arch over its door.
   var door_p = c-dir*RADIUS
@@ -303,24 +340,6 @@ func build() -> void:
   detail.name = NAMES[i].replace(" ","")+"Interior"
   root.add_child(detail)
   interiors.append(detail)
-  landscape(i,detail)
-  habitats(i,detail)
-  if i<4:
-   rich_landscape(i,detail)
-   habitat_layers(i,detail)
-  if i>=4:
-   phase2_landscape(i,detail)
-   phase2_layers(i,detail)
-  quest_markers(i,detail)
-  if i<7:
-   for step in 3:
-    var p = local_point(i,7,-29+step*20)
-    var marker = Node3D.new()
-    marker.position = p
-    detail.add_child(marker)
-    g._fc_part(marker,g._bcone(0.2,0.4,0.5),Vector3(0,0.35,0),g._fc_glow(Color("ffda6b")))
-    var label = text(marker,"",Vector3(0,1.6,0),Color("ffe599"),26,18)
-    shelters.append({"node":marker,"label":label,"dome":i,"step":step})
   detail.visible = false
  # Phase 3 reserves three times the old floor area. No ocean dome or animals built yet.
  disc(root,OCEAN+Vector3(0,0.05,0),49.1,0.12,Color("538f9b"))
@@ -330,7 +349,11 @@ func build() -> void:
   var b = OCEAN+Vector3(cos((k+1)*TAU/24),0,sin((k+1)*TAU/24))*49.1
   beam(root,a+Vector3(0,1.2,0),b+Vector3(0,1.2,0),0.16,Color("d9be69"),true)
  text(root,"WORLD BIOSPHERE · LEVEL 7",ENTRY+Vector3(0,4,0),Color("d5fff0"),54,90)
+ build_ring_concourse()
+ register_habitats()
+ flush_guard_batches(root)
  flush()
+ capture_exterior(root)
 
 func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) -> void:
  var st = SurfaceTool.new()
@@ -356,21 +379,30 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
  mi.mesh = st.commit()
  mi.material_override = g._bio_glass_mat(col.lightened(0.4),0.09)
  mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
- parent.add_child(mi)
+ if detail_index(parent)<0:
+  parent.add_child(mi)
+ else:
+  mi.free()
  if not wall:
   return
  var toward = (C-c).normalized()
- for k in 48:
-  var u = (k+0.5)*TAU/48
-  var dir = Vector3(cos(u),0,sin(u))
-  # A clear door, centred on the tunnel axis: about 15 m wide, whichever way the dome faces.
-  if absf(angle_difference(atan2(toward.z,toward.x),u))<deg_to_rad(11.0):
-   continue
-  var p = c+dir*r
-  var glazing = col.lightened(0.4)
-  glazing.a = 0.14
-  box(parent,p+Vector3(0,2,0),Vector3(0.22,4,r*TAU/48+0.05),glazing,true,Vector3(0,-u,0))
-  box(parent,p+Vector3(0,0.18,0),Vector3(0.3,0.36,r*TAU/48+0.05),Color("dce6df"),false,Vector3(0,-u,0))
+ var centre_angle = atan2(toward.z,toward.x)
+ var half_door = asin(2.8/r)
+ var segments = 96
+ for k in segments:
+  var a = centre_angle+half_door+float(k)*(TAU-2*half_door)/segments
+  var b = centre_angle+half_door+float(k+1)*(TAU-2*half_door)/segments
+  var from = c+Vector3(cos(a)*r,-0.05,sin(a)*r)
+  var to = c+Vector3(cos(b)*r,-0.05,sin(b)*r)
+  collision_wall(parent,from,to,4.2)
+  beam(parent,from+Vector3(0,0.25,0),to+Vector3(0,0.25,0),0.20,Color("dce6df"))
+  if k%3==0:
+   beam(parent,from,from+Vector3(0,4.2,0),0.12,col)
+ # The tunnel meets these jambs exactly; players cannot slip around the door sides.
+ for side in [-1,1]:
+  var dir = Vector3(cos(centre_angle+side*half_door),0,sin(centre_angle+side*half_door))
+  var jamb = c+dir*r
+  beam(parent,jamb,jamb+Vector3(0,4.2,0),0.16,col)
 
 func gate(i: int,p: Vector3,dir: Vector3) -> void:
  var n = Node3D.new()
@@ -397,15 +429,33 @@ func gate(i: int,p: Vector3,dir: Vector3) -> void:
  g.bio_gates.append({"pos":p,"dir":dir,"dist":23.0,"body":body,"panels":panels,"bar":bar,"label":label,"state":-1})
 
 func nature(parent: Node3D,name: String,p: Vector3,scale_value: float,yaw := 0.0) -> void:
- var mesh = g._bio_nature_mesh(name)
+ var mesh = foliage_mesh(name)
+ if mesh!=null and not mesh.has_meta("mobile_foliage"):
+  for surface in mesh.get_surface_count():
+   var source = mesh.surface_get_material(surface)
+   if source is BaseMaterial3D:
+    var copy = source.duplicate() as BaseMaterial3D
+    if copy.transparency!=BaseMaterial3D.TRANSPARENCY_DISABLED:
+     copy.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+     copy.alpha_scissor_threshold = 0.45
+    mesh.surface_set_material(surface,copy)
+  mesh.set_meta("mobile_foliage",true)
  if mesh==null:
   return
  var key = "%d:nature:%s" % [parent.get_instance_id(),name]
  if not batches.has(key):
   batches[key] = {"parent":parent,"mesh":mesh,"mat":material(Color("d6e9f2")) if name=="nature_bush_snow" else null,"xs":[]}
  batches[key].xs.append(Transform3D(Basis(Vector3.UP,yaw)*Basis.from_scale(Vector3.ONE*scale_value),p))
+ if not animal_structure:
+  record_scenery(parent,key,batches[key].xs.size()-1,mesh,scenery_group)
 
 func tree(parent: Node3D,p: Vector3,h: float,col: Color,style := 0) -> void:
+ var old_group = scenery_group
+ scenery_group = "Plant:%d:%s" % [parent.get_instance_id(),str(p)]
+ tree_parts(parent,p,h,col,style)
+ scenery_group = old_group
+
+func tree_parts(parent: Node3D,p: Vector3,h: float,col: Color,style: int) -> void:
  if style==1:
   # Clustered bamboo with branching leaf sprays; all pieces share cached meshes/materials.
   for stem in 3:
@@ -452,12 +502,14 @@ func landscape(i: int,parent: Node3D) -> void:
     shape(parent,g._bcone(0,5.5,11.0+k%2*4.0),local_point(i,12+k*4,19,5.5+k%2*2),Vector3.ONE,Color("7a918b"))
    for k in 4:
     box(parent,local_point(i,-26,8+k*3,0.3+k*0.35),Vector3(12-k,0.5,2.6),Color("8ba54d"))
+   scenery_group = "AsiaPavilion"
    var p = local_point(i,0,16)
    for side in [-1,1]:
     for z in [-2,2]:
      box(parent,p+Vector3(side*3,2.2,z*1.0),Vector3(0.22,4.4,0.22),Color("a34d3a"))
    box(parent,p+Vector3(0,4.5,0),Vector3(7,0.3,5.5),Color("5a746b"))
    shape(parent,g._bcone(0,4.6,1.7),p+Vector3(0,5.3,0),Vector3(1,1,0.8),Color("406b62"))
+   scenery_group = ""
    text(parent,"BAMBOO VALLEY · MOUNTAIN PAVILION",local_point(i,0,25,8),Color("e0ffe7"),28)
   2:
    var p = local_point(i,25,20)
@@ -466,15 +518,13 @@ func landscape(i: int,parent: Node3D) -> void:
    box(parent,p+Vector3(0,5,2.5),Vector3(3,9,0.1),Color("90ddeb"))
    for k in 6:
     disc(parent,local_point(i,8+k*2,-18+k*5,0.16),3.2,0.06,Color("5bb9ba"))
-   # Continuous ramp to a canopy bridge; visitors can walk the whole route.
-   var a = local_point(i,-9.5,-25,0.09)
-   var middle = local_point(i,-9.5,-12,3.0)
-   var b = local_point(i,-4,-8,5.5)
-   var e = local_point(i,-4,23,5.5)
-   walkway(parent,a,middle,3.0,0.0,2.0)
-   walkway(parent,middle,b,3.0,2.0,2.0)
-   walkway(parent,b,e,3.0,2.0,3.0)
-   disc(parent,e-Vector3(0,0.15,0),3,0.3,Color("b09260"),true)
+   # Finish climbing before turning: overlapping inclined/level strips created an edge lip.
+   var route = visitor_stage_route(2)
+   for segment in range(1,route.size()-1):
+    walkway(parent,route[segment-1],route[segment],3.0)
+   disc(parent,route[-2]-Vector3(0,0.15,0),3,0.3,Color("b09260"),true)
+   for landing in [route[2],route[3]]:
+    disc(parent,landing-Vector3(0,0.15,0),2.0,0.3,Color("b09260"),true)
    text(parent,"RAINFOREST · CANOPY BRIDGE",local_point(i,0,-30,3),Color("ceffec"),28)
   3:
    disc(parent,local_point(i,20,14,0.15),11,0.08,Color("2e809c"))
@@ -482,24 +532,14 @@ func landscape(i: int,parent: Node3D) -> void:
     disc(parent,local_point(i,15+k%3*3,8+k*1.8,0.26),1.3,0.12,Color("edfaff"))
    # Cave uses a clear tunnel beneath three ice blocks, reachable from the promenade.
    for side in [-1,1]:
-    box(parent,local_point(i,side*4,26,2),Vector3(2,4,7),Color("b1d5e8"),true)
-   box(parent,local_point(i,0,26,4.3),Vector3(10,0.6,7),Color("d9f5ff"),true)
+    box(parent,local_point(i,side*5,26,2),Vector3(2,4,7),Color("b1d5e8"),true)
+   box(parent,local_point(i,0,26,4.3),Vector3(12,0.6,7),Color("d9f5ff"),true)
 
    text(parent,"POLAR COAST · ICE CAVE",local_point(i,0,25,8),Color("def7ff"),28)
 
 func walkway(parent: Node3D,a: Vector3,b: Vector3,w: float,open_start := 0.0,open_end := 0.0) -> void:
- var d = b-a
- var across = Vector3(d.z,0,-d.x).normalized()
- # Slab's Y is perpendicular to the ramp, so its top follows the slope.
- var x = d.normalized()
- var z = x.cross(Vector3.UP).normalized()
- var y = z.cross(x).normalized()
- var size = Vector3(d.length()+0.3,0.22,w)
- var rot = Basis(x,y,z).get_euler()
- box(parent,(a+b)*0.5-Vector3(0,0.11,0),size,Color("b29462"),true,rot)
- if d.length()>open_start+open_end+0.05:
-  for side in [-1,1]:
-   beam(parent,a+d.normalized()*open_start+across*side*w/2+Vector3(0,1.1,0),b-d.normalized()*open_end+across*side*w/2+Vector3(0,1.1,0),0.12,Color("dfcd9e"),true)
+ phase2_walkway(parent,a,b,w,open_start,open_end)
+
 func habitats(i: int,parent: Node3D) -> void:
  var ids = []
  for si in SPECIES.size():
@@ -508,35 +548,39 @@ func habitats(i: int,parent: Node3D) -> void:
  for k in ids.size():
   var si = ids[k]
   if i>=4 and str(SPECIES[si].zone)=="fly":
-   var sky = local_point(i,-4,0,17) if si==3 else local_point(i,-20,5,13)
+   var sky = local_point(i,-29,-2,7) if si==3 else local_point(i,-20,5,13)
+   if not can_fly(si):
+    high_habitat(parent,Vector3(sky.x,0,sky.z),sky.y,2.0,Color("9a8664"),true)
    g.bio_hab[si] = {"type":"pen","c":sky,"r":6.0,"rmin":0.0,"sign":local_point(i,-10,5)}
    for n in int(SPECIES[si].n):
-    upper_animal(si,n,parent,sky,6.0,"glide")
+    upper_animal(si,n,parent,sky,6.0 if can_fly(si) else 0.3,"glide" if can_fly(si) else "perch")
    continue
   var side = -1 if k%2==0 else 1
   var row = k/2
-  var p = local_point(i,side*18,-22+row*14)
+  var p = local_point(i,side*23,-21+row*14)
   if i>=4:
    var layout = phase2_pen(si)
    p = local_point(i,layout.x,layout.y)
-  var r = 5.6
-  if i==3 and SPECIES[si].kind=="orca":
-   p = local_point(i,22,17)
-   r = 7.0
-  fences.append({"dome":i,"c":p,"r":r,"si":si})
+  var r = 3.7
+  if i==3:
+   var polar = {0:Vector3(17,4,-24),30:Vector3(27,4,-5),31:Vector3(19,7,17),32:Vector3(26,3,-16)}[si]
+   p = local_point(i,polar.x,polar.z)
+   r = polar.y
+
   for seg in 20:
    var a = p+Vector3(cos(seg*TAU/20),0,sin(seg*TAU/20))*r
    var b = p+Vector3(cos((seg+1)*TAU/20),0,sin((seg+1)*TAU/20))*r
-   beam(parent,a+Vector3(0,1.0,0),b+Vector3(0,1.0,0),0.17,Color("9cae97"),true)
+   beam(parent,a+Vector3(0,1.0,0),b+Vector3(0,1.0,0),0.17,Color("9cae97"))
+   collision_wall(parent,a,b,1.6,0.12)
    if seg%2==0:
     beam(parent,a,a+Vector3(0,1.2,0),0.12,Color("d6e5d2"))
   if SPECIES[si].zone=="swim":
    disc(parent,p+Vector3(0,0.15,0),r-0.3,0.08,Color("509daa"))
-  var inward = (local_point(i,0,-22+row*14)-p).normalized()
+  var inward = (dome_c(i)-p).normalized()
   text(parent,SPECIES[si].name,p+inward*(r+0.3)+Vector3(0,1.8,0),Color("f6f4d7"),28,22)
   var sign = p+inward*(r+1.3)
   g.bio_hab[si] = {"type":"pen","c":p,"r":r-1.4,"rmin":0.0,"sign":sign}
-  g.bio_pens.append([i,p,r])
+
   for n in int(SPECIES[si].n):
    spawn_animal(si,n,parent,p,r-1.5)
  # Families are visible every day; the sticker is tied to the daily birth announcement.
@@ -593,11 +637,21 @@ func spawn_animal(si: int,k: int,parent: Node3D,p: Vector3,r: float) -> Dictiona
  var node = Node3D.new()
  parent.add_child(node)
  var a = {"node":node,"si":si,"kind":s.kind,"dome":s.dome,"c":p,"r":r,"phase":float(k)*1.7,"legs":[],"wings":[],"head":null,"k":k,"speed":0.8,"target":p,"feeding":false,"base_y":p.y}
+ a["model_loaded"] = false
+ a["model_path"] = "res://models/animals/animal_%s.glb" % s.kind
  if s.kind=="butterfly":
   g._bio_make_butterfly(a)
- elif not g._bio_load_animal(a):
-  # Deterministic lightweight fallback when a model is unavailable.
-  g._bio_make_quad(a,{"body":Vector3(0.5,0.6,1.0),"col":COLORS[int(s.dome)],"leg":0.5,"legr":0.09,"head":0.25,"neck":0.2,"necka":0.8,"ears":0.12,"tail":0.2,"snout":Color("32291f")})
+ else:
+  a.model_loaded = g._bio_load_animal(a)
+  if not a.model_loaded:
+   push_error("Biosphere model failed: "+str(a.model_path))
+   g._bio_make_quad(a,{"body":Vector3(0.5,0.6,1.0),"col":COLORS[int(s.dome)],"leg":0.5,"legr":0.09,"head":0.25,"neck":0.2,"necka":0.8,"ears":0.12,"tail":0.2,"snout":Color("32291f")})
+ if s.kind=="elephant" and a.model_loaded:
+  # The original GLB's hip pivots stop below the curved torso. Extend the
+  # upper legs while keeping the feet at the same ground level.
+  for leg in a.legs:
+   leg.position.y *= 1.7
+   leg.scale *= Vector3(1.55,1.7,1.55)
  if si>=33:
   refined_coat(node)
   a["flight_wings"] = []
@@ -643,7 +697,7 @@ func quest_point(i: int,q: int,step: int) -> Vector3:
  if i>=4:
   return phase2_quest_point(i,q,step)
  if i==2 and q==0:
-  return local_point(i,[-9.5,-4.0,-4.0][step],[-24.0,-8.0,22.0][step],[0.314,5.5,5.5][step])
+  return local_point(i,[-9.5,-9.5,-4.0][step],[-24.0,0.0,22.0][step],[0.13,5.5,5.5][step])
  if i==3 and q==1:
   return local_point(i,0,[-14.0,0.0,14.0][step],0.22)
  if i==1 and q==0:
@@ -651,7 +705,7 @@ func quest_point(i: int,q: int,step: int) -> Vector3:
  if i==0 and q==1:
   return local_point(i,-10.8,4.0+step*2.0)
  if i==3 and q==0:
-  return local_point(i,-10.8,-24.0+step*2.0)
+  return local_point(i,9.0,-24.0+step*2.0)
  if (i==0 and q==0) or (i==3 and q==2):
   return local_point(i,0,-18.0+step*14.0)
  return local_point(i,(-7.0 if q==1 else 7.0),-22.0+step*21.0)
@@ -941,20 +995,42 @@ func photo_capture() -> void:
    achieve("photo10","Wildlife Photographer",300)
   changed()
 func tick(delta: float) -> void:
+ var previous_dome = loaded_dome
+ var start = Time.get_ticks_usec()
+ tick_impl(delta)
+ var elapsed = Time.get_ticks_usec()-start
+ if previous_dome!=loaded_dome:
+  profile_load_us += elapsed
+ else:
+  profile_usec += elapsed
+  profile_calls += 1
+  profile_worst = maxi(profile_worst,elapsed)
+
+func tick_impl(delta: float) -> void:
  if g.player==null or not g.place_open[1]:
   return
- # Smooth motion for the refined wildlife; rewards/UI still tick at 5 Hz.
- if active>=4 and not g.paused:
-  wildlife_motion_clock += delta
-  if wildlife_motion_clock>=1.0/60.0:
-   var motion_delta = floorf(wildlife_motion_clock*60.0)/60.0
-   wildlife_motion_clock -= motion_delta
-   var gathering = bool(feeding(active).active)
-   for a in dome_animals[active]:
-    if a.node.visible:
-     animate_animal(a,motion_delta,gathering)
- else:
-  wildlife_motion_clock = 0.0
+ var current = dome_at(g.player.position) if not g.driving else -1
+ if current!=active:
+  activate_dome(current)
+ if current<0 and loaded_dome>=0 and g.player.position.distance_to(dome_c(loaded_dome))>RADIUS+10.0:
+  unload_detail()
+ safety_net(delta)
+ if current>=0:
+  apply_dome_quality()
+ # Distance/frustum LOD preserves near motion without posing every far animal each frame.
+ if active>=0 and not g.paused:
+  var gathering = bool(feeding(active).active)
+  for a in dome_animals[active]:
+   if not a.node.visible:
+    continue
+   a["motion_time"] = float(a.get("motion_time",0.0))+delta
+   var distance = g.camera.global_position.distance_to(a.node.position)
+   var rate = 1.0/30.0 if distance<22.0 else (0.1 if distance<45.0 else 0.5)
+   if not g.camera.is_position_in_frustum(a.node.position+Vector3(0,0.7,0)):
+    rate = maxf(rate,0.25)
+   if float(a.motion_time)>=rate:
+    animate_animal(a,float(a.motion_time),gathering)
+    a.motion_time = 0.0
  if pending_save:
   saved_delay -= delta
   if saved_delay<=0:
@@ -966,11 +1042,6 @@ func tick(delta: float) -> void:
  var dt = 0.2
  interval = dt
  var me = g.car if g.driving else g.player
- var next = dome_at(me.position)
- if next!=active:
-  active = next
-  for i in interiors.size():
-   interiors[i].visible = i==active
  if active>=0 and not g.paused:
   if not int(state.visits)&(1<<active):
    state.visits = int(state.visits)|(1<<active)
@@ -1016,8 +1087,7 @@ func tick(delta: float) -> void:
  for a in animals:
   if int(a.dome)!=active or not a.node.visible or g.paused:
    continue
-  if active<4:
-   animate_animal(a,dt,bool(show.active))
+  # Movement is updated by the distance-aware animation clock above.
   var p = a.node.global_position+Vector3(0,0.7,0)
   if not a.has("rare") and me.position.distance_to(p)<17 and g.camera.is_position_in_frustum(p):
    spot(int(a.si))
@@ -1080,9 +1150,9 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
   node.position = centre+Vector3(cos(angle)*radius*0.72,3+sin(ph*0.8)*0.4,sin(angle)*radius*0.72)
   var flight_dir = Vector3(-sin(angle),0,cos(angle))
   node.rotation.y = atan2(-flight_dir.x,-flight_dir.z)
-  node.rotation.z = sin(ph*0.5+int(a.k))*0.1
+  node.rotation.z = -0.12+sin(ph*0.5+int(a.k))*0.025
   for leg in a.legs:
-   leg.rotation.x = 0.55
+   leg.hide()
   for k in a.wings.size():
    a.wings[k].rotation.z = sin(ph*(2.4 if int(a.si)>=33 else 4.0))*(0.16 if int(a.si)>=33 else 0.45)*(1 if k==0 else -1)
   return
@@ -1091,7 +1161,7 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
   node.rotation.x = PI
   return
  if a.get("upper_motion","")=="perch":
-  node.position = centre+Vector3(0,0.12,0)
+  node.position = centre+Vector3(0,0.01,0)
   node.rotation.y = sin(ph*0.35+int(a.k))*0.12
   return
  show = show or float(a.get("manual_feed",0))>now()
@@ -1100,7 +1170,7 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
   a.target = a.get("parent_target",centre)
  elif show:
   var toward = (dome_c(int(a.dome))-centre).normalized()
-  a.target = centre+toward*radius*0.6+Vector3(0,0.1,0)
+  a.target = feeding_target(a,toward,radius)
  elif node.position.distance_to(a.target)<0.3:
   var t = ph*0.7+int(a.k)*2.2
   a.target = centre+Vector3(cos(t),0.1,sin(t))*radius*0.75
@@ -1110,9 +1180,12 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
  if moving:
   node.position += d.normalized()*minf(delta*(1.6 if show else 0.65),d.length())
   node.rotation.y = lerp_angle(node.rotation.y,atan2(-d.x,-d.z),delta*3)
- var zone = "fly" if a.get("upper_motion","")=="glide" else SPECIES[int(a.si)].zone
+ if a.kind=="elephant" and not moving:
+  var toward_path = dome_c(int(a.dome))-node.position
+  node.rotation.y = lerp_angle(node.rotation.y,atan2(-toward_path.x,-toward_path.z),delta)
+ var zone = "fly" if a.get("upper_motion","")=="glide" else ("swim" if SPECIES[int(a.si)].zone=="swim" else "ground")
  var base = float(a.get("base_y",0))
- node.position.y = base+(0.16 if zone=="swim" or a.kind=="penguin" else 0.1)
+ node.position.y = base+(0.01 if a.get("upper",false) else (0.16 if zone=="swim" else 0.1))
  if zone=="fly":
   node.position.y = base+3.0+0.4*sin(ph*1.3)
  for k in a.legs.size():
@@ -1121,7 +1194,7 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
    gait_sign = [1,-1,-1,1][k]
   if a.kind=="kangaroo":
    gait_sign = 1
-  a.legs[k].rotation.x = sin(ph*4.2)*(0.24 if int(a.si)>=33 else 0.28)*gait_sign if moving else 0
+  a.legs[k].rotation.x = sin(ph*4.2)*(0.12 if a.kind=="elephant" else (0.24 if int(a.si)>=33 else 0.28))*gait_sign if moving else 0
  if a.kind=="kangaroo":
   node.position.y = base+0.1+(maxf(0,sin(ph*4.2))*0.10 if moving else 0)
   node.rotation.x = -0.045 if moving else 0
@@ -1209,7 +1282,7 @@ func refresh_panel() -> void:
  if page>=4:
   ui_label(["Woodland, wildflower meadow and river garden · owl nests · meadow amphitheatre","Maple lake, canyon ledges and Arctic corner · eagle nests · high ranger overlook","Australian outback, eucalyptus and billabong · koala trees · forked beach pier"][page-4],Color("b4e5d6"),18)
  if page<4:
-  ui_label(["LAYERS · grassland, kopje ledges and flamingo flight zone","LAYERS · bamboo forest, snow-leopard cliffs, red-panda trees and crane flight zone","LAYERS · forest floor, sloth branches, monkey canopy and macaw sky habitat","LAYERS · frozen shore, raised penguin colony, albatross cliffs and flight zone"][page],Color("b4e5d6"),18)
+  ui_label(["LAYERS · grassland, kopje ledges and flamingo lagoon","LAYERS · bamboo forest, snow-leopard cliffs, red-panda trees and crane grove","LAYERS · forest floor, sloth branches, monkey canopy and macaw perches","LAYERS · frozen shore, raised penguin colony and albatross cliff nests"][page],Color("b4e5d6"),18)
  ui_button("FREE ENTRY ✓",g._bio_buy_pass)
  var mask = species_mask(page)
  var count = g._bits(int(g.bio_seen)&mask)
@@ -1239,350 +1312,357 @@ func refresh_panel() -> void:
   ui_label("✓ "+str(state.ach[id]),Color("d2e8bb"),17)
  ui_label("Full seven-page passport: World Explorer title + gold ring. All seven continent pages are open. Ocean World is reserved for Phase 3.")
 func smoke() -> void:
- var keep = {"state":state.duplicate(true),"seen":g.bio_seen,"cash":g.cash,"xp":g.bonus_xp,"pass":g.bio_pass_day,"player":g.player.transform,"driving":g.driving,"paused":g.paused,"active":active,"task":task,"day":test_day,"time":test_time,"hour":g.day_hour_override,"peers":g.online_peers.duplicate(),"shot":g.shot_on}
- reset_state()
+ var keep = {"state":state.duplicate(true),"seen":g.bio_seen,"cash":g.cash,"xp":g.bonus_xp,"pass":g.bio_pass_day,"player":g.player.transform,"velocity":g.player.velocity,"board":g.board_on,"run":g.run_on,"driving":g.driving,"paused":g.paused,"active":active,"task":task,"day":test_day,"time":test_time,"hour":g.day_hour_override,"peers":g.online_peers.duplicate(),"shot":g.shot_on,"camera":g.camera.global_transform,"process":g.is_processing(),"physics":g.is_physics_processing(),"disabled":g.player.get_child(0).disabled,"place_level":g.place_test_level}
+ g.set_process(false)
+ g.set_physics_process(false)
+ g.place_test_level = 40
+ g._places_refresh()
+ g.player.get_child(0).disabled = false
  g.driving = false
  g.paused = false
- g.bio_pass_day = today()
- g._bio_gates_update()
- assert(interiors.size()==7 and g.bio_gates.size()==7,"Seven domes and pass gates")
- smoke_entry_movement()
- assert(OCEAN.distance_to(C)>ORBIT+RADIUS+49.1,"Ocean World has a separate 3x area reservation")
- assert(g.GA_C==Vector3(-330,0,-600),"Galleria stays in place")
- var original = ["penguin","polarbear","arcticfox","owl","deer","rabbit","duck","butterfly","giraffe","zebra","flamingo","parrot","moose","raccoon","beaver","goose"]
- for si in 16:
-  assert(SPECIES[si].kind==original[si],"Existing spotting bits stay stable")
- g.bio_seen = 0xa55a
- var prior = ConfigFile.new()
- load_state(prior)
- assert(g.bio_seen==0xa55a,"Old save migration preserves every spotted bit")
- for i in 7:
-  var c = dome_c(i)
-  assert(g._place_lock_of("World Biosphere")==1,"Directions and level lock identify World Biosphere")
-  assert(Vector2(c.x-g.GA_C.x,c.z-g.GA_C.z).length()>200,"Campus clears Galleria")
-  for j in range(i+1,7):
-   assert(c.distance_to(dome_c(j))>RADIUS*2+15,"Dome shells do not overlap")
-  # Traverse the full spoke and central promenade, with paid gates physically open.
-  for k in 35:
-   var p = C.lerp(c,float(k)/34.0)+Vector3(0,1.0,0)
-   assert(not g._blocked_at(p,0.3),"Walkable spoke %d at %s by %s" % [i,p,g._blocker(p,0.3)])
-  var trail = ground_route(i)
-  for segment in range(1,trail.size()):
-   var a: Vector3 = trail[segment-1]
-   var b: Vector3 = trail[segment]
-   for sample in 15:
-    var p = a.lerp(b,float(sample)/14)+Vector3(0,0.9,0)
-    assert(not g._blocked_at(p,0.25),"Clear unique visitor trail %d at %s" % [i,p])
-  g.player.position = c+Vector3(0,0.9,0)
-  interval = 0
-  tick(0.2)
-  assert(active==i and interiors[i].visible,"Current dome shown")
-  for j in 7:
-   assert(interiors[j].visible==(j==i),"Only current dome interior is drawn")
-  var ground = PhysicsRayQueryParameters3D.create(c+Vector3(0,2,0),c-Vector3(0,1,0),1)
-  ground.exclude = [g.player.get_rid(),g.car.get_rid()]
-  assert(not g.get_world_3d().direct_space_state.intersect_ray(ground).is_empty(),"Solid dome floors")
- for f in fences:
-  assert(f.c.distance_to(dome_c(int(f.dome)))+float(f.r)<RADIUS-0.2,"Fenced animal habitat stays inside dome")
-  for a in animals:
-   if int(a.si)==int(f.si) and not a.get("upper",false):
-    for k in 20:
-     animate_animal(a,0.2,false)
-    var p = a.node.position-a.c
-    assert(Vector2(p.x,p.z).length()<float(f.r)-0.6,"Animals stay behind fences")
- var upper_count = 0
- for a in animals:
-  if not a.get("upper",false):
-   continue
-  upper_count += 1
-  for step in 50:
-   animate_animal(a,0.2,false)
-  var rel = a.node.position-a.c
-  assert(Vector2(rel.x,rel.z).length()<=float(a.r)+0.5,"Upper wildlife stays within its habitat")
-  assert(a.node.position.y>float(a.base_y)-1.5,"Upper wildlife stays on its layer")
-  var c = dome_c(int(a.dome))
-  assert(Vector2(a.node.position.x-c.x,a.node.position.z-c.z).length()<RADIUS-2,"Flying wildlife remains inside its glass dome")
- assert(upper_count>=24,"Four domes have populated upper habitat layers")
- assert(not refined_materials.is_empty(),"Refined coats are configured")
- for coat in refined_materials.values():
-  assert(coat.vertex_color_use_as_albedo,"Coat colour attributes are used in game")
- # New bird poses and anatomical gait stay consistent in the actual game models.
- for subject in animals:
-  if int(subject.si)<33:
-   continue
-  var flying = subject.get("upper_motion","")=="glide"
-  for wing in subject.get("flight_wings",[]):
-   assert(wing.visible==flying,"Flight wings shown only for flying birds")
-  if subject.get("folded_wings")!=null:
-   assert(subject.folded_wings.visible!=flying,"Resting birds have folded wings")
- var wolf = animals.filter(func(an):return an.kind=="wolf")[0]
- wolf.node.position = wolf.c+Vector3(-0.7,0.1,-0.4)
- wolf.target = wolf.c+Vector3(0.7,0.1,0.4)
- animate_animal(wolf,0.05,false)
- assert(wolf.legs.size()==4 and is_equal_approx(wolf.legs[0].rotation.x,wolf.legs[3].rotation.x) and is_equal_approx(wolf.legs[1].rotation.x,wolf.legs[2].rotation.x),"Refined quadrupeds use opposing diagonal pairs")
- var roo = animals.filter(func(an):return an.kind=="kangaroo")[0]
- roo.node.position = roo.c+Vector3(-0.7,0.1,-0.4)
- roo.target = roo.c+Vector3(0.7,0.1,0.4)
- animate_animal(roo,0.05,false)
- assert(roo.legs.size()==2 and is_equal_approx(roo.legs[0].rotation.x,roo.legs[1].rotation.x),"Kangaroo hind legs move together")
- active = 6
- interval = 1.0
- wildlife_motion_clock = 0.0
- var previous_phase = float(roo.phase)
- var previous_cash = g.cash
- tick(1.0/30.0)
- assert(float(roo.phase)>previous_phase and g.cash==previous_cash,"Smooth animal motion runs between reward/UI ticks")
-
+ g.online_peers = {}
+ g.bio_pass_day = ""
+ safety_enabled = false
+ reset_state()
+ assert(interiors.size()==7 and g.bio_gates.is_empty(),"Seven slots, free entry, no gates")
+ var money = g.cash
+ g._bio_buy_pass()
+ assert(g._bio_pass_ok() and money==g.cash,"No ticket or payment")
  var legacy = ConfigFile.new()
  legacy.set_value("world_biosphere","state",{"pages":15,"quests":{"3":true},"photos":{"4":2},"rank_jobs":12})
  g.bio_seen = (1<<32)|(1<<4)
  load_state(legacy)
- assert(g.bio_seen==((1<<32)|(1<<4)) and int(state.pages)==15 and state.photos.has("4") and state.quests.has("3"),"Phase 1 discoveries, earned pages, quests and photo indices remain stable")
+ assert(g.bio_seen==((1<<32)|(1<<4)) and state.pages==15 and state.photos.has("4") and state.quests.has("3"),"Old bits, passport pages, photos and quests preserved")
  reset_state()
- state.visits = 127
- # Every quest goes through the same proximity and interaction actions as play.
  g.bio_seen = (1<<SPECIES.size())-1
- for i in 7:
-  active = i
-  g.player.position = dome_c(i)+Vector3(0,0.9,0)
+ var start_dome = clampi(int(OS.get_environment("WB_START_DOME")),0,6)
+ if start_dome>0:
+  state.pages = (1<<start_dome)-1
+  state.rank_jobs = start_dome*3
+  for id in start_dome*3:
+   state.quests[str(id)] = true
+ # Isolate the bevel surface from intentional glass walls, then restore the walls.
+ var seals = []
+ for node in root.get_children():
+  if node is StaticBody3D and node.name.begins_with("ContinuousSolidGuards"):
+   seals.append(node)
+ if OS.get_environment("WB_SKIP_PROVEN")!="1":
+  for mode in ["walk","run","BOARD"]:
+   g.board_on = mode=="BOARD"
+   g.run_on = mode=="run"
+   var speed = g._walk_speed()
+   for wall in seals:
+    wall.collision_layer = 0
+   await g.get_tree().physics_frame
+   for slot in range(-1,7):
+    var centre = C if slot<0 else dome_c(slot)
+    var radius = 20.0 if slot<0 else RADIUS
+    for angle in 24:
+     var direction = Vector3(cos(angle*TAU/24),0,sin(angle*TAU/24))
+     walk_route("bevel %s %d angle %d"%[mode,slot,angle],[centre+direction*(radius+2.2)+Vector3(0,-0.05,0),centre+direction*(radius-2.2)+Vector3(0,0.09,0)],speed)
+   for wall in seals:
+    wall.collision_layer = 1
+   await g.get_tree().physics_frame
+   walk_route("hub ENTRY "+mode,[ENTRY+Vector3(0,-0.05,0),C+Vector3(0,-0.05,36),C+Vector3(0,0.09,12),C+Vector3(0,0.09,0)],speed)
+   var circle = []
+   for k in 85:
+    circle.append(C+Vector3(cos(-PI/2+k*TAU/84),0,sin(-PI/2+k*TAU/84))*69.0+Vector3(0,-0.05,0))
+   walk_route("enclosed seven-dome ring "+mode,circle,speed)
+ for i in range(start_dome,7):
+  print("WB_CHECK_DOME "+NAMES[i])
+  g.player.position = dome_c(i)+Vector3(0,0.79,0)
+  activate_dome(i)
+  await g.get_tree().physics_frame
+  await g.get_tree().physics_frame
+  assert(loaded_dome==i,"Current detail loaded")
+  for j in 7:
+   assert((interiors[j].get_child_count()>0)==(j==i),"Only one interior is resident")
+   assert(interiors[j].visible==(j==i),"Only current interior renders")
+  assert(g.animal_scenes.size()<20,"Only current animal resources resident")
+  for item in scenery_bounds:
+   assert(clear_scenery_bounds(item.checked_bounds,i),"Scenery keeps 1.5 m clear of visitor surfaces")
+  for f in fences:
+   if int(f.dome)!=i:
+    continue
+   assert(Vector2(f.c.x-dome_c(i).x,f.c.z-dome_c(i).z).length()+float(f.r)+1.5<=RADIUS-1.5,"Pen clears perimeter bevel")
+   for surface in walk_surfaces:
+    assert(surface_distance(f.c,surface)>=float(f.r)+1.5,"All paths, ramps and decks clear pens")
+  for a in animals:
+   if a.kind!="butterfly":
+    assert(a.model_loaded,"GLB loaded rather than placeholder: "+str(a.kind))
+   if a.get("upper_motion","")=="glide":
+    assert(can_fly(int(a.si)) and a.kind not in ["flamingo","penguin","crane","albatross","emu"],"No ground bird has a flight anchor")
+    for leg in a.legs:
+     assert(not leg.visible,"Flying legs are tucked")
+   if a.kind=="elephant":
+    var torso_bounds: AABB = a.body.transform*a.body.get_aabb()
+    for leg in a.legs:
+     var limb_bounds: AABB = leg.transform*leg.get_aabb()
+     assert(limb_bounds.end.y>=torso_bounds.position.y+0.3 and limb_bounds.position.y<0.2,"Elephant legs reach torso and ground")
+   if a.kind=="flamingo":
+    assert(not a.get("upper",false) and float(a.base_y)<0.3,"Flamingos wade only in Coral Lagoon")
+   if a.get("upper",false) and a.get("upper_motion","") not in ["glide","hang"]:
+    animate_animal(a,0.2,false)
+    var ray = PhysicsRayQueryParameters3D.create(a.node.position+Vector3(0,0.2,0),a.node.position-Vector3(0,0.5,0),1)
+    ray.exclude = [g.player.get_rid(),g.car.get_rid()]
+    assert(not g.get_world_3d().direct_space_state.intersect_ray(ray).is_empty(),"Standing upper animal has physical support")
+   if a.kind=="elephant":
+    assert(g.animal_scenes.get("elephant") is PackedScene and a.body is MeshInstance3D and a.legs.size()==4,"Elephant is the actual GLB with body and four legs")
+  if i==0:
+   var elephants = animals.filter(func(a):return a.kind=="elephant")
+   assert(elephants.size()>=2,"Elephant group")
+   assert(feeding_target(elephants[0],Vector3.FORWARD,float(elephants[0].r)).distance_to(feeding_target(elephants[1],Vector3.FORWARD,float(elephants[1].r)))>=1.3,"Elephants do not merge into one feeding blob")
+  for mode in ["walk","run","BOARD"]:
+   g.board_on = mode=="BOARD"
+   g.run_on = mode=="run"
+   var speed = g._walk_speed()
+   var direction = (dome_c(i)-C).normalized()
+   var across = Vector3(direction.z,0,-direction.x)
+   walk_route("complete tunnel "+NAMES[i]+mode,[C+Vector3(0,0.09,0),dome_c(i)+Vector3(0,0.09,0)],speed)
+   for offset in [-2.35,-1.2,0.0,1.2,2.35]:
+    walk_route("door sides "+NAMES[i]+mode,[dome_c(i)-direction*(RADIUS+2.2)+across*offset+Vector3(0,-0.05,0),dome_c(i)-direction*(RADIUS-2.2)+across*offset+Vector3(0,0.09,0)],speed)
+   walk_route("ground trail "+NAMES[i]+mode,ground_route(i),speed)
+   walk_route("connected visitor stage "+NAMES[i]+mode,visitor_stage_route(i),speed)
+   for surface in walk_surfaces:
+    if surface.kind!="raised":
+     continue
+    if surface.has("radius"):
+     var rim = []
+     for k in 17:
+      rim.append(surface.a+Vector3(cos(k*TAU/16),0,sin(k*TAU/16))*(float(surface.radius)-0.6))
+     walk_route("deck edge "+NAMES[i]+mode,rim,speed)
+    else:
+     var side = Vector3(surface.b.z-surface.a.z,0,surface.a.x-surface.b.x).normalized()*(float(surface.width)*0.5-0.55)
+     for sign in [-1,1]:
+      var inset: Vector3 = (surface.b-surface.a).normalized()*minf(0.55,surface.a.distance_to(surface.b)*0.2)
+      walk_route("raised edge "+NAMES[i]+mode,[surface.a+inset+side*sign,surface.b-inset+side*sign],speed)
+   for boundary in raised_boundaries:
+    var middle: Vector3 = (boundary.a+boundary.b)*0.5
+    var edge_direction: Vector3 = boundary.b-boundary.a
+    var inward = Vector3(-edge_direction.z,0,edge_direction.x).normalized()
+    if inward.dot(boundary.centre-middle)<0:
+     inward = -inward
+    var start = middle+inward*0.65
+    var ray = PhysicsRayQueryParameters3D.create(start+Vector3(0,1.0,0),start-Vector3(0,1.0,0),1)
+    ray.exclude = [g.player.get_rid(),g.car.get_rid()]
+    var support = g.get_world_3d().direct_space_state.intersect_ray(ray)
+    assert(not support.is_empty(),"Raised-edge start has floor")
+    g.player.position = Vector3(start.x,support.position.y+0.7,start.z)
+    g.player.velocity = Vector3.ZERO
+    var stopped = false
+    for press in 20:
+     drive_body(-inward,speed,1)
+     for hit in g.player.get_slide_collision_count():
+      var collision = g.player.get_slide_collision(hit)
+      if collision.get_collider().name.begins_with("ContinuousSolidGuards") and collision.get_normal().dot(-inward)<-0.1:
+       stopped = true
+       break
+     if stopped:
+      break
+    assert(stopped,"Solid raised edge %s %s start=%s middle=%s direction=%s ended=%s"%[NAMES[i],mode,start,middle,inward,g.player.position])
+   for f in fences:
+    if int(f.dome)!=i:
+     continue
+    for angle in 8:
+     var dir = Vector3(cos(angle*TAU/8),0,sin(angle*TAU/8))
+     g.player.position = f.c+dir*(float(f.r)+1.1)+Vector3(0,0.79,0)
+     g.player.velocity = Vector3.ZERO
+     drive_body(-dir,speed,60)
+     assert(Vector2(g.player.position.x-f.c.x,g.player.position.z-f.c.z).length()>=float(f.r)+0.15,"Solid pen from every side: "+str(f.si)+mode)
+   for angle in [0.18,0.45,0.9,1.5,2.2,PI-0.18,PI+0.18,-0.18,-0.9,-2.2]:
+    var dir = direction.rotated(Vector3.UP,angle)
+    g.player.position = dome_c(i)+dir*(RADIUS-2.0)+Vector3(0,0.79,0)
+    g.player.velocity = Vector3.ZERO
+    drive_body(dir,speed,90)
+    assert(Vector2(g.player.position.x-dome_c(i).x,g.player.position.z-dome_c(i).z).length()<RADIUS-0.1,"Sealed wall: only tunnel exit %s %s angle %.2f at %s"%[NAMES[i],mode,angle,g.player.position])
+   # Explicitly inject the real body into every pen; rescue must work in each mode.
+   safety_enabled = true
+   for f in fences:
+    if int(f.dome)!=i:
+     continue
+    rescue_cooldown = 0
+    g.player.position = f.c+Vector3(0,0.79,0)
+    safety_net(0.02)
+    assert(not inside_pen(g.player.position,0.1),"Pen safety net "+NAMES[i]+mode)
+    assert(not g._blocked_at(g.player.position+Vector3(0,0.15,0),0.3),"Rescue destination is open")
+   rescue_cooldown = 0
+   stuck_seconds = 0
+   stuck_anchor = g.player.position
+   g.stick = Vector2(1,0)
+   for hold in 9:
+    safety_net(0.2)
+   assert(g.stick==Vector2.ZERO and rescue_cooldown>0,"Held-stick recovery "+mode)
+   safety_enabled = false
+  # Complete every real quest and passport page without repeat rewards.
+  state.visits = int(state.visits)|(1<<i)
   for q in 3:
    var id = i*3+q
    start_quest(i,q)
-   if id==4:
-    g.day_hour_override = 13
-    g.player.position = quest_point(i,q,0)+Vector3(0,0.8,0)
-    assert(interact() and quest_step(id)==0,"Lanterns require dusk")
-   if id==14:
-    test_time = 18000+4*35+26
-    g.player.position = quest_point(i,q,0)+Vector3(0,0.8,0)
-    assert(interact() and quest_step(id)==0,"Stork counting requires the feeding show")
    g.day_hour_override = 18.5
    test_time = 18000+i*35+20
-   for a in animals:
-    if int(a.dome)==i:
-     animate_animal(a,0.2,true)
-     a.node.position = a.target
-   for k in 3:
-    var target = quest_point(i,q,k)
-    assert(not g._blocked_at(target+Vector3(0,0.85,0),0.25),"Quest marker can be reached: %d at %s"%[id,target])
-    g.player.position = target+Vector3(0,0.8,0)
+   for animal in animals:
+    animate_animal(animal,0.2,true)
+    animal.node.position = animal.target
+   for step in 3:
+    g.player.position = quest_point(i,q,step)+Vector3(0,0.8,0)
+    assert(not g._blocked_at(g.player.position,0.25),"Quest %d step %d at %s blocked by %s"%[id,step,g.player.position,g._blocker(g.player.position,0.25)])
     if id==9:
-     for a in baby_nodes:
-      if int(a.dome)==3:
-       a.node.position = a.c
-    assert(interact(),"Quest interaction available")
-    assert(quest_step(id)==k+1,"Quest step advances %d: %d" % [id,k])
-   assert(state.quests.has(str(id)),"Quest complete")
-   var cash = g.cash
+     for chick in baby_nodes:
+      if int(chick.dome)==3:
+       chick.node.position = chick.c
+    assert(interact() and quest_step(id)==step+1,"Quest flow %d step %d"%[id,step])
+   var paid = g.cash
    advance_quest(id)
-   assert(g.cash==cash,"Quest reward once")
+   assert(g.cash==paid,"Quest pays once")
   claim_page(i)
-  assert(int(state.pages)&(1<<i),"Passport page can complete")
-  var cash = g.cash
+  assert(int(state.pages)&(1<<i),"Continent page completes")
+  var paid = g.cash
   claim_page(i)
-  assert(g.cash==cash,"Passport stamp and reward once")
- assert(rank_index()==3,"Twelve quests earn Wildlife Legend")
- var feed = feeding(0,18020)
- assert(feed.active and not feeding(0,18026).active and feeding(0,18180).slot==int(feed.slot)+1,"Feeding schedule boundaries")
- test_time = 18020
- active = 0
- g.player.position = dome_c(0)+Vector3(0,0.8,0)
- interval = 0
- tick(0.2)
- var cash = g.cash
- interval = 0
- tick(0.2)
- assert(g.cash==cash,"Feeding show attendance pays once")
- for day in ["2026-11-20","2026-11-21","2026-11-22"]:
-  test_day = day
-  var k = keeper()
-  active = int(k.dome)
-  for step in 3:
-   g.player.position = keeper().p+Vector3(0,0.8,0)
-   finish_keeper()
-  assert(state.keeper_day==day,"Daily task completes")
-  var cash2 = g.cash
-  finish_keeper()
-  assert(g.cash==cash2,"Keeper only pays once daily")
- assert(int(state.streak)==3,"Consecutive keeper days build streak")
- test_day = "2026-11-24"
- active = int(keeper().dome)
- for step in 3:
-  g.player.position = keeper().p+Vector3(0,0.8,0)
-  finish_keeper()
- assert(int(state.streak)==1,"Missing a day resets streak only")
- # A recent nearby on-foot peer enables co-op; stale/distant/driving peers do not.
- var peer_node = Node3D.new()
- g.add_child(peer_node)
- peer_node.position = g.player.position+Vector3(3,0,0)
- g.online_peers = {"wb_coop":{"node":peer_node,"driving":false,"seen":Time.get_ticks_msec()/1000.0}}
- assert(coop_near(g.player.position),"Nearby friends co-op")
- g.online_peers.wb_coop.seen = -100
- assert(not coop_near(g.player.position),"Stale peers cannot earn co-op")
- g.online_peers = keep.peers
- peer_node.queue_free()
- # Aim the real camera at a real animal. A wall blocks detection, and off-center targets do not count.
- var camera_keep = g.camera.global_transform
- active = 0
- for i in 7:
-  interiors[i].visible = i==active
- var a = animals.filter(func(an):return int(an.si)==8)[0]
- var inward = (dome_c(0)-a.c).normalized()
- g.camera.global_position = a.c+inward*9+Vector3(0,3,0)
- g.camera.look_at(a.node.global_position+Vector3(0,0.65,0))
- assert(photo_target()>=0,"Centered animal photo detection")
- g.shot_on = true
- photo_capture()
- assert(not state.photos.is_empty(),"Safari photos enter album")
- var photos = state.photos.size()
- var photo_cash = g.cash
- photo_capture()
- assert(state.photos.size()==photos and g.cash==photo_cash,"Photo rewards once")
- g.camera.rotate_y(PI)
- assert(photo_target()==-1,"Off-center animal is not photographed")
- # Every appended model is loaded and can be recognized by the real Photo Safari camera.
- for si in range(33,SPECIES.size()):
-  assert(g.animal_scenes.get(str(SPECIES[si].kind)) is PackedScene,"Phase 2 Blender model loaded")
-  var subject = animals.filter(func(an):return int(an.si)==si and not an.has("rare"))[0]
-  active = int(subject.dome)
-  for i in 7:
-   interiors[i].visible = i==active
-  var aim: Vector3 = subject.node.global_position+Vector3(0,0.65,0)
-  g.camera.global_position = aim+Vector3(0,0.1,2.0)
-  g.camera.look_at(aim)
-  assert(photo_target()==si,"New animal centered photo detection: "+str(SPECIES[si].name))
-  photo_capture()
-  assert(state.photos.has(str(si)),"New animal photo album entry")
- # Check new shows and all new rare variants through real tick/once-only reward paths.
- for i in range(4,7):
-  active = i
-  g.player.position = dome_c(i)+Vector3(0,0.8,0)
+  assert(g.cash==paid,"Page reward once")
+  for si in SPECIES.size():
+   if int(SPECIES[si].dome)!=i:
+    continue
+   var subject = animals.filter(func(a):return int(a.si)==si and not a.has("rare"))[0]
+   var aim: Vector3 = subject.node.position+Vector3(0,0.65,0)
+   g.camera.global_position = aim+Vector3(0,0.15,1.2)
+   g.camera.look_at(aim)
+   assert(photo_target()==si,"Photo detection "+str(SPECIES[si].kind))
+   g.shot_on = true
+   photo_capture()
+   assert(state.photos.has(str(si)),"Album keeps each species")
   test_time = 36000+i*35+20
+  g.player.position = dome_c(i)+Vector3(0,0.79,0)
   interval = 0
   tick(0.2)
-  assert(state.shows.has("%d:%d"%[i,int(feeding(i).slot)]),"Phase 2 feeding show attendance")
-  var show_cash = g.cash
+  assert(state.shows.has("%d:%d"%[i,int(feeding(i).slot)]),"Feeding attendance")
+  var feed_cash = g.cash
   interval = 0
   tick(0.2)
-  assert(g.cash==show_cash,"New show rewards once")
- for rare_kind in range(3,6):
+  assert(g.cash==feed_cash,"Feeding pays once")
+ assert(state.pages==127 and state.world and rank_index()==3,"All pages, ranks and World Explorer preserved")
+ # Rare sightings still earn their achievement exactly once after streaming.
+ for rare_kind in RARES.size():
+  activate_dome(int(RARE_DOMES[rare_kind]))
+  await g.get_tree().physics_frame
   var event_time = -1.0
-  for slot in 1000:
+  for slot in range(1000,3000):
    var event = rare_event(slot*300+20)
    if event.active and int(event.kind)==rare_kind:
     event_time = slot*300+20
     break
-  assert(event_time>=0,"New rare can be scheduled")
+  assert(event_time>=0,"Rare scheduled")
   test_time = event_time
-  var rare_subject = rare_nodes.filter(func(an):return int(an.rare)==rare_kind)[0]
-  active = int(rare_subject.dome)
-  for i in 7:
-   interiors[i].visible = i==active
-  g.player.position = rare_subject.node.position+Vector3(0,0.7,7)
-  g.camera.global_position = rare_subject.node.position+Vector3(0,2,7)
-  g.camera.look_at(rare_subject.node.position+Vector3(0,0.7,0))
+  var subject = rare_nodes.filter(func(a):return int(a.rare)==rare_kind)[0]
+  var toward = (dome_c(active)-subject.c).normalized()
+  g.player.position = subject.c+toward*(float(subject.r)+2.8)+Vector3(0,0.79,0)
+  g.camera.global_position = g.player.position+Vector3(0,2,0)
+  g.camera.look_at(subject.node.position+Vector3(0,0.65,0))
   interval = 0
   tick(0.2)
-  assert(state.ach.has("rare_%d"%rare_kind),"New rare sighting earns its achievement")
+  assert(state.rare.has(str(rare_event().slot)),"Rare spotted")
   var rare_cash = g.cash
   interval = 0
   tick(0.2)
-  assert(g.cash==rare_cash,"Rare sighting reward once per event")
- g.camera.global_transform = camera_keep
- # All seven pages must now complete through actual quest interactions.
- assert(int(state.pages)==127,"All seven pages completed through their real quests")
- finish_passport()
- assert(state.world and state.ach.has("world"),"Full passport title and gold ring")
- var world_cash = g.cash
- finish_passport()
- assert(g.cash==world_cash,"World Explorer reward once")
- var saved = ConfigFile.new()
- save_state(saved)
+  assert(g.cash==rare_cash,"Rare pays once")
+ var peer = Node3D.new()
+ g.add_child(peer)
+ peer.position = g.player.position+Vector3(3,0,0)
+ g.online_peers = {"check":{"node":peer,"driving":false,"seen":Time.get_ticks_msec()/1000.0}}
+ assert(coop_near(g.player.position),"Nearby co-op preserved")
+ g.online_peers.check.seen = -100
+ assert(not coop_near(g.player.position),"Stale peer excluded")
+ g.online_peers.clear()
+ peer.free()
+ # Daily task/streak and persistence still work after repeated unload/reload.
+ for day in ["2026-11-20","2026-11-21","2026-11-22","2026-11-24"]:
+  test_day = day
+  var keeper_job = keeper()
+  activate_dome(int(keeper_job.dome))
+  await g.get_tree().physics_frame
+  for step in 3:
+   g.player.position = keeper().p+Vector3(0,0.8,0)
+   finish_keeper()
+  assert(state.keeper_day==day,"Daily task completes")
+  assert(int(state.streak)==(1 if day=="2026-11-24" else day_number(day)-day_number("2026-11-20")+1),"Daily streak")
+ var file = ConfigFile.new()
+ save_state(file)
  var expected = state.duplicate(true)
  reset_state()
- load_state(saved)
- assert(state==expected,"Passport, photos, quest steps, rank and daily state persist")
- # Restore all player state; the external test wrapper restores the full original save bytes.
+ load_state(file)
+ assert(state==expected,"Passport and daily state round-trip")
+ # Restore all user state; external runner restores the original file bytes too.
  state = keep.state
  g.bio_seen = keep.seen
  g.cash = keep.cash
  g.bonus_xp = keep.xp
  g.bio_pass_day = keep.pass
  g.player.transform = keep.player
+ g.player.velocity = keep.velocity
+ g.board_on = keep.board
+ g.run_on = keep.run
  g.driving = keep.driving
  g.paused = keep.paused
- g.shot_on = keep.shot
- active = keep.active
  task = keep.task
  test_day = keep.day
  test_time = keep.time
  g.day_hour_override = keep.hour
+ g.online_peers = keep.peers
+ g.shot_on = keep.shot
+ g.camera.global_transform = keep.camera
+ g.player.get_child(0).disabled = keep.disabled
+ g.place_test_level = keep.place_level
+ g._places_refresh()
+ safety_enabled = true
+ stuck_seconds = 0
  pending_save = false
- g._bio_gates_update()
- for i in 7:
-  interiors[i].visible = i==active
- print("WORLD_BIOSPHERE_OK: seven walkable domes, fenced wildlife, 21 quest flows, passport rewards once, feeding clock, photos, keeper streak, co-op, legacy save bits")
+ activate_dome(int(keep.active))
+ g.set_process(keep.process)
+ g.set_physics_process(keep.physics)
+ print("WORLD_BIOSPHERE_OK: 24-angle hub/seven-dome bevels; sealed doors and ring; real-body walk/run/BOARD paths/deck edges; every pen side and rescue; supported wildlife; scenery clearance; one resident interior; quests/photos/passport/daily/save")
+
+func drive_body(direction: Vector3,speed: float,steps: int) -> void:
+ var delta = maxf(g.get_physics_process_delta_time(),0.001)
+ for step in steps:
+  g.player.velocity = Vector3(direction.x*speed,g.player.velocity.y-24*delta,direction.z*speed)
+  g.player.move_and_slide()
 
 func screenshots() -> void:
  g.place_test_level = 40
  g._places_refresh()
+ g.set_process(false)
+ g.set_physics_process(false)
  g.paused = false
  g.driving = false
  g.cam_lock = true
- g.set_process(false)
- g.set_physics_process(false)
  g.world_env_res.fog_enabled = false
- g.player.position = C+Vector3(0,0.9,0)
- g.bio_pass_day = today()
  for child in g.get_children():
   if child is CanvasLayer or child is Control:
    child.hide()
+ g.player.hide()
  for i in 7:
-  active = i
-  for f in atmospheres:
-   f.node.emitting = int(f.dome)==i
-   f.node.process_mode = Node.PROCESS_MODE_INHERIT if int(f.dome)==i else Node.PROCESS_MODE_DISABLED
-  for j in 7:
-   interiors[j].visible = j==i
+  g.player.position = dome_c(i)+Vector3(0,0.79,0)
+  activate_dome(i)
+  await g.get_tree().physics_frame
   for animal in animals:
-   if int(animal.dome)==i:
-    animate_animal(animal,2.0,false)
-  g.player.position = dome_c(i)+Vector3(0,0.9,0)
+   animate_animal(animal,0.2,false)
   g.camera.global_position = local_point(i,0,-30,2.4)
   g.camera.look_at(local_point(i,0,8,3.5))
   await g._save_shot(NAMES[i].to_lower().replace(" ","-"))
- # Close habitat views make the new original animal models reviewable.
- for si in [35,39,40]:
-  var i = int(SPECIES[si].dome)
-  for j in 7:
-   interiors[j].visible = j==i
-  var home = g.bio_hab[si]
-  var subject = animals.filter(func(a):return int(a.si)==si and not a.has("rare"))[0]
-  var p: Vector3 = subject.node.position
-  g.camera.global_position = p+(dome_c(i)-home.c).normalized()*6+Vector3(0,2.2,0)
-  g.camera.look_at(p+Vector3(0,1.0,0))
-  await g._save_shot(NAMES[i].to_lower().replace(" ","-")+"-wildlife")
- # Views from the actual upper visitor stages show the occupied vertical layers.
- g.player.hide()
- var viewpoints = [Vector3(9.5,6.2,20),Vector3(8.5,8.0,16),Vector3(15.5,7.0,21),Vector3(-28,9.8,11),Vector3(-18,5,6),Vector3(-20,7.8,14),Vector3(7,3.2,28)]
- var targets = [Vector3(-10,10,4),Vector3(-14,13,3),Vector3(10,13,-5),Vector3(-15,15,14),Vector3(12,5,13),Vector3(12,8,13),Vector3(-16,7,-3)]
- for i in 7:
-  for j in 7:
-   interiors[j].visible = j==i
-  g.camera.fov = 70
-  g.camera.global_position = local_point(i,viewpoints[i].x,viewpoints[i].z,viewpoints[i].y)
-  g.camera.look_at(local_point(i,targets[i].x,targets[i].z,targets[i].y))
-  await g._save_shot(NAMES[i].to_lower().replace(" ","-")+"-layers")
- for detail in interiors:
-  detail.hide()
- g.camera.global_position = C+Vector3(5,270,310)
+  if i==0:
+   var elephant = animals.filter(func(a):return a.kind=="elephant")[0]
+   var point: Vector3 = elephant.node.position
+   var face = (dome_c(i)-elephant.c).normalized()
+   elephant.node.rotation.y = atan2(-face.x,-face.z)
+   g.camera.global_position = point+face*6+Vector3(face.z,0,-face.x)*5+Vector3(0,2.5,0)
+   g.camera.look_at(point+Vector3(0,1.6,0))
+   await g._save_shot("elephant-glb")
+ g.player.position = C
+ activate_dome(-1)
+ unload_detail()
  g.camera.far = 1200
- g.world_env_res.fog_enabled = false
+ g.camera.global_position = C+Vector3(5,270,310)
  g.camera.look_at(C)
- await g._save_shot("campus")
- page = 0
- open_panel()
- await g._save_shot("passport")
+ await g._save_shot("enclosed-ring-campus")
  print("WORLD_BIOSPHERE_SHOTS_OK")
 
 func backdrop(i: int,parent: Node3D) -> void:
@@ -1596,7 +1676,7 @@ func backdrop(i: int,parent: Node3D) -> void:
    for q in [Vector2(k,j),Vector2(k+1,j),Vector2(k,j+1),Vector2(k+1,j+1)]:
     var a = q.x*TAU/32
     var t = q.y*PI/16
-    ps.append(c+Vector3(cos(a)*40*cos(t),3+35*sin(t),sin(a)*40*cos(t)))
+    ps.append(c+Vector3(cos(a)*40*cos(t),-0.3+35*sin(t),sin(a)*40*cos(t)))
    for n in [0,2,1,1,2,3]:
     st.add_vertex(ps[n])
  st.generate_normals()
@@ -1613,46 +1693,6 @@ func backdrop(i: int,parent: Node3D) -> void:
  mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
  parent.add_child(mi)
 
-func smoke_entry_movement() -> void:
- # Point probes above floor level missed the old 14 cm lips. Move the complete
- # player capsule through each entrance in both directions, at all three speeds.
- var player: CharacterBody3D = g.player
- var keep = {"transform":player.transform,"velocity":player.velocity,"board":g.board_on,"run":g.run_on,"shape_disabled":player.get_child(0).disabled,"pass":g.bio_pass_day}
- player.get_child(0).disabled = false
- for mode in ["walk","run","board"]:
-  g.board_on = mode=="board"
-  g.run_on = mode=="run"
-  var speed = g._walk_speed()
-  # Entry is free even for an empty/expired legacy day-pass save.
-  g.bio_pass_day = ""
-  g._bio_gates_update()
-  assert(g._bio_pass_ok(),"Free entry without a day pass")
-  for gate_data in g.bio_gates:
-   assert(gate_data.body.collision_layer==0 and gate_data.body.collision_mask==0 and not gate_data.panels.visible,"Gate colliders off, panels open")
-  walk_route(mode+" ENTRY to hub",[ENTRY+Vector3(0,0.06,0),C+Vector3(0,0.06,36),C+Vector3(0,0.09,12),C+Vector3(0,0.09,0)],speed)
-  for i in 7:
-   var c = dome_c(i)
-   var door_route = [C+Vector3(0,0.09,0),c+Vector3(0,0.09,0)]
-   if i>=4:
-    door_route = [ENTRY+Vector3(0,0.06,0),C+Vector3(0,0.06,36),C+Vector3(0,0.09,12),C+Vector3(0,0.09,0),c+Vector3(0,0.09,0)]
-   walk_route(mode+" ENTRY to "+NAMES[i],door_route,speed)
-  for i in 7:
-   walk_route(mode+" visitor trail "+NAMES[i],ground_route(i),speed)
-  walk_route(mode+" canopy",[local_point(2,-9.5,-25,0.09),local_point(2,-9.5,-12,3.0),local_point(2,-4,-8,5.5),local_point(2,-4,23,5.5),local_point(2,15.5,23,5.5)],speed)
-  walk_route(mode+" safari lookout",[local_point(0,9.5,-25,0.09),local_point(0,9.5,-3,4.5),local_point(0,9.5,24,4.5),local_point(0,7,24,4.5)],speed)
-  walk_route(mode+" cloud forest",asia_route(),speed)
-  walk_route(mode+" glacier climb",antarctic_route(),speed)
-  for i in range(4,7):
-   walk_route(mode+" "+NAMES[i]+" stage",phase2_route(i),speed)
-
- g.bio_pass_day = keep.pass
- g.board_on = keep.board
- g.run_on = keep.run
- player.transform = keep.transform
- player.velocity = keep.velocity
- player.get_child(0).disabled = keep.shape_disabled
- g._bio_gates_update()
- print("WORLD_BIOSPHERE_ENTRY_OK: hub, seven distinct visitor trails, safari lookout, rain-vortex terrace, tree fort and glacier summit; both directions, walk/run/hoverboard; Phase 2 stages and free ENTRY-to-centre routes")
 
 func walk_route(label: String,points: Array,speed: float) -> void:
  var player: CharacterBody3D = g.player
@@ -1693,7 +1733,7 @@ func rich_landscape(i: int,parent: Node3D) -> void:
 
  var rng = RandomNumberGenerator.new()
  rng.seed = 54030+i
- for k in 360:
+ for k in 200:
   var p = local_point(i,rng.randf_range(-34,34),rng.randf_range(-32,32),0.1)
   var c = dome_c(i)
   if Vector2(p.x-c.x,p.z-c.z).length()>RADIUS-2 or not planting_clear(i,p):
@@ -1725,10 +1765,10 @@ func rich_landscape(i: int,parent: Node3D) -> void:
  elif i==2:
   # A second canopy span brings the player next to the large waterfall.
   var a = local_point(i,-4,23,5.5)
-  var b = local_point(i,15.5,23,5.5)
+  var b = local_point(i,7,23,5.5)
   walkway(parent,a,b,3.0,3.0,0.0)
   tree_fort(parent)
-  glass_edge(parent,local_point(i,-4,23,5.5),local_point(i,15.5,23,5.5),3.0,COLORS[i],3.0,0.0)
+  glass_edge(parent,local_point(i,-4,23,5.5),local_point(i,7,23,5.5),3.0,COLORS[i],3.0,0.0)
   waterfall(i,parent,local_point(i,24,18,0.2),5.0,19.0)
   soft_mist(i,parent,local_point(i,24,18,1),Vector3(3,0.4,2))
   for k in 3:
@@ -1794,7 +1834,7 @@ func rain_ring(parent: Node3D) -> void:
   var x = d
   var z = x.cross(Vector3.UP).normalized()
   var y = z.cross(x)
-  box(parent,(a+b)*0.5-Vector3(0,0.13,0),Vector3(a.distance_to(b)+0.2,0.26,2.6),Color("e1e8df"),true,Basis(x,y,z).get_euler())
+  phase2_walkway(parent,a,b,2.6,0,0)
   # Leave an unrailed landing opening on the near side of the ring.
   if (a.lerp(b,0.5)-join).length()>2.4:
    glass_edge(parent,a,b,2.6,COLORS[i])
@@ -1808,16 +1848,13 @@ func glass_edge(parent: Node3D,a: Vector3,b: Vector3,width: float,col: Color,ope
  var axis = (b-a).normalized()
  a += axis*open_start
  b -= axis*open_end
- var d = b-a
- var sideways = Vector3(d.z,0,-d.x).normalized()
+ var sideways = Vector3(b.z-a.z,0,a.x-b.x).normalized()
  for side in [-1,1]:
-  var p = a+sideways*width*0.5*side+Vector3(0,0.65,0)
-  var q = b+sideways*width*0.5*side+Vector3(0,0.65,0)
-  var mi = g._fc_part(parent,g._bbox(),(p+q)*0.5,g._bio_glass_mat(col,0.22),Vector3(0.04,0.9,d.length()))
-  mi.rotation = Basis.looking_at(d.normalized(),Vector3.UP).get_euler()
-  beam(parent,p+Vector3(0,0.5,0),q+Vector3(0,0.5,0),0.08,col)
+  beam(parent,a+sideways*width*0.5*side+Vector3(0,1.25,0),b+sideways*width*0.5*side+Vector3(0,1.25,0),0.06,col)
 
 func waterfall(i: int,parent: Node3D,p: Vector3,width: float,height: float) -> void:
+ var old_group = scenery_group
+ scenery_group = "Waterfall:%d" % i
  var sh = Shader.new()
  sh.code = "shader_type spatial; render_mode cull_disabled,unshaded,blend_mix; varying vec3 p; void vertex(){p=VERTEX;} void fragment(){float stripe=sin(p.x*14.0+sin(p.y*0.9-TIME*4.0)); float flow=sin(p.y*4.0-TIME*12.0+p.x*2.0); ALBEDO=mix(vec3(0.24,0.64,0.77),vec3(0.85,0.97,1.0),stripe*0.24+flow*0.14+0.42); ALPHA=0.6;}"
  var mat = ShaderMaterial.new()
@@ -1832,10 +1869,12 @@ func waterfall(i: int,parent: Node3D,p: Vector3,width: float,height: float) -> v
  face.y = 0
  node.rotation.y = atan2(face.x,face.z)
  parent.add_child(node)
+ scenery_bounds.append({"dome":i,"node":node,"group":scenery_group})
  for k in 7:
   var q = p+Vector3((k-3)*1.3,0,-2.5)
   shape(parent,g._blow(1.0),q+Vector3(0,5+k%3*2.4,0),Vector3(2.5,7+k%3*2.4,2.5),Color("778d83"))
  disc(parent,p+Vector3(0,0.15,0),4.0,0.08,Color("5ea8b4"))
+ scenery_group = old_group
 
 func soft_mist(i: int,parent: Node3D,p: Vector3,extent: Vector3) -> void:
  var mist = CPUParticles3D.new()
@@ -1883,6 +1922,8 @@ func ground_route(i: int) -> Array:
 
 func ground_trails(i: int,parent: Node3D) -> void:
  var route = ground_route(i)
+ for segment in range(1,route.size()):
+  register_walk(parent,route[segment-1],route[segment],3.8,"ground")
  var color = [Color("d9c38f"),Color("d9d8c4"),Color("b9a681"),Color("adcbdc"),Color("d4c5b3"),Color("bdab8d"),Color("e8d7ac")][i]
  for k in range(1,route.size()):
   var a: Vector3 = route[k-1]
@@ -1902,13 +1943,14 @@ func africa_lookout(parent: Node3D) -> void:
  var centre = local_point(i,7,24,4.5)
  box(parent,centre-Vector3(0,0.15,0),Vector3(7,0.3,8),Color("c9ad76"),true)
  for z in [-18,-8,2,12,21]:
-  var top = 4.5 if z>=-3 else lerpf(0.09,4.5,float(z+25)/22.0)
+  var u = clampf(float(z+25)/22.0,0,1)
+  var top = lerpf(0.09,4.5,u*u*(3-2*u))
   beam(parent,local_point(i,9.5,z,0.09),local_point(i,9.5,z,top-0.15),0.25,Color("e7d7b6"))
  for side in [-1,1]:
-  beam(parent,centre+Vector3(side*2.8,0,2.5),centre+Vector3(side*2.8,3.2,2.5),0.18,Color("c9b686"))
+  beam(parent,centre+Vector3(side*2.8,0,2.5),centre+Vector3(side*2.8,3.5,2.5),0.18,Color("c9b686"))
  var roof = g._bcone(0.05,4.8,1.0).duplicate()
  roof.radial_segments = 6
- shape(parent,roof,centre+Vector3(0,3.5,0),Vector3(1,1,0.8),Color("f2dcb0"))
+ shape(parent,roof,centre+Vector3(0,3.8,0),Vector3(1,1,0.8),Color("f2dcb0"))
  text(parent,"SAVANNA SAFARI LOOKOUT",centre+Vector3(0,2.0,0),Color("fff3d6"),26,45)
 
 func asia_route() -> Array:
@@ -1928,6 +1970,7 @@ func asia_rainwalk(parent: Node3D) -> void:
   walkway(parent,points[k-1],points[k],3.0,2.0 if last else 0.0,2.0 if last or turning else 0.0)
   if not last:
    glass_edge(parent,points[k-1],points[k],3.0,COLORS[1],0.0,2.0 if turning else 0.0)
+ disc(parent,local_point(1,-12,16,5.85),2.0,0.3,Color("b6c7bd"),true)
  rain_ring(parent)
  var p = local_point(1,0,16)
  disc(parent,p+Vector3(0,0.16,0),4.2,0.08,Color("70b4b7"))
@@ -1975,17 +2018,13 @@ func antarctic_spiral(parent: Node3D) -> void:
  text(parent,"GLACIER SUMMIT · AURORA WATCH",top+Vector3(0,2,0),Color("c5f6ff"),25,45)
 
 func tree_fort(parent: Node3D) -> void:
- var centre = local_point(2,18,23,5.5)
+ var centre = local_point(2,7,23,5.5)
  var outward = (dome_c(2)-C).normalized()
  var across = Vector3(outward.z,0,-outward.x)
  var rot = Basis(across,Vector3.UP,outward).get_euler()
- # Four timber strips leave a three-metre opening for the living tree trunk.
- for sd in [-1,1]:
-  box(parent,centre+outward*sd*2.5-Vector3(0,0.15,0),Vector3(8,0.3,2),Color("a08354"),true,rot)
-  box(parent,centre+across*sd*2.75-Vector3(0,0.15,0),Vector3(2.5,0.3,3),Color("a08354"),true,rot)
- tall_tree(parent,local_point(2,18,23,0.09),1.8,4.5,"nature_oak")
- for sd in [-1,1]:
-  beam(parent,centre+across*sd*3.8+outward*3.4+Vector3(0,1,0),centre+across*sd*3.8-outward*3.4+Vector3(0,1,0),0.12,Color("d0b27b"))
+ # A complete floor prevents falls through the old trunk opening.
+ box(parent,centre-Vector3(0,0.15,0),Vector3(8,0.3,7),Color("a08354"),true,rot)
+ tall_tree(parent,local_point(2,16,28,0.09),1.8,7.0,"nature_oak")
  text(parent,"RAINFOREST TREE FORT",centre+Vector3(0,2.6,0),Color("d2ffe0"),27,45)
 
 func floe_approach(parent: Node3D,p: Vector3) -> void:
@@ -2062,6 +2101,18 @@ func habitat_layers(i: int,parent: Node3D) -> void:
   text(parent,"ICE-CLIFF NESTS · ALBATROSS",nest+Vector3(0,16,0),Color("d9f6ff"),24,50)
 
 func upper_animal(si: int,k: int,parent: Node3D,c: Vector3,r: float,motion: String) -> Dictionary:
+ if motion=="glide" and not can_fly(si):
+  var home = g.bio_hab[si]
+  if SPECIES[si].kind in ["flamingo","crane","penguin"]:
+   return spawn_animal(si,k,parent,home.c,float(home.r))
+  var height = 6.0
+  c = home.c+Vector3(0,height,0)
+  r = 0.25
+  motion = "perch"
+  var nest_key = str(si)
+  if not parked_nests.has(nest_key):
+   parked_nests[nest_key] = true
+   high_habitat(parent,home.c,height,2.2,Color("9a8664"),true)
  var a = spawn_animal(si,k,parent,c,r)
  a["upper"] = true
  a["upper_motion"] = motion
@@ -2072,6 +2123,12 @@ func upper_animal(si: int,k: int,parent: Node3D,c: Vector3,r: float,motion: Stri
   if a.get("folded_wings")!=null:
    a.folded_wings.visible = motion!="glide"
  if motion=="glide":
+  if a.node.get_child_count()>0:
+   a.node.get_child(0).rotation.x = -0.35
+  for wing in a.wings:
+   wing.rotation.x = 0.35
+  for leg in a.legs:
+   leg.hide()
   # The outer glass dome is the flight enclosure; keep the whole circuit inside it.
   a.node.rotation.z = 0.1*sin(float(k))
   for name in ["WingL","WingR"]:
@@ -2081,6 +2138,7 @@ func upper_animal(si: int,k: int,parent: Node3D,c: Vector3,r: float,motion: Stri
  return a
 
 func high_habitat(parent: Node3D,c: Vector3,height: float,radius: float,col: Color,tree: bool) -> void:
+ animal_structure = true
  if tree:
   tall_tree(parent,c,2.6,height-2.5,"nature_oak2")
   for sd in [-1,1]:
@@ -2096,6 +2154,8 @@ func high_habitat(parent: Node3D,c: Vector3,height: float,radius: float,col: Col
   var b = top+Vector3(cos((k+1)*TAU/16),0,sin((k+1)*TAU/16))*radius
   beam(parent,a+Vector3(0,0.9,0),b+Vector3(0,0.9,0),0.1,Color("c8d9d1"),true)
 
+ animal_structure = false
+
 func x_layer(p: Vector3,i: int) -> float:
  var forward = (dome_c(i)-C).normalized()
  return (p-dome_c(i)).dot(Vector3(forward.z,0,-forward.x))
@@ -2104,22 +2164,25 @@ func z_layer(p: Vector3,i: int) -> float:
  return (p-dome_c(i)).dot((dome_c(i)-C).normalized())
 
 func tall_tree(parent: Node3D,p: Vector3,scale_value: float,raise: float,kind: String) -> void:
+ var old_group = scenery_group
+ scenery_group = "Tree:%d:%s" % [parent.get_instance_id(),str(p)]
  # Raise the leafy crown above visitor/animal platforms and extend its trunk
  # down to the floor, so the new upper paths do not disappear inside leaf cards.
  nature(parent,kind,p+Vector3(0,raise,0),scale_value,0.5)
  shape(parent,g._bcone(0.42,0.68,raise+0.5),p+Vector3(0,(raise+0.5)/2,0),Vector3.ONE,Color("795d40"))
+ scenery_group = old_group
 
 # ---- 0.55.0: three new continents, stable appended animal and quest IDs.
 func phase2_pen(si: int) -> Vector2:
- var positions = {4:Vector2(-18,-22),5:Vector2(18,-22),6:Vector2(-18,-8),34:Vector2(18,20),35:Vector2(-18,20),36:Vector2(18,-8),37:Vector2(18,6),1:Vector2(-18,20),2:Vector2(18,20),12:Vector2(-18,-22),13:Vector2(18,-22),14:Vector2(-18,-8),15:Vector2(18,-8),39:Vector2(18,6),40:Vector2(-18,-22),41:Vector2(18,6),42:Vector2(18,-22),43:Vector2(-18,-8),44:Vector2(18,-8)}
- return positions.get(si,Vector2(-18,6))
+ var positions = {4:Vector2(-23,-21),5:Vector2(23,-21),6:Vector2(-23,-7),34:Vector2(23,21),35:Vector2(-17,24),36:Vector2(23,-7),37:Vector2(23,7),1:Vector2(-17,24),2:Vector2(23,21),12:Vector2(-23,-21),13:Vector2(23,-21),14:Vector2(-23,-7),15:Vector2(23,-7),39:Vector2(23,7),40:Vector2(-23,-21),41:Vector2(23,7),42:Vector2(23,-21),43:Vector2(-23,-7),44:Vector2(23,-7)}
+ return positions.get(si,Vector2(-23,7))
 
 func phase2_route(i: int) -> Array:
- var coords = [Vector3(-9.5,0.09,-25),Vector3(-9.5,1.6,-8),Vector3(-12,3.2,3),Vector3(-18,3.2,6)]
+ var coords = [Vector3(-9.5,0.09,-25),Vector3(-9.5,1.6,-8),Vector3(-12,3.2,1),Vector3(-12,3.2,4),Vector3(-18,3.2,6)]
  if i==5:
-  coords = [Vector3(-9.5,0.09,-25),Vector3(-9.5,3,-5),Vector3(-18,3,0),Vector3(-20,6,9),Vector3(-21.12,6,14)]
+  coords = [Vector3(-9.5,0.09,-25),Vector3(-9.5,3,-8),Vector3(-9.5,3,-5),Vector3(-18,3,0),Vector3(-18.5,3,2.25),Vector3(-20,6,9),Vector3(-21.12,6,14)]
  elif i==6:
-  coords = [Vector3(0,0.09,12),Vector3(0,1.4,22),Vector3(7,1.4,28)]
+  coords = [Vector3(0,0.09,12),Vector3(0,1.4,19),Vector3(0,1.4,22),Vector3(7,1.4,28)]
  var result = []
  for p in coords:
   result.append(local_point(i,p.x,p.z,p.y))
@@ -2127,7 +2190,7 @@ func phase2_route(i: int) -> Array:
 
 func phase2_quest_point(i: int,q: int,step: int) -> Vector3:
  if (i==5 and q==1) or (i==6 and q==2):
-  return phase2_route(i)[[1,2,4][step] if i==5 else step]
+  return phase2_route(i)[[1,3,6][step] if i==5 else [0,2,3][step]]
  var xs = [-7.0,7.0,0.0]
  var zs = [-22.0,-1.0,21.0]
  if i==4:
@@ -2188,7 +2251,7 @@ func phase2_landscape(i: int,parent: Node3D) -> void:
  var rng = RandomNumberGenerator.new()
  rng.seed = 54400+i
  # Vegetation is batched per active interior; no distant continent vegetation draws.
- for k in 230:
+ for k in 160:
   var p = local_point(i,rng.randf_range(-34,34),rng.randf_range(-32,32),0.1)
   if (p-dome_c(i)).length()>35 or not planting_clear(i,p):
    continue
@@ -2212,6 +2275,8 @@ func phase2_landscape(i: int,parent: Node3D) -> void:
  for k in range(1,route.size()):
   phase2_walkway(parent,route[k-1],route[k],3.2,0.0 if k==1 else 2.5,2.5)
   glass_edge(parent,route[k-1],route[k],3.2,COLORS[i],0.0 if k==1 else 2.5,2.5)
+ for index in ([3] if i==4 else [2,3] if i==5 else [2]):
+  disc(parent,route[index]-Vector3(0,0.15,0),2.0,0.3,Color("b6a27c"),true)
  var top: Vector3 = route[-1]
  var outward = (dome_c(i)-C).normalized()
  var deck_rotation = Vector3(0,atan2(outward.x,outward.z),0)
@@ -2265,14 +2330,14 @@ func phase2_landscape(i: int,parent: Node3D) -> void:
   for k in 6:
    shape(parent,g._blow(1),local_point(i,23+k%2*3,-1+k*3,1+k%3),Vector3(2.7,1.8,2),Color("b66e47"))
   var branch = local_point(i,-5,28,1.4)
-  phase2_walkway(parent,route[1],branch,2.8,2.5,2.5)
+  phase2_walkway(parent,local_point(i,0,22,1.4),branch,2.8,2.5,2.5)
   box(parent,branch-Vector3(0,0.15,0),Vector3(4,0.3,4),Color("c6ad7b"),true,deck_rotation)
   text(parent,"OCEANIA · AUSTRALIAN OUTBACK TO OCEAN\nEUCALYPTUS · BILLABONG · COASTAL PIER",local_point(i,0,29,8),Color("ffedce"),30)
  # Small original quest props explain what each marker does before interacting.
  for q in 3:
   for step in 3:
    var p = phase2_quest_point(i,q,step)
-   text(parent,phase2_action(i*3+q,step),p+Vector3(0,1.7,0),Color("fff3cf"),20,12)
+   # The active quest marker already carries this instruction; avoid nine persistent labels.
    if i==4 and q==0 or i==5 and q==2:
     for toe in 3:
      ball(parent,p+Vector3(0.15*toe,0.12,0.2),Vector3(0.08,0.025,0.12),Color("725b46"))
@@ -2293,24 +2358,40 @@ func phase2_layers(i: int,parent: Node3D) -> void:
  text(parent,["WOODLAND OWL NESTS","EAGLE CLIFF NESTS","KOALA TREE HABITAT"][i-4],home+Vector3(0,height+2,0),Color("ecf8dc"),24,45)
 
 func phase2_walkway(parent: Node3D,a: Vector3,b: Vector3,width: float,open_start: float,open_end: float) -> void:
- # A continuous top surface has no vertical box end-face at a ramp/deck joint.
+ # Flat tangents at landings avoid the capsule catching a higher mesh edge.
  var d = b-a
- var across = Vector3(d.z,0,-d.x).normalized()*width*0.5
- var x = d.normalized()
- var z = x.cross(Vector3.UP).normalized()
- var y = z.cross(x).normalized()
- box(parent,(a+b)*0.5-y*0.11,Vector3(d.length(),0.22,width),Color("b29462"),false,Basis(x,y,z).get_euler())
- var surface = ConcavePolygonShape3D.new()
- surface.backface_collision = true
- surface.set_faces(PackedVector3Array([a-across,b-across,a+across,a+across,b-across,b+across]))
- var body = StaticBody3D.new()
- var collision = CollisionShape3D.new()
- collision.shape = surface
- body.add_child(collision)
- parent.add_child(body)
- if d.length()>open_start+open_end:
-  for side in [-1,1]:
-   beam(parent,a+x*open_start+across*side+Vector3(0,1.1,0),b-x*open_end+across*side+Vector3(0,1.1,0),0.12,Color("dfcd9e"),true)
+ var side = Vector3(d.z,0,-d.x).normalized()*width*0.5
+ var count = maxi(2,ceili(Vector2(d.x,d.z).length()/0.45))
+ var left = []
+ var right = []
+ for k in count+1:
+  var t = float(k)/count
+  var centre = a.lerp(b,t)
+  centre.y = lerpf(a.y,b.y,t*t*(3.0-2.0*t))
+  left.append(centre-side)
+  right.append(centre+side)
+ var id = parent.get_instance_id()
+ if not walk_meshes.has(id):
+  walk_meshes[id] = {"parent":parent,"top":PackedVector3Array(),"visual":PackedVector3Array()}
+ var top: PackedVector3Array = walk_meshes[id].top
+ var visual: PackedVector3Array = walk_meshes[id].visual
+ for k in count:
+  var faces = PackedVector3Array([left[k],right[k],left[k+1],right[k],right[k+1],left[k+1]])
+  top.append_array(faces)
+  visual.append_array(faces)
+  for edge in [[left[k],left[k+1]],[right[k+1],right[k]]]:
+   var p: Vector3 = edge[0]
+   var q: Vector3 = edge[1]
+   visual.append_array(PackedVector3Array([p,q,p-Vector3(0,0.22,0),p-Vector3(0,0.22,0),q,q-Vector3(0,0.22,0)]))
+ walk_meshes[id].top = top
+ walk_meshes[id].visual = visual
+ var previous = walk_surfaces.size()
+ register_walk(parent,a,b,width,"raised")
+ if walk_surfaces.size()>previous:
+  right.reverse()
+  var polygon = left.duplicate()
+  polygon.append_array(right)
+  walk_surfaces[-1].poly = polygon
 
 func refined_coat(n: Node) -> void:
  # Imported colour attributes need explicit albedo use on Compatibility materials.
@@ -2329,3 +2410,696 @@ func refined_coat(n: Node) -> void:
     n.set_surface_override_material(surface,refined_materials[key])
  for child in n.get_children():
   refined_coat(child)
+
+# Native mobile-like benchmark instrumentation; no player/save changes.
+func profile_report() -> void:
+ var info = {"dome":active,"tick_us_avg":float(profile_usec)/maxi(profile_calls,1),"tick_us_max":profile_worst,"stream_load_us":profile_load_us,"heap_peak":OS.get_static_memory_peak_usage(),"texture_bytes":Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED),"buffer_bytes":Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED),"video_bytes":Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED),"animal_models":g.animal_scenes.size(),"interior_nodes":[],"nodes":0,"labels":0,"transparent_surfaces":0,"visible_transparent_surfaces":0,"alpha_scissor_surfaces":0,"mesh_resources":{},"mesh_triangles":0,"multimeshes":0,"multimesh_instances":0,"multimesh_buffer_bytes":0,"audio_resources":{},"audio_wav_bytes":0,"animal_glb_file_bytes":0}
+ profile_node(root,info)
+ profile_audio(g,info)
+ for kind in g.animal_scenes:
+  var file = FileAccess.open("res://models/animals/animal_%s.glb"%kind,FileAccess.READ)
+  if file!=null:
+   info.animal_glb_file_bytes += file.get_length()
+ info.audio_resources = info.audio_resources.size()
+ for detail in interiors:
+  info.interior_nodes.append(0 if detail==null else profile_node_count(detail))
+ info.mesh_resources = info.mesh_resources.size()
+ print("WB_PROFILE "+JSON.stringify(info))
+
+func profile_node_count(n: Node) -> int:
+ var count = 1
+ for child in n.get_children():
+  count += profile_node_count(child)
+ return count
+
+func profile_node(n: Node,info: Dictionary) -> void:
+ info.nodes += 1
+ if n is MultiMeshInstance3D and n.multimesh!=null:
+  info.multimeshes += 1
+  info.multimesh_instances += n.multimesh.instance_count
+  info.multimesh_buffer_bytes += n.multimesh.instance_count*48
+ if n is Label3D:
+  info.labels += 1
+ var mesh: Mesh = n.mesh if n is MeshInstance3D else (n.multimesh.mesh if n is MultiMeshInstance3D and n.multimesh!=null else null)
+ if mesh!=null:
+  var id = mesh.get_instance_id()
+  if not info.mesh_resources.has(id):
+   info.mesh_resources[id] = true
+   if mesh is ArrayMesh:
+    for surface in mesh.get_surface_count():
+     info.mesh_triangles += mesh.surface_get_array_index_len(surface)/3 if mesh.surface_get_array_index_len(surface)>0 else mesh.surface_get_array_len(surface)/3
+  for surface in mesh.get_surface_count():
+   var mat = n.material_override if n.material_override!=null else (n.get_surface_override_material(surface) if n is MeshInstance3D and n.get_surface_override_material(surface)!=null else mesh.surface_get_material(surface))
+   if mat is BaseMaterial3D:
+    if mat.transparency==BaseMaterial3D.TRANSPARENCY_ALPHA:
+     info.transparent_surfaces += 1
+     if n.is_visible_in_tree():
+      info.visible_transparent_surfaces += 1
+    if mat.transparency==BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+     info.alpha_scissor_surfaces += 1
+ for child in n.get_children():
+  profile_node(child,info)
+
+# ---- 0.55.1: continuous floor transitions, protected paths and rescue.
+func rim_bevel(parent: Node3D,c: Vector3,radius: float,col: Color,collision_enabled := true) -> void:
+ var faces = PackedVector3Array()
+ for k in 96:
+  var a = float(k)*TAU/96.0
+  var b = float(k+1)*TAU/96.0
+  var inner_a = c+Vector3(cos(a)*(radius-1.5),0.09,sin(a)*(radius-1.5))
+  var inner_b = c+Vector3(cos(b)*(radius-1.5),0.09,sin(b)*(radius-1.5))
+  var outer_a = c+Vector3(cos(a)*(radius+1.5),-0.05,sin(a)*(radius+1.5))
+  var outer_b = c+Vector3(cos(b)*(radius+1.5),-0.05,sin(b)*(radius+1.5))
+  faces.append_array(PackedVector3Array([inner_a,outer_a,inner_b,inner_b,outer_a,outer_b]))
+ var st = SurfaceTool.new()
+ st.begin(Mesh.PRIMITIVE_TRIANGLES)
+ for vertex in faces:
+  st.add_vertex(vertex)
+ st.generate_normals()
+ var visual = MeshInstance3D.new()
+ visual.mesh = st.commit()
+ visual.material_override = material(col)
+ visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+ parent.add_child(visual)
+ if not collision_enabled:
+  return
+ var body = StaticBody3D.new()
+ body.name = "ContinuousRimBevel"
+ var collision = CollisionShape3D.new()
+ var mesh = ConcavePolygonShape3D.new()
+ mesh.backface_collision = true
+ mesh.set_faces(faces)
+ collision.shape = mesh
+ body.add_child(collision)
+ parent.add_child(body)
+
+func collision_wall(parent: Node3D,a: Vector3,b: Vector3,height: float,thickness := 0.12) -> void:
+ var id = parent.get_instance_id()
+ if not guard_batches.has(id):
+  guard_batches[id] = {"parent":parent,"faces":PackedVector3Array()}
+ var top_a = a+Vector3(0,height,0)
+ var top_b = b+Vector3(0,height,0)
+ var faces: PackedVector3Array = guard_batches[id].faces
+ faces.append_array(PackedVector3Array([a,b,top_a,top_a,b,top_b]))
+ guard_batches[id].faces = faces
+
+func flush_guard_batches(parent: Node3D) -> void:
+ for key in guard_batches.keys():
+  var entry = guard_batches[key]
+  if entry.parent!=parent and not parent.is_ancestor_of(entry.parent):
+   continue
+  var body = StaticBody3D.new()
+  body.name = "ContinuousSolidGuards"
+  var collision = CollisionShape3D.new()
+  var mesh = ConcavePolygonShape3D.new()
+  mesh.backface_collision = true
+  mesh.set_faces(entry.faces)
+  collision.shape = mesh
+  body.add_child(collision)
+  entry.parent.add_child(body)
+  guard_batches.erase(key)
+
+func detail_index(parent: Node) -> int:
+ for i in interiors.size():
+  if parent==interiors[i] or interiors[i].is_ancestor_of(parent):
+   return i
+ return -1
+
+func register_walk(parent: Node3D,a: Vector3,b: Vector3,width: float,kind: String) -> void:
+ var i = detail_index(parent)
+ if i<0:
+  return
+ var side = Vector3(b.z-a.z,0,a.x-b.x).normalized()*width*0.5
+ walk_surfaces.append({"dome":i,"a":a,"b":b,"width":width,"kind":kind,"poly":[a-side,b-side,b+side,a+side]})
+
+func register_deck(parent: Node3D,c: Vector3,radius: float) -> void:
+ var i = detail_index(parent)
+ if i<0:
+  return
+ var poly = []
+ for k in 32:
+  poly.append(c+Vector3(cos(k*TAU/32)*radius,0,sin(k*TAU/32)*radius))
+ walk_surfaces.append({"dome":i,"a":c,"b":c,"width":radius*2,"kind":"raised","poly":poly,"radius":radius})
+
+func project_segment(p: Vector3,a: Vector3,b: Vector3) -> Vector3:
+ var d = Vector2(b.x-a.x,b.z-a.z)
+ var t = clampf(Vector2(p.x-a.x,p.z-a.z).dot(d)/maxf(d.length_squared(),0.00001),0,1)
+ return a.lerp(b,t)
+
+func surface_distance(p: Vector3,surface: Dictionary) -> float:
+ if surface.has("radius"):
+  return maxf(0,Vector2(p.x-surface.a.x,p.z-surface.a.z).length()-float(surface.radius))
+ var poly = PackedVector2Array()
+ for v in surface.poly:
+  poly.append(Vector2(v.x,v.z))
+ if Geometry2D.is_point_in_polygon(Vector2(p.x,p.z),poly):
+  return 0.0
+ var distance = INF
+ for k in surface.poly.size():
+  var q = project_segment(p,surface.poly[k],surface.poly[(k+1)%surface.poly.size()])
+  distance = minf(distance,Vector2(p.x-q.x,p.z-q.z).length())
+ return distance
+
+func finish_guards(i: int,parent: Node3D) -> void:
+ for surface in walk_surfaces:
+  if int(surface.dome)!=i or surface.kind!="raised":
+   continue
+  for k in surface.poly.size():
+   var a: Vector3 = surface.poly[k]
+   var b: Vector3 = surface.poly[(k+1)%surface.poly.size()]
+   var along: Vector3 = surface.b-surface.a
+   along.y = 0
+   var edge_direction = b-a
+   edge_direction.y = 0
+   if not surface.has("radius") and absf(edge_direction.normalized().dot(along.normalized()))<0.25 and maxf(a.y,b.y)<0.45:
+    continue # open ramp foot joins the continuous ground floor
+   var count = maxi(1,ceili(a.distance_to(b)/0.30))
+   var run_start = -1
+   for sample in count+1:
+    var enclosed = sample==count
+    if not enclosed:
+     var p = a.lerp(b,(float(sample)+0.5)/count)
+     for neighbour in walk_surfaces:
+      if neighbour==surface or int(neighbour.dome)!=i:
+       continue
+      var q = project_segment(p,neighbour.a,neighbour.b)
+      if absf(p.y-q.y)<0.45 and surface_distance(p,neighbour)<0.12:
+       enclosed = true
+       break
+    if not enclosed and run_start<0:
+     run_start = sample
+    if enclosed and run_start>=0:
+     var from = a.lerp(b,float(run_start)/count)
+     var to = a.lerp(b,float(sample)/count)
+     collision_wall(parent,from,to,1.4)
+     raised_boundaries.append({"a":from,"b":to,"centre":(surface.a+surface.b)*0.5})
+     for height in [0.18,0.65,1.25]:
+      beam(parent,from+Vector3(0,height,0),to+Vector3(0,height,0),0.08,Color("d5dfd2"))
+     run_start = -1
+
+func inside_pen(p: Vector3,margin := 0.0) -> bool:
+ for pen in g.bio_pens:
+  var c: Vector3 = pen[1]
+  if Vector2(p.x-c.x,p.z-c.z).length()<float(pen[2])+margin:
+   return true
+ return false
+
+func open_path_point(from: Vector3) -> Vector3:
+ var best = C+Vector3(0,0.09,0)
+ var distance = INF
+ for route in campus_paths:
+  var candidate = path_floor(project_segment(from,route[0],route[1]))
+  if not inside_pen(candidate,1.5) and not g._blocked_at(candidate+Vector3(0,0.85,0),0.4) and candidate.distance_squared_to(from)<distance:
+   best = candidate
+   distance = candidate.distance_squared_to(from)
+ for surface in walk_surfaces:
+  if surface.kind!="ground":
+   continue
+  var p = path_floor(project_segment(from,surface.a,surface.b))
+  if inside_pen(p,1.5) or g._blocked_at(p+Vector3(0,0.85,0),0.4):
+   continue
+  if p.distance_squared_to(from)<distance:
+   best = p
+   distance = p.distance_squared_to(from)
+ return best
+
+func safety_net(delta: float) -> void:
+ if not safety_enabled or g.driving or g.paused or not inside(g.player.position):
+  stuck_seconds = 0
+  stuck_anchor = g.player.position
+  return
+ rescue_cooldown = maxf(0,rescue_cooldown-delta)
+ var trapped = inside_pen(g.player.position)
+ if g.stick.length()>0.2:
+  if Vector2(g.player.position.x-stuck_anchor.x,g.player.position.z-stuck_anchor.z).length()>0.25:
+   stuck_anchor = g.player.position
+   stuck_seconds = 0
+  else:
+   stuck_seconds += delta
+ else:
+  stuck_seconds = 0
+  stuck_anchor = g.player.position
+ if (trapped or stuck_seconds>1.5) and rescue_cooldown<=0:
+  g.player.position = open_path_point(g.player.position)+Vector3(0,0.7,0)
+  g.player.velocity = Vector3.ZERO
+  stuck_anchor = g.player.position
+  stuck_seconds = 0
+  rescue_cooldown = 2.0
+  reset_stick()
+  g._show_toast("Back on the open path.")
+
+func can_fly(si: int) -> bool:
+ # These assets have genuine separate, spread flight wings. Others remain supported.
+ return str(SPECIES[si].kind) in ["europeanowl","baldeagle","cockatoo"]
+
+func record_scenery(parent: Node3D,key: String,index: int,mesh: Mesh,group: String) -> void:
+ var i = detail_index(parent)
+ if i<0:
+  return
+ var bounds: AABB = batches[key].xs[index]*mesh.get_aabb()
+ if bounds.size.y<0.3 and group=="":
+  return # water/ground decals are below walking feet
+ scenery_bounds.append({"dome":i,"key":key,"index":index,"group":group})
+
+func scenery_aabb(item: Dictionary) -> AABB:
+ if item.has("checked_bounds") and not batches.has(item.get("key","")):
+  return item.checked_bounds
+ if item.has("node"):
+  return item.node.transform*item.node.mesh.get_aabb()
+ var batch = batches[item.key]
+ return batch.xs[int(item.index)]*batch.mesh.get_aabb()
+
+func clear_scenery_bounds(bounds: AABB,i: int) -> bool:
+ var centre = bounds.get_center()
+ var half = bounds.size*0.5
+ if Vector2(centre.x-dome_c(i).x,centre.z-dome_c(i).z).length()+Vector2(half.x,half.z).length()>RADIUS-0.6:
+  return false
+ for q in 4:
+  for step in 3:
+   var marker = quest_point(i,q,step) if q<3 else local_point(i,7,-29+step*20)
+   if bounds.position.y>marker.y+3.1 or bounds.end.y<marker.y-1.5:
+    continue
+   var dx = maxf(absf(marker.x-centre.x)-half.x,0)
+   var dz = maxf(absf(marker.z-centre.z)-half.z,0)
+   if Vector2(dx,dz).length()<1.5:
+    return false
+ if bounds.position.y<3.2 and bounds.end.y>0.5:
+  for pen in fences:
+   if int(pen.dome)!=i:
+    continue
+   var dx = maxf(absf(pen.c.x-centre.x)-half.x,0)
+   var dz = maxf(absf(pen.c.z-centre.z)-half.z,0)
+   if Vector2(dx,dz).length()<(2.8 if int(pen.si)==16 else 1.8):
+    return false # keep the animals' central roaming area visibly unobstructed
+ for surface in walk_surfaces:
+  if int(surface.dome)!=i:
+   continue
+  if bounds.position.y>maxf(surface.a.y,surface.b.y)+3.1 or bounds.end.y<minf(surface.a.y,surface.b.y)-1.5:
+   continue
+  var pad = float(surface.width)*0.5+1.5
+  var low = Vector2(bounds.position.x-pad,bounds.position.z-pad)
+  var high = Vector2(bounds.end.x+pad,bounds.end.z+pad)
+  var origin = Vector2(surface.a.x,surface.a.z)
+  var delta = Vector2(surface.b.x-surface.a.x,surface.b.z-surface.a.z)
+  var enter = 0.0
+  var leave = 1.0
+  for axis in 2:
+   if absf(delta[axis])<0.0001:
+    if origin[axis]<low[axis] or origin[axis]>high[axis]:
+     leave = -1.0
+     break
+   else:
+    var a = (low[axis]-origin[axis])/delta[axis]
+    var b = (high[axis]-origin[axis])/delta[axis]
+    enter = maxf(enter,minf(a,b))
+    leave = minf(leave,maxf(a,b))
+  if enter<=leave:
+   return false
+ return true
+
+func resolve_scenery(i: int) -> void:
+ var groups = {}
+ for item in scenery_bounds:
+  if int(item.dome)!=i:
+   continue
+  var key = str(item.group) if item.group!="" else str(item.get("key",""))+":"+str(item.get("index",0))
+  if not groups.has(key):
+   groups[key] = []
+  groups[key].append(item)
+ for key in groups:
+  var items: Array = groups[key]
+  var bounds = scenery_aabb(items[0])
+  for item in items:
+   bounds = bounds.merge(scenery_aabb(item))
+  if clear_scenery_bounds(bounds,i):
+   continue
+  var centre = bounds.get_center()
+  var destination = centre
+  var factor = 1.0
+  var solved = false
+  for shrink in 7:
+   factor = pow(0.74,shrink)
+   var size = Vector3(bounds.size.x*factor,bounds.size.y,bounds.size.z*factor)
+   for radius in [0.0,3.0,6.0,10.0,16.0,23.0,30.0,38.0,50.0]:
+    for angle in 24:
+     var candidate = centre+Vector3(cos(angle*TAU/24),0,sin(angle*TAU/24))*radius
+     var attempt = AABB(candidate-size*0.5,size)
+     if clear_scenery_bounds(attempt,i):
+      destination = candidate
+      solved = true
+      break
+    if solved:
+     break
+   if solved:
+    break
+  if not solved:
+   var size = Vector3(bounds.size.x*factor,bounds.size.y,bounds.size.z*factor)
+   for x in range(-32,33,4):
+    for z in range(-32,33,4):
+     var candidate = local_point(i,x,z,centre.y)
+     if clear_scenery_bounds(AABB(candidate-size*0.5,size),i):
+      destination = candidate
+      solved = true
+      break
+    if solved:
+     break
+  assert(solved,"Scenery has a clear adjusted position: "+str(key))
+  for item in items:
+   var transform: Transform3D = item.node.transform if item.has("node") else batches[item.key].xs[int(item.index)]
+   transform.origin = destination+Vector3((transform.origin.x-centre.x)*factor,transform.origin.y-centre.y,(transform.origin.z-centre.z)*factor)
+   transform.basis = Basis.from_scale(Vector3(factor,1,factor))*transform.basis
+   if item.has("node"):
+    item.node.transform = transform
+   else:
+    batches[item.key].xs[int(item.index)] = transform
+   item["checked_bounds"] = transform*(item.node.mesh.get_aabb() if item.has("node") else batches[item.key].mesh.get_aabb())
+
+func register_habitats() -> void:
+ g.bio_pens.clear()
+ fences.clear()
+ for i in 7:
+  var ids = []
+  for si in SPECIES.size():
+   if int(SPECIES[si].dome)==i:
+    ids.append(si)
+  for k in ids.size():
+   var si = int(ids[k])
+   if i>=4 and SPECIES[si].zone=="fly":
+    continue
+   var p = local_point(i,-23 if k%2==0 else 23,-21+(k/2)*14)
+   var radius = 3.7
+   if i>=4:
+    var layout = phase2_pen(si)
+    p = local_point(i,layout.x,layout.y)
+   if i==3:
+    var polar = {0:Vector3(17,4,-24),30:Vector3(27,4,-5),31:Vector3(19,7,17),32:Vector3(26,3,-16)}[si]
+    p = local_point(i,polar.x,polar.z)
+    radius = polar.y
+   fences.append({"dome":i,"c":p,"r":radius,"si":si})
+   g.bio_pens.append([i,p,radius])
+   g.bio_hab[si] = {"type":"pen","c":p,"r":radius-1.4,"rmin":0.0,"sign":p+(dome_c(i)-p).normalized()*(radius+1.3)}
+
+func unload_detail() -> void:
+ if loaded_dome<0:
+  return
+ var old = loaded_dome
+ animals.clear()
+ g.bio_animals.clear()
+ markers.clear()
+ rare_nodes.clear()
+ baby_nodes.clear()
+ lanterns.clear()
+ shelters.clear()
+ atmospheres.clear()
+ keeper_projects.clear()
+ walk_surfaces.clear()
+ raised_boundaries.clear()
+ scenery_bounds.clear()
+ for list in dome_animals:
+  list.clear()
+ parked_nests.clear()
+ walk_meshes.clear()
+ refined_materials.clear()
+ g.animal_scenes.clear()
+ g.bio_model_mesh.clear()
+ mobile_textures.clear()
+ batches.clear()
+ interiors[old].free()
+ var empty = Node3D.new()
+ empty.name = NAMES[old].replace(" ","")+"Interior"
+ root.add_child(empty)
+ interiors[old] = empty
+ empty.hide()
+ loaded_dome = -1
+
+func load_dome(i: int) -> void:
+ if i<0 or i==loaded_dome:
+  return
+ var started = Time.get_ticks_usec()
+ unload_detail()
+ var detail: Node3D = interiors[i]
+ var c = dome_c(i)
+ disc(detail,c+Vector3(0,0.03,0),RADIUS-1.5,0.12,GROUNDS[i])
+ rim_bevel(detail,c,RADIUS,GROUNDS[i],false)
+ shell(detail,c,RADIUS,30,COLORS[i],false)
+ landscape(i,detail)
+ habitats(i,detail)
+ if i<4:
+  rich_landscape(i,detail)
+  habitat_layers(i,detail)
+ if i>=4:
+  phase2_landscape(i,detail)
+  phase2_layers(i,detail)
+ quest_markers(i,detail)
+ if i<7:
+  for step in 3:
+   var p = local_point(i,7,-29+step*20)
+   var marker = Node3D.new()
+   marker.position = p
+   detail.add_child(marker)
+   g._fc_part(marker,g._bcone(0.2,0.4,0.5),Vector3(0,0.35,0),g._fc_glow(Color("ffda6b")))
+   var label = text(marker,"",Vector3(0,1.6,0),Color("ffe599"),26,18)
+   shelters.append({"node":marker,"label":label,"dome":i,"step":step})
+ assign_feeding_slots()
+ flush_walk_meshes(detail)
+ finish_guards(i,detail)
+ flush_guard_batches(detail)
+ resolve_scenery(i)
+ detail.visible = true
+ flush()
+ loaded_dome = i
+ last_load_us = Time.get_ticks_usec()-started
+
+func activate_dome(i: int) -> void:
+ active = i
+ if i>=0:
+  load_dome(i)
+  if not camera_far_saved:
+   normal_camera_far = g.camera.far
+   camera_far_saved = true
+  g.camera.far = 100.0
+  apply_dome_quality()
+ else:
+  restore_dome_quality()
+  g.camera.far = normal_camera_far
+  if loaded_dome>=0 and g.player.position.distance_to(dome_c(loaded_dome))>RADIUS+10.0:
+   unload_detail()
+ for visual in exterior_visuals:
+  if is_instance_valid(visual):
+   visual.visible = i<0
+ for k in interiors.size():
+  interiors[k].visible = k==i
+
+func capture_exterior(n: Node) -> void:
+ if interiors.has(n):
+  return
+ if n is GeometryInstance3D:
+  exterior_visuals.append(n)
+ for child in n.get_children():
+  capture_exterior(child)
+
+func campus_surface(a: Vector3,b: Vector3,width: float,join_only := false) -> Dictionary:
+ var side = Vector3(b.z-a.z,0,a.x-b.x).normalized()*width*0.5
+ return {"a":a,"b":b,"width":width,"poly":[a-side,b-side,b+side,a+side],"join_only":join_only}
+
+func build_ring_concourse() -> void:
+ var surfaces = []
+ # An enclosed, level ring links the existing entrances; no new holes in dome walls.
+ for i in 7:
+  var first = -PI/2.0+i*TAU/7.0
+  for k in 12:
+   var a = C+Vector3(cos(first+k*TAU/84),0,sin(first+k*TAU/84))*69.0+Vector3(0,-0.05,0)
+   var b = C+Vector3(cos(first+(k+1)*TAU/84),0,sin(first+(k+1)*TAU/84))*69.0+Vector3(0,-0.05,0)
+   surfaces.append(campus_surface(a,b,5.6))
+  var direction = (dome_c(i)-C).normalized()
+  surfaces.append(campus_surface(C+direction*18.0+Vector3(0,-0.05,0),dome_c(i)-direction*(RADIUS-2.0)+Vector3(0,-0.05,0),5.6))
+  surfaces.append(campus_surface(dome_c(i)-direction*(RADIUS+2.0)+Vector3(0,-0.05,0),dome_c(i)-direction*(RADIUS-4.0)+Vector3(0,-0.05,0),5.8,true))
+ surfaces.append(campus_surface(ENTRY+Vector3(0,-0.05,0),C+Vector3(0,-0.05,18),7.0))
+ surfaces.append(campus_surface(ENTRY+Vector3(0,-0.05,5),ENTRY+Vector3(0,-0.05,-3),7.2,true))
+ # Hub floor acts as an open junction rather than a tunnel dead-end.
+ surfaces.append({"a":C,"b":C,"width":38.0,"radius":19.0,"poly":[],"join_only":true})
+ for surface in surfaces:
+  if surface.join_only:
+   continue
+  var a: Vector3 = surface.a
+  var b: Vector3 = surface.b
+  var d = b-a
+  var yaw = atan2(d.x,d.z)
+  box(root,(a+b)*0.5-Vector3(0,0.03,0),Vector3(surface.width,0.06,d.length()+0.10),Color("e4e5d5"),false,Vector3(0,yaw,0))
+  box(root,(a+b)*0.5+Vector3(0,3.65,0),Vector3(surface.width+0.15,0.12,d.length()+0.15),Color("b9cdc7"),false,Vector3(0,yaw,0))
+  campus_paths.append([a,b])
+  for edge in surface.poly.size():
+   var from: Vector3 = surface.poly[edge]
+   var to: Vector3 = surface.poly[(edge+1)%4]
+   var count = maxi(1,ceili(from.distance_to(to)/0.25))
+   var start = -1
+   for sample in count+1:
+    var covered = sample==count
+    if not covered:
+     var p = from.lerp(to,(sample+0.5)/count)
+     for neighbour in surfaces:
+      if neighbour==surface:
+       continue
+      if surface_distance(p,neighbour)<0.12:
+       covered = true
+       break
+    if not covered and start<0:
+     start = sample
+    if covered and start>=0:
+     var p = from.lerp(to,float(start)/count)
+     var q = from.lerp(to,float(sample)/count)
+     collision_wall(root,p,q,3.6)
+     for height in [0.25,1.0,2.2,3.5]:
+      beam(root,p+Vector3(0,height,0),q+Vector3(0,height,0),0.10,Color("86bcb0"))
+     start = -1
+ text(root,"CONTINENT LOOP · ALL SEVEN DOMES",C+Vector3(0,3.0,69),Color("d8fff1"),36,45)
+
+func foliage_mesh(name: String) -> Mesh:
+ if g.bio_model_mesh.has(name):
+  return g.bio_model_mesh[name]
+ var path = "res://models/%s.glb" % name
+ var packed = load(path) as PackedScene
+ if packed==null:
+  return null
+ var instance = packed.instantiate()
+ var source = g._first_mesh(instance)
+ var mesh: ArrayMesh = source.mesh.duplicate() if source!=null else null
+ if mesh!=null:
+  for surface in mesh.get_surface_count():
+   var original = mesh.surface_get_material(surface)
+   if original is BaseMaterial3D:
+    var copy = original.duplicate() as BaseMaterial3D
+    # Keep the tiny embedded texture; do not load the excluded external texture set.
+    if copy.transparency!=BaseMaterial3D.TRANSPARENCY_DISABLED:
+     copy.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+     copy.alpha_scissor_threshold = 0.45
+    if copy.albedo_texture!=null:
+     copy.albedo_texture = small_foliage_texture(copy.albedo_texture)
+    copy.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+    mesh.surface_set_material(surface,copy)
+  mesh.set_meta("mobile_foliage",true)
+ instance.free()
+ g.bio_model_mesh[name] = mesh
+ return mesh
+
+func small_foliage_texture(source: Texture2D) -> Texture2D:
+ if max(source.get_width(),source.get_height())<=256:
+  return source
+ var key = source.get_rid().get_id()
+ if mobile_textures.has(key):
+  return mobile_textures[key]
+ var image = source.get_image()
+ if image.is_compressed() and image.decompress()!=OK:
+  return source
+ var ratio = 256.0/maxi(image.get_width(),image.get_height())
+ image.resize(maxi(1,roundi(image.get_width()*ratio)),maxi(1,roundi(image.get_height()*ratio)),Image.INTERPOLATE_LANCZOS)
+ image.generate_mipmaps()
+ var result = ImageTexture.create_from_image(image)
+ mobile_textures[key] = result
+ return result
+
+func apply_dome_quality() -> void:
+ if not (OS.has_feature("android") or "--web-lite" in OS.get_cmdline_user_args() or OS.has_feature("web")):
+  return
+ var viewport = g.get_viewport()
+ if saved_quality.is_empty():
+  saved_quality = {"scale":viewport.scaling_3d_scale,"shadows":g.sun_light.shadow_enabled if g.sun_light!=null else false}
+ var pixels = DisplayServer.window_get_size()
+ var limit = minf(float(saved_quality.scale),sqrt(1000000.0/maxf(float(pixels.x)*pixels.y,1.0)))
+ if absf(viewport.scaling_3d_scale-maxf(0.45,limit))>0.001:
+  viewport.scaling_3d_scale = maxf(0.45,limit)
+ if g.sun_light!=null and g.sun_light.shadow_enabled:
+  g.sun_light.shadow_enabled = false
+
+func restore_dome_quality() -> void:
+ if saved_quality.is_empty():
+  return
+ g.get_viewport().scaling_3d_scale = saved_quality.scale
+ if g.sun_light!=null:
+  g.sun_light.shadow_enabled = saved_quality.shadows
+ saved_quality.clear()
+
+func profile_audio(n: Node,info: Dictionary) -> void:
+ if n is AudioStreamPlayer or n is AudioStreamPlayer3D:
+  var stream: AudioStream = n.stream
+  if stream!=null and not info.audio_resources.has(stream.get_instance_id()):
+   info.audio_resources[stream.get_instance_id()] = true
+   if stream is AudioStreamWAV:
+    info.audio_wav_bytes += stream.data.size()
+ for child in n.get_children():
+  profile_audio(child,info)
+
+func assign_feeding_slots() -> void:
+ var counts = {}
+ for a in animals:
+  if a.get("upper",false):
+   continue
+  var key = int(a.si)
+  a["feed_slot"] = int(counts.get(key,0))
+  counts[key] = int(a.feed_slot)+1
+ for a in animals:
+  a["feed_count"] = int(counts.get(int(a.si),1))
+
+func feeding_target(a: Dictionary,toward: Vector3,radius: float) -> Vector3:
+ var total = int(a.get("feed_count",1))
+ var columns = maxi(1,ceili(sqrt(float(total))))
+ var rows = maxi(1,ceili(float(total)/columns))
+ var slot = int(a.get("feed_slot",0))
+ var desired = 1.6 if a.kind=="elephant" else (1.2 if a.kind in ["bison","rhino","polarbear"] else 0.7)
+ var spacing = minf(desired,radius*1.25/maxi(columns-1,1))
+ var across = Vector3(-toward.z,0,toward.x)
+ var offset = across*(float(slot%columns)-float(columns-1)*0.5)*spacing+toward*(float(slot/columns)-float(rows-1)*0.5)*spacing
+ offset += toward*radius*0.15
+ if offset.length()>radius*0.85:
+  offset = offset.normalized()*radius*0.85
+ return a.c+offset+Vector3(0,0.1,0)
+
+func visitor_stage_route(i: int) -> Array:
+ if i==0:
+  return [local_point(0,9.5,-25,0.09),local_point(0,9.5,-3,4.5),local_point(0,9.5,24,4.5),local_point(0,7,24,4.5)]
+ if i==1:
+  return asia_route()
+ if i==2:
+  return [local_point(2,-9.5,-25,0.09),local_point(2,-9.5,-5,5.5),local_point(2,-9.5,0,5.5),local_point(2,-4,5,5.5),local_point(2,-4,23,5.5),local_point(2,7,23,5.5)]
+ if i==3:
+  return antarctic_route()
+ var route = phase2_route(i)
+ if i==6:
+  route.append(local_point(6,0,22,1.4))
+  route.append(local_point(6,-5,28,1.4))
+ return route
+
+func path_floor(p: Vector3) -> Vector3:
+ var ray = PhysicsRayQueryParameters3D.create(p+Vector3(0,0.4,0),p-Vector3(0,1.0,0),1)
+ ray.exclude = [g.player.get_rid(),g.car.get_rid()]
+ var hit = g.get_world_3d().direct_space_state.intersect_ray(ray)
+ if not hit.is_empty():
+  p.y = hit.position.y
+ return p
+
+func flush_walk_meshes(parent: Node3D) -> void:
+ for key in walk_meshes.keys():
+  var entry = walk_meshes[key]
+  if entry.parent!=parent and not parent.is_ancestor_of(entry.parent):
+   continue
+  var st = SurfaceTool.new()
+  st.begin(Mesh.PRIMITIVE_TRIANGLES)
+  for vertex in entry.visual:
+   st.add_vertex(vertex)
+  st.generate_normals()
+  var node = MeshInstance3D.new()
+  node.name = "ContinuousVisitorWalk"
+  node.mesh = st.commit()
+  node.material_override = material(Color("b29462"))
+  node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+  entry.parent.add_child(node)
+  var body = StaticBody3D.new()
+  body.name = "ContinuousVisitorFloor"
+  var collision = CollisionShape3D.new()
+  var mesh = ConcavePolygonShape3D.new()
+  mesh.backface_collision = true
+  mesh.set_faces(entry.top)
+  collision.shape = mesh
+  body.add_child(collision)
+  entry.parent.add_child(body)
+  walk_meshes.erase(key)

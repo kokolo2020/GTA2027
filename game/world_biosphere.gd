@@ -2,6 +2,7 @@ extends RefCounted
 # World Biosphere Phases 1 and 2. Stable first 16 species = existing bio_seen save bits.
 const C := Vector3(-860,0,-650)
 const RADIUS := 38.5
+const RING_R := 72.0 # v0.55.3: open ground loop linking neighbouring dome doors
 const ORBIT := 115.0
 const ENTRY := C+Vector3(0,0,181)
 const OCEAN := C+Vector3(-225,0,0)
@@ -350,6 +351,12 @@ func build() -> void:
   beam(root,door_p-door_s,door_p-door_s+Vector3(0,6.5,0),0.6,COLORS[i])
   beam(root,door_p+door_s+Vector3(0,6.5,0),door_p-door_s+Vector3(0,6.5,0),0.6,COLORS[i])
   text(root,NAMES[i].to_upper()+" DOME",door_p+Vector3(0,7.8,0),COLORS[i],44,60)
+  # v0.55.3: bright gold door frame and ENTER sign so the door is easy to find from outside.
+  var gold_door = Color("ffe08a")
+  beam(root,door_p+door_s*0.45,door_p+door_s*0.45+Vector3(0,5.6,0),0.35,gold_door)
+  beam(root,door_p-door_s*0.45,door_p-door_s*0.45+Vector3(0,5.6,0),0.35,gold_door)
+  beam(root,door_p+door_s*0.45+Vector3(0,5.6,0),door_p-door_s*0.45+Vector3(0,5.6,0),0.35,gold_door)
+  text(root,"⬇ ENTER ⬇",door_p+Vector3(0,9.4,0),Color("fff3b0"),80,100).pixel_size = 0.014
   var detail = Node3D.new()
   detail.name = NAMES[i].replace(" ","")+"Interior"
   root.add_child(detail)
@@ -364,6 +371,8 @@ func build() -> void:
   beam(root,a+Vector3(0,1.2,0),b+Vector3(0,1.2,0),0.16,Color("d9be69"),true)
  text(root,"WORLD BIOSPHERE · LEVEL 7",ENTRY+Vector3(0,4,0),Color("d5fff0"),54,90)
  build_open_paths()
+ build_dome_loop()
+ outside_signposts()
  build_garden_edges()
  register_habitats()
  flush_guard_batches(root)
@@ -395,12 +404,53 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
  var mi = MeshInstance3D.new()
  var shell_mesh = st.commit()
  mi.mesh = shell_mesh
- mi.material_override = g._bio_glass_mat(col.lightened(0.4),0.09)
+ mi.material_override = g._bio_glass_mat(col.lightened(0.4),0.15)
  mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
  if detail_index(parent)<0:
   parent.add_child(mi)
  else:
   mi.free()
+ # v0.55.3: visible lower walls (they were collision-only, so domes looked like a bare roof on an empty
+ # base): a solid coloured plinth, tinted glazing above it, thick posts and bright door jambs. Built for the
+ # exterior and for the interior, leaving the same 5.6 m door gap toward the hub.
+ var toward_hub = (C-c).normalized()
+ var door_angle = atan2(toward_hub.z,toward_hub.x)
+ var door_half = asin(2.8/r)
+ var plinth = SurfaceTool.new()
+ plinth.begin(Mesh.PRIMITIVE_TRIANGLES)
+ var glaze = SurfaceTool.new()
+ glaze.begin(Mesh.PRIMITIVE_TRIANGLES)
+ var wall_frame = Color.from_hsv(col.h,minf(1.0,col.s*1.35+0.12),minf(1.0,col.v*1.05+0.05))
+ var wall_segments = 96
+ for k in wall_segments:
+  var wa = door_angle+door_half+float(k)*(TAU-2*door_half)/wall_segments
+  var wb = door_angle+door_half+float(k+1)*(TAU-2*door_half)/wall_segments
+  var pa = c+Vector3(cos(wa)*r,0,sin(wa)*r)
+  var pb = c+Vector3(cos(wb)*r,0,sin(wb)*r)
+  for quad in [[-0.05,1.1,plinth],[1.1,4.2,glaze]]:
+   var lo: float = quad[0]
+   var hi: float = quad[1]
+   var st2: SurfaceTool = quad[2]
+   for v in [pa+Vector3(0,lo,0),pb+Vector3(0,lo,0),pa+Vector3(0,hi,0),pa+Vector3(0,hi,0),pb+Vector3(0,lo,0),pb+Vector3(0,hi,0)]:
+    st2.add_vertex(v)
+  if k%4==0:
+   beam(parent,pa+Vector3(0,-0.05,0),pa+Vector3(0,4.4,0),0.34,wall_frame)
+ beam(parent,c+Vector3(cos(door_angle+door_half),0,sin(door_angle+door_half))*r+Vector3(0,-0.05,0),c+Vector3(cos(door_angle+door_half),0,sin(door_angle+door_half))*r+Vector3(0,5.0,0),0.55,Color("ffe08a"))
+ beam(parent,c+Vector3(cos(door_angle-door_half),0,sin(door_angle-door_half))*r+Vector3(0,-0.05,0),c+Vector3(cos(door_angle-door_half),0,sin(door_angle-door_half))*r+Vector3(0,5.0,0),0.55,Color("ffe08a"))
+ plinth.generate_normals()
+ glaze.generate_normals()
+ var plinth_mi = MeshInstance3D.new()
+ plinth_mi.mesh = plinth.commit()
+ var plinth_mat = material(col.darkened(0.2)).duplicate() as StandardMaterial3D
+ plinth_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+ plinth_mi.material_override = plinth_mat
+ plinth_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+ parent.add_child(plinth_mi)
+ var glaze_mi = MeshInstance3D.new()
+ glaze_mi.mesh = glaze.commit()
+ glaze_mi.material_override = g._bio_glass_mat(col.lightened(0.3),0.32)
+ glaze_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+ parent.add_child(glaze_mi)
  if not wall:
   return
  # The upper glass is solid too; elevated decks cannot create an exit above
@@ -1688,6 +1738,16 @@ func screenshots() -> void:
   g.camera.global_position = local_point(i,0,-30,2.4)
   g.camera.look_at(local_point(i,0,8,3.5))
   await g._save_shot(NAMES[i].to_lower().replace(" ","-"))
+  if i==1:
+   g.camera.global_position = local_point(i,0,-18,2.6)
+   g.camera.look_at(local_point(i,0,-RADIUS+1.0,3.0))
+   await g._save_shot("asia-door-inside")
+   g.camera.global_position = local_point(i,-1,-RADIUS+20.0,2.2)
+   g.camera.look_at(local_point(i,6.0,-RADIUS+10.0,3.6))
+   await g._save_shot("asia-sign-inside")
+   g.camera.global_position = local_point(i,-22,-20,2.6)
+   g.camera.look_at(local_point(i,-RADIUS*0.8,-RADIUS*0.5,2.0))
+   await g._save_shot("asia-wall-inside")
   if i in [1,3]:
    var route = visitor_stage_route(i)
    var at = maxi(0,route.size()/3)
@@ -1708,6 +1768,20 @@ func screenshots() -> void:
  g.camera.global_position = C+Vector3(0,2.4,42)
  g.camera.look_at(C+Vector3(0,2.5,0))
  await g._save_shot("open-entry-directions")
+ var door_dir = (dome_c(1)-C).normalized()
+ g.camera.global_position = dome_c(1)-door_dir*(RADIUS+24.0)+Vector3(0,2.4,0)
+ g.camera.look_at(dome_c(1)-door_dir*RADIUS+Vector3(0,3.5,0))
+ await g._save_shot("asia-door-outside")
+ var so = (dome_c(1)-C).normalized()
+ var sr = Vector3(so.z,0,-so.x)
+ var sp = C+so*(RING_R-4.0)+sr*7.0
+ g.camera.global_position = sp-so*7.0+sr*3.0+Vector3(0,2.2,0)
+ g.camera.look_at(sp+Vector3(0,3.6,0))
+ await g._save_shot("asia-sign-outside")
+ var loop_mid = C+Vector3(cos(-PI/2.0+TAU/14.0),0,sin(-PI/2.0+TAU/14.0))*RING_R
+ g.camera.global_position = loop_mid+Vector3(0,2.6,0)+(C-loop_mid).normalized()*-10.0
+ g.camera.look_at(dome_c(0)-(dome_c(0)-C).normalized()*RADIUS+Vector3(0,3.0,0))
+ await g._save_shot("dome-loop")
  g.camera.far = 1200
  g.camera.global_position = C+Vector3(5,270,310)
  g.camera.look_at(C)
@@ -1906,6 +1980,107 @@ func route_clear(i: int,p: Vector3) -> bool:
   if Vector2(p.x-(a+ab*t).x,p.z-(a+ab*t).z).length()<3.0:
    return false
  return true
+
+func build_dome_loop() -> void:
+ # v0.55.3: open, roofless ground path joining each dome's door area to its neighbours so visitors
+ # can go dome to dome without returning to the hub. Visual surface only (the ground already collides);
+ # the domes themselves stay sealed apart from their one door.
+ for i in 7:
+  var j = (i+1)%7
+  var a0 = -PI/2.0+float(i)*TAU/7.0
+  var steps = 12
+  for k in steps:
+   var t0 = a0+float(k)*TAU/7.0/float(steps)
+   var t1 = a0+float(k+1)*TAU/7.0/float(steps)
+   var p0 = C+Vector3(cos(t0),0,sin(t0))*RING_R
+   var p1 = C+Vector3(cos(t1),0,sin(t1))*RING_R
+   var d = (p1-p0)
+   var yaw = atan2(d.x,d.z)
+   box(root,(p0+p1)*0.5+Vector3(0,-0.04,0),Vector3(4.4,0.08,d.length()+0.7),Color("e7e9db"),false,Vector3(0,yaw,0))
+   if k%4==2:
+    var out = ((p0+p1)*0.5-C).normalized()
+    for sg in [-1,1]:
+     var q = (p0+p1)*0.5+out*(2.9*sg)
+     shape(root,g._bcone(0.06,0.09,3.2),q+Vector3(0,1.6,0),Vector3.ONE,Color("c8d4da"))
+     shape(root,g._bsph(0.26),q+Vector3(0,3.3,0),Vector3.ONE,Color("bff6ff"))
+  var mid = a0+TAU/14.0
+  var mp = C+Vector3(cos(mid),0,sin(mid))*RING_R
+  var sign_node = text(root,"⇄ "+NAMES[i]+" · "+NAMES[j]+" ⇄",mp+Vector3(0,3.9,0),Color("244b3c"),46,45)
+  sign_node.pixel_size = 0.012
+
+func door_point(i: int) -> Vector3:
+ return local_point(i,0,-RADIUS-2.0)
+
+func dome_signpost(parent: Node3D,pos: Vector3,targets: Array) -> void:
+ # v0.55.4: city-style signpost. Each blade points at a place and shows its name and distance.
+ var old_flag = animal_structure
+ animal_structure = true
+ shape(parent,g._bcone(0.07,0.1,4.6),pos+Vector3(0,2.3,0),Vector3.ONE,Color("2b3640"))
+ shape(parent,g._bsph(0.2),pos+Vector3(0,4.65,0),Vector3.ONE,Color("eef2f5"))
+ for k in targets.size():
+  var t = targets[k]
+  var dv: Vector3 = (t[1] as Vector3)-pos
+  dv.y = 0.0
+  var dn = dv.normalized()
+  var yaw = atan2(-dn.z,dn.x)
+  var h = 4.1-float(k)*0.55
+  var c = pos+dn*1.7+Vector3(0,h,0)
+  box(parent,c,Vector3(3.4,0.45,0.08),Color("1d3346"),false,Vector3(0,yaw,0))
+  box(parent,c-dn*1.65,Vector3(0.07,0.45,0.1),Color("5fd0ff"),false,Vector3(0,yaw,0))
+  var dist = "%d m" % int(roundf(dv.length()/5.0)*5.0)
+  var nrm = Vector3(sin(yaw),0,cos(yaw))
+  for side in [1.0,-1.0]:
+   var l = Label3D.new()
+   l.text = ("%s  %s  ▶" % [String(t[0]).to_upper(),dist]) if side>0.0 else ("◀  %s  %s" % [String(t[0]).to_upper(),dist])
+   l.font_size = 30
+   l.pixel_size = 0.0068
+   l.outline_size = 0
+   l.modulate = t[2]
+   l.position = c+nrm*side*0.05
+   l.rotation.y = yaw if side>0.0 else yaw+PI
+   l.visibility_range_end = 45.0
+   parent.add_child(l)
+ animal_structure = old_flag
+
+func outside_signposts() -> void:
+ for i in 7:
+  var out = (dome_c(i)-C).normalized()
+  var right = Vector3(out.z,0,-out.x)
+  var pos = C+out*(RING_R-4.0)+right*7.0
+  var nx = (i+1)%7
+  var pv = (i+6)%7
+  dome_signpost(root,pos,[
+   ["Enter "+NAMES[i],door_point(i),Color("ffe08a")],
+   [NAMES[nx],door_point(nx),Color("f4f8fb")],
+   [NAMES[pv],door_point(pv),Color("f4f8fb")],
+   ["Hub",C,Color("7dff9a")]])
+
+func inside_signpost(i: int,parent: Node3D) -> void:
+ var nx = (i+1)%7
+ var pv = (i+6)%7
+ dome_signpost(parent,local_point(i,6.0,-RADIUS+10.0),[
+  ["Exit",door_point(i),Color("ffe08a")],
+  [NAMES[nx],door_point(nx),Color("f4f8fb")],
+  [NAMES[pv],door_point(pv),Color("f4f8fb")],
+  ["Hub",C,Color("7dff9a")]])
+
+func door_markers(i: int,parent: Node3D) -> void:
+ # v0.55.3: a bright, tall EXIT arch with a label and a line of lights leading to it from inside the dome.
+ var old_flag = animal_structure
+ animal_structure = true
+ var gold = Color("ffe08a")
+ var door = local_point(i,0,-RADIUS+3.0)
+ var left = local_point(i,-3.6,-RADIUS+3.0)
+ var right = local_point(i,3.6,-RADIUS+3.0)
+ for post in [left,right]:
+  g._fc_part(parent,g._bcone(0.3,0.36,7.0),post+Vector3(0,3.5,0),g._fc_glow(gold))
+ beam(parent,left+Vector3(0,7.0,0),right+Vector3(0,7.0,0),0.5,gold)
+ text(parent,"⬇ EXIT ⬇",door+Vector3(0,9.4,0),Color("fff3b0"),96,110).pixel_size = 0.014
+ text(parent,"to outside and the other domes",door+Vector3(0,8.0,0),Color.WHITE,44,60).pixel_size = 0.011
+ for k in 9:
+  var q = local_point(i,0,-RADIUS+6.0+float(k)*3.2,0.12)
+  g._fc_part(parent,g._bsph(0.22),q,g._fc_glow(gold))
+ animal_structure = old_flag
 
 func colonnade(i: int,parent: Node3D) -> void:
  # v0.55.3: old Biosphere look: coloured columns joined by glass-rail arcs around the back of the dome.
@@ -3018,6 +3193,8 @@ func load_dome(i: int) -> void:
  quest_markers(i,detail)
  garden_ring(i,detail)
  colonnade(i,detail)
+ door_markers(i,detail)
+ inside_signpost(i,detail)
  if i<7:
   for step in 3:
    var p = local_point(i,7,-29+step*20)
@@ -3078,9 +3255,13 @@ func build_open_paths() -> void:
   var b = dome_c(i)-outward*(RADIUS-2.0)+Vector3(0,-0.05,0)
   campus_paths.append([a,b])
   var side = Vector3(outward.z,0,-outward.x)*2.8
+  # v0.55.3: the spoke walls leave a 7 m gap where the open dome-to-dome loop crosses.
+  var gap_a = C+outward*(RING_R-3.5)+Vector3(0,-0.05,0)
+  var gap_b = C+outward*(RING_R+3.5)+Vector3(0,-0.05,0)
   for sign in [-1,1]:
-   collision_wall(root,a+side*sign,b+side*sign,1.2)
-   beam(root,a+side*sign+Vector3(0,1.0,0),b+side*sign+Vector3(0,1.0,0),0.08,Color("a7ddc3"))
+   for piece in [[a,gap_a],[gap_b,b]]:
+    collision_wall(root,piece[0]+side*sign,piece[1]+side*sign,1.2)
+    beam(root,piece[0]+side*sign+Vector3(0,1.0,0),piece[1]+side*sign+Vector3(0,1.0,0),0.08,Color("a7ddc3"))
   # Text describes left/right while facing the hub from this dome's entrance.
   var left = (i+1)%7
   var right = (i+6)%7
@@ -3104,7 +3285,7 @@ func build_garden_edges() -> void:
  lines.append([C+Vector3(0,0,38),C+Vector3(0,0,176),Vector3(1,0,0)])
  for i in 7:
   var out = (dome_c(i)-C).normalized()
-  lines.append([C+out*24.0,C+out*72.0,Vector3(out.z,0,-out.x)])
+  lines.append([C+out*24.0,C+out*(RING_R-6.0),Vector3(out.z,0,-out.x)])
  for line in lines:
   var a: Vector3 = line[0]
   var b: Vector3 = line[1]

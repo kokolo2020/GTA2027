@@ -357,7 +357,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.3: Biosphere restyle with coloured gridshell ribs, leafy garden rings, lamp-lit paths and colonnades in every dome.")
+	_show_toast("Harbor City 0.55.4: gold ENTER and EXIT doors, visible dome walls, an open path linking every dome, and signposts with distances.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()

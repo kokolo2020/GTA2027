@@ -36,7 +36,7 @@ Before adoption: review the style with Koko, improve deformation topology and sh
 adapt wardrobe attachment points, finish movement transitions, and measure it on web and Fold5.
 The materials and studio lighting here differ from Harbor City's renderer and lighting.
 
-## Local game trial (unreleased)
+## Released character trial (0.53.0)
 
 Koko approved applying the character to the playable player once, with an easy revert.
 `game/main.gd` enables `TRY_NATURAL_PLAYER`; `game/natural_player_trial.gd` loads the independent
@@ -56,3 +56,6 @@ outside the repository in `~/.cache/harbor-city-character-trial/`.
 
 Import, focused checks, full smoke test, screenshots and rollback passed. Not tested on a
 phone. Android and Web 0.53.0 exports now pass verification. Publishing was authorized afterward. Main remains the release branch. Settings > Character provides a saved New / Classic switch.
+
+Published as 0.53.0 / code 88. Android checksum/signing and live Web package verified; the
+public browser New / Classic switch was tested. See CLAUDE-HANDOVER.md for release evidence.

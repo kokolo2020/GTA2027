@@ -1,12 +1,12 @@
 # Harbor City — current handover
 
-## START HERE (updated 2026-11-22, 0.53.0 release prepared)
+## START HERE (updated 2026-11-22, 0.53.0 released and verified)
 
-**Live version: 0.52.1, versionCode 87** (next is 88).
+**Live version: 0.53.0, versionCode 88** (next is 89).
 
-**0.53.0 prepared for release (code 88):** new rigged playable character with a fixed futuristic outfit. Menu > Settings > Character switches New / Classic immediately and remembers the preference; Classic restores the full saved wardrobe. NPCs and online peers stay classic. Runtime: `game/natural_player_trial.gd` + `game/models/natural_player_trial.glb`; source/previews: `prototypes/natural-character/`. Idle/walk/run/sit/wave/talk/cheer included. Import, focused checks (including the Settings switch), full desktop smoke, rendered in-game screenshots, classic startup fallback, Android/Web exports and APK package/version/signing verification passed. Desktop save restored byte for byte. Not checked on Fold5. Publication and live checks still pending. No player progress migration.
+**0.53.0 character trial (code 88), released and verified:** new rigged playable character with a fixed futuristic outfit. Menu > Settings > Character switches New / Classic immediately and remembers the preference; Classic restores the full saved wardrobe. NPCs and online peers stay classic. Runtime: `game/natural_player_trial.gd` + `game/models/natural_player_trial.glb`; source/previews: `prototypes/natural-character/`. Idle/walk/run/sit/wave/talk/cheer included. Import, focused checks (including the Settings switch), full desktop smoke, rendered in-game screenshots, classic startup fallback, Android/Web exports and APK package/version/signing verification passed. Desktop save restored byte for byte. Not checked on Fold5. GitHub release and live Pages metadata verified; public Web PCK checksum matches the export. New / Classic switching also checked in the published browser build. No player progress migration.
 
-**Last release: 0.52.1.** Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
+**Last release: 0.53.0.** Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
 
 - Repo: /Users/koko/GTA2027 (GitHub kokolo2020/GTA2027). Main script: game/main.gd (~32k lines, everything lives there; new systems are appended at the end with a `# ---- vX.Y: ...` banner). Blender generators: blender-src/*.py. Release notes: docs/releases/vX.Y.Z.md. Screenshots: docs/shots-X.Y.Z/.
 - Branches: develop and release on **main**. The folder is normally checked out on `character-redesign`, which belongs to another session: never merge or push it; `git checkout main` to work and switch back to `character-redesign` when done.
@@ -750,3 +750,8 @@ https://github.com/kokolo2020/GTA2027/releases/tag/v0.52.0 · source commit 5ec0
 
 ## Released and verified 0.52.1 (2026-11-22)
 Release https://github.com/kokolo2020/GTA2027/releases/tag/v0.52.1, APK SHA256 ba04ad2692e1c019ea5ceea774b8beb40ee5301d6f043986dc23827dca8c85c5. Desktop smoke test passed; not checked on a phone.
+
+
+## Released and verified 0.53.0 (2026-11-22)
+
+Release https://github.com/kokolo2020/GTA2027/releases/tag/v0.53.0 · source/tag commit `16542deef39cd65f6877ede39755cb34cc524e14` · APK SHA256 `d86029d36bb15a4169b67cf62410357ab89a6304b52a0acad02d14e150e3c0ed` (50,399,407 bytes, code 88, package com.koko.harborcity, existing certificate 5168f1fa...547b). Import, focused avatar/Settings checks and full smoke passed. Real in-game shots are in `docs/shots-0.53.0/`. Android and Web exported; the downloaded release APK matched its checksum. Pages run 44965257189 succeeded on retry after the known missing-artifact failure. Live manifest, page edition/button and Web PCK checksum verified (18,525,152 bytes). Public browser build loaded and New / Classic switching worked. Desktop save restored byte for byte; unrelated untracked files and original Git exclusions preserved. Not tested on Fold5. To revert the character on-device: Menu > Settings > Character: Classic; the choice persists and restores the saved wardrobe.

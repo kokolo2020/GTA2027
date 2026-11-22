@@ -226,7 +226,7 @@ func build() -> void:
  text(root,"One world · Seven continents",C+Vector3(0,7.8,8),Color.WHITE,34,100)
  text(root,"PASSPORT & RANGER DESK\nSpot wildlife · Help keepers · Take photos",C+Vector3(-6,2.6,5),Color("244b3c"),36,35)
  box(root,C+Vector3(-6,0.65,5),Vector3(4,1.3,1.6),Color("4a7f64"),true)
- text(root,"DAY PASS $50 · All open habitats",C+Vector3(-6,3.8,5),Color("b7f3d4"),28,35)
+ text(root,"FREE ENTRY · All open habitats",C+Vector3(-6,3.8,5),Color("b7f3d4"),28,35)
  g.bio_people.append(g._cm_person(root,C+Vector3(-7,0,3),0.0,77))
  g.bio_nav = g._nav_area("World Biosphere Hub",C.x-32,C.z-32,C.x+32,C.z+32,[C+Vector3(0,0,12)],func(p):return Vector2(p.x-C.x,p.z-C.z).length()<19.0)
  g.bio_nav["root"] = root
@@ -345,6 +345,8 @@ func gate(i: int,p: Vector3,dir: Vector3) -> void:
  sh.size = Vector3(5.6,3,0.3)
  cs.shape = sh
  cs.position.y = 1.5
+ body.collision_layer = 0
+ body.collision_mask = 0
  body.add_child(cs)
  n.add_child(body)
  g.bio_gates.append({"pos":p,"dir":dir,"dist":23.0,"body":body,"panels":panels,"bar":bar,"label":label,"state":-1})
@@ -1057,7 +1059,7 @@ func refresh_panel() -> void:
   var b = g._button(NAMES[i]+(" ✓" if int(state.pages)&(1<<i) else ""),select_page.bind(i))
   choices.add_child(b)
  ui_label(NAMES[page].to_upper(),COLORS[page],26)
- ui_button("DAY PASS ✓" if g._bio_pass_ok() else "BUY DAY PASS · $50",g._bio_buy_pass)
+ ui_button("FREE ENTRY ✓",g._bio_buy_pass)
  var mask = species_mask(page)
  var count = g._bits(int(g.bio_seen)&mask)
  var completed = 0

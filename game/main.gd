@@ -357,7 +357,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.54.2: World Biosphere gates and doors, walk into every dome.")
+	_show_toast("Harbor City 0.54.3: World Biosphere is free to enter, no ticket or gates.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()
@@ -8136,7 +8136,7 @@ func _refresh_hud() -> void:
 	elif _extra_near() >= 0:
 		action_button.text = "SHOP: " + String(ga_extra_spots[_extra_near()][2])
 	elif _ticket_near():
-		action_button.text = "DAY PASS ✓" if _bio_pass_ok() else "BUY DAY PASS  $%d" % BIO_PASS_PRICE
+		action_button.text = "FREE ENTRY ✓"
 	elif _qt() and trial_active < 0 and distance < (6 if driving else 5):
 		action_button.text = "PICK UP  +$%d" % _quick_pay(quick_idx)
 	elif exploring and not quick_on and index >= 0 and distance < 5 and not driving:
@@ -20248,7 +20248,8 @@ func _bio_inside(p: Vector3) -> bool:
 	return world_bio != null and world_bio.inside(p)
 
 func _bio_pass_ok() -> bool:
-	return bio_pass_day == _pz_today()
+	# v0.54.3: World Biosphere is free to enter: no ticket, no closed gates.
+	return true
 
 func _ticket_near() -> bool:
 	if driving or player == null or paused or not place_open[1]:
@@ -20257,7 +20258,7 @@ func _ticket_near() -> bool:
 
 func _bio_buy_pass() -> void:
 	if _bio_pass_ok():
-		_show_toast("Your day pass is good for all open continent domes until midnight. Enjoy!")
+		_show_toast("World Biosphere is free to enter. Enjoy!")
 		return
 	if cash < BIO_PASS_PRICE:
 		_show_toast("A day pass is $%d: you have %s. Do a few jobs and come back!" % [BIO_PASS_PRICE,_money(cash)])
@@ -20283,17 +20284,18 @@ func _bio_gates_update() -> void:
 		# hub side always keeps it shut, however close you walk up to it).
 		var along := (me.position-(G["pos"] as Vector3)).dot(G["dir"] as Vector3)
 		var near_g := (me.position-(G["pos"] as Vector3)).length() < 20.0
-		var shut := not ok and along < 0.0 and near_g
+		var shut := false and along < 0.0 and near_g
 		var state := (2 if ok else 0)+(1 if shut else 0)
 		if state == int(G["state"]):
 			continue
 		G["state"] = state
-		(G["body"] as StaticBody3D).collision_layer = 1 if shut else 0
+		(G["body"] as StaticBody3D).collision_layer = 0
+		(G["body"] as StaticBody3D).collision_mask = 0
 		(G["panels"] as Node3D).visible = not ok
 		var col := Color("4cff7a") if ok else Color("ff4f5a")
 		(G["bar"] as StandardMaterial3D).albedo_color = col
 		(G["bar"] as StandardMaterial3D).emission = col
-		(G["label"] as Label3D).text = "DAY PASS ✓" if ok else "DAY PASS $%d  ·  TICKETS desk" % BIO_PASS_PRICE
+		(G["label"] as Label3D).text = "FREE ENTRY"
 		(G["label"] as Label3D).modulate = col.lightened(0.4)
 
 func _bio_gate_tick(delta: float) -> void:
@@ -21315,10 +21317,33 @@ func _bio_make_butterfly(A: Dictionary) -> void:
 		A["wings"].append(w)
 
 # ---------------- animation, spotting and rewards ----------------
+var bio_stuck_t := 0.0
+var bio_stuck_pos := Vector3.ZERO
+var bio_stuck_cool := 0.0
+
+func _bio_stuck_check(delta: float) -> void:
+	# Diagnostic: if you hold the stick near World Biosphere but do not move, say what is in the way.
+	if player == null or driving or paused or not player.visible:
+		return
+	if Vector2(player.position.x-BIO_C.x,player.position.z-BIO_C.z).length() > 260.0:
+		bio_stuck_t = 0.0
+		return
+	bio_stuck_cool -= delta
+	if stick.length() > 0.5 and player.position.distance_to(bio_stuck_pos) < 0.03:
+		bio_stuck_t += delta
+	else:
+		bio_stuck_t = 0.0
+	bio_stuck_pos = player.position
+	if bio_stuck_t > 0.7 and bio_stuck_cool <= 0.0:
+		bio_stuck_cool = 4.0
+		var p := player.position
+		_show_toast("STUCK at %d,%d: %s | wide: %s | gates pass=%s" % [int(p.x),int(p.z),_blocker(p+Vector3(0,0.9,0),0.45),_blocker(p+Vector3(0,0.9,0),1.1),str(_bio_pass_ok())])
+
 func _biosphere_tick(delta: float) -> void:
 	if world_bio != null:
 		if place_open[1] and not paused:
 			_bio_gate_tick(delta)
+		_bio_stuck_check(delta)
 		world_bio.tick(delta)
 
 func _bio_animate(A: Dictionary, delta: float) -> void:

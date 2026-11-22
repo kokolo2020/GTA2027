@@ -67,3 +67,5 @@ The first three runners enforce process deadlines and restore local save bytes. 
 No Fold5 was attached (`adb devices` empty). These results establish native comparative performance and physical collision regression, **not measured 60 FPS on Fold5**. Android process memory, thermal behavior and YouTube staying alive during a livestream still require Koko's phone test. Audio had no active stream in the benchmark; the recorded zero WAV bytes do not mean normal gameplay uses no audio memory. No audio assets or saved radio preference were removed.
 
 Final Android/Web exports passed. APK package/version/signature and ZIP integrity verified by publisher check-only. APK SHA256: `825a5f59a9bebea425da2121f2de7e7aff3fc6761dca5223cc4f317a2f4d896e`; 53158394 bytes. Final screenshots of all seven domes, the elephant and the loop reviewed.
+
+Published and publicly verified: [v0.55.1](https://github.com/kokolo2020/GTA2027/releases/tag/v0.55.1). Pages run 45019176412 succeeded; live metadata, page, gameplay screenshot and complete Web PCK checksum match the exported artifacts. See `public-verification.json`.

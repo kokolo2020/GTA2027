@@ -357,7 +357,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.6: dome name signs, solid hub wall with real doors, visitors in the biosphere, quests that start on entry and point the way.")
+	_show_toast("Harbor City 0.55.7: Trials and Chase removed from the menu, Ridge, Bay Promenade and Marina Heights no longer destinations.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()
@@ -3580,7 +3580,7 @@ func _chase_tick(delta: float) -> void:
 		if chase_mode == 1:
 			_chase_end("You escaped the police!  +$%d" % CHASE_PAY,CHASE_PAY)
 		else:
-			_chase_end("The thief got away. Try again from Menu > Chase.",0)
+			_chase_end("The thief got away.",0)
 		return
 	var offset := nearest_pos-car.position
 	var screen_right := camera.global_basis.x
@@ -3633,7 +3633,7 @@ func _check_trial() -> void:
 	var elapsed := clock-trial_start
 	if elapsed > float(trial["par"])*3.0:
 		trial_active = -1
-		_show_toast("Trial timed out. Try again from Menu > Trials.")
+		_show_toast("Trial timed out.")
 		return
 	var cp: Vector3 = trial["cps"][trial_cp]
 	if Vector2(car.position.x-cp.x,car.position.z-cp.z).length() < 6.0 and absf(car.position.y-cp.y) < 4.0:
@@ -4839,7 +4839,7 @@ func _build_hud() -> void:
 	menu_screen_button = _button("Screen: Clean",_menu_stay.bind(_toggle_clean_hud))
 	var pages := [
 		["GO",Color("2f8fb8"),[["Map",_menu_go.bind(_open_map)],["Travel",_menu_go.bind(_open_travel)],["Directions",_menu_go.bind(_open_dir)],["Call car",_menu_go.bind(_menu_call_car)],["Quests",_menu_go.bind(_open_quests)],["Back to my car",_rescue]]],
-		["PLAY",Color("c9612f"),[["World Biosphere Passport",_menu_go.bind(_world_bio_passport)],["Chapters",_open_chapters],["Careers",_open_careers],["Trials",_open_trials],["Chase",_chase_open],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
+		["PLAY",Color("c9612f"),[["World Biosphere Passport",_menu_go.bind(_world_bio_passport)],["Chapters",_open_chapters],["Careers",_open_careers],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
 		["ME",Color("8a5ad0"),[["My Home",_open_homes],["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
 		["FRIENDS",Color("2fa37a"),[["Chat",_menu_go.bind(_toggle_chat)],["Players & friends",_open_social],[menu_online_button]]],
 		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[time_button]]],
@@ -7932,7 +7932,7 @@ func _interact() -> void:
 		return
 	if trial_active >= 0:
 		if driving:
-			_show_toast("Trial running: drive through the golden rings, or Menu > Trials to cancel.")
+			_show_toast("Trial running: drive through the golden rings.")
 			return
 		trial_active = -1
 		_show_toast("Trial ended.")
@@ -12182,6 +12182,8 @@ func _draw_minimap() -> void:
 		if p.length() < limit:
 			ctl.draw_circle(c+p*MINI_SIZE,4.0,Color("e04a3a"))
 	for i in CHECKPOINTS.size():
+		if _hidden_place(String(CHECKPOINTS[i]["name"])):
+			continue
 		var p := _mini_point(CHECKPOINTS[i]["pos"],me,cs,sn)
 		if p.length() < limit:
 			_draw_checkpoint_icon(ctl,c+p*MINI_SIZE,5.0,i == checkpoint_id)
@@ -12209,6 +12211,8 @@ func _draw_full_map() -> void:
 		ctl.draw_string_outline(font,p-Vector2(w/2.0,0),l[0],HORIZONTAL_ALIGNMENT_LEFT,-1,15,5,Color("132b3a"))
 		ctl.draw_string(font,p-Vector2(w/2.0,0),l[0],HORIZONTAL_ALIGNMENT_LEFT,-1,15,Color("fff5dc"))
 	for i in CHECKPOINTS.size():
+		if _hidden_place(String(CHECKPOINTS[i]["name"])):
+			continue
 		_draw_checkpoint_icon(ctl,_world_to_uv(CHECKPOINTS[i]["pos"])*size,6.0,i == checkpoint_id)
 	for m in _site_markers():
 		var p: Vector2 = _world_to_uv(m[0])*size
@@ -12877,6 +12881,12 @@ const CHECKPOINTS := [
 	{"name":"Harbor Galleria","pos":Vector3(-330,0,-514)},
 	{"name":"Sky Garden","pos":Vector3(-403,0,-610)},
 ]
+# v0.55.7: Koko dropped these as destinations (kept in the world, gone from menus, travel, map icons and jobs).
+const HIDDEN_PLACES := ["Ridge Trailhead","Bay Promenade","Marina Heights"]
+
+func _hidden_place(nm: String) -> bool:
+	return nm in HIDDEN_PLACES
+
 var checkpoint_id := -1
 var checkpoint_nodes: Array = []
 var checkpoint_mats: Array = []
@@ -13019,6 +13029,7 @@ func _build_checkpoints() -> void:
 		var node := Node3D.new()
 		node.position = pos
 		add_child(node)
+		node.visible = not _hidden_place(String(CHECKPOINTS[i]["name"]))
 		var pad := MeshInstance3D.new()
 		var cyl := CylinderMesh.new()
 		cyl.top_radius = 2.4
@@ -13066,7 +13077,7 @@ func _refresh_checkpoints() -> void:
 func _check_checkpoints() -> void:
 	var body: Node3D = car if driving else player
 	for i in CHECKPOINTS.size():
-		if i == checkpoint_id:
+		if i == checkpoint_id or _hidden_place(String(CHECKPOINTS[i]["name"])):
 			continue
 		var pos: Vector3 = CHECKPOINTS[i]["pos"]
 		if Vector2(body.position.x-pos.x,body.position.z-pos.z).length() < 3.2 and absf(body.position.y-pos.y) < 3.0:
@@ -13154,14 +13165,14 @@ func _smoke_guidance_checkpoints() -> void:
 		assert(not _blocked_at((spots[0] as Vector3)+Vector3(0,0.6,0),0.5),"Checkpoint %s: player spot blocked by %s" % [CHECKPOINTS[i]["name"],_blocker((spots[0] as Vector3)+Vector3(0,0.6,0),0.5)])
 		assert(not _blocked_at((spots[1] as Vector3)+Vector3(0,0.5,0),1.0),"Checkpoint %s: car spot blocked by %s" % [CHECKPOINTS[i]["name"],_blocker((spots[1] as Vector3)+Vector3(0,0.5,0),1.0)])
 	checkpoint_id = -1
-	player.position = (CHECKPOINTS[2]["pos"] as Vector3)+Vector3(0.5,0.75,0)
+	player.position = (CHECKPOINTS[3]["pos"] as Vector3)+Vector3(0.5,0.75,0)
 	_check_checkpoints()
-	assert(checkpoint_id == 2,"Walking onto a pad saves that checkpoint")
+	assert(checkpoint_id == 3,"Walking onto a pad saves that checkpoint")
 	checkpoint_id = -1
 	_load_progress()
-	assert(checkpoint_id == 2,"Checkpoint survives a reload")
+	assert(checkpoint_id == 3,"Checkpoint survives a reload")
 	_rescue()
-	assert(player.position.distance_to((CHECKPOINTS[2]["pos"] as Vector3)+Vector3(0,0.75,0)) < 0.5 and car.position.distance_to(_checkpoint_spawn()[1]) < 0.5,"Rescue returns to the checkpoint")
+	assert(player.position.distance_to((CHECKPOINTS[3]["pos"] as Vector3)+Vector3(0,0.75,0)) < 0.5 and car.position.distance_to(_checkpoint_spawn()[1]) < 0.5,"Rescue returns to the checkpoint")
 	driving = was[0]
 	player.position = was[1]
 	player.rotation = was[2]
@@ -17089,6 +17100,8 @@ func _build_travel(root: Control) -> void:
 		b.add_theme_font_size_override("font_size",18)
 		travel_buttons.append(b)
 		grid.add_child(b)
+		if _hidden_place(String(CHECKPOINTS[i]["name"])):
+			b.hide()
 	var back := _button("Close",_close_travel)
 	r.add_child(back)
 	travel_panel.hide()
@@ -29409,7 +29422,6 @@ const DIR_DESTS := [
 	{"name":"Sky Garden","pos":Vector3(-403,0,-610),"col":Color("7dff9a")},
 	{"name":"Civic Center","pos":Vector3(-150,0,23),"col":Color("5fd0ff")},
 	{"name":"Westside Market","pos":Vector3(-330,0,111),"col":Color("f0bd62")},
-	{"name":"Marina Heights","pos":Vector3(-10,0,116),"col":Color("5fd0ff")},
 	{"name":"Harbor Dome","pos":Vector3(148,0,36),"col":Color("c89bff")},
 	{"name":"Harbor Raceway","pos":Vector3(170,0,-150),"col":Color("ff7a4a")},
 	{"name":"Sunset Beach","pos":Vector3(300,0,158),"col":Color("ffb25f")},
@@ -30858,7 +30870,7 @@ func _career_spots() -> Array:
 	for q in QUICK:
 		raw.append(q["pos"])
 	for c in CHECKPOINTS:
-		if _place_lock_of(String(c["name"])) < 0:
+		if _place_lock_of(String(c["name"])) < 0 and not _hidden_place(String(c["name"])):
 			raw.append(c["pos"])
 	for d in DIR_DESTS:
 		if _place_lock_of(String(d["name"])) < 0:
@@ -33032,11 +33044,9 @@ const CHAPTERS := [
 		{"k":"go","t":"Summit Pass Overlook","p":Vector3(178,5.7,-270)},
 		{"k":"go","t":"Midtown","p":Vector3(-60,0,-410)},
 		{"k":"go","t":"Harbor Airport","p":Vector3(52,0,-470)}]},
-	{"name":"Sun, Sea and Speed","pay":1500,"xp":120,"story":"Marina Heights, the beach and the raceway.","steps":[
-		{"k":"go","t":"Marina Heights","p":Vector3(-10,0,116)},
+	{"name":"Sun, Sea and Speed","pay":1500,"xp":120,"story":"The beach and the raceway.","steps":[
 		{"k":"go","t":"Sunset Beach","p":Vector3(300,0,158)},
-		{"k":"go","t":"Harbor Raceway","p":Vector3(170,0,-150)},
-		{"k":"trials","n":3}]},
+		{"k":"go","t":"Harbor Raceway","p":Vector3(170,0,-150)}]},
 	{"name":"Skyline Life","pay":2000,"xp":140,"story":"Ride the sky train into the big-city blocks.","steps":[
 		{"k":"go","t":"Union Station","p":Vector3(-196,0,-317)},
 		{"k":"go","t":"Grand Central","p":Vector3(-420,0,-286)},

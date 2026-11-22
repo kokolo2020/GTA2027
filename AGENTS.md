@@ -1,6 +1,6 @@
 # Harbor City project instructions
 
-- Read README.md, PUBLISHING.md and CLAUDE-HANDOVER.md before changes.
+- Read README.md, PUBLISHING.md, CLAUDE-HANDOVER.md, HANDOVER-NEXT-CHAT.md and CODE-MAP.md before changes.
 - Canonical checkout is /Users/koko/GTA2027. GitHub Releases and Pages are the publishing route; no Sites connector is needed.
 - Preserve Android package com.koko.harborcity and signing identity. Keep signing keys local and out of GitHub.
 - Preserve saved money, cars, tunes, collectibles, discoveries and completed missions. Increase version code for every APK update.

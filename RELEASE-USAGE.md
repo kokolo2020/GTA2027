@@ -7,3 +7,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.55.2 | | | | ChatGPT-built |
 | 0.55.3 | | | | Claude-built (Biosphere restyle) |
 | 0.55.6 | | | | Claude-built (dome signs, hub doors, visitors, quests) |
+| 0.55.7 | | | | Claude-built (menu cleanup, docs) |

@@ -1,1 +1,1 @@
-Read AGENTS.md, CLAUDE-HANDOVER.md and PUBLISHING.md. Work in this repository. GitHub CLI with write access can publish releases; the OpenAI Sites connector is no longer required.
+Read AGENTS.md, CLAUDE-HANDOVER.md, HANDOVER-NEXT-CHAT.md, CODE-MAP.md and PUBLISHING.md. Work in this repository. Use CODE-MAP.md to find code in game/main.gd (34k lines): read only the line ranges you need. GitHub CLI with write access can publish releases.

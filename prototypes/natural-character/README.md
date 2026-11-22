@@ -1,7 +1,7 @@
 # Natural character 01
 
 An original character study for Harbor City, subsequently integrated as the 0.53.0 player
-trial. Earlier studies below are retained for comparison; the latest local expansion is
+trial. Earlier studies below are retained for comparison; the latest expansion is
 described at the end. Existing wardrobe assets and saved progress are preserved.
 
 - `full-body.png` and `face.png`: studio renders, not in-game screenshots.
@@ -61,7 +61,7 @@ phone. Android and Web 0.53.0 exports now pass verification. Publishing was auth
 Published as 0.53.0 / code 88. Android checksum/signing and live Web package verified; the
 public browser New / Classic switch was tested. See CLAUDE-HANDOVER.md for release evidence.
 
-## Local city-wide expansion (not released)
+## City-wide expansion (0.53.1)
 
 `blender-src/make_city_people.py` creates athletic male and fuller adult female variants,
 including separate one-surface crowd assets (about 6k triangles) and full player models.
@@ -76,8 +76,8 @@ measured 50.7 FPS versus 45.9 for Classic; this does not establish phone perform
 
 Import, focused appearance/network/movement checks, full smoke, gameplay screenshots and
 Classic rollback passed. `verify_in_game.py --bench` measures the new city; add `--classic-city`
-for the baseline. Desktop saves are restored after every run. No phone test, APK/Web export,
-commit or release for this expansion. Live remains 0.53.0 / code 88.
+for the baseline. Desktop saves are restored after every run. Android/Web exports and APK integrity/package/version/signing verification passed. Published
+as 0.53.1 / code 89; public APK and Web package checksums verified. No phone test.
 
 Updated livestream artwork: `docs/stream/harbor-city-live-new-characters-v3.jpg` (1280x720),
 with its source PNG and exact image-generation prompt alongside it.

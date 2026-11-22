@@ -1,12 +1,57 @@
 # Harbor City — current handover
 
-## START HERE (updated 2026-11-22, World Biosphere 0.55.2 released)
+## START HERE — Claude continuation (22 November 2026)
 
-**Live version: 0.55.2, versionCode 98 (next code 99). Released and publicly verified.** Koko explicitly authorized “Release after” the requested fixes and verification, superseding the earlier hold. Stay on **main**.
+### Current state
 
-**Released and verified 0.55.2:** https://github.com/kokolo2020/GTA2027/releases/tag/v0.55.2 ; source `09eb23de007626c2f12820de401017467b64aec6`; APK 53158394 bytes, SHA256 `196a7969792d1d8b674834814697eda5030aadd2e4fe26f7f93610071d66f1c1`. Package/version/code/original certificate and downloaded APK checksum verified. Pages run 45021981019 succeeded. Live page/metadata/gameplay image and exact Web PCK match the exports (PCK SHA256 `0f3ff471d60dc127b760b9c050f7f9b493f4a8eb3b845e0e411fb2a9e8aced49`). Evidence: `docs/world-biosphere/0.55.2/public-verification.json`. Stayed on main; desktop save restored byte for byte, original Git exclusions restored, unrelated user files untouched. Fold5 validation remains for Koko.
+- Canonical repo: `/Users/koko/GTA2027`, GitHub `kokolo2020/GTA2027`. **Stay on main.** Read `AGENTS.md`, `CLAUDE.md` and `PUBLISHING.md` before work. This section supersedes conflicting historical instructions below.
+- **Live: 0.55.2 / Android code 98. Next code: 99.** Everything requested in this session is implemented, tested, committed, pushed and released. No pending source edits or unfinished release steps. Release authorization applied to 0.55.2; wait for Koko's next task and an explicit “Release” before another publication.
+- Download: https://kokolo2020.github.io/GTA2027/ ; Web: https://kokolo2020.github.io/GTA2027/play/ ; release: https://github.com/kokolo2020/GTA2027/releases/tag/v0.55.2
+- Release source/tag: `09eb23de007626c2f12820de401017467b64aec6`. Release verification recorded in main at `42bb232` before this handover update.
+- APK: 53,158,394 bytes; SHA256 `196a7969792d1d8b674834814697eda5030aadd2e4fe26f7f93610071d66f1c1`. Package `com.koko.harborcity`, code 98, version 0.55.2. Keep original certificate SHA256 `5168f1fa527ea9b9ea183d442285192de49dfe0d5b6cf0e0590421b84b5f547b` and existing local key.
+- Pages run `45021981019` succeeded. Public APK downloaded and hashed; live page, release metadata, gameplay image and exact Web PCK matched exports. PCK: 21,272,520 bytes, SHA256 `0f3ff471d60dc127b760b9c050f7f9b493f4a8eb3b845e0e411fb2a9e8aced49`.
 
-**0.55.2 / code 98 released:** Koko rejected the enclosed concourse after phone testing. Removed its roof and circular connector, restoring the open hub-and-seven-spoke garden paths. Existing sealed door openings, free entry, progress, safety recovery and one-resident-dome memory work remain. Ramps now share mitered edges and continuous height tangents; exposed guard boundaries are sampled just outside each surface to avoid clipped gaps/spikes. Shared unit beam geometry renders exact rail endpoints. Path visuals sit slightly above the grass to avoid coplanar flicker. Added large hub left/straight/right directions and left/right neighboring dome signs at every door. Daily Keeper stages validate automatically on proximity, retaining once-per-day rewards and streak/save state. Added solid upper shell collision as well as the existing sealed lower perimeter: door is the sole entry/exit even above raised stages. Source changes stay in `game/world_biosphere.gd`, with regenerated map and evidence under `docs/world-biosphere/0.55.2/`. Full city regression passed; final focused checks cover all seven dome walls from 48 angles inward/outward in all modes and upper-shell closure. Automatic daily rewards/streaks and no double payout passed. Final native FPS: Asia 201.4 vs 208.5 (-3.41%); Antarctica 227.8 vs 229.9 (-0.91%), both within 5%. Final close-up ramps/signs and open campus reviewed; map regenerated; save bytes restored. Koko said Release; 0.55.2 / code 98 is now published and verified.
+### Koko's latest decisions — preserve these
+
+1. **Open hub-and-seven-spoke layout. No pathway roofs and no circular connector.** The enclosed ring in 0.55.1 was explicitly rejected after Fold5 screenshots. Do not restore it when reusing older code. Dome glass roofs remain.
+2. **Every dome is sealed; only its door allows entry/exit.** Continuous lower perimeter collision leaves exactly one 5.6 m doorway; upper glass has solid collision too. Open outside paths create no additional dome openings.
+3. Free entry: **no tickets, day passes or closed gates**. Existing level-7 unlock remains.
+4. Smooth rim bevels, shared ramp joins and continuous rails; no raised lips, gaps or rail pieces across visitor paths. All seven landscapes, routes and stages must retain distinct designs.
+5. Large hub directions list left Oceania/North America/Europe, straight Africa, right Asia/South America/Antarctica. Each dome door has neighboring left/right dome signs when facing the hub.
+6. **Daily Keeper progress validates automatically by proximity** at the yellow markers, including BOARD. No click or manual prompt. Keep once-per-day payouts, saved steps, streaks and achievements.
+7. Preserve all 46 existing species identities/`bio_seen` bits and passport progress; append future species. Keep the third Phase 2 slot named **Oceania**, with Australian wildlife. No character redesign: original characters remain after the earlier rollback.
+8. Retain pen clearance, solid raised guards and pen/stuck-player rescue. Flamingos wade only; standing birds use supported ground/perches. Only proper spread-wing models fly. Elephant GLBs load, hips meet torso, and feeding slots are separated. Animals remain stylized original assets; no photorealism claim.
+9. Keep only the active dome's detail/models resident; unload/free the previous detail. Preserve mobile-lite Android rendering, alpha-scissor foliage, opaque rails and distant animation throttling. Maintain the 5% FPS budget.
+
+### Implementation and evidence
+
+Work mainly in `game/world_biosphere.gd` and docs. Koko asked to save credit: read/edit only necessary named functions in the large `game/main.gd`. In 0.55.2, main changed only its release toast.
+
+Useful World Biosphere functions: `build_open_paths`, `shell`, `phase2_walkway`, `sweep_join`, `build_sweeps`, `finish_guards`, `auto_keeper`, `finish_keeper`, `load_dome`, `unload_detail`, `activate_dome`, `smoke`, `screenshots`, `profile_report`. Geometry is centred at `C=(-860,0,-650)`; seven domes orbit 115 m away, radius 38.5 m. Harbor Galleria stays in its original location. Ocean World remains a reserved Phase 3 site, not a new task authorization.
+
+- Release notes: `docs/releases/v0.55.2.md`.
+- Change/test guide: `docs/world-biosphere/0.55.2/CHANGES.md`.
+- Public checks: `docs/world-biosphere/0.55.2/public-verification.json`.
+- Full regression: `smoke-results.txt`; rail follow-up: `rail-followup.txt`; final closure: `closure-results.txt` in that folder.
+- Final renders: `shots/open-entry-directions.png`, `open-campus.png`, `asia-smooth-ramp.png`, `antarctica-smooth-ramp.png`, plus every dome and elephant close-up. Minimap regenerated in `game/map/world_map.png`.
+- Full city regression passed. Final focused checks covered all seven perimeters from **48 angles inward and outward**, walk/run/BOARD, actual door traversal both ways and upper glass at 8/16/26 m. Raised routes, pens/rescue, quest completion, passport, daily auto-validation, duplicate payouts, streaks and legacy saves passed. Focused follow-ups skipped only previously passed bevel sweeps; full run did not use skip flags.
+- Final native M1 `--bench --web-lite`: Asia 201.4 vs released 0.55.1's 208.5 FPS (-3.41%); Antarctica 227.8 vs 229.9 (-0.91%). Both within 5%. Raw measurements in `asia.json` and `antarctica.json`. Earlier seven-dome memory/performance comparisons: `docs/world-biosphere/0.55.1/VERIFICATION.md`.
+
+### What remains to validate
+
+**No physical Fold5 was connected.** Native Mac FPS is not measured phone FPS. Koko should test actual door traversal, smooth ramps/rails, direction signs and automatic Daily Keeper behavior on the phone, plus sustained frame rate and YouTube remaining alive during livestreaming. Do not claim those phone checks passed. Continue from Koko's feedback; do not invent additional construction or redesign work.
+
+### Safe continuation / release workflow
+
+- Working tree was clean for tracked files after release. Untracked `release-0.52.1.sh`, `reports/`, `research_notes/` belong to Koko; leave in place. Also leave `blender-src/make_player.py` and `game/models/player.glb` (+ import) alone if present. For publisher cleanliness, use temporary exact entries in `.git/info/exclude`, then restore original bytes. Never move user files.
+- Desktop save: `~/Library/Application Support/Godot/app_userdata/Harbor City/harbor_save.cfg`. All guarded runners restored it byte for byte. Never run multiple Godot/test processes concurrently against this save.
+- Godot: `~/harbor-city/tools/Godot.app/Contents/MacOS/Godot`; SDK: `~/harbor-city/tools/android-sdk`; JDK: `~/harbor-city/tools/jdk17/jdk-17.0.21+9/Contents/Home`. No new SDK agreements or signing keys.
+- Guarded commands (run only as needed, serially): `python3 docs/world-biosphere/0.55.2/verify.py` (import + full smoke); `preview.py` (screenshots + map/import); `profile.py <label> --dome <0-6>`; `export.py` (import + Android/Web exports). Launch these with their full folder path from repo root. Time guards matter: an awaited Godot assertion can otherwise leave the process running.
+- Batch fixes and run the appropriate final tests once; rerun focused checks only after a new change/failure. Preserve save bytes and inspect actual renders. Do not repeat already-passed broad checks without a reason.
+- On a future explicit Release: bump preset code/name, startup toast, static site version/link/query strings and notes; export with existing identity; verify APK; commit owned files on main; run `python3 scripts/publish-release.py builds/Harbor-City-Android-debug.apk --notes docs/releases/vX.Y.Z.md`. Verify Actions and public APK/Web checksums, update this handover, commit/push docs, remain on main. Follow `PUBLISHING.md`; inspect legacy `release.sh` before use because it has older file-moving/branch behavior.
+- Keep replies short, act autonomously within the requested scope, avoid repeated permission questions. No recurring AI monitoring or three-minute checks.
+
+### Recent release history (superseded where noted)
 
 **Released and verified 0.55.1:** https://github.com/kokolo2020/GTA2027/releases/tag/v0.55.1 ; source `ab779005e3f41d4432556a8a282d3f5f3ec25ef3`; APK 53158394 bytes, SHA256 `825a5f59a9bebea425da2121f2de7e7aff3fc6761dca5223cc4f317a2f4d896e`. Package/version/code/original certificate verified, remote APK downloaded and hashed. Pages run 45019176412 succeeded; live page/metadata/gameplay image and exact Web PCK bytes match exports (PCK SHA256 `69e308ac6a6bcea3541dd9b77b980b18095d2f1115bb5499d8df50ba8a63dd9e`). Evidence: `docs/world-biosphere/0.55.1/public-verification.json`. Android/Web builds and regenerated map committed. Main retained; save bytes and original local Git exclusions restored; unrelated untracked files left in place.
 
@@ -29,7 +74,7 @@ Runtime assets: `game/models/natural_male.glb`, `natural_female.glb` and their `
 
 **Historical 0.53.0 character trial (rolled back in 0.53.2):** new rigged playable character with a fixed futuristic outfit. Menu > Settings > Character switches New / Classic immediately and remembers the preference; Classic restores the full saved wardrobe. NPCs and online peers stay classic. Runtime: `game/natural_player_trial.gd` + `game/models/natural_player_trial.glb`; source/previews: `prototypes/natural-character/`. Idle/walk/run/sit/wave/talk/cheer included. Import, focused checks (including the Settings switch), full desktop smoke, rendered in-game screenshots, classic startup fallback, Android/Web exports and APK package/version/signing verification passed. Desktop save restored byte for byte. Not checked on Fold5. GitHub release and live Pages metadata verified; public Web PCK checksum matches the export. New / Classic switching also checked in the published browser build. No player progress migration.
 
-**Last release: 0.55.2.** Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short, end with one question and its choices, send screenshots with SendUserFile).
+**Last release: 0.55.2.** Original single-player + online city game, Godot 4.7.2 (Compatibility), Android APK + web build. Owner: Koko, who plays on a Samsung Galaxy Z Fold5 and talks to Claude over Remote Control from the phone (keep replies short; use available tools to share actual screenshots when useful).
 
 - Repo: /Users/koko/GTA2027 (GitHub kokolo2020/GTA2027). Main script: game/main.gd (~32k lines, everything lives there; new systems are appended at the end with a `# ---- vX.Y: ...` banner). Blender generators: blender-src/*.py. Release notes: docs/releases/vX.Y.Z.md. Screenshots: docs/shots-X.Y.Z/.
 - Branches: develop and release on **main**; remain on main as Koko instructed. Do not merge or push another session’s character branch.
@@ -43,16 +88,13 @@ Runtime assets: `game/models/natural_male.glb`, `natural_female.glb` and their `
 3. If the world changed: `Godot --path game --resolution 1024x1024 -- --bake-map`, then `Godot --headless --path game --import`.
 4. Export: `Godot --headless --path game --export-debug "Android" ../builds/Harbor-City-Android-debug.apk` (delete the .idsig), `Godot --headless --path game --export-release "Web" ../site/play/index.html`. Check `apksigner verify --print-certs` shows SHA-256 5168f1fa527ea9b9ea183d442285192de49dfe0d5b6cf0e0590421b84b5f547b, and `aapt dump badging` shows the new version.
 5. Write docs/releases/vX.Y.Z.md; update site/index.html (edition "NEO HARBOR / X", "New in X:" lead text, download button link + label, maybe the h1 and site/assets/gameplay.png). Commit and push main.
-6. `python3 scripts/publish-release.py builds/Harbor-City-Android-debug.apk --notes docs/releases/vX.Y.Z.md` (folders moved aside).
+6. `python3 scripts/publish-release.py builds/Harbor-City-Android-debug.apk --notes docs/releases/vX.Y.Z.md` (temporary local Git exclusions only; leave user files in place).
 7. Watch the "Publish download page" workflow (`gh run list --workflow pages.yml`). It often fails with "No artifacts named github-pages": re-run it (`gh run rerun <id>` or `gh workflow run pages.yml --ref main`).
 8. Verify live: release.json version + sha256, page edition and button, /play/index.pck content-length, downloaded APK sha256. Append a "Released and verified" line here, commit, push, remain on main.
 
-### Releasing from a cloud/phone chat (no Claude on the Mac)
-A cloud chat linked to the Mac (computer use / device_bash) cannot run Mac Godot, the signing key or gh, and cannot type into Terminal. So: when Koko says "Release", the chat itself does the file work, then Koko runs ONE command in Terminal on the Mac.
-1. In the repo on main (`git checkout main`; the folder is normally on character-redesign), edit: `version/code` + `version/name` in game/export_presets.cfg, the startup `_show_toast("Harbor City X.Y.Z: ...")` in game/main.gd, site/index.html (edition, "New in X.Y.Z:" lead, download link v-tag, button label, gameplay.png?v=), and write docs/releases/vX.Y.Z.md (no hashes; the script appends them).
-2. Tell Koko to run in Terminal on the Mac: `gh auth status` (if not logged in: `gh auth login`), then `bash ~/GTA2027/scripts/release.sh X.Y.Z CODE`.
-3. scripts/release.sh does: set aside untracked files, smoke test, import, export APK + Web, verify cert/version, append hash to notes, commit + push main, scripts/publish-release.py, Pages workflow check, live check, update this file, push, restore branch/save/files. It stops at the first problem; logs in /tmp/hc-aside.*/log.
-4. In a cloud chat, device_bash is a Linux VM: git commands there leave .lock files (deletion is off); never leave stale locks under .git.
+### If the next Claude environment is cloud-only
+
+Check actual tool access first. A Linux-only environment cannot execute the Mac toolchain or use its local signing key. Prepare reviewable changes and report the exact missing capability; use an authorized Mac connection when available. Do not assume a particular app cannot use Terminal. Do not ask Koko to run legacy `scripts/release.sh` unchanged: inspect its file-moving and branch-restoration behavior against the current preserve-files/stay-on-main requirements. Never copy credentials or keys into chat or source.
 
 ### Developer tools in the game
 - `--city-shots` with HC_CAM="name;x,y,z;lx,ly,lz;hour[;extra frames]" and HC_SHOTS=<dir> saves one frame. Extras: HC_NOHUD=1 (no buttons), HC_PHOTO=1 (Photo mode), HC_VIEWERS=<n> (streamer viewer badge), HC_CAREER=<0-3> HC_CJ=<wait|pickup|mirror|dropoff|done|load|unload|radio|arrest|spray|fireout>[:seconds] (one frozen moment of a career job), HC_SJ=<name> (stream-join welcome banner), HC_FOLLOW=1 (Follow view, shows the screen arrow), HC_MENU=<tab>, HC_HOME=<i> (+HC_HOMETOP=1), HC_CAREER=<i>, HC_LEVEL=<n>, HC_SHOWOFF, HC_PEERS.

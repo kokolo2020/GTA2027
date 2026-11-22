@@ -357,7 +357,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.54.3: World Biosphere is free to enter, no ticket or gates.")
+	_show_toast("Harbor City 0.54.4: clear Biosphere entrances, unique dome paths and new upper wildlife layers.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()
@@ -6435,7 +6435,7 @@ func _c4_winner(b: Array) -> int:
 			return 0
 	return 3
 
-func _c4_bot_move(b: Array, me: int) -> int:
+func _c4_bot_move(b: Array, me: int, allow_mistake := true) -> int:
 	var them := 3-me
 	var free := []
 	for c in 7:
@@ -6443,7 +6443,7 @@ func _c4_bot_move(b: Array, me: int) -> int:
 			free.append(c)
 	if free.is_empty():
 		return -1
-	if randf() < 0.18:
+	if allow_mistake and randf() < 0.18:
 		return free[randi() % free.size()]
 	for who in [me,them]:
 		for c in free:
@@ -9456,7 +9456,7 @@ func _smoke_test() -> void:
 	var b5 := _c4_empty()
 	for c in 3:
 		b5[c] = 2
-	assert(_c4_bot_move(b5,1) == 3 or _c4_bot_move(b5,1) == 3,"The robot blocks three in a row")
+	assert(_c4_bot_move(b5,1,false) == 3,"The robot blocks three in a row")
 	_sit(_seat_of("c4",0,0))
 	assert(seat_id >= 0 and game_panel.visible and c4_box.visible,"Connect Four table opens its board")
 	_c4_tap(3)

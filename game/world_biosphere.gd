@@ -79,6 +79,7 @@ var safari_hint: Label
 var panel_body: VBoxContainer
 var last_rare := -1
 var announced_baby_day := ""
+var atmospheres: Array = []
 var pending_save := false
 var saved_delay := 0.0
 
@@ -137,7 +138,7 @@ func dome_at(p: Vector3) -> int:
 func material(col: Color) -> StandardMaterial3D:
  var key = col.to_html()
  if not mats.has(key):
-  mats[key] = g._bio_mat(col.darkened(0.18),0.0,0.85)
+  mats[key] = g._bio_glass_mat(col,col.a) if col.a<1.0 else g._bio_mat(col.darkened(0.18),0.0,0.85)
  return mats[key]
 
 func shape(parent: Node3D, mesh: Mesh, pos: Vector3, sc: Vector3, col: Color, solid := false, rot := Vector3.ZERO) -> void:
@@ -203,6 +204,18 @@ func disc(parent: Node3D,c: Vector3,r: float,th: float,col: Color,solid := false
  if solid:
   g._bio_cyl_col_on(parent,c,r,th)
 
+func entrance_ramp(centre: Vector3,outward: Vector3,radius: float,width: float,col: Color,low := -0.05,high := 0.09,approach := 1.5,parent: Node3D = null) -> void:
+ # The grass is at -0.05 m and each floor disc ends at +0.09 m. A capsule cannot
+ # step over that vertical rim; bridge both surfaces with a gentle, solid slope.
+ var a = centre+outward*(radius+approach)+Vector3(0,low,0)
+ var b = centre+outward*(radius-approach)+Vector3(0,high,0)
+ var x = (b-a).normalized()
+ var z = x.cross(Vector3.UP).normalized()
+ var y = z.cross(x).normalized()
+ var basis = Basis(x,y,z)
+ var thickness = 0.16
+ box(root if parent==null else parent,(a+b)*0.5-y*thickness*0.5,Vector3(a.distance_to(b)+0.1,thickness,width),col,true,basis.get_euler())
+
 func build() -> void:
  root = Node3D.new()
  root.name = "WorldBiosphere"
@@ -216,6 +229,7 @@ func build() -> void:
  g._floor_note(Vector3(-760,0.01,-458),Vector3(210,0.08,12))
  box(root,C+Vector3(0,0.02,102),Vector3(7,0.08,163),Color("e4e5d5"))
  disc(root,C+Vector3(0,0.03,0),20,0.12,Color("e9ecde"),true)
+ entrance_ramp(C,Vector3(0,0,1),20,7.0,Color("e9ecde"))
  # Entrance gate arch where the walk from the city meets the hub.
  for gx in [-6.5,6.5]:
   beam(root,C+Vector3(gx,0,34),C+Vector3(gx,7,34),0.7,Color("94e8cf"))
@@ -236,6 +250,8 @@ func build() -> void:
  for i in 7:
   var c = dome_c(i)
   var dir = (c-C).normalized()
+  entrance_ramp(C,dir,20,5.6,Color("e7e9db"))
+  entrance_ramp(c,-dir,RADIUS,5.6,GROUNDS[i])
   var a = C+dir*19.5
   var b = c-dir*(RADIUS-0.5)
   beam(root,a+Vector3(0,0.08,0),b+Vector3(0,0.08,0),0.12,Color("a7ddc3"))
@@ -267,6 +283,9 @@ func build() -> void:
   interiors.append(detail)
   landscape(i,detail)
   habitats(i,detail)
+  if i<4:
+   rich_landscape(i,detail)
+   habitat_layers(i,detail)
   if i<4:
    quest_markers(i,detail)
   else:
@@ -305,10 +324,11 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
     points.append(c+Vector3(cos(ang)*r*cos(t),4+h*sin(t),sin(ang)*r*cos(t)))
    for idx in [0,2,1,1,2,3]:
     st.add_vertex(points[idx])
-   if j==0 or j==3 or j==6:
-    beam(parent,points[0],points[1],0.13,col)
-   if k%4==0:
-    beam(parent,points[0],points[2],0.16,col)
+   var frame = col.lightened(0.45)
+   beam(parent,points[0],points[1],0.14,frame)
+   beam(parent,points[0],points[2],0.18,frame)
+   if j<6:
+    beam(parent,points[0] if (j+k)%2==0 else points[1],points[3] if (j+k)%2==0 else points[2],0.11,frame)
  st.generate_normals()
  var mi = MeshInstance3D.new()
  mi.mesh = st.commit()
@@ -325,7 +345,10 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool) ->
   if absf(angle_difference(atan2(toward.z,toward.x),u))<deg_to_rad(11.0):
    continue
   var p = c+dir*r
-  box(parent,p+Vector3(0,2,0),Vector3(0.22,4,r*TAU/48+0.05),col.darkened(0.25),true,Vector3(0,-u,0))
+  var glazing = col.lightened(0.4)
+  glazing.a = 0.14
+  box(parent,p+Vector3(0,2,0),Vector3(0.22,4,r*TAU/48+0.05),glazing,true,Vector3(0,-u,0))
+  box(parent,p+Vector3(0,0.18,0),Vector3(0.3,0.36,r*TAU/48+0.05),Color("dce6df"),false,Vector3(0,-u,0))
 
 func gate(i: int,p: Vector3,dir: Vector3) -> void:
  var n = Node3D.new()
@@ -351,30 +374,48 @@ func gate(i: int,p: Vector3,dir: Vector3) -> void:
  n.add_child(body)
  g.bio_gates.append({"pos":p,"dir":dir,"dist":23.0,"body":body,"panels":panels,"bar":bar,"label":label,"state":-1})
 
+func nature(parent: Node3D,name: String,p: Vector3,scale_value: float,yaw := 0.0) -> void:
+ var mesh = g._bio_nature_mesh(name)
+ if mesh==null:
+  return
+ var key = "%d:nature:%s" % [parent.get_instance_id(),name]
+ if not batches.has(key):
+  batches[key] = {"parent":parent,"mesh":mesh,"mat":material(Color("d6e9f2")) if name=="nature_bush_snow" else null,"xs":[]}
+ batches[key].xs.append(Transform3D(Basis(Vector3.UP,yaw)*Basis.from_scale(Vector3.ONE*scale_value),p))
+
 func tree(parent: Node3D,p: Vector3,h: float,col: Color,style := 0) -> void:
- shape(parent,g._bcone(0.13,0.24,h),p+Vector3(0,h/2,0),Vector3.ONE,Color("765b3b"))
- if style==1: # bamboo
-  for k in 5:
-   ball(parent,p+Vector3(0,h*(0.3+k*0.14),0),Vector3(0.7,0.17,0.45),col)
+ if style==1:
+  # Clustered bamboo with branching leaf sprays; all pieces share cached meshes/materials.
+  for stem in 3:
+   var q = p+Vector3((stem-1)*0.28,0,stem%2*0.25)
+   shape(parent,g._bcone(0.055,0.085,h),q+Vector3(0,h/2,0),Vector3.ONE,Color("538253"))
+   for k in 4:
+    var a = float(k)*2.4+stem
+    var tip = q+Vector3(cos(a)*1.0,h*(0.48+k*0.13),sin(a))
+    beam(parent,q+Vector3(0,h*(0.45+k*0.13),0),tip,0.04,Color("718a4d"))
+    shape(parent,g._blow(0.7),tip,Vector3(1,0.1,0.4),Color("4f9663"),false,Vector3(0,a,0.2))
  else:
-  ball(parent,p+Vector3(0,h,0),Vector3(h*0.42,h*(0.12 if style==2 else 0.3),h*0.36),col)
+  nature(parent,"nature_acacia" if style==2 else "nature_oak2",p,h/(6.5 if style==2 else 5.5),p.x*0.41+p.z*0.17)
 
 func landscape(i: int,parent: Node3D) -> void:
  var c = dome_c(i)
  backdrop(i,parent)
- # Broad accessible cross and circular visitor trail, never inside animal pens.
- box(parent,c+Vector3(0,0.12,0),Vector3(5,0.08,72),Color("e4ddbc"))
- box(parent,c+Vector3(0,0.13,0),Vector3(69,0.08,4),Color("e4ddbc"))
+ # Each continent has its own visitor trail; animal enclosures stay unchanged.
+ ground_trails(i,parent)
  var rng = RandomNumberGenerator.new()
  rng.seed = 5300+i
  for k in (65 if i==1 or i==2 else 28):
   var a = rng.randf()*TAU
   var r = rng.randf_range(26,35)
   var p = c+Vector3(cos(a),0,sin(a))*r
-  if absf(p.x-c.x)<4 or absf(p.z-c.z)<4:
+  var outward = (c-C).normalized()
+  var across = Vector3(outward.z,0,-outward.x)
+  if absf((p-c).dot(across))<7 or absf((p-c).dot(outward))<6:
    continue
+  if i==2 and (p-c).dot(across)>-8 and (p-c).dot(outward)>17:
+   continue # Keep the tree-fort approach clear below its raised crowns.
   if i==3:
-   ball(parent,p+Vector3(0,2,0),Vector3(3,3+rng.randf()*3,2),Color("b5d6e9"))
+   shape(parent,g._blow(1.0),p+Vector3(0,2,0),Vector3(3,3+rng.randf()*3,2),Color("b5d6e9"))
   else:
    tree(parent,p,rng.randf_range(4,8),[Color("859c46"),Color("76a95e"),Color("247253"),Color.WHITE,Color("80a95c"),Color("b97242"),Color("428f68")][i],1 if i==1 else (2 if i==0 else 0))
  match i:
@@ -383,7 +424,7 @@ func landscape(i: int,parent: Node3D) -> void:
    for k in 7:
     ball(parent,local_point(i,26+k%2,-13+k*3,1.8),Vector3(3.4,2.5+k%3,2.8),Color("a88056"))
    g._fc_part(parent,g._bsph(3.5),local_point(i,0,33,14),g._fc_glow(Color("ffba75")),Vector3(1,1,0.2))
-   text(parent,"SAVANNA · WATERING HOLE",local_point(i,0,-28,3),Color("fff2bd"),28)
+   text(parent,"SAVANNA · WATERING HOLE",local_point(i,0,25,8),Color("fff2bd"),28)
   1:
    for k in 5:
     shape(parent,g._bcone(0,5.5,11.0+k%2*4.0),local_point(i,12+k*4,19,5.5+k%2*2),Vector3.ONE,Color("7a918b"))
@@ -395,7 +436,7 @@ func landscape(i: int,parent: Node3D) -> void:
      box(parent,p+Vector3(side*3,2.2,z*1.0),Vector3(0.22,4.4,0.22),Color("a34d3a"))
    box(parent,p+Vector3(0,4.5,0),Vector3(7,0.3,5.5),Color("5a746b"))
    shape(parent,g._bcone(0,4.6,1.7),p+Vector3(0,5.3,0),Vector3(1,1,0.8),Color("406b62"))
-   text(parent,"BAMBOO VALLEY · MOUNTAIN PAVILION",local_point(i,0,-28,3),Color("e0ffe7"),28)
+   text(parent,"BAMBOO VALLEY · MOUNTAIN PAVILION",local_point(i,0,25,8),Color("e0ffe7"),28)
   2:
    var p = local_point(i,25,20)
    for k in 5:
@@ -404,12 +445,14 @@ func landscape(i: int,parent: Node3D) -> void:
    for k in 6:
     disc(parent,local_point(i,8+k*2,-18+k*5,0.16),3.2,0.06,Color("5bb9ba"))
    # Continuous ramp to a canopy bridge; visitors can walk the whole route.
-   var a = local_point(i,-4,-28,0.1)
+   var a = local_point(i,-9.5,-25,0.09)
+   var middle = local_point(i,-9.5,-12,3.0)
    var b = local_point(i,-4,-8,5.5)
    var e = local_point(i,-4,23,5.5)
-   walkway(parent,a,b,3.0)
-   walkway(parent,b,e,3.0)
-   disc(parent,e,3,0.3,Color("b09260"),true)
+   walkway(parent,a,middle,3.0,0.0,2.0)
+   walkway(parent,middle,b,3.0,2.0,2.0)
+   walkway(parent,b,e,3.0,2.0,3.0)
+   disc(parent,e-Vector3(0,0.15,0),3,0.3,Color("b09260"),true)
    text(parent,"RAINFOREST · CANOPY BRIDGE",local_point(i,0,-30,3),Color("ceffec"),28)
   3:
    disc(parent,local_point(i,20,14,0.15),11,0.08,Color("2e809c"))
@@ -419,11 +462,10 @@ func landscape(i: int,parent: Node3D) -> void:
    for side in [-1,1]:
     box(parent,local_point(i,side*4,26,2),Vector3(2,4,7),Color("b1d5e8"),true)
    box(parent,local_point(i,0,26,4.3),Vector3(10,0.6,7),Color("d9f5ff"),true)
-   for k in 5:
-    box(parent,local_point(i,-18+k*3,25,17+k%2),Vector3(3,0.6,0.15),Color("6cdfc2"),false,Vector3(0,0,-0.2+k*0.08))
-   text(parent,"POLAR COAST · ICE CAVE",local_point(i,0,-28,3),Color("def7ff"),28)
 
-func walkway(parent: Node3D,a: Vector3,b: Vector3,w: float) -> void:
+   text(parent,"POLAR COAST · ICE CAVE",local_point(i,0,25,8),Color("def7ff"),28)
+
+func walkway(parent: Node3D,a: Vector3,b: Vector3,w: float,open_start := 0.0,open_end := 0.0) -> void:
  var d = b-a
  var across = Vector3(d.z,0,-d.x).normalized()
  # Slab's Y is perpendicular to the ramp, so its top follows the slope.
@@ -433,8 +475,9 @@ func walkway(parent: Node3D,a: Vector3,b: Vector3,w: float) -> void:
  var size = Vector3(d.length()+0.3,0.22,w)
  var rot = Basis(x,y,z).get_euler()
  box(parent,(a+b)*0.5-Vector3(0,0.11,0),size,Color("b29462"),true,rot)
- for side in [-1,1]:
-  beam(parent,a+across*side*w/2+Vector3(0,1.1,0),b+across*side*w/2+Vector3(0,1.1,0),0.12,Color("dfcd9e"),true)
+ if d.length()>open_start+open_end+0.05:
+  for side in [-1,1]:
+   beam(parent,a+d.normalized()*open_start+across*side*w/2+Vector3(0,1.1,0),b-d.normalized()*open_end+across*side*w/2+Vector3(0,1.1,0),0.12,Color("dfcd9e"),true)
 func habitats(i: int,parent: Node3D) -> void:
  var ids = []
  for si in SPECIES.size():
@@ -510,7 +553,7 @@ func spawn_animal(si: int,k: int,parent: Node3D,p: Vector3,r: float) -> Dictiona
  var s = SPECIES[si]
  var node = Node3D.new()
  parent.add_child(node)
- var a = {"node":node,"si":si,"kind":s.kind,"dome":s.dome,"c":p,"r":r,"phase":float(k)*1.7,"legs":[],"wings":[],"head":null,"k":k,"speed":0.8,"target":p,"feeding":false}
+ var a = {"node":node,"si":si,"kind":s.kind,"dome":s.dome,"c":p,"r":r,"phase":float(k)*1.7,"legs":[],"wings":[],"head":null,"k":k,"speed":0.8,"target":p,"feeding":false,"base_y":p.y}
  if s.kind=="butterfly":
   g._bio_make_butterfly(a)
  elif not g._bio_load_animal(a):
@@ -544,10 +587,11 @@ func quest_markers(i: int,parent: Node3D) -> void:
      ball(parent,p+Vector3(side*0.2,0.1,0),Vector3(0.1,0.06,0.2),Color("6fc650"))
    if i==3 and q==1:
     disc(parent,p-Vector3(0,0.1,0),1.6,0.2,Color("eafaff"),true)
+    floe_approach(parent,Vector3(p.x,0,p.z))
 
 func quest_point(i: int,q: int,step: int) -> Vector3:
  if i==2 and q==0:
-  return local_point(i,-4,[-24.0,-8.0,22.0][step],[1.18,5.5,5.5][step])
+  return local_point(i,[-9.5,-4.0,-4.0][step],[-24.0,-8.0,22.0][step],[0.314,5.5,5.5][step])
  if i==3 and q==1:
   return local_point(i,0,[-14.0,0.0,14.0][step],0.22)
  if i==1 and q==0:
@@ -726,7 +770,7 @@ func interact() -> bool:
     return true
    var arrivals = 0
    for a in animals:
-    if int(a.dome)==active and (task!=11 or int(a.si)==30) and bool(a.feeding) and a.node.position.distance_to(a.target)<0.6:
+    if int(a.dome)==active and not a.get("upper",false) and (task!=11 or int(a.si)==30) and bool(a.feeding) and a.node.position.distance_to(a.target)<0.6:
      arrivals += 1
    if arrivals<quest_step(task)+1:
     g._show_toast("Wait for animals to gather, then count the next arrival.")
@@ -879,6 +923,9 @@ func tick(delta: float) -> void:
  if rare.active and int(rare.slot)!=last_rare:
   last_rare = int(rare.slot)
   g._feed_add("RARE SIGHTING: "+RARES[int(rare.kind)]+" · "+NAMES[[0,2,3][int(rare.kind)]],"")
+ for f in atmospheres:
+  f.node.emitting = int(f.dome)==active
+  f.node.process_mode = Node.PROCESS_MODE_INHERIT if int(f.dome)==active else Node.PROCESS_MODE_DISABLED
  for a in rare_nodes:
   a.node.visible = bool(rare.active) and int(a.rare)==int(rare.kind)
   if a.node.is_visible_in_tree() and a.node.global_position.distance_to(me.position)<17 and g.camera.is_position_in_frustum(a.node.global_position):
@@ -956,6 +1003,25 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
  var ph = float(a.phase)
  var centre: Vector3 = a.c
  var radius = float(a.r)
+ if a.get("upper_motion","")=="glide":
+  var angle = ph*0.25+int(a.k)*1.7
+  node.position = centre+Vector3(cos(angle)*radius*0.72,3+sin(ph*0.8)*0.4,sin(angle)*radius*0.72)
+  var flight_dir = Vector3(-sin(angle),0,cos(angle))
+  node.rotation.y = atan2(-flight_dir.x,-flight_dir.z)
+  node.rotation.z = sin(ph*0.5+int(a.k))*0.1
+  for leg in a.legs:
+   leg.rotation.x = 0.55
+  for k in a.wings.size():
+   a.wings[k].rotation.z = sin(ph*4)*0.45*(1 if k==0 else -1)
+  return
+ if a.get("upper_motion","")=="hang":
+  node.position = centre+Vector3(sin(ph*0.4)*0.12,-0.15,cos(ph*0.3)*0.12)
+  node.rotation.x = PI
+  return
+ if a.get("upper_motion","")=="perch":
+  node.position = centre+Vector3(0,0.12,0)
+  node.rotation.y = sin(ph*0.35+int(a.k))*0.12
+  return
  show = show or float(a.get("manual_feed",0))>now()
  a.feeding = show
  if a.get("parade",false):
@@ -972,10 +1038,11 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
  if moving:
   node.position += d.normalized()*minf(delta*(1.6 if show else 0.65),d.length())
   node.rotation.y = lerp_angle(node.rotation.y,atan2(-d.x,-d.z),delta*3)
- var zone = SPECIES[int(a.si)].zone
- node.position.y = 0.16 if zone=="swim" or a.kind=="penguin" else 0.1
+ var zone = "fly" if a.get("upper_motion","")=="glide" else SPECIES[int(a.si)].zone
+ var base = float(a.get("base_y",0))
+ node.position.y = base+(0.16 if zone=="swim" or a.kind=="penguin" else 0.1)
  if zone=="fly":
-  node.position.y = 3.0+0.4*sin(ph*1.3)
+  node.position.y = base+3.0+0.4*sin(ph*1.3)
  for k in a.legs.size():
   a.legs[k].rotation.x = sin(ph*4.2)*0.28*(1 if k%2==0 else -1) if moving else 0
  for k in a.wings.size():
@@ -1059,6 +1126,8 @@ func refresh_panel() -> void:
   var b = g._button(NAMES[i]+(" ✓" if int(state.pages)&(1<<i) else ""),select_page.bind(i))
   choices.add_child(b)
  ui_label(NAMES[page].to_upper(),COLORS[page],26)
+ if page<4:
+  ui_label(["LAYERS · grassland, kopje ledges and flamingo flight zone","LAYERS · bamboo forest, snow-leopard cliffs, red-panda trees and crane flight zone","LAYERS · forest floor, sloth branches, monkey canopy and macaw sky habitat","LAYERS · frozen shore, raised penguin colony, albatross cliffs and flight zone"][page],Color("b4e5d6"),18)
  ui_button("FREE ENTRY ✓",g._bio_buy_pass)
  var mask = species_mask(page)
  var count = g._bits(int(g.bio_seen)&mask)
@@ -1097,6 +1166,7 @@ func smoke() -> void:
  g.bio_pass_day = today()
  g._bio_gates_update()
  assert(interiors.size()==7 and g.bio_gates.size()==7,"Seven domes and pass gates")
+ smoke_entry_movement()
  assert(OCEAN.distance_to(C)>ORBIT+RADIUS+49.1,"Ocean World has a separate 3x area reservation")
  assert(g.GA_C==Vector3(-330,0,-600),"Galleria stays in place")
  var original = ["penguin","polarbear","arcticfox","owl","deer","rabbit","duck","butterfly","giraffe","zebra","flamingo","parrot","moose","raccoon","beaver","goose"]
@@ -1116,9 +1186,13 @@ func smoke() -> void:
   for k in 35:
    var p = C.lerp(c,float(k)/34.0)+Vector3(0,1.0,0)
    assert(not g._blocked_at(p,0.3),"Walkable spoke %d at %s by %s" % [i,p,g._blocker(p,0.3)])
-  for z in range(-32,33,2):
-   var p = local_point(i,0,z,1)
-   assert(not g._blocked_at(p,0.3),"Clear continent promenade %d at %s" % [i,p])
+  var trail = ground_route(i)
+  for segment in range(1,trail.size()):
+   var a: Vector3 = trail[segment-1]
+   var b: Vector3 = trail[segment]
+   for sample in 15:
+    var p = a.lerp(b,float(sample)/14)+Vector3(0,0.9,0)
+    assert(not g._blocked_at(p,0.25),"Clear unique visitor trail %d at %s" % [i,p])
   g.player.position = c+Vector3(0,0.9,0)
   interval = 0
   tick(0.2)
@@ -1131,11 +1205,24 @@ func smoke() -> void:
  for f in fences:
   assert(f.c.distance_to(dome_c(int(f.dome)))+float(f.r)<RADIUS-0.2,"Fenced animal habitat stays inside dome")
   for a in animals:
-   if int(a.si)==int(f.si):
+   if int(a.si)==int(f.si) and not a.get("upper",false):
     for k in 20:
      animate_animal(a,0.2,false)
     var p = a.node.position-a.c
     assert(Vector2(p.x,p.z).length()<float(f.r)-0.6,"Animals stay behind fences")
+ var upper_count = 0
+ for a in animals:
+  if not a.get("upper",false):
+   continue
+  upper_count += 1
+  for step in 50:
+   animate_animal(a,0.2,false)
+  var rel = a.node.position-a.c
+  assert(Vector2(rel.x,rel.z).length()<=float(a.r)+0.5,"Upper wildlife stays within its habitat")
+  assert(a.node.position.y>float(a.base_y)-1.5,"Upper wildlife stays on its layer")
+  var c = dome_c(int(a.dome))
+  assert(Vector2(a.node.position.x-c.x,a.node.position.z-c.z).length()<RADIUS-2,"Flying wildlife remains inside its glass dome")
+ assert(upper_count>=24,"Four domes have populated upper habitat layers")
  # Every quest goes through the same proximity and interaction actions as play.
  g.bio_seen = (1<<SPECIES.size())-1
  for i in 4:
@@ -1283,12 +1370,29 @@ func screenshots() -> void:
    child.hide()
  for i in 7:
   active = i
+  for f in atmospheres:
+   f.node.emitting = int(f.dome)==i
+   f.node.process_mode = Node.PROCESS_MODE_INHERIT if int(f.dome)==i else Node.PROCESS_MODE_DISABLED
   for j in 7:
    interiors[j].visible = j==i
+  for animal in animals:
+   if int(animal.dome)==i:
+    animate_animal(animal,2.0,false)
   g.player.position = dome_c(i)+Vector3(0,0.9,0)
-  g.camera.global_position = local_point(i,1,-32,6)
-  g.camera.look_at(local_point(i,0,4,2.2))
+  g.camera.global_position = local_point(i,0,-30,2.4)
+  g.camera.look_at(local_point(i,0,8,3.5))
   await g._save_shot(NAMES[i].to_lower().replace(" ","-"))
+ # Views from the actual upper visitor stages show the occupied vertical layers.
+ g.player.hide()
+ var viewpoints = [Vector3(9.5,6.2,20),Vector3(8.5,8.0,16),Vector3(15.5,7.0,21),Vector3(-28,9.8,11)]
+ var targets = [Vector3(-10,10,4),Vector3(-14,13,3),Vector3(10,13,-5),Vector3(-15,15,14)]
+ for i in 4:
+  for j in 7:
+   interiors[j].visible = j==i
+  g.camera.fov = 70
+  g.camera.global_position = local_point(i,viewpoints[i].x,viewpoints[i].z,viewpoints[i].y)
+  g.camera.look_at(local_point(i,targets[i].x,targets[i].z,targets[i].y))
+  await g._save_shot(NAMES[i].to_lower().replace(" ","-")+"-layers")
  for detail in interiors:
   detail.hide()
  g.camera.global_position = C+Vector3(5,270,310)
@@ -1328,3 +1432,486 @@ func backdrop(i: int,parent: Node3D) -> void:
  mi.material_override = mat
  mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
  parent.add_child(mi)
+
+func smoke_entry_movement() -> void:
+ # Point probes above floor level missed the old 14 cm lips. Move the complete
+ # player capsule through each entrance in both directions, at all three speeds.
+ var player: CharacterBody3D = g.player
+ var keep = {"transform":player.transform,"velocity":player.velocity,"board":g.board_on,"run":g.run_on,"shape_disabled":player.get_child(0).disabled,"pass":g.bio_pass_day}
+ player.get_child(0).disabled = false
+ for mode in ["walk","run","board"]:
+  g.board_on = mode=="board"
+  g.run_on = mode=="run"
+  var speed = g._walk_speed()
+  # A legacy paid pass still allows access; the current free-entry policy is unchanged.
+  g.bio_pass_day = today()
+  g._bio_gates_update()
+  walk_route(mode+" hub",[C+Vector3(0,0,36),C+Vector3(0,0.09,12)],speed)
+  for i in 7:
+   var c = dome_c(i)
+   walk_route(mode+" "+NAMES[i],[C+Vector3(0,0.09,0),c+Vector3(0,0.09,0)],speed)
+  for i in 7:
+   walk_route(mode+" visitor trail "+NAMES[i],ground_route(i),speed)
+  walk_route(mode+" canopy",[local_point(2,-9.5,-25,0.09),local_point(2,-9.5,-12,3.0),local_point(2,-4,-8,5.5),local_point(2,-4,23,5.5),local_point(2,15.5,23,5.5)],speed)
+  walk_route(mode+" safari lookout",[local_point(0,9.5,-25,0.09),local_point(0,9.5,-3,4.5),local_point(0,9.5,24,4.5),local_point(0,7,24,4.5)],speed)
+  walk_route(mode+" cloud forest",asia_route(),speed)
+  walk_route(mode+" glacier climb",antarctic_route(),speed)
+
+ g.bio_pass_day = keep.pass
+ g.board_on = keep.board
+ g.run_on = keep.run
+ player.transform = keep.transform
+ player.velocity = keep.velocity
+ player.get_child(0).disabled = keep.shape_disabled
+ g._bio_gates_update()
+ print("WORLD_BIOSPHERE_ENTRY_OK: hub, seven distinct visitor trails, safari lookout, rain-vortex terrace, tree fort and glacier summit; both directions, walk/run/hoverboard")
+
+func walk_route(label: String,points: Array,speed: float) -> void:
+ var player: CharacterBody3D = g.player
+ for reverse in [false,true]:
+  var route = points.duplicate()
+  if reverse:
+   route.reverse()
+  player.position = route[0]+Vector3(0,0.7,0)
+  player.velocity = Vector3.ZERO
+  for segment in range(1,route.size()):
+   var target: Vector3 = route[segment]
+   var dt = maxf(g.get_physics_process_delta_time(),0.001)
+   var steps = ceili(player.position.distance_to(target)/speed/dt)*3+120
+   for step in steps:
+    var offset = Vector3(target.x-player.position.x,0,target.z-player.position.z)
+    if offset.length()<0.45:
+     break
+    var dir = offset.normalized()
+    player.velocity = Vector3(dir.x*speed,player.velocity.y-24*dt,dir.z*speed)
+    player.move_and_slide()
+   var left = Vector2(player.position.x-target.x,player.position.z-target.z).length()
+   var obstacle = ""
+   for k in player.get_slide_collision_count():
+    var hit = player.get_slide_collision(k)
+    obstacle += "%s at %s normal %s; " % [hit.get_collider().get_path(),hit.get_position(),hit.get_normal()]
+   assert(left<0.6,"Entry movement blocked: %s reverse=%s segment=%d left=%.2f by %s"%[label,reverse,segment,left,obstacle])
+   # At a fast downhill bend the board can briefly be above the landing.
+   # Brake and let the real capsule settle; an unsupported platform still fails.
+   for settle in 45:
+    player.velocity = Vector3(0,player.velocity.y-24*dt,0)
+    player.move_and_slide()
+   assert(absf(player.position.y-target.y-0.7)<0.4,"Route floor height: %s reverse=%s segment=%d position=%s floor=%s velocity=%s" % [label,reverse,segment,player.position,target,player.velocity])
+
+func rich_landscape(i: int,parent: Node3D) -> void:
+ # Match the older Biosphere's planted conservatory look, with all vegetation
+ # instanced under the current dome's interior rather than drawn across the campus.
+ var centre = dome_c(i)
+
+ var rng = RandomNumberGenerator.new()
+ rng.seed = 54030+i
+ for k in 360:
+  var p = local_point(i,rng.randf_range(-34,34),rng.randf_range(-32,32),0.1)
+  var c = dome_c(i)
+  if Vector2(p.x-c.x,p.z-c.z).length()>RADIUS-2 or not planting_clear(i,p):
+   continue
+  var plants = ["nature_grass_dry","nature_fern","nature_fern","nature_bush_snow"]
+  var shrub = ["nature_bush_dry","nature_bush_flower","nature_bush","nature_bush_snow"]
+  nature(parent,shrub[i] if k%3==0 else plants[i],p,rng.randf_range(0.65,1.3),rng.randf()*TAU)
+  var outward = (c-C).normalized()
+  var across = Vector3(outward.z,0,-outward.x)
+  var tree_clear = absf((p-c).dot(across))>10 and absf((p-c).dot(outward))>7 and (p-c).length()>19 and not (i==2 and x_layer(p,i)>-8 and z_layer(p,i)>17)
+  if i==1 and k%9==0 and tree_clear:
+   nature(parent,"nature_cherry" if k%2==0 else "nature_cherry2",p,0.8+rng.randf()*0.4,rng.randf()*TAU)
+  if i==2 and k%15==0 and tree_clear:
+   nature(parent,"nature_oak",p,1.4+rng.randf()*0.4,rng.randf()*TAU)
+ for side in [-1,1]:
+  for z in range(-30,31,5):
+   var p = local_point(i,side*3.3,z,0.1)
+   if not planting_clear(i,p):
+    continue
+   nature(parent,["nature_bush_dry","nature_bush_flower","nature_fern","nature_bush_snow"][i],p,0.7,float(z)*0.4)
+ if i==0:
+  africa_lookout(parent)
+  for side in [-1,1]:
+   for z in [-18,0,18]:
+    nature(parent,"nature_acacia",local_point(i,side*29,z,0.1),1.15,float(z)*0.1)
+ elif i==1:
+  asia_rainwalk(parent)
+  soft_mist(i,parent,local_point(i,25,19,7),Vector3(5,1,3))
+ elif i==2:
+  # A second canopy span brings the player next to the large waterfall.
+  var a = local_point(i,-4,23,5.5)
+  var b = local_point(i,15.5,23,5.5)
+  walkway(parent,a,b,3.0,3.0,0.0)
+  tree_fort(parent)
+  glass_edge(parent,local_point(i,-4,23,5.5),local_point(i,15.5,23,5.5),3.0,COLORS[i],3.0,0.0)
+  waterfall(i,parent,local_point(i,24,18,0.2),5.0,19.0)
+  soft_mist(i,parent,local_point(i,24,18,1),Vector3(3,0.4,2))
+  for k in 3:
+   tall_tree(parent,local_point(i,-22+k*8,23,0.1),2.0+k*0.1,4.0,"nature_oak")
+ elif i==3:
+  # An ice mountain is a sculpted mass, rather than a bare flat courtyard.
+  var p = local_point(i,-20,16)
+  for k in 5:
+   var q = p+Vector3((k-2)*2.1,0,k%2*1.4)
+   shape(parent,g._bcone(0.2,3.8,8.0+k%3*2.0),q+Vector3(0,4.0+k%3,0),Vector3.ONE,Color("bcdeed"))
+  antarctic_spiral(parent)
+  for k in 7:
+   # Antarctic planting is replaced by frost-covered rock and snow banks.
+   var q = local_point(i,-30+k*9,28,0.3)
+   shape(parent,g._blow(1.0),q,Vector3(1.8,0.65,1.4),Color("f1f8fc"))
+
+func planting_clear(i: int,p: Vector3) -> bool:
+ var c = dome_c(i)
+ var forward = (c-C).normalized()
+ var side = Vector3(forward.z,0,-forward.x)
+ var rel = p-c
+ var x = rel.dot(side)
+ var z = rel.dot(forward)
+ var trails = ground_route(i)
+ for k in range(1,trails.size()):
+  var a: Vector3 = trails[k-1]
+  var b: Vector3 = trails[k]
+  var ab = b-a
+  var t = clampf((p-a).dot(ab)/ab.length_squared(),0,1)
+  if p.distance_to(a+ab*t)<2.8:
+   return false
+ # Do not put bushes on a quest marker, keeper station, elevated ramp or sign viewing spot.
+ for q in 3:
+  for step in 3:
+   if p.distance_to(quest_point(i,q,step))<2:
+    return false
+ if i==0 and absf(x-9.5)<2.0 and z>-26 and z<25:
+  return false
+ if i==2 and (absf(x+4)<2.0 or absf(x+9.5)<2.0):
+  return false
+ for step in 3:
+  if p.distance_to(local_point(i,7,-29+step*20))<2:
+   return false
+ for f in fences:
+  if int(f.dome)==i and p.distance_to(f.c)>float(f.r) and p.distance_to(f.c)<float(f.r)+1.8:
+   return false
+ return true
+
+func rain_ring(parent: Node3D) -> void:
+ var i = 1
+ var centre = local_point(i,0,16)
+ var radius = 8.5
+ var height = 6.0
+ var toward = (dome_c(i)-C).normalized()
+ var right = Vector3(toward.z,0,-toward.x)
+ var join = local_point(i,-radius,16,height)
+ # Segmented terrace with pale supporting columns and transparent, colored balustrades.
+ for k in 32:
+  var a = centre+right*cos(k*TAU/32)*radius+toward*sin(k*TAU/32)*radius+Vector3(0,height,0)
+  var b = centre+right*cos((k+1)*TAU/32)*radius+toward*sin((k+1)*TAU/32)*radius+Vector3(0,height,0)
+  var d = (b-a).normalized()
+  var across = Vector3(d.z,0,-d.x)
+  var x = d
+  var z = x.cross(Vector3.UP).normalized()
+  var y = z.cross(x)
+  box(parent,(a+b)*0.5-Vector3(0,0.13,0),Vector3(a.distance_to(b)+0.2,0.26,2.6),Color("e1e8df"),true,Basis(x,y,z).get_euler())
+  # Leave an unrailed landing opening on the near side of the ring.
+  if (a.lerp(b,0.5)-join).length()>2.4:
+   glass_edge(parent,a,b,2.6,COLORS[i])
+  if k%4==0:
+   beam(parent,Vector3(a.x,0.1,a.z),a-Vector3(0,0.13,0),0.28,Color("e3e9e2"))
+   var ornament = a+across*0.75
+   nature(parent,"nature_bush_flower" if i==1 else ("nature_bush_snow" if i==3 else "nature_bush_dry"),ornament,0.45,float(k))
+ text(parent,"CLOUD WATERFALL TERRACE",centre+Vector3(0,height+2.3,0),Color("f0fff7"),28,50)
+
+func glass_edge(parent: Node3D,a: Vector3,b: Vector3,width: float,col: Color,open_start := 0.0,open_end := 0.0) -> void:
+ var axis = (b-a).normalized()
+ a += axis*open_start
+ b -= axis*open_end
+ var d = b-a
+ var sideways = Vector3(d.z,0,-d.x).normalized()
+ for side in [-1,1]:
+  var p = a+sideways*width*0.5*side+Vector3(0,0.65,0)
+  var q = b+sideways*width*0.5*side+Vector3(0,0.65,0)
+  var mi = g._fc_part(parent,g._bbox(),(p+q)*0.5,g._bio_glass_mat(col,0.22),Vector3(0.04,0.9,d.length()))
+  mi.rotation = Basis.looking_at(d.normalized(),Vector3.UP).get_euler()
+  beam(parent,p+Vector3(0,0.5,0),q+Vector3(0,0.5,0),0.08,col)
+
+func waterfall(i: int,parent: Node3D,p: Vector3,width: float,height: float) -> void:
+ var sh = Shader.new()
+ sh.code = "shader_type spatial; render_mode cull_disabled,unshaded,blend_mix; varying vec3 p; void vertex(){p=VERTEX;} void fragment(){float stripe=sin(p.x*14.0+sin(p.y*0.9-TIME*4.0)); float flow=sin(p.y*4.0-TIME*12.0+p.x*2.0); ALBEDO=mix(vec3(0.24,0.64,0.77),vec3(0.85,0.97,1.0),stripe*0.24+flow*0.14+0.42); ALPHA=0.6;}"
+ var mat = ShaderMaterial.new()
+ mat.shader = sh
+ var mesh = QuadMesh.new()
+ mesh.size = Vector2(width,height)
+ var node = MeshInstance3D.new()
+ node.mesh = mesh
+ node.material_override = mat
+ node.position = p+Vector3(0,height/2,0)
+ var face = dome_c(i)-p
+ face.y = 0
+ node.rotation.y = atan2(face.x,face.z)
+ parent.add_child(node)
+ for k in 7:
+  var q = p+Vector3((k-3)*1.3,0,-2.5)
+  shape(parent,g._blow(1.0),q+Vector3(0,5+k%3*2.4,0),Vector3(2.5,7+k%3*2.4,2.5),Color("778d83"))
+ disc(parent,p+Vector3(0,0.15,0),4.0,0.08,Color("5ea8b4"))
+
+func soft_mist(i: int,parent: Node3D,p: Vector3,extent: Vector3) -> void:
+ var mist = CPUParticles3D.new()
+ mist.amount = 28
+ mist.lifetime = 4
+ mist.preprocess = 3
+ mist.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+ mist.emission_box_extents = extent
+ mist.position = p
+ mist.direction = Vector3(0,1,0)
+ mist.gravity = Vector3(0,0.1,0)
+ mist.initial_velocity_min = 0.15
+ mist.initial_velocity_max = 0.4
+ mist.scale_amount_min = 0.3
+ mist.scale_amount_max = 0.9
+ var mesh = SphereMesh.new()
+ mesh.radius = 0.4
+ mesh.height = 0.5
+ mesh.radial_segments = 8
+ mesh.rings = 4
+ var mat = StandardMaterial3D.new()
+ mat.albedo_color = Color(0.8,0.95,0.96,0.12)
+ mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+ mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+ mesh.material = mat
+ mist.mesh = mesh
+ mist.emitting = false
+ parent.add_child(mist)
+ atmospheres.append({"node":mist,"dome":i})
+
+func ground_route(i: int) -> Array:
+ var routes = [
+  [Vector2(0,-36),Vector2(0,-17),Vector2(-7,-4),Vector2(0,6),Vector2(8,14),Vector2(8,23),Vector2(0,31)],
+  [Vector2(0,-36),Vector2(-7,-24),Vector2(7,-10),Vector2(-7,0),Vector2(-10,10),Vector2(-5,24),Vector2(0,31)],
+  [Vector2(0,-36),Vector2(0,-20),Vector2(-7,-9),Vector2(0,2),Vector2(7,14),Vector2(0,31)],
+  [Vector2(0,-36),Vector2(0,-14),Vector2(0,0),Vector2(-12,-1),Vector2(-26,-1),Vector2(-26,9),Vector2(-20,9),Vector2(-26,9),Vector2(-26,-1),Vector2(-12,-1),Vector2(0,0),Vector2(0,14),Vector2(0,31)],
+  [Vector2(0,-36),Vector2(0,-12),Vector2(-10,-2),Vector2(-10,15),Vector2(0,28),Vector2(10,15),Vector2(10,-2),Vector2(0,-12)],
+  [Vector2(0,-36),Vector2(7,-25),Vector2(-7,-12),Vector2(7,2),Vector2(-7,15),Vector2(0,31)],
+  [Vector2(0,-36),Vector2(0,-12),Vector2(-12,5),Vector2(0,24),Vector2(12,5),Vector2(0,-12)]
+ ]
+ var result = []
+ for p in routes[i]:
+  result.append(local_point(i,p.x,p.y,0.09))
+ return result
+
+func ground_trails(i: int,parent: Node3D) -> void:
+ var route = ground_route(i)
+ var color = [Color("d9c38f"),Color("d9d8c4"),Color("b9a681"),Color("adcbdc"),Color("d4c5b3"),Color("bdab8d"),Color("e8d7ac")][i]
+ for k in range(1,route.size()):
+  var a: Vector3 = route[k-1]
+  var b: Vector3 = route[k]
+  var d = b-a
+  var yaw = atan2(d.x,d.z)
+  box(parent,(a+b)*0.5+Vector3(0,0.035,0),Vector3(3.8,0.04,d.length()+0.15),color,false,Vector3(0,yaw,0))
+
+func africa_lookout(parent: Node3D) -> void:
+ var i = 0
+ var a = local_point(i,9.5,-25,0.09)
+ var b = local_point(i,9.5,-3,4.5)
+ var e = local_point(i,9.5,24,4.5)
+ walkway(parent,a,b,3.0,0,2)
+ walkway(parent,b,e,3.0,2,4)
+ glass_edge(parent,a,b,3.0,COLORS[i],0,2)
+ var centre = local_point(i,7,24,4.5)
+ box(parent,centre-Vector3(0,0.15,0),Vector3(7,0.3,8),Color("c9ad76"),true)
+ for z in [-18,-8,2,12,21]:
+  var top = 4.5 if z>=-3 else lerpf(0.09,4.5,float(z+25)/22.0)
+  beam(parent,local_point(i,9.5,z,0.09),local_point(i,9.5,z,top-0.15),0.25,Color("e7d7b6"))
+ for side in [-1,1]:
+  beam(parent,centre+Vector3(side*2.8,0,2.5),centre+Vector3(side*2.8,3.2,2.5),0.18,Color("c9b686"))
+ var roof = g._bcone(0.05,4.8,1.0).duplicate()
+ roof.radial_segments = 6
+ shape(parent,roof,centre+Vector3(0,3.5,0),Vector3(1,1,0.8),Color("f2dcb0"))
+ text(parent,"SAVANNA SAFARI LOOKOUT",centre+Vector3(0,2.0,0),Color("fff3d6"),26,45)
+
+func asia_route() -> Array:
+ var points = []
+ for k in 25:
+  var u = float(k)/24
+  var a = lerpf(-PI/2,PI,u)
+  points.append(local_point(1,cos(a)*12,16+sin(a)*12,lerpf(0.09,6.0,minf(u*24.0/22.0,1.0))))
+ points.append(local_point(1,-8.5,16,6.0))
+ return points
+
+func asia_rainwalk(parent: Node3D) -> void:
+ var points = asia_route()
+ for k in range(1,points.size()):
+  var last = k==points.size()-1
+  var turning = k==points.size()-2
+  walkway(parent,points[k-1],points[k],3.0,2.0 if last else 0.0,2.0 if last or turning else 0.0)
+  if not last:
+   glass_edge(parent,points[k-1],points[k],3.0,COLORS[1],0.0,2.0 if turning else 0.0)
+ rain_ring(parent)
+ var p = local_point(1,0,16)
+ disc(parent,p+Vector3(0,0.16,0),4.2,0.08,Color("70b4b7"))
+ var shader = Shader.new()
+ shader.code = "shader_type spatial; render_mode unshaded,cull_disabled,blend_mix; varying vec3 p; void vertex(){p=VERTEX;} void fragment(){float flow=sin(p.y*3.0-TIME*10.0+sin(p.x*7.0+p.z*6.0)); ALBEDO=mix(vec3(0.3,0.65,0.76),vec3(0.9,0.98,1.0),0.6+flow*0.25); ALPHA=0.36+flow*0.1;}"
+ var mat = ShaderMaterial.new()
+ mat.shader = shader
+ for layer in 2:
+  var mesh = CylinderMesh.new()
+  mesh.top_radius = 1.5+layer*0.6
+  mesh.bottom_radius = 2.2+layer*0.6
+  mesh.height = 23
+  mesh.cap_top = false
+  mesh.cap_bottom = false
+  mesh.radial_segments = 28
+  mesh.rings = 4
+  g._fc_part(parent,mesh,p+Vector3(0,11.7,0),mat)
+ shape(parent,g._fc_torus(2.6,3.0),p+Vector3(0,23.3,0),Vector3(1,0.2,1),Color("dbebe8"))
+ soft_mist(1,parent,p+Vector3(0,0.8,0),Vector3(3,0.4,3))
+ text(parent,"CLOUD FOREST · RAIN OCULUS",p+Vector3(0,25,0),Color("e5ffff"),30,70)
+
+func antarctic_route() -> Array:
+ var points = []
+ for k in 25:
+  var u = float(k)/24
+  var a = lerpf(-PI/2,PI,u)
+  points.append(local_point(3,-20+cos(a)*7,16+sin(a)*7,lerpf(0.09,8.0,minf(u*24.0/22.0,1.0))))
+ points.append(local_point(3,-27,12.5,8.0))
+ return points
+
+func antarctic_spiral(parent: Node3D) -> void:
+ var points = antarctic_route()
+ for k in range(1,points.size()):
+  walkway(parent,points[k-1],points[k],2.8,0,2.5 if k==points.size()-1 else 0.0)
+  var d = (points[k]-points[k-1]).normalized()
+  var side = Vector3(d.z,0,-d.x)
+  for sd in [-1,1]:
+   # Cold blue edge bands replace the rainforest/bamboo glass-balcony language.
+   beam(parent,points[k-1]+side*sd*1.35+Vector3(0,0.18,0),points[k]+side*sd*1.35+Vector3(0,0.18,0),0.09,Color("a6eaff"))
+  if k%6==0:
+   var p: Vector3 = points[k]
+   beam(parent,Vector3(p.x,0.09,p.z),p-Vector3(0,0.15,0),0.32,Color("d9eff7"))
+ var top: Vector3 = points[points.size()-1]
+ disc(parent,top-Vector3(0,0.15,0),2.6,0.3,Color("deeff7"),true)
+ text(parent,"GLACIER SUMMIT · AURORA WATCH",top+Vector3(0,2,0),Color("c5f6ff"),25,45)
+
+func tree_fort(parent: Node3D) -> void:
+ var centre = local_point(2,18,23,5.5)
+ var outward = (dome_c(2)-C).normalized()
+ var across = Vector3(outward.z,0,-outward.x)
+ var rot = Basis(across,Vector3.UP,outward).get_euler()
+ # Four timber strips leave a three-metre opening for the living tree trunk.
+ for sd in [-1,1]:
+  box(parent,centre+outward*sd*2.5-Vector3(0,0.15,0),Vector3(8,0.3,2),Color("a08354"),true,rot)
+  box(parent,centre+across*sd*2.75-Vector3(0,0.15,0),Vector3(2.5,0.3,3),Color("a08354"),true,rot)
+ tall_tree(parent,local_point(2,18,23,0.09),1.8,4.5,"nature_oak")
+ for sd in [-1,1]:
+  beam(parent,centre+across*sd*3.8+outward*3.4+Vector3(0,1,0),centre+across*sd*3.8-outward*3.4+Vector3(0,1,0),0.12,Color("d0b27b"))
+ text(parent,"RAINFOREST TREE FORT",centre+Vector3(0,2.6,0),Color("d2ffe0"),27,45)
+
+func floe_approach(parent: Node3D,p: Vector3) -> void:
+ # A continuous ice bevel is walkable from every direction, including the
+ # branch to the glacier trail; isolated ramps only covered the main axis.
+ shape(parent,g._bcone(1.6,2.2,0.13),p+Vector3(0,0.155,0),Vector3.ONE,Color("d7edf6"))
+ var vertices = PackedVector3Array()
+ for k in 24:
+  var a = float(k)*TAU/24
+  vertices.append(Vector3(cos(a)*2.2,-0.065,sin(a)*2.2))
+  vertices.append(Vector3(cos(a)*1.6,0.065,sin(a)*1.6))
+ var convex = ConvexPolygonShape3D.new()
+ convex.points = vertices
+ var shape = CollisionShape3D.new()
+ shape.shape = convex
+ var body = StaticBody3D.new()
+ body.name = "IceFloeBevel"
+ body.position = p+Vector3(0,0.155,0)
+ body.add_child(shape)
+ parent.add_child(body)
+
+func habitat_layers(i: int,parent: Node3D) -> void:
+ # Extra instances reuse existing species bits: no new spotting requirement or
+ # loss of progress for a page that players have already completed.
+ if i==0:
+  var rock: Vector3 = g.bio_hab[17].c
+  high_habitat(parent,rock,7.0,3.8,Color("ac8b60"),false)
+  for k in 2:
+   upper_animal(17,70+k,parent,rock+Vector3(0,7,0),2.5,"walk")
+  for k in 2:
+   upper_animal(19,74+k,parent,g.bio_hab[19].c+Vector3(0,4.5,0),2.0,"walk")
+  high_habitat(parent,g.bio_hab[19].c,4.5,3.0,Color("a38b64"),false)
+  for k in 4:
+   upper_animal(10,80+k,parent,local_point(i,0,5,11+k%2*2.0),10.0,"glide")
+  text(parent,"KOPJE HEIGHTS · LIONS & MEERKATS",rock+Vector3(0,9,0),Color("fff0cc"),24,45)
+ elif i==1:
+  var cliff: Vector3 = g.bio_hab[23].c
+  high_habitat(parent,cliff,11.0,3.8,Color("a8bfc4"),false)
+  for k in 2:
+   upper_animal(23,70+k,parent,cliff+Vector3(0,11,0),2.4,"walk")
+  var tree: Vector3 = g.bio_hab[22].c
+  high_habitat(parent,tree,9.0,3.3,Color("9b855d"),true)
+  for k in 2:
+   upper_animal(22,74+k,parent,tree+Vector3(0,9,0),2.1,"walk")
+  for k in 3:
+   upper_animal(24,80+k,parent,local_point(i,0,4,12+k%2*2.0),10.0,"glide")
+  text(parent,"HIGHLAND CLIFFS · SNOW LEOPARDS",cliff+Vector3(0,13,0),Color("e4f4ff"),24,45)
+ elif i==2:
+  var tree: Vector3 = g.bio_hab[28].c
+  high_habitat(parent,tree,12.0,3.4,Color("8e7951"),true)
+  for k in 3:
+   upper_animal(28,70+k,parent,tree+Vector3(0,12,0),2.2,"walk")
+  var branch: Vector3 = g.bio_hab[26].c
+  tall_tree(parent,branch,2.6,9.5,"nature_oak")
+  beam(parent,branch+Vector3(-2,14,0),branch+Vector3(2,14,0),0.28,Color("7b6745"))
+  for k in 2:
+   upper_animal(26,74+k,parent,branch+Vector3(-0.8+k*1.6,13.8,0),0.3,"hang")
+  for k in 4:
+   upper_animal(11,80+k,parent,local_point(i,0,5,14+k%2*2.0),11.0,"glide")
+  text(parent,"CANOPY WILDLIFE · MONKEYS & SLOTHS",tree+Vector3(0,14,0),Color("d3ffdf"),24,45)
+ elif i==3:
+  var ice: Vector3 = g.bio_hab[0].c
+  high_habitat(parent,ice,3.5,3.5,Color("d9eff6"),false)
+  for k in 3:
+   var a = upper_animal(0,70+k,parent,ice+Vector3(0,3.5,0),2.2,"walk")
+   if k==2:
+    a.node.scale = Vector3.ONE*0.45
+  var nest = local_point(i,-20,16)
+  high_habitat(parent,nest,14,3.5,Color("d1e8f3"),false)
+  for k in 2:
+   upper_animal(32,74+k,parent,nest+Vector3(-0.8+k*1.6,14,0),0.3,"perch")
+  for k in 3:
+   upper_animal(32,80+k,parent,local_point(i,0,7,14+k%2*2.0),11.0,"glide")
+  text(parent,"ICE-CLIFF NESTS · ALBATROSS",nest+Vector3(0,16,0),Color("d9f6ff"),24,50)
+
+func upper_animal(si: int,k: int,parent: Node3D,c: Vector3,r: float,motion: String) -> Dictionary:
+ var a = spawn_animal(si,k,parent,c,r)
+ a["upper"] = true
+ a["upper_motion"] = motion
+ a["base_y"] = c.y
+ if motion=="glide":
+  # The outer glass dome is the flight enclosure; keep the whole circuit inside it.
+  a.node.rotation.z = 0.1*sin(float(k))
+  for name in ["WingL","WingR"]:
+   var wing = a.node.find_child(name,true,false)
+   if wing!=null and not a.wings.has(wing):
+    a.wings.append(wing)
+ return a
+
+func high_habitat(parent: Node3D,c: Vector3,height: float,radius: float,col: Color,tree: bool) -> void:
+ if tree:
+  tall_tree(parent,c,2.6,height-2.5,"nature_oak2")
+  for sd in [-1,1]:
+   beam(parent,c+Vector3(0,height*0.55,0),c+Vector3(sd*radius,height-0.2,0),0.28,Color("7c6848"))
+ else:
+  for k in 4:
+   var p = c+Vector3(cos(k*TAU/4)*1.4,height*0.44,sin(k*TAU/4)*1.4)
+   shape(parent,g._blow(1),p,Vector3(radius*0.7,height*0.55,radius*0.7),col)
+ var top = c+Vector3(0,height,0)
+ disc(parent,top-Vector3(0,0.15,0),radius,0.3,col,true)
+ for k in 16:
+  var a = top+Vector3(cos(k*TAU/16),0,sin(k*TAU/16))*radius
+  var b = top+Vector3(cos((k+1)*TAU/16),0,sin((k+1)*TAU/16))*radius
+  beam(parent,a+Vector3(0,0.9,0),b+Vector3(0,0.9,0),0.1,Color("c8d9d1"),true)
+
+func x_layer(p: Vector3,i: int) -> float:
+ var forward = (dome_c(i)-C).normalized()
+ return (p-dome_c(i)).dot(Vector3(forward.z,0,-forward.x))
+
+func z_layer(p: Vector3,i: int) -> float:
+ return (p-dome_c(i)).dot((dome_c(i)-C).normalized())
+
+func tall_tree(parent: Node3D,p: Vector3,scale_value: float,raise: float,kind: String) -> void:
+ # Raise the leafy crown above visitor/animal platforms and extend its trunk
+ # down to the floor, so the new upper paths do not disappear inside leaf cards.
+ nature(parent,kind,p+Vector3(0,raise,0),scale_value,0.5)
+ shape(parent,g._bcone(0.42,0.68,raise+0.5),p+Vector3(0,(raise+0.5)/2,0),Vector3.ONE,Color("795d40"))

@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.56.0 (code 110, 2026-11-23)
+- Stream Mode: game/autoplay.gd (state machine boot/to_dome/dome_quests/dome_stroll/leave_dome/to_station/waiting/riding/city; steers via g.stick), hook in main.gd after `booted = true`, launched with `--autoplay --autoplay-hours=N`. Run notes: docs/stream/RUN-STREAM-MODE.md. Next: taxi/careers phase, 3 h soak, Blender animals.
+
 ## 0.55.13 (code 109, 2026-11-23)
 - Extra animals (spawn k=100+, RESERVE_FILL groups k=120+ in empty slots), livelier free roam (rest 0.4-3.5 s, speed 1.0), lantern quest no longer needs dusk, smaller sign, monolith cap removed. Next idea: Blender animal model rework.
 

@@ -363,8 +363,12 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.13: more animals roaming, lantern quest works any time.")
+	_show_toast("Harbor City 0.56.0: Stream Mode (auto-play for livestreams).")
 	booted = true
+	if "--autoplay" in OS.get_cmdline_user_args():
+		var ap = preload("res://autoplay.gd").new(self)
+		ap.name = "Autoplay"
+		add_child(ap)
 	_sg_boot_note()
 	_stream_join_check()
 	_online_autostart()

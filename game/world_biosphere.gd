@@ -3801,7 +3801,7 @@ func flush_walk_meshes(parent: Node3D) -> void:
 
 # ---- 0.55.11: open reserve layout shared by all seven domes. No pens: every species roams a big open habitat
 # and visitors only walk on a raised platform (door -> ramp -> central deck -> pier -> two arms). Each dome has a theme.
-const AFRICA_Y := 3.4
+const AFRICA_Y := 2.4
 const RESERVE_DOMES := [0,1,2,3,4,5,6]
 # slot = [x,z,radius] in dome-local metres; all slots touch the boardwalk
 const RESERVE_SLOTS := [[-12.0,-17.0,9.0],[12.0,-18.0,9.0],[21.0,13.0,9.0],[-9.0,21.0,8.0],[-19.0,1.0,6.5],[9.0,23.0,6.5],[11.0,-4.0,4.2]]
@@ -3833,12 +3833,12 @@ const THEMES := {
 # every dome has its own boardwalk: deck size, west/east arm waypoints, width, pier end, and gate style
 const PATHS := {
  0:{"deck":6.5,"w":[[-5.5,2.0],[-14.0,7.0],[-22.0,15.0]],"e":[[5.5,2.0],[14.0,4.0],[22.0,0.0],[27.0,-8.0]],"width":3.4,"pier_end":2.8,"gate":""},
- 1:{"deck":5.5,"w":[[-5.5,2.0],[-11.0,8.0],[-16.0,3.0],[-22.0,9.0],[-25.0,17.0]],"e":[[5.5,2.0],[11.0,-3.0],[17.0,3.0],[23.0,-3.0],[27.0,6.0],[24.0,15.0]],"width":2.8,"pier_end":3.4,"gate":"torii"},
- 2:{"deck":6.5,"w":[[-5.5,2.0],[-12.0,4.0],[-18.0,-1.0],[-24.0,-8.0],[-27.0,-17.0]],"e":[[5.5,2.0],[12.0,8.0],[18.0,18.0],[10.0,27.0]],"width":3.8,"pier_end":3.0,"gate":"vine"},
- 3:{"deck":6.5,"w":[[-5.5,2.0],[-14.0,2.0],[-23.0,2.0]],"e":[[5.5,2.0],[14.0,2.0],[23.0,2.0],[28.0,12.0]],"width":4.4,"pier_end":4.0,"gate":"ice"},
- 4:{"deck":6.0,"w":[[-5.5,2.0],[-12.0,8.0],[-14.0,16.0],[-9.0,24.0]],"e":[[5.5,2.0],[12.0,6.0],[18.0,2.0],[24.0,-6.0],[20.0,-14.0]],"width":3.0,"pier_end":2.4,"gate":"stone"},
- 5:{"deck":6.5,"w":[[-5.5,2.0],[-10.0,-3.0],[-16.0,-8.0],[-24.0,-6.0],[-25.0,3.0]],"e":[[5.5,2.0],[12.0,2.0],[18.0,8.0],[25.0,12.0],[26.0,19.0]],"width":3.2,"pier_end":3.6,"gate":"log"},
- 6:{"deck":6.5,"w":[[-5.5,2.0],[-13.0,10.0],[-20.0,18.0],[-25.0,10.0]],"e":[[5.5,2.0],[12.0,-2.0],[20.0,-6.0],[26.0,-12.0],[28.0,-3.0]],"width":4.0,"pier_end":3.2,"gate":"rock"}}
+ 1:{"deck":5.5,"w":[[-5.5,2.0],[-11.0,8.0],[-16.0,3.0],[-22.0,9.0],[-25.0,17.0]],"e":[[5.5,2.0],[11.0,-3.0],[17.0,3.0],[23.0,-3.0],[27.0,6.0],[24.0,15.0]],"width":2.8,"pier_end":3.4,"gate":""},
+ 2:{"deck":6.5,"w":[[-5.5,2.0],[-12.0,4.0],[-18.0,-1.0],[-24.0,-8.0],[-27.0,-17.0]],"e":[[5.5,2.0],[12.0,8.0],[18.0,18.0],[10.0,27.0]],"width":3.8,"pier_end":3.0,"gate":""},
+ 3:{"deck":6.5,"w":[[-5.5,2.0],[-14.0,2.0],[-23.0,2.0]],"e":[[5.5,2.0],[14.0,2.0],[23.0,2.0],[28.0,12.0]],"width":4.4,"pier_end":4.0,"gate":""},
+ 4:{"deck":6.0,"w":[[-5.5,2.0],[-12.0,8.0],[-14.0,16.0],[-9.0,24.0]],"e":[[5.5,2.0],[12.0,6.0],[18.0,2.0],[24.0,-6.0],[20.0,-14.0]],"width":3.0,"pier_end":2.4,"gate":""},
+ 5:{"deck":6.5,"w":[[-5.5,2.0],[-10.0,-3.0],[-16.0,-8.0],[-24.0,-6.0],[-25.0,3.0]],"e":[[5.5,2.0],[12.0,2.0],[18.0,8.0],[25.0,12.0],[26.0,19.0]],"width":3.2,"pier_end":3.6,"gate":""},
+ 6:{"deck":6.5,"w":[[-5.5,2.0],[-13.0,10.0],[-20.0,18.0],[-25.0,10.0]],"e":[[5.5,2.0],[12.0,-2.0],[20.0,-6.0],[26.0,-12.0],[28.0,-3.0]],"width":4.0,"pier_end":3.2,"gate":""}}
 const GATE_COLS := {"torii":Color("c0392b"),"vine":Color("3f7a3a"),"ice":Color("bfe6f5"),"stone":Color("9a9a92"),"log":Color("7a5a38"),"rock":Color("b5603a")}
 
 func reserve(i: int) -> bool:
@@ -3981,6 +3981,12 @@ func reserve_build(i: int,parent: Node3D) -> void:
    africa_blob(parent,c,r,th.tint,200+slot_index)
    reserve_zone_props(parent,i,-1,slot_index,c,r,away,side,back)
 
+func path_clear(i: int,p: Vector3,margin: float) -> bool:
+ var forward = (dome_c(i)-C).normalized()
+ var right = Vector3(forward.z,0,-forward.x)
+ var d = p-dome_c(i)
+ return africa_path_dist(d.dot(right),d.dot(forward),i)>margin
+
 func reserve_zone_props(parent: Node3D,i: int,si: int,slot_index: int,c: Vector3,r: float,away: Vector3,side: Vector3,back: Vector3) -> void:
  var th = THEMES[i]
  var swim = si>=0 and String(SPECIES[si].zone)=="swim"
@@ -3989,10 +3995,14 @@ func reserve_zone_props(parent: Node3D,i: int,si: int,slot_index: int,c: Vector3
  elif slot_index==5 or slot_index==3 and i==3:
   disc(parent,c+Vector3(0,0.12,0),r*0.5,0.08,th.water)
  for k in 3:
-  reserve_tree(parent,i,back+side*float(k-1)*3.2,6.0+float(k%2)*1.2)
- ball(parent,c-away*1.5+side*2.0+Vector3(0,0.5,0),Vector3(1.2,0.85,1.0),th.boulder)
- ball(parent,c+away*0.8-side*2.4+Vector3(0,0.4,0),Vector3(0.8,0.6,0.8),th.boulder.lightened(0.12))
- if not swim:
+  var tp = back+side*float(k-1)*3.2
+  if path_clear(i,tp,3.4):
+   reserve_tree(parent,i,tp,6.0+float(k%2)*1.2)
+ if path_clear(i,c-away*1.5+side*2.0,3.0):
+  ball(parent,c-away*1.5+side*2.0+Vector3(0,0.5,0),Vector3(1.2,0.85,1.0),th.boulder)
+ if path_clear(i,c+away*0.8-side*2.4,3.0):
+  ball(parent,c+away*0.8-side*2.4+Vector3(0,0.4,0),Vector3(0.8,0.6,0.8),th.boulder.lightened(0.12))
+ if not swim and path_clear(i,c+side*2.6+away*1.0,3.0):
   shape(parent,g._bcone(0.2,0.9,1.5),c+side*2.6+away*1.0+Vector3(0,0.75,0),Vector3.ONE,th.mound[0])
 
 func africa_zone_props(parent: Node3D,si: int,c: Vector3,r: float,away: Vector3,side: Vector3,back: Vector3) -> void:

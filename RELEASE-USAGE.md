@@ -12,3 +12,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.55.9 | | | | Claude-built (Africa savanna reserve) |
 | 0.55.10 | | | | Claude-built (Africa fixes) |
 | 0.55.11 | | | | Claude-built (open reserves in all 7 domes) |
+| 0.55.12 | | | | Claude-built (lower platforms) |

@@ -15,3 +15,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.55.12 | | | | Claude-built (lower platforms) |
 | 0.55.13 | | | | Claude-built (more animals, lantern fix) |
 | 0.56.0 | | | | Claude-built (Stream Mode) |
+| 0.56.1 | | | | Claude-built (Sun Dome, hourly challenges) |

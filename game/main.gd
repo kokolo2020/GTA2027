@@ -323,6 +323,9 @@ func _ready() -> void:
 	_build_future()
 	_build_food_court()
 	_build_commons()
+	if not OS.get_environment("HC_SKIP").contains("sundome"):
+		sun_dome = preload("res://sun_dome.gd").new(self,CM_C)
+		sun_dome.build()
 	if not OS.get_environment("HC_SKIP").contains("biosphere"):
 		_build_biosphere()
 	if not OS.get_environment("HC_SKIP").contains("galleria"):
@@ -351,7 +354,7 @@ func _ready() -> void:
 	_refresh_checkpoints()
 	road_barrier.build()
 	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args() or "--africa-shots" in OS.get_cmdline_user_args()
-	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots"]:
+	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--sundome-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -363,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.56.0: Stream Mode (auto-play for livestreams).")
+	_show_toast("Harbor City 0.56.1: Sun Dome hangout, hourly challenges, Stream Mode goes online.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -428,6 +431,22 @@ func _ready() -> void:
 			var e: Vector3 = sky_st_info[i]["entrance"]
 			print("SKYST ",i," ",e," road=",_on_road(e)," blk=",_blocker(e+Vector3(0,1.0,0),0.6)," side=",sky_st_info[i]["side"])
 		print("SKYLEN ",sky_len," period ",sky_period," pillars ",sky_pillars.size())
+		get_tree().quit()
+	elif "--sundome-shots" in OS.get_cmdline_user_args():
+		crate_done = true
+		crate_open = false
+		paused = false
+		var sd := [["sd-spawn",SPAWN_SUN_DOME,0.0,0.25],["sd-fountain",CM_C+Vector3(0,0.9,16),0.0,0.15],["sd-edge",CM_C+Vector3(-30,0.9,10),-1.2,0.3],["sd-outside",CM_C+Vector3(0,0.9,70),0.0,0.35],["sd-puzzle",CM_C+Vector3(0,0.9,-26),PI,0.25],["sd-core",CM_C+Vector3(0,0.9,16),PI,0.2],["sd-terminal",sun_dome.term+Vector3(0,0.9,-2.0),PI,0.2]]
+		for sp in sd:
+			player.position = sp[1]
+			player.velocity = Vector3.ZERO
+			cam_yaw = float(sp[2])
+			cam_pitch = float(sp[3])
+			for i in 40:
+				await get_tree().physics_frame
+			await _save_shot(String(sp[0]))
+		print("HOURLY SELFTEST ",hourly.selftest())
+		print("SUNDOMESHOTS DONE")
 		get_tree().quit()
 	elif "--barrier-shots" in OS.get_cmdline_user_args():
 		driving = true
@@ -2038,8 +2057,8 @@ func _online_autostart() -> void:
 	if not online_pref or online_on or legacy_rules:
 		return
 	for a in args:
-		if String(a).begins_with("--"):
-			return   # any developer mode (tests, shots, bench) stays offline
+		if String(a).begins_with("--") and not String(a).begins_with("--autoplay"):
+			return   # any developer mode (tests, shots, bench) stays offline; Stream Mode (--autoplay) goes online
 	if not _online_load_config():
 		return
 	online_on = true
@@ -4185,7 +4204,7 @@ func _build_panels(root: Control) -> void:
 func _build_player() -> void:
 	player = CharacterBody3D.new()
 	player.name = "Player"
-	player.position = SPAWN_FOOD_COURT
+	player.position = SPAWN_SUN_DOME
 	add_child(player)
 	var collision := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
@@ -4820,6 +4839,9 @@ func _build_hud() -> void:
 	_build_chapters_ui(root)
 	_build_home_panels(root)
 	_build_puzzle_panel(root)
+	hourly = preload("res://hourly_challenge.gd").new(self)
+	add_child(hourly)
+	hourly.build_panel(root)
 	_build_streamer(root)
 	_build_ach(root)
 	_build_quiz(root)
@@ -7976,6 +7998,9 @@ func _interact() -> void:
 	if shop >= 0:
 		_shop_open(shop)
 		return
+	if hourly != null and hourly.near():
+		hourly.open()
+		return
 	if _puzzle_near():
 		_open_puzzle()
 		return
@@ -8178,6 +8203,8 @@ func _refresh_hud() -> void:
 		action_button.text = "OPEN " + String(SHOPS[_nearest_shop()]["verb"])
 	elif _market_near() >= 0:
 		action_button.text = "OPEN " + String(MARKET[_market_near()]["name"])
+	elif hourly != null and hourly.near():
+		action_button.text = hourly.button_text()
 	elif _puzzle_near():
 		action_button.text = "DAILY PUZZLE ✓" if pz_day == _pz_today() else "DAILY PUZZLE"
 	elif _sg_near() >= 0:
@@ -8392,6 +8419,8 @@ func _save_progress() -> void:
 	file.set_value("progress","bio_pass_day",bio_pass_day)
 	file.set_value("progress","pz_streak",pz_streak)
 	file.set_value("progress","pz_total",pz_total)
+	file.set_value("progress","hr_done",hr_done)
+	file.set_value("progress","hr_total",hr_total)
 	file.set_value("progress","hud_clean",hud_clean)
 	file.set_value("progress","quest_active",quest_active)
 	file.set_value("social","uid",player_uid)
@@ -8442,6 +8471,8 @@ func _load_progress() -> void:
 		ch_best = clampi(maxi(int(file.get_value("chapters","best",0)),ch_idx),0,CHAPTERS.size())
 		pz_streak = maxi(0,int(file.get_value("progress","pz_streak",0)))
 		pz_total = maxi(0,int(file.get_value("progress","pz_total",0)))
+		hr_done = int(file.get_value("progress","hr_done",-1))
+		hr_total = maxi(0,int(file.get_value("progress","hr_total",0)))
 		hud_clean = bool(file.get_value("progress","hud_clean",true))
 		quest_active = bool(file.get_value("progress","quest_active",false))
 		player_uid = String(file.get_value("social","uid",player_uid))
@@ -18909,6 +18940,12 @@ var cm_people: Array = []
 var cm_cheer: Array = []
 var cm_emote_t := 3.0
 var cm_sign: Label3D
+var sun_dome
+var hourly
+var hr_done := -1       # last UTC hour index whose challenge you solved
+var hr_total := 0
+# v0.56.1: everyone arrives in the Sun Dome, on the long path just south of the Commons fountain.
+const SPAWN_SUN_DOME := Vector3(-93,0.9,-22)
 
 func _cm_person(parent: Node3D, pos: Vector3, yaw: float, seed_i: int, kid := false) -> Dictionary:
 	var shirts := [Color("e04a3a"),Color("3f8fd2"),Color("5fbf7f"),Color("f2b24a"),Color("9b6bd6"),Color("f27fb2"),Color("2fb5a8"),Color("f2f2f2"),Color("ffd23f")]
@@ -31699,6 +31736,7 @@ func _smoke_careers_homes() -> void:
 	var c_ach := cash
 	_ach_check()
 	assert(ach_got.has("taxi1") and ach_got.has("taxi10") and cash > c_ach,"v0.52: taxi achievements unlock with a reward")
+	_ach_check()   # settle cash-threshold achievements that the first reward may have unlocked
 	var c_ach2 := cash
 	_ach_check()
 	assert(cash == c_ach2,"v0.52: achievements unlock only once")
@@ -32219,7 +32257,7 @@ func _chapters_close() -> void:
 
 func _smoke_chapters() -> void:
 	# v0.51: chapters cover the whole map, point the guide arrow, advance on arrival and pay out.
-	assert(Vector2(SPAWN_FOOD_COURT.x-FC_BLOCK.x,SPAWN_FOOD_COURT.z-FC_BLOCK.z).length() < 15.0 and SPAWN_FOOD_COURT.z > FC_Z+4.0,"v0.51: the spawn is in front of the food court stands")
+	assert(Vector2(SPAWN_SUN_DOME.x-CM_C.x,SPAWN_SUN_DOME.z-CM_C.z).length() < 30.0,"v0.56.1: everyone spawns inside the Sun Dome")
 	assert(chat_quick != null and chat_quick.get_child_count() == 4 and HUB_PHRASES.size() == CHAT_SYM_END+4,"v0.51: four quick chat chips")
 	assert(HUB_PHRASES[CHAT_SYM_END] == "SCAN AND JOIN THE GAME" and HUB_PHRASES[CHAT_SYM_END+3] == "SUBSCRIBE & LIKE","v0.51: quick chat phrases")
 	for d in DIR_DESTS:
@@ -32831,7 +32869,7 @@ func _smoke_stream_join() -> void:
 	assert(online_on == _online_load_config(),"v0.51.3: stream joiners go online straight away")
 	online_on = true
 	online_joined_at = -100.0
-	player.position = SPAWN_FOOD_COURT
+	player.position = SPAWN_SUN_DOME
 	_online_peer_update({"i":"sjv1","n":"ViewerOne","x":-60.0,"y":0.9,"z":40.0,"r":0.0,"d":0,"l":3,"st":0})
 	_online_peer_update({"i":"sjst","n":"MasterKolo","x":12.0,"y":0.9,"z":30.0,"r":0.0,"d":0,"l":20,"st":1})
 	(online_peers["sjst"]["node"] as Node3D).position = Vector3(12.0,0.9,30.0)

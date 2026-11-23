@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.55.11 (code 107, 2026-11-23)
+- Open reserve layout in all 7 domes (game/world_biosphere.gd: RESERVE_DOMES, RESERVE_SLOTS, RESERVE_PLAN, THEMES, PATHS, reserve_build/reserve_zone/reserve_wow/reserve_detail, reserve(i)). Per-dome boardwalk design in PATHS (arms, width, pier end, gate). Dome-specific old layouts (rich_landscape, phase2_landscape, garden_ring, sky_gallery) skipped for reserve domes. Shots: HC_DOME=n with --africa-shots (run-reserve-shots.command).
+
 ## 0.55.10 (code 106, 2026-11-23)
 - Africa fixes: foyer walkway width 5.0 starting at z -38.4 (was 7.2, left an open end edge beside the ramp foot); inside_signpost() no longer called in domes; lanterns moved to rail edge. Next job: Savanna-style open habitats for the other 6 domes.
 

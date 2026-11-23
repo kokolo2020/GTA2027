@@ -363,7 +363,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.10: Africa ramp gap closed, dome signposts removed, lanterns off the walkway.")
+	_show_toast("Harbor City 0.55.11: all seven domes are open reserves, each with its own raised pathway.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()

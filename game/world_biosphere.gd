@@ -620,10 +620,11 @@ func landscape(i: int,parent: Node3D) -> void:
  var c = dome_c(i)
  backdrop(i,parent)
  # Each continent has its own visitor trail; animal enclosures stay unchanged.
- ground_trails(i,parent)
+ if i!=0:
+  ground_trails(i,parent)
  var rng = RandomNumberGenerator.new()
  rng.seed = 5300+i
- for k in (65 if i==1 or i==2 else 28 if i<4 else 0):
+ for k in (65 if i==1 or i==2 else 28 if i<4 and i>0 else 0):
   var a = rng.randf()*TAU
   var r = rng.randf_range(26,35)
   var p = c+Vector3(cos(a),0,sin(a))*r
@@ -639,11 +640,7 @@ func landscape(i: int,parent: Node3D) -> void:
    tree(parent,p,rng.randf_range(4,8),[Color("859c46"),Color("76a95e"),Color("247253"),Color.WHITE,Color("80a95c"),Color("b97242"),Color("428f68")][i],1 if i==1 else (2 if i==0 else 0))
  match i:
   0:
-   disc(parent,local_point(i,0,16,0.16),6.0,0.08,Color("65aaba"))
-   for k in 7:
-    ball(parent,local_point(i,26+k%2,-13+k*3,1.8),Vector3(3.4,2.5+k%3,2.8),Color("a88056"))
-   g._fc_part(parent,g._bsph(3.5),local_point(i,0,33,14),g._fc_glow(Color("ffba75")),Vector3(1,1,0.2))
-   text(parent,"SAVANNA · WATERING HOLE",local_point(i,0,25,8),Color("fff2bd"),28)
+   africa_reserve(parent)
   1:
    for k in 5:
     shape(parent,g._bcone(0,5.5,11.0+k%2*4.0),local_point(i,12+k*4,19,5.5+k%2*2),Vector3.ONE,Color("7a918b"))
@@ -694,6 +691,11 @@ func habitats(i: int,parent: Node3D) -> void:
    ids.append(si)
  for k in ids.size():
   var si = ids[k]
+  if i==0:
+   var zone_home = g.bio_hab[si]
+   for n in int(SPECIES[si].n):
+    spawn_animal(si,n,parent,zone_home.c,float(zone_home.r))
+   continue
   if i>=4 and str(SPECIES[si].zone)=="fly":
    var sky = local_point(i,-29,-2,7) if si==3 else local_point(i,-20,5,13)
    if not can_fly(si):
@@ -809,6 +811,13 @@ func spawn_animal(si: int,k: int,parent: Node3D,p: Vector3,r: float) -> Dictiona
     a.wings.append(wing)
     wing.hide()
   a["folded_wings"] = node.find_child("FoldedWings",true,false)
+ if int(s.dome)==0:
+  a["free"] = true
+  var near_node = local_point(0,0,0)
+  for pn in africa_path_nodes():
+   if pn.distance_to(p)<near_node.distance_to(p):
+    near_node = pn
+  a["feed_at"] = p+(near_node-p).normalized()*r*0.6
  var ang = k*2.3
  node.position = p+Vector3(cos(ang),0.1,sin(ang))*r*0.65
  a.target = node.position
@@ -852,8 +861,10 @@ func quest_point(i: int,q: int,step: int) -> Vector3:
   return local_point(i,0,[-14.0,0.0,14.0][step],0.22)
  if i==1 and q==0:
   return local_point(i,[-6.0,6.0,10.0][step],[-22.0,-7.0,-22.0][step])
- if i==0 and q==1:
-  return local_point(i,-10.8,4.0+step*2.0)
+ if i==0:
+  var pts0 = [[Vector3(-3.2,1.5,AFRICA_Y),Vector3(0,4.2,AFRICA_Y),Vector3(3.2,1.5,AFRICA_Y)],[Vector3(-3.8,1.6,AFRICA_Y),Vector3(-4.2,3.0,AFRICA_Y),Vector3(-3.6,4.2,AFRICA_Y)],[Vector3(0,-22,africa_ramp_y(-22.0)),Vector3(0,0,AFRICA_Y),Vector3(0,17,AFRICA_Y)]]
+  var pt0: Vector3 = pts0[q][step]
+  return local_point(0,pt0.x,pt0.y,pt0.z)
  if i==3 and q==0:
   return local_point(i,9.0,-24.0+step*2.0)
  if (i==0 and q==0) or (i==3 and q==2):
@@ -1031,7 +1042,7 @@ func interact() -> bool:
     return true
   if task==1:
    var cubs = baby_nodes.filter(func(a):return int(a.dome)==0)
-   if cubs.is_empty() or cubs[quest_step(task)%cubs.size()].node.global_position.distance_to(g.player.position)>17:
+   if cubs.is_empty() or cubs[quest_step(task)%cubs.size()].node.global_position.distance_to(g.player.position)>30:
     g._show_toast("Look into the lion habitat from the viewing path to find the cub.")
     return true
   if task==3 and quest_step(task)==2:
@@ -1061,7 +1072,7 @@ func keeper(day := "") -> Dictionary:
  var i = int(rng.randi()%7)
  var kind = ["feed","clean","count","rescue"][int(rng.randi()%4)]
  var step = int(state.keeper_step) if state.keeper_work_day==date else 0
- return {"dome":i,"kind":kind,"p":local_point(i,7,-29+step*20),"step":step}
+ return {"dome":i,"kind":kind,"p":africa_station(step) if i==0 else local_point(i,7,-29+step*20),"step":step}
 
 func keeper_here() -> bool:
  var k = keeper()
@@ -1237,7 +1248,7 @@ func tick_impl(delta: float) -> void:
   f.node.process_mode = Node.PROCESS_MODE_INHERIT if int(f.dome)==active else Node.PROCESS_MODE_DISABLED
  for a in rare_nodes:
   a.node.visible = bool(rare.active) and int(a.rare)==int(rare.kind)
-  if a.node.is_visible_in_tree() and a.node.global_position.distance_to(me.position)<17 and g.camera.is_position_in_frustum(a.node.global_position):
+  if a.node.is_visible_in_tree() and a.node.global_position.distance_to(me.position)<(30.0 if int(a.dome)==0 else 17.0) and g.camera.is_position_in_frustum(a.node.global_position):
    var key = str(rare.slot)
    if not state.rare.has(key):
     state.rare[key] = int(rare.kind)
@@ -1261,7 +1272,7 @@ func tick_impl(delta: float) -> void:
    continue
   # Movement is updated by the distance-aware animation clock above.
   var p = a.node.global_position+Vector3(0,0.7,0)
-  if not a.has("rare") and me.position.distance_to(p)<17 and g.camera.is_position_in_frustum(p):
+  if not a.has("rare") and me.position.distance_to(p)<(30.0 if int(a.dome)==0 else 17.0) and g.camera.is_position_in_frustum(p):
    spot(int(a.si))
  for m in markers:
   m.node.visible = active==int(m.dome) and task==int(m.dome)*3+int(m.q) and quest_step(task)==int(m.step)
@@ -1345,6 +1356,16 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
  elif show:
   var toward = (dome_c(int(a.dome))-centre).normalized()
   a.target = feeding_target(a,toward,radius)
+ elif a.get("free",false):
+  if node.position.distance_to(a.target)<0.3:
+   if float(a.get("rest",-1.0))<0.0:
+    a["rest"] = randf_range(2.0,8.0)
+   else:
+    a["rest"] = float(a.rest)-delta
+    if float(a.rest)<=0.0:
+     a["rest"] = -1.0
+     var wander = randf()*TAU
+     a.target = centre+Vector3(cos(wander),0.1,sin(wander))*sqrt(randf())*radius*0.9
  elif node.position.distance_to(a.target)<0.3:
   var t = ph*0.7+int(a.k)*2.2
   a.target = centre+Vector3(cos(t),0.1,sin(t))*radius*0.75
@@ -1590,7 +1611,7 @@ func smoke() -> void:
    var speed = g._walk_speed()
    var direction = (dome_c(i)-C).normalized()
    var across = Vector3(direction.z,0,-direction.x)
-   walk_route("complete tunnel "+NAMES[i]+mode,[C+Vector3(0,0.09,0),dome_c(i)+Vector3(0,0.09,0)],speed)
+   walk_route("complete tunnel "+NAMES[i]+mode,[C+Vector3(0,0.09,0),local_point(0,0,-31.5,0.09) if i==0 else dome_c(i)+Vector3(0,0.09,0)],speed)
    for offset in [-2.35,-1.2,0.0,1.2,2.35]:
     walk_route("door sides "+NAMES[i]+mode,[dome_c(i)-direction*(RADIUS+2.2)+across*offset+Vector3(0,-0.05,0),dome_c(i)-direction*(RADIUS-2.2)+across*offset+Vector3(0,0.09,0)],speed)
    walk_route("ground trail "+NAMES[i]+mode,ground_route(i),speed)
@@ -1680,7 +1701,7 @@ func smoke() -> void:
   auto_dome = -1
   task = -1
   interval = 0.0
-  g.player.position = local_point(i,0,-RADIUS+12.0,0.8)
+  g.player.position = local_point(i,0,-33.0 if i==0 else -RADIUS+12.0,0.8)
   tick_impl(0.3)
   assert(task>=0 and task/3==i,"Entering dome %d starts one of its quests"%i)
   assert(quest_guide().contains(" m") and quest_guide().contains("marker"),"Quest guide gives a direction and distance")
@@ -2245,7 +2266,7 @@ func build_visitors() -> void:
   var side = Vector3(out.z,0,-out.x)
   for v in 2:
    var lat = 1.5 if v==0 else -1.5
-   var route = [C+out*12.0+side*lat,C+out*(RING_R-5.0)+side*lat,dome_c(i)-out*(RADIUS+2.0)+side*lat,dome_c(i)-out*(RADIUS-18.0)+side*lat]
+   var route = [C+out*12.0+side*lat,C+out*(RING_R-5.0)+side*lat,dome_c(i)-out*(RADIUS+2.0)+side*lat,dome_c(i)-out*(RADIUS-(4.0 if i==0 else 18.0))+side*lat]
    add_visitor(route,Vector3.ZERO,0.0,400+n*13)
    n += 1
  for k in 7:
@@ -2508,7 +2529,7 @@ func soft_mist(i: int,parent: Node3D,p: Vector3,extent: Vector3) -> void:
 
 func ground_route(i: int) -> Array:
  var routes = [
-  [Vector2(0,-36),Vector2(0,-17),Vector2(-7,-4),Vector2(0,6),Vector2(8,14),Vector2(8,23),Vector2(0,31)],
+  [Vector2(0,-36),Vector2(0,-32)],
   [Vector2(0,-36),Vector2(-7,-24),Vector2(7,-10),Vector2(-7,0),Vector2(-10,10),Vector2(-5,24),Vector2(0,31)],
   [Vector2(0,-36),Vector2(0,-20),Vector2(-7,-9),Vector2(0,2),Vector2(7,14),Vector2(0,31)],
   [Vector2(0,-36),Vector2(0,-14),Vector2(0,0),Vector2(-12,-1),Vector2(-26,-1),Vector2(-26,9),Vector2(-20,9),Vector2(-26,9),Vector2(-26,-1),Vector2(-12,-1),Vector2(0,0),Vector2(0,14),Vector2(0,31)],
@@ -3231,8 +3252,8 @@ func finish_guards(i: int,parent: Node3D) -> void:
      var to = a.lerp(b,float(sample)/count)
      collision_wall(parent,from,to,1.4)
      raised_boundaries.append({"a":from,"b":to,"centre":(surface.a+surface.b)*0.5})
-     for height in [0.18,0.65,1.25]:
-      beam(parent,from+Vector3(0,height,0),to+Vector3(0,height,0),0.08,Color("d5dfd2"))
+     for height in ([0.12,1.12] if i==0 else [0.18,0.65,1.25]):
+      beam(parent,from+Vector3(0,height,0),to+Vector3(0,height,0),0.05 if i==0 else 0.08,Color("d5dfd2"))
      run_start = -1
 
 func inside_pen(p: Vector3,margin := 0.0) -> bool:
@@ -3424,6 +3445,10 @@ func register_habitats() -> void:
    var si = int(ids[k])
    if i>=4 and SPECIES[si].zone=="fly":
     continue
+   if i==0:
+    var zone = AFRICA_ZONES[si]
+    g.bio_hab[si] = {"type":"pen","c":local_point(0,zone[0],zone[1]),"r":float(zone[2])-1.0,"rmin":0.0,"sign":local_point(0,zone[0],zone[1])}
+    continue
    var p = local_point(i,-23 if k%2==0 else 23,-21+(k/2)*14)
    var radius = 3.7
    if i>=4:
@@ -3482,22 +3507,23 @@ func load_dome(i: int) -> void:
  shell(detail,c,RADIUS,30,COLORS[i],false)
  landscape(i,detail)
  habitats(i,detail)
- if i<4:
+ if i>0 and i<4:
   rich_landscape(i,detail)
   habitat_layers(i,detail)
  if i>=4:
   phase2_landscape(i,detail)
   phase2_layers(i,detail)
  quest_markers(i,detail)
- garden_ring(i,detail)
- colonnade(i,detail)
- if i!=1:
+ if i!=0:
+  garden_ring(i,detail)
+  colonnade(i,detail)
+ if i>1:
   sky_gallery(i,detail)
  door_markers(i,detail)
  inside_signpost(i,detail)
  if i<7:
   for step in 3:
-   var p = local_point(i,7,-29+step*20)
+   var p = africa_station(step) if i==0 else local_point(i,7,-29+step*20)
    var marker = Node3D.new()
    marker.position = p
    detail.add_child(marker)
@@ -3712,11 +3738,12 @@ func feeding_target(a: Dictionary,toward: Vector3,radius: float) -> Vector3:
  offset += toward*radius*0.15
  if offset.length()>radius*0.85:
   offset = offset.normalized()*radius*0.85
- return a.c+offset+Vector3(0,0.1,0)
+ var origin: Vector3 = a.get("feed_at",a.c)
+ return origin+offset+Vector3(0,0.1,0)
 
 func visitor_stage_route(i: int) -> Array:
  if i==0:
-  return [local_point(0,9.5,-25,0.09),local_point(0,9.5,-3,4.5),local_point(0,9.5,24,4.5),local_point(0,7,24,4.5)]
+  return [local_point(0,0,-37.4,0.09),local_point(0,0,-31,0.09),local_point(0,0,-5,AFRICA_Y),local_point(0,0,0,AFRICA_Y),local_point(0,0,17,AFRICA_Y)]
  if i==1:
   return asia_route()
  if i==2:
@@ -3764,3 +3791,261 @@ func flush_walk_meshes(parent: Node3D) -> void:
   body.add_child(collision)
   entry.parent.add_child(body)
   walk_meshes.erase(key)
+
+
+# ---- 0.55.9 prototype: Africa Savanna Reserve. No pens: every species roams a big open habitat zone and
+# visitors only ever walk on a raised platform (door -> ramp -> central deck -> pier) and look down on them.
+const AFRICA_Y := 3.4
+const AFRICA_ZONES := {
+ 8:[-9.0,21.0,8.0,"ACACIA PLAINS",Color("b3a548")],
+ 9:[-12.0,-17.0,9.0,"ZEBRA GRASSLAND",Color("c2a74f")],
+ 10:[9.0,23.0,6.5,"FLAMINGO LAGOON",Color("d3b66e")],
+ 16:[21.0,13.0,9.0,"ELEPHANT WATERHOLE",Color("b08c4c")],
+ 17:[-19.0,1.0,6.5,"LION KOPJE",Color("a58963")],
+ 18:[12.0,-18.0,9.0,"RHINO MUD FLATS",Color("98805a")],
+ 19:[11.0,-4.0,4.2,"MEERKAT MOUNDS",Color("d6b56f")]}
+# boardwalk arms (local x,z) leaving the central deck: west past lions/giraffes, east past meerkats/elephants
+const AFRICA_ARM_W := [[-5.5,2.0],[-14.0,7.0],[-22.0,15.0]]
+const AFRICA_ARM_E := [[5.5,2.0],[14.0,4.0],[22.0,0.0],[27.0,-8.0]]
+
+func africa_path_nodes() -> Array:
+ var out: Array = []
+ for q in [[0.0,-20.0],[0.0,-10.0],[0.0,0.0],[0.0,10.0],[0.0,17.0]]+AFRICA_ARM_W+AFRICA_ARM_E:
+  out.append(local_point(0,q[0],q[1]))
+ return out
+
+func africa_blob(parent: Node3D,c: Vector3,r: float,col: Color,seed_k: int) -> void:
+ # organic habitat patch: overlapping lobes instead of one circle
+ var rng = RandomNumberGenerator.new()
+ rng.seed = 700+seed_k
+ disc(parent,c+Vector3(0,0.10,0),r*0.9,0.04,col)
+ for k in 7:
+  var ang = rng.randf()*TAU
+  var lr = r*rng.randf_range(0.38,0.6)
+  var off = Vector3(cos(ang),0,sin(ang))*r*rng.randf_range(0.5,0.62)
+  disc(parent,c+off+Vector3(0,0.10+0.004*k,0),lr,0.04,col.lerp(Color("e2c277"),rng.randf_range(0.0,0.35)))
+
+func africa_ramp_y(z: float) -> float:
+ return 0.09+(z+31.0)*(AFRICA_Y-0.09)/26.0
+
+func africa_station(step: int) -> Vector3:
+ var spots = [Vector2(4.4,-1.8),Vector2(-4.4,-1.8),Vector2(0,14.0)]
+ return local_point(0,spots[step%3].x,spots[step%3].y,AFRICA_Y)
+
+func africa_zone_centre(si: int) -> Vector3:
+ var z = AFRICA_ZONES[si]
+ return local_point(0,z[0],z[1])
+
+func africa_reserve(parent: Node3D) -> void:
+ var deck_col = Color("b8975f")
+ # Raised visitor platform: a wide foyer at the door, a long gentle ramp, the central deck and a pier.
+ walkway(parent,local_point(0,0,-37.4,0.09),local_point(0,0,-31,0.09),7.2)
+ walkway(parent,local_point(0,0,-31,0.09),local_point(0,0,-5,AFRICA_Y),5.0)
+ disc(parent,local_point(0,0,0,AFRICA_Y-0.15),6.5,0.3,deck_col,true)
+ walkway(parent,local_point(0,0,5,AFRICA_Y),local_point(0,0,16,AFRICA_Y),3.4)
+ disc(parent,local_point(0,0,18,AFRICA_Y-0.15),2.8,0.3,deck_col,true)
+ for arm in [AFRICA_ARM_W,AFRICA_ARM_E]:
+  var prev = Vector2(0,0)
+  for q in arm:
+   var qa = local_point(0,prev.x,prev.y,AFRICA_Y)
+   var qb = local_point(0,q[0],q[1],AFRICA_Y)
+   if prev!=Vector2.ZERO:
+    walkway(parent,qa,qb,3.4)
+    disc(parent,qb-Vector3(0,0.15,0),2.1,0.3,deck_col,true)
+   else:
+    walkway(parent,local_point(0,sign(q[0])*4.6,q[1]*0.6,AFRICA_Y),qb,3.4)
+   beam(parent,local_point(0,q[0],q[1],0.1),qb-Vector3(0,0.25,0),0.35,Color("d9cfae"))
+   prev = Vector2(q[0],q[1])
+  var last = arm[arm.size()-1]
+  disc(parent,local_point(0,last[0],last[1],AFRICA_Y-0.15),3.2,0.3,deck_col,true)
+ for z in [-26.0,-21.0,-16.0,-11.0]:
+  var zy = africa_ramp_y(z)
+  for sx in [-2.2,2.2]:
+   beam(parent,local_point(0,sx,z,0.1),local_point(0,sx,z,zy-0.25),0.3,Color("d9cfae"))
+ for ang in 4:
+  var q = Vector2(cos(ang*TAU/4+0.78),sin(ang*TAU/4+0.78))*4.6
+  beam(parent,local_point(0,q.x,q.y,0.1),local_point(0,q.x,q.y,AFRICA_Y-0.25),0.4,Color("d9cfae"))
+ for z in [8.0,13.0]:
+  beam(parent,local_point(0,0,z,0.1),local_point(0,0,z,AFRICA_Y-0.25),0.3,Color("d9cfae"))
+ beam(parent,local_point(0,0,18,0.1),local_point(0,0,18,AFRICA_Y-0.25),0.4,Color("d9cfae"))
+ text(parent,"SAVANNA RESERVE\nThe animals roam free · look from the platform",local_point(0,0,0,AFRICA_Y+4.2),Color("fff2bd"),56,90)
+ africa_wow(parent)
+ africa_detail(parent)
+ # Open habitat zones: a tinted patch and its own scenery, no fence.
+ var deck = local_point(0,0,0)
+ for si in AFRICA_ZONES:
+  var z = AFRICA_ZONES[si]
+  var c = local_point(0,z[0],z[1])
+  var r = float(z[2])
+  africa_blob(parent,c,r,z[4],si)
+  text(parent,String(z[3]),c+Vector3(0,5.2,0),Color("fff2bd"),52,90)
+  var near_n = deck
+  for pn in africa_path_nodes():
+   if pn.distance_to(c)<near_n.distance_to(c):
+    near_n = pn
+  var away = (c-near_n).normalized()
+  var side = Vector3(away.z,0,-away.x)
+  var back = c+away*(r-0.6)
+  match si:
+   8:
+    for k in 3:
+     tree(parent,back+side*float(k-1)*3.2,7.0+float(k%2),Color("859c46"),2)
+   9:
+    for k in 6:
+     ball(parent,back+side*(float(k)-2.5)*1.9+away*float(k%2)*0.8,Vector3(0.7,0.45,0.7),Color("88a54a"))
+   10:
+    disc(parent,c+Vector3(0,0.12,0),r-0.5,0.08,Color("5bbfd0"))
+   16:
+    disc(parent,c-away*2.0+Vector3(0,0.14,0),2.6,0.06,Color("7a5b3a"))
+    shape(parent,g._bcone(1.1,1.7,6.0),back+Vector3(0,3.0,0),Vector3.ONE,Color("8f7658"))
+    ball(parent,back+Vector3(0,6.6,0),Vector3(4.6,1.5,4.6),Color("5f8f45"))
+   17:
+    ball(parent,back+Vector3(0,1.6,0),Vector3(2.8,2.0,2.4),Color("a88056"))
+    ball(parent,back+side*2.6+Vector3(0,1.0,0),Vector3(1.9,1.4,1.7),Color("b08a5e"))
+    ball(parent,back-side*2.4+Vector3(0,0.9,0),Vector3(1.6,1.2,1.5),Color("9c7650"))
+   18:
+    disc(parent,c-away*1.5+Vector3(0,0.14,0),2.4,0.06,Color("6e5a3c"))
+    ball(parent,back+Vector3(0,1.0,0),Vector3(1.8,1.3,1.6),Color("a38b64"))
+   19:
+    for k in 3:
+     shape(parent,g._bcone(0.1,0.7,1.4),c+side*float(k-1)*2.0+away*1.2+Vector3(0,0.7,0),Vector3.ONE,Color("c9a066"))
+
+func africa_wow(parent: Node3D) -> void:
+ # landmark baobab at the back, a winding stream from the lagoon to the elephant waterhole, glowing lanterns on the arms
+ var bc = local_point(0,0,31.0)
+ shape(parent,g._bcone(2.6,3.4,13.0),bc+Vector3(0,6.5,0),Vector3.ONE,Color("8f7658"))
+ ball(parent,bc+Vector3(0,14.0,0),Vector3(9.0,2.6,9.0),Color("5f8f45"))
+ for k in 14:
+  var t = float(k)/13.0
+  var sp = Vector2(9.0,22.0).lerp(Vector2(21.0,13.0),t)+Vector2(sin(t*TAU*1.5)*2.2,cos(t*TAU)*1.0)
+  disc(parent,local_point(0,sp.x,sp.y,0.13),1.9-0.5*absf(t-0.5),0.05,Color("5bbfd0"))
+ for arm in [AFRICA_ARM_W,AFRICA_ARM_E]:
+  for q in arm:
+   var lp = local_point(0,q[0],q[1],AFRICA_Y)
+   beam(parent,lp,lp+Vector3(0,2.2,0),0.08,Color("6b4f2a"))
+   ball(parent,lp+Vector3(0,2.4,0),Vector3(0.35,0.35,0.35),Color("ffd36b"))
+
+func africa_path_segs() -> Array:
+ var segs: Array = [[Vector2(0,-38),Vector2(0,19)]]
+ for arm in [AFRICA_ARM_W,AFRICA_ARM_E]:
+  var prev = Vector2(0,0)
+  for q in arm:
+   segs.append([prev,Vector2(q[0],q[1])])
+   prev = Vector2(q[0],q[1])
+ return segs
+
+func africa_path_dist(x: float,z: float) -> float:
+ var best = 999.0
+ var pt = Vector2(x,z)
+ for sg in africa_path_segs():
+  var a: Vector2 = sg[0]
+  var ab: Vector2 = sg[1]-a
+  var t = clampf((pt-a).dot(ab)/maxf(ab.length_squared(),0.001),0.0,1.0)
+  best = minf(best,pt.distance_to(a+ab*t))
+ return best
+
+func africa_detail(parent: Node3D) -> void:
+ # Savanna dressing from field notes: continuous tufted grass with bare patches, flat-topped acacias standing alone,
+ # termite mounds as tree islands, a rocky kopje, dry creek bed, wallow logs and rubbing posts, flowers, scrub at the rim.
+ var rng = RandomNumberGenerator.new()
+ rng.seed = 5150
+ var grass_cols = [Color("d9b650"),Color("c9a23f"),Color("a8a53f"),Color("e2c767"),Color("8fa046")]
+ var wet = [10,16,18]
+ for si in AFRICA_ZONES:
+  var z = AFRICA_ZONES[si]
+  var zc = Vector2(z[0],z[1])
+  var zr = float(z[2])
+  var tufts = int(zr*zr*0.55)
+  for k in tufts:
+   var ang = rng.randf()*TAU
+   var rr = sqrt(rng.randf())*zr*1.0
+   var q = zc+Vector2(cos(ang),sin(ang))*rr
+   if africa_path_dist(q.x,q.y)<2.4:
+    continue
+   if int(si) in wet and q.distance_to(zc)<zr*0.45:
+    continue
+   var col = grass_cols[rng.randi()%grass_cols.size()]
+   var h = rng.randf_range(0.7,1.5)
+   for b in 3:
+    var bx = q+Vector2(rng.randf_range(-0.25,0.25),rng.randf_range(-0.25,0.25))
+    shape(parent,g._bcone(0.02,0.13,h),local_point(0,bx.x,bx.y,0.1+h*0.5),Vector3.ONE,col,false,Vector3(rng.randf_range(-0.3,0.3),0,rng.randf_range(-0.3,0.3)))
+  # wildflowers
+  for k in int(zr*1.6):
+   var ang = rng.randf()*TAU
+   var q = zc+Vector2(cos(ang),sin(ang))*sqrt(rng.randf())*zr
+   if africa_path_dist(q.x,q.y)<2.4:
+    continue
+   var fc = [Color("e0504a"),Color("9b6bd1"),Color("fff6d8"),Color("f08a3c")][rng.randi()%4]
+   ball(parent,local_point(0,q.x,q.y,0.28),Vector3(0.14,0.14,0.14),fc)
+ # mid-field acacias for shade and giraffe browsing
+ for q in [[-6.0,22.0],[-15.0,24.0],[-8.0,-9.0],[-17.0,-22.0],[17.0,19.0],[26.0,9.0],[-23.0,-3.0],[-12.0,14.0]]:
+  tree(parent,local_point(0,q[0],q[1],0.1),6.0+rng.randf()*2.0,Color("859c46"),2)
+ # termite mounds, some crowned with a bush (tree islands)
+ for q in [[-17.0,-12.0],[-7.0,-22.0],[-6.0,17.0],[-13.0,26.0],[18.0,-12.0],[7.0,-24.0]]:
+  var mp = local_point(0,q[0],q[1],0.1)
+  shape(parent,g._bcone(0.25,1.0,1.9),mp+Vector3(0,0.95,0),Vector3.ONE,Color("b7855a"))
+  shape(parent,g._bcone(0.2,0.55,1.3),mp+Vector3(0.9,0.65,0.3),Vector3.ONE,Color("a97650"))
+  ball(parent,mp+Vector3(0,2.3,0),Vector3(1.2,0.8,1.2),Color("6f8f3f"))
+ # kopje: a pile of granite boulders
+ var kc = local_point(0,-19.0,-1.0,0.1)
+ for k in 6:
+  var a2 = k*1.05
+  ball(parent,kc+Vector3(cos(a2)*2.0,0.9+0.5*(k%3),sin(a2)*2.0),Vector3(1.3+0.3*(k%3),1.0+0.2*(k%2),1.2),Color("9a8468").lerp(Color("b8a182"),0.2*(k%4)))
+ # dry creek bed between the zebra and lion habitats
+ for k in 12:
+  var t = float(k)/11.0
+  var cp = Vector2(-26.0,-5.0).lerp(Vector2(-6.0,-10.0),t)+Vector2(0,sin(t*TAU)*1.6)
+  disc(parent,local_point(0,cp.x,cp.y,0.12),1.5,0.04,Color("dcc38a"))
+  if k%3==0:
+   ball(parent,local_point(0,cp.x+1.4,cp.y+1.0,0.3),Vector3(0.5,0.35,0.5),Color("8a7b66"))
+ # wallow logs and rubbing posts
+ for lg in [[17.0,12.0,0.6],[14.0,-14.0,1.8],[8.0,-21.0,0.2],[-8.0,-19.0,2.4],[-13.0,19.0,1.2]]:
+  var lp = local_point(0,lg[0],lg[1],0.35)
+  var dv = Vector3(cos(lg[2]),0,sin(lg[2]))*1.4
+  beam(parent,lp-dv,lp+dv,0.5,Color("6b4f34"))
+ for rp in [[16.0,-14.5],[24.0,16.0],[-21.0,4.0]]:
+  var pp = local_point(0,rp[0],rp[1],0.1)
+  beam(parent,pp,pp+Vector3(0,2.0,0),0.35,Color("7a5a38"))
+  disc(parent,pp+Vector3(0,0.05,0),0.9,0.05,Color("6e5a3c"))
+ # scrub and grass at the dome rim so the wall is softened
+ for k in 34:
+  var ang = float(k)/34.0*TAU
+  var rp2 = Vector2(cos(ang),sin(ang))*(34.0+rng.randf()*1.2)
+  if rp2.y<-28.0:
+   continue
+  ball(parent,local_point(0,rp2.x,rp2.y,0.7),Vector3(rng.randf_range(1.4,2.4),rng.randf_range(0.9,1.6),rng.randf_range(1.4,2.4)),Color("6f8f3f").lerp(Color("a8a53f"),rng.randf()*0.6))
+
+func africa_shots() -> void:
+ g.place_test_level = 40
+ g._places_refresh()
+ g.set_process(false)
+ g.set_physics_process(false)
+ g.paused = false
+ g.driving = false
+ g.cam_lock = true
+ g.world_env_res.fog_enabled = false
+ for child in g.get_children():
+  if child is CanvasLayer or child is Control:
+   child.hide()
+ g.player.hide()
+ g.player.position = dome_c(0)+Vector3(0,0.79,0)
+ activate_dome(0)
+ await g.get_tree().physics_frame
+ await g.get_tree().physics_frame
+ for step in 160:
+  for animal in animals:
+   animate_animal(animal,0.5,false)
+ var shots = [
+  ["africa-r-overview",local_point(0,0,-35,15.0),local_point(0,0,6,1.0)],
+  ["africa-r-top",local_point(0,0,-30,30.0),local_point(0,0,4,0.0)],
+  ["africa-r-ramp",local_point(0,0,-26,africa_ramp_y(-26.0)+1.7),local_point(0,0,-8,AFRICA_Y+1.0)],
+  ["africa-r-west-arm",local_point(0,-14,7,AFRICA_Y+1.7),local_point(0,-19,1,1.0)],
+  ["africa-r-east-arm",local_point(0,14,4,AFRICA_Y+1.7),local_point(0,21,13,1.5)],
+  ["africa-r-deck-giraffes",local_point(0,0,2,AFRICA_Y+1.7),local_point(0,-9,21,2.5)],
+  ["africa-r-ramp-zebra",local_point(0,0,-18,africa_ramp_y(-18.0)+1.7),local_point(0,-12,-17,1.0)],
+  ["africa-r-east-end",local_point(0,27,-8,AFRICA_Y+1.7),local_point(0,12,-18,1.0)]]
+ for sh in shots:
+  g.camera.global_position = sh[1]
+  g.camera.look_at(sh[2])
+  await g._save_shot(String(sh[0]))
+ print("AFRICASHOTS DONE")

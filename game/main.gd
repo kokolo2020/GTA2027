@@ -350,7 +350,7 @@ func _ready() -> void:
 	_refresh_time_button()
 	_refresh_checkpoints()
 	road_barrier.build()
-	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args()
+	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args() or "--africa-shots" in OS.get_cmdline_user_args()
 	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
@@ -363,7 +363,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.8: a glowing barrier keeps cars on the roads. Job stops and checkpoints sit beside the road.")
+	_show_toast("Harbor City 0.55.9: the Africa dome is now an open savanna reserve. Animals roam free; you watch from a raised boardwalk.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()
@@ -378,6 +378,9 @@ func _ready() -> void:
 		_places_refresh()
 		await get_tree().physics_frame
 		await world_bio.smoke()
+		get_tree().quit()
+	elif "--africa-shots" in OS.get_cmdline_user_args():
+		await world_bio.africa_shots()
 		get_tree().quit()
 	elif "--world-bio-shots" in OS.get_cmdline_user_args():
 		await world_bio.screenshots()

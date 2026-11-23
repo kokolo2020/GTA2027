@@ -1,6 +1,6 @@
 extends Node
 # v0.56.3 Dome Quests: a generous daily quest list that only exists inside the Harbor Dome.
-# Ten quests (visit the tree, the stage, the Challenge Corner, the snowmen, collect gift boxes,
+# Eleven quests (visit the tree, the stage, the Challenge Corner, the snowmen, collect gift boxes,
 # hang out, solve the hourly challenge) each pay once a day, plus a big bonus for finishing all ten
 # and a daily-visit streak bonus. Twelve gift boxes appear in the dome every day.
 # State is saved with the game (dq_* keys); everything resets on a new calendar day.
@@ -21,6 +21,7 @@ var last_day := ""
 var hr_start := 0
 var all_paid := false
 var tick_t := 0.0
+var vip_secs := 0.0
 var dry := false
 var test_log: Array = []
 
@@ -39,6 +40,7 @@ const QUESTS := [
 	{"n":"Hang out for 3 minutes","pay":400,"xp":30},
 	{"n":"Hang out for 10 minutes","pay":1000,"xp":80},
 	{"n":"Solve the hourly challenge","pay":500,"xp":50},
+	{"n":"Relax in the VIP Lounge (20 s)","pay":400,"xp":40},
 ]
 
 func _init(g_main) -> void:
@@ -90,6 +92,7 @@ func quest_pos(i: int) -> Variant:
 					return gift_pos(k)
 			return null
 		9: return g.hourly.term if g.hourly != null and g.hourly.term != Vector3.INF else null
+		10: return g.VIP_C
 	return null
 
 func progress(i: int) -> String:
@@ -99,6 +102,7 @@ func progress(i: int) -> String:
 		6: return "%d/12" % gift_count()
 		7: return "%d:%02d/3:00" % [mini(int(secs),180)/60,mini(int(secs),180) % 60]
 		8: return "%d:%02d/10:00" % [mini(int(secs),600)/60,mini(int(secs),600) % 60]
+		10: return "%ds/20s" % mini(int(vip_secs),20)
 	return ""
 
 # ---------- state ----------
@@ -110,6 +114,7 @@ func new_day(d: String) -> void:
 	gifts = 0
 	marks = 0
 	secs = 0.0
+	vip_secs = 0.0
 	all_paid = false
 	hr_start = g.hr_total
 	refresh_presents()
@@ -209,6 +214,8 @@ func check_at(p: Vector3, hr_total_now: int) -> void:
 		award(8)
 	if hr_total_now > hr_start:
 		award(9)
+	if vip_secs >= 20.0 and Vector2(p.x-g.VIP_C.x,p.z-g.VIP_C.z).length() < 9.0:
+		award(10)
 
 # ---------- 3D gift boxes ----------
 func build_presents() -> void:
@@ -309,7 +316,7 @@ func draw() -> void:
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.modulate = Color(0.7,1,0.75) if ok else Color.WHITE
 		box.add_child(b)
-	var foot: Label = g._label("Finish all 10: +$%d and %d XP.  Gift boxes glow around the dome (gold ones pay $500).  Tap a quest to get the arrow.  Resets every day." % [ALL_PAY,ALL_XP],15,Color("cbd8de"))
+	var foot: Label = g._label("Finish all %d: +$%d and %d XP.  Gift boxes glow around the dome (gold ones pay $500).  Tap a quest to get the arrow.  Resets every day." % [QUESTS.size(),ALL_PAY,ALL_XP],15,Color("cbd8de"))
 	foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(foot)
@@ -336,6 +343,8 @@ func _process(delta: float) -> void:
 		return
 	if in_dome() and not g.paused:
 		secs += delta
+		if Vector2(g.player.position.x-g.VIP_C.x,g.player.position.z-g.VIP_C.z).length() < 9.0:
+			vip_secs += delta
 	tick_t += delta
 	if tick_t < 0.25:
 		return
@@ -389,6 +398,8 @@ func selftest() -> String:
 	if gift_count() != GIFT_N:
 		res = "gifts %d" % gift_count()
 	secs = 700.0
+	vip_secs = 25.0
+	check_at(g.VIP_C,g.hr_total)
 	check_at(c,g.hr_total)
 	check_at(c,g.hr_total+1)
 	if done_count() < QUESTS.size()-1:

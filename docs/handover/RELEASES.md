@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.56.4 (code 114, 2026-11-23)
+- main.gd: snow removed from _hub_christmas; floor disc is a darker polished StandardMaterial3D. New _hub_polish() (gold plaza rings, compass spokes, wall uplights), _hub_gate() (gold arch, pillars, open glass doors, welcome signs, red carpet, lamps; geodesic lattice carved at the west doorway), _hub_vip() (VIP_C=(234,0,52): dais, five sofas with seats, curved bar with stools, velvet ropes, chandelier, palms). dome_quests.gd: 11th quest "Relax in the VIP Lounge (20 s)" via vip_secs. Shots: hub-gate-front, hub-vip-front, hub-vip-inside.
+
 ## 0.56.3 (code 113, 2026-11-23)
 - game/dome_quests.gd (Dome Quests: 10 daily quests, 12 gift boxes, streak, all-done bonus; saved under [domequests]; selftest asserted in smoke). hourly_challenge.gd now builds its own Challenge Corner via build_terminal(HUB_C+(-18,0,12)) (no sun_dome dependency). _hub_geodesic() in main.gd: icosphere frequency 5 hemisphere frame (MultiMesh struts and joint balls), amber outside-only film, base ring, interior omni lights; glass alpha 0.13.
 

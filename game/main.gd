@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.56.3: daily Dome Quests, gift boxes and the hourly challenge in the Harbor Dome.")
+	_show_toast("Harbor City 0.56.4: grand dome entrance, VIP Lounge, richer floor. Snow is off.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -13397,7 +13397,11 @@ func _build_hub() -> void:
 	disc.height = 0.6
 	disc.radial_segments = 48
 	fmesh.mesh = disc
-	fmesh.material_override = _material(Color("b8b0c8"))
+	var floor_mat := StandardMaterial3D.new()
+	floor_mat.albedo_color = Color("7a7594")
+	floor_mat.roughness = 0.3
+	floor_mat.metallic = 0.12
+	fmesh.material_override = floor_mat
 	floor_body.add_child(fmesh)
 	for ring_r in [14.0,30.0]:
 		var ring := MeshInstance3D.new()
@@ -13534,6 +13538,9 @@ func _build_hub() -> void:
 	_build_hub_bots()
 	_hub_christmas()
 	_hub_geodesic()
+	_hub_polish()
+	_hub_gate()
+	_hub_vip()
 
 # ---------------- v0.56.2: Christmas in the Harbor Dome (snow, giant tree, lights, snowmen, presents) ----------------
 func _xm_mat(col: Color, glow := 0.0) -> StandardMaterial3D:
@@ -13590,32 +13597,6 @@ func _hub_christmas() -> void:
 	var root := Node3D.new()
 	root.name = "HubChristmas"
 	add_child(root)
-	# Snow falling inside the dome all day.
-	var snow := CPUParticles3D.new()
-	snow.amount = 650
-	snow.lifetime = 8.0
-	snow.preprocess = 8.0
-	snow.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	snow.emission_box_extents = Vector3(38,0.5,38)
-	snow.position = HUB_C+Vector3(0,27,0)
-	snow.direction = Vector3(0,-1,0)
-	snow.spread = 12.0
-	snow.gravity = Vector3(0.25,-0.4,0.1)
-	snow.initial_velocity_min = 2.6
-	snow.initial_velocity_max = 3.6
-	snow.scale_amount_min = 0.6
-	snow.scale_amount_max = 1.5
-	var q := QuadMesh.new()
-	q.size = Vector2(0.28,0.28)
-	var sm := StandardMaterial3D.new()
-	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	sm.albedo_color = Color("ffffff")
-	sm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	sm.cull_mode = BaseMaterial3D.CULL_DISABLED
-	q.material = sm
-	snow.mesh = q
-	snow.emitting = true
-	root.add_child(snow)
 	# Giant tree in the middle (next to the game tiles), warm light, presents.
 	_xm_tree(root,HUB_C+Vector3(0,0,-13),2.2,true)
 	var glow := OmniLight3D.new()
@@ -13716,6 +13697,9 @@ func _hub_geodesic() -> void:
 					if not pts.has(n):
 						continue
 					var p1: Vector3 = pts[n]
+					var mid := (p0+p1)*0.5
+					if absf(angle_difference(atan2(mid.z,mid.x),PI)) < 0.31 and mid.y*46.6*0.70 < 17.0:
+						continue
 					if p0.y < 0.001 and p1.y < 0.001:
 						continue
 					var k0 := Vector3i(roundi(p0.x*100.0),roundi(p0.y*100.0),roundi(p0.z*100.0))
@@ -13823,6 +13807,242 @@ func _hub_geodesic() -> void:
 		l.omni_range = 34.0
 		l.shadow_enabled = false
 		root.add_child(l)
+
+# ---------------- v0.56.4: grand entrance, VIP Lounge and a richer plaza for the Harbor Dome ----------------
+const VIP_C := Vector3(234,0,52)
+
+func _vx_box(parent: Node3D, pos: Vector3, size: Vector3, col: Color, glow := 0.0, yaw := 0.0) -> MeshInstance3D:
+	var b := BoxMesh.new()
+	b.size = size
+	var mi := _xm_mesh(parent,b,pos,_xm_mat(col,glow))
+	mi.rotation.y = yaw
+	return mi
+
+func _vx_cyl(parent: Node3D, pos: Vector3, rt: float, rb: float, h: float, col: Color, glow := 0.0) -> MeshInstance3D:
+	var c := CylinderMesh.new()
+	c.top_radius = rt
+	c.bottom_radius = rb
+	c.height = h
+	c.radial_segments = 28
+	return _xm_mesh(parent,c,pos,_xm_mat(col,glow))
+
+func _vx_ball(parent: Node3D, pos: Vector3, r: float, col: Color, glow := 0.0) -> MeshInstance3D:
+	var s := SphereMesh.new()
+	s.radius = r
+	s.height = r*2.0
+	s.radial_segments = 12
+	s.rings = 6
+	return _xm_mesh(parent,s,pos,_xm_mat(col,glow))
+
+func _vx_ring(parent: Node3D, pos: Vector3, r: float, tube: float, col: Color, glow := 0.0) -> MeshInstance3D:
+	var tm := TorusMesh.new()
+	tm.inner_radius = r-tube
+	tm.outer_radius = r+tube
+	tm.rings = 64
+	tm.ring_segments = 8
+	return _xm_mesh(parent,tm,pos,_xm_mat(col,glow))
+
+func _hub_polish() -> void:
+	var root := Node3D.new()
+	root.name = "HubPolish"
+	add_child(root)
+	var gold := Color("f0c75e")
+	# gold plaza medallion with a compass star and ring inlays
+	_vx_ring(root,HUB_C+Vector3(0,0.06,0),17.0,0.16,gold,0.9)
+	_vx_ring(root,HUB_C+Vector3(0,0.06,0),17.8,0.08,Color("5ce6ed"),1.1)
+	_vx_ring(root,HUB_C+Vector3(0,0.06,0),38.0,0.18,gold,0.7)
+	_vx_ring(root,HUB_C+Vector3(0,0.06,0),8.5,0.1,gold,0.6)
+	for k in 8:
+		var a := TAU*(float(k)+0.5)/8.0
+		var mid := HUB_C+Vector3(cos(a),0,sin(a))*12.75
+		_vx_box(root,mid+Vector3(0,0.05,0),Vector3(8.5,0.04,0.22),gold,0.6,-a)
+	# warm uplights around the wall
+	for k in 24:
+		var a := TAU*float(k)/24.0
+		if absf(angle_difference(a,PI)) < 0.35:
+			continue
+		var p := HUB_C+Vector3(cos(a),0,sin(a))*43.5
+		_vx_cyl(root,p+Vector3(0,0.15,0),0.35,0.45,0.3,Color("2a2740"))
+		_vx_ball(root,p+Vector3(0,0.55,0),0.28,Color("ffd98a"),2.2)
+
+func _hub_gate() -> void:
+	var root := Node3D.new()
+	root.name = "HubGate"
+	add_child(root)
+	var gx := HUB_C.x-46.0+0.6
+	var gz := HUB_C.z
+	var gold := Color("f0c75e")
+	var ro := 10.6
+	# the great arch: a gold ring in the plane across the doorway, lower half hidden under the floor
+	var arch := _vx_ring(root,Vector3(gx,0,gz),ro,0.55,gold,0.5)
+	arch.rotation.z = PI/2.0
+	var inner := _vx_ring(root,Vector3(gx+0.05,0,gz),ro-0.8,0.14,Color("fff1c2"),2.0)
+	inner.rotation.z = PI/2.0
+	for k in 25:
+		var t := PI*float(k)/24.0
+		_vx_ball(root,Vector3(gx+0.15,sin(t)*(ro-0.8),gz+cos(t)*(ro-0.8)),0.2,Color("ffe7a0"),3.0)
+	# pillars with capitals, wreaths and glowing LED strips
+	for sz: float in [-1.0,1.0]:
+		var pz := gz+sz*(ro+0.2)
+		_vx_box(root,Vector3(gx,0.5,pz),Vector3(3.4,1.0,3.4),Color("2a2740"))
+		_vx_cyl(root,Vector3(gx,8.0,pz),1.25,1.45,14.0,Color("f4f1ea"))
+		_vx_cyl(root,Vector3(gx,15.2,pz),1.9,1.4,0.9,gold,0.4)
+		_vx_ring(root,Vector3(gx,1.2,pz),1.6,0.12,gold,0.8)
+		_vx_box(root,Vector3(gx+1.28,8.0,pz),Vector3(0.1,13.0,0.22),Color("5ce6ed"),2.2)
+		_vx_ball(root,Vector3(gx,16.2,pz),0.7,Color("fff1c2"),3.0)
+		var wreath := _vx_ring(root,Vector3(gx+1.5,6.0,pz),1.3,0.28,Color("1f7a3a"))
+		wreath.rotation.z = PI/2.0
+		_vx_ball(root,Vector3(gx+1.7,4.7,pz),0.3,Color("e23b3b"),0.6)
+		_collider(root,Vector3(gx,7.5,pz),Vector3(3.2,15.0,3.2))
+		# planter tree beside each pillar
+		var pot := Vector3(gx+4.5,0,gz+sz*(ro+0.2))
+		_vx_cyl(root,pot+Vector3(0,0.5,0),1.0,0.8,1.0,Color("2a2740"))
+		_xm_tree(root,pot+Vector3(0,0.9,0),0.7,true)
+	# open glass door leaves swung inward, with gold frames
+	for sz: float in [-1.0,1.0]:
+		var hinge := Node3D.new()
+		hinge.position = Vector3(gx+0.4,0,gz+sz*(ro-1.0))
+		hinge.rotation.y = sz*1.25
+		root.add_child(hinge)
+		var gl := StandardMaterial3D.new()
+		gl.albedo_color = Color(0.6,0.9,1.0,0.28)
+		gl.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		var leaf := BoxMesh.new()
+		leaf.size = Vector3(0.12,8.0,4.6)
+		var lm := _xm_mesh(hinge,leaf,Vector3(0,4.1,-sz*2.4),gl)
+		lm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_vx_box(hinge,Vector3(0,0.1,-sz*2.4),Vector3(0.2,0.2,4.8),gold,0.4)
+		_vx_box(hinge,Vector3(0,8.1,-sz*2.4),Vector3(0.2,0.2,4.8),gold,0.4)
+		_vx_box(hinge,Vector3(0,4.1,-sz*4.7),Vector3(0.2,8.2,0.2),gold,0.4)
+	# welcome signs (outside and inside)
+	var s1 := _sign("WELCOME TO THE HARBOR DOME",Vector3(gx-0.9,13.3,gz),Color("ffe9b8"),70)
+	s1.rotation.y = -PI/2.0
+	s1.outline_size = 14
+	var s2 := _sign("HARBOR DOME  ·  GAMES  ·  SHOWS  ·  VIP LOUNGE",Vector3(gx+0.9,13.3,gz),Color("ffe9b8"),52)
+	s2.rotation.y = PI/2.0
+	s2.outline_size = 12
+	# red carpet from the causeway into the plaza, with gold edges and lamp posts
+	_vx_box(root,Vector3((162.0+196.0)*0.5,0.075,gz),Vector3(34.0,0.05,4.6),Color("8c1c2c"))
+	_vx_box(root,Vector3((162.0+196.0)*0.5,0.1,gz-2.3),Vector3(34.0,0.04,0.18),gold,0.8)
+	_vx_box(root,Vector3((162.0+196.0)*0.5,0.1,gz+2.3),Vector3(34.0,0.04,0.18),gold,0.8)
+	for xx: float in [170.0,178.0,186.0,194.0]:
+		for sz: float in [-1.0,1.0]:
+			var lp := Vector3(xx,0,gz+sz*3.6)
+			_vx_cyl(root,lp+Vector3(0,1.9,0),0.1,0.16,3.8,Color("2a2740"))
+			_vx_ball(root,lp+Vector3(0,3.95,0),0.34,Color("ffe7a0"),3.0)
+
+func _hub_vip() -> void:
+	var root := Node3D.new()
+	root.name = "VipLounge"
+	add_child(root)
+	var c := VIP_C
+	var gold := Color("f0c75e")
+	var f := HUB_C-c
+	f.y = 0.0
+	f = f.normalized()
+	var phi0 := atan2(f.z,f.x)
+	# raised dais, burgundy carpet, gold trim
+	_vx_cyl(root,c+Vector3(0,0.06,0),9.7,9.9,0.12,Color("2a1b34"))
+	_vx_cyl(root,c+Vector3(0,0.13,0),9.0,9.0,0.04,Color("7a1630"))
+	_vx_ring(root,c+Vector3(0,0.15,0),9.3,0.15,gold,1.0)
+	_vx_ring(root,c+Vector3(0,0.15,0),6.6,0.07,gold,0.7)
+	_vx_ring(root,c+Vector3(0,0.15,0),2.6,0.07,gold,0.7)
+	# marble coffee table with a gold rim and glass top
+	_vx_cyl(root,c+Vector3(0,0.3,0),1.5,1.4,0.5,Color("f4f1ea"))
+	_vx_ring(root,c+Vector3(0,0.56,0),1.5,0.06,gold,0.9)
+	_vx_cyl(root,c+Vector3(0,0.62,0),1.3,1.3,0.04,Color("8fd8e8"),0.5)
+	_collider(root,c+Vector3(0,0.4,0),Vector3(2.8,0.8,2.8))
+	# a horseshoe of five sofas (the real sofa model) all facing the table
+	var sofas: Array = []
+	for k in 5:
+		var phi := phi0+PI+float(k-2)*0.85
+		var pos := c+Vector3(cos(phi),0,sin(phi))*4.4
+		var look := c-pos
+		var theta := atan2(look.x,look.z)
+		sofas.append([pos,theta])
+		var lateral := Vector3(cos(theta),0,-sin(theta))
+		for lx: float in [-0.6,0.6]:
+			_hub_seat(pos+lateral*float(lx),theta-PI,"lounge",0,0,0.42)
+		_vx_ball(root,pos+Vector3(0,1.9,0)+(pos-c).normalized()*0.8,0.12,gold,2.0)
+	_model_batch("res://models/sofa.glb",sofas)
+	# curved bar behind the sofas: counters, marble tops, glowing back-bar with bottles, stools
+	var bottle_cols := [Color("ff7a3a"),Color("5ce6ed"),Color("e23b9c"),Color("7dff7a"),Color("ffd84a")]
+	for k in 3:
+		var phi := phi0+PI+float(k-1)*0.34
+		var dir := Vector3(cos(phi),0,sin(phi))
+		var yaw := -phi-PI/2.0
+		var bp := c+dir*8.3
+		_vx_box(root,bp+Vector3(0,0.58,0),Vector3(3.1,1.15,0.9),Color("3a2418"),0.0,yaw)
+		_vx_box(root,bp+Vector3(0,1.17,0),Vector3(3.25,0.07,1.1),Color("f4f1ea"),0.0,yaw)
+		_vx_box(root,bp+Vector3(0,0.12,0)-dir*0.0,Vector3(3.1,0.06,0.95),Color("5ce6ed"),2.0,yaw)
+		_collider_yaw(bp+Vector3(0,0.6,0),Vector3(3.1,1.2,0.9),yaw)
+		var wp := c+dir*9.2
+		_vx_box(root,wp+Vector3(0,2.0,0),Vector3(3.1,4.0,0.25),Color("17141f"),0.0,yaw)
+		for sh: float in [1.6,2.5,3.4]:
+			_vx_box(root,wp-dir*0.15+Vector3(0,sh,0),Vector3(2.9,0.06,0.3),gold,1.4,yaw)
+			for b in 4:
+				var off := Vector3(-sin(phi),0,cos(phi))*(float(b)-1.5)*0.65
+				_vx_cyl(root,wp-dir*0.15+off+Vector3(0,sh+0.24,0),0.09,0.12,0.4,bottle_cols[(b+int(sh*2.0)) % bottle_cols.size()],1.8)
+		for sd: float in [-0.7,0.7]:
+			var tang := Vector3(-sin(phi),0,cos(phi))
+			var sp := c+dir*7.0+tang*float(sd)
+			_vx_cyl(root,sp+Vector3(0,0.4,0),0.05,0.05,0.8,gold)
+			_vx_cyl(root,sp+Vector3(0,0.82,0),0.34,0.34,0.1,Color("8c1c2c"))
+			_vx_cyl(root,sp+Vector3(0,0.03,0),0.3,0.3,0.06,gold)
+			_hub_seat(sp,phi,"lounge",0,0,0.8)
+	# velvet-rope front with an open gap, gold stanchions
+	var rope_pts: Array = []
+	for d: float in [-1.05,-0.875,-0.7,-0.525,-0.35,0.35,0.525,0.7,0.875,1.05]:
+		var ph := phi0+float(d)
+		var pp := c+Vector3(cos(ph),0,sin(ph))*9.4
+		rope_pts.append(pp)
+		_vx_cyl(root,pp+Vector3(0,0.55,0),0.06,0.07,1.1,gold)
+		_vx_ball(root,pp+Vector3(0,1.15,0),0.13,gold,0.5)
+		_vx_cyl(root,pp+Vector3(0,0.04,0),0.22,0.25,0.08,gold)
+	for k in rope_pts.size()-1:
+		if k == 4:
+			continue
+		var a: Vector3 = rope_pts[k]
+		var b: Vector3 = rope_pts[k+1]
+		var d := b-a
+		_vx_box(root,(a+b)*0.5+Vector3(0,0.95,0),Vector3(d.length(),0.07,0.07),Color("c4152d"),0.3,-atan2(d.z,d.x))
+	# entrance pylons and the VIP sign
+	for sgn: float in [-1.0,1.0]:
+		var ph := phi0+float(sgn)*0.25
+		var pp := c+Vector3(cos(ph),0,sin(ph))*9.4
+		_vx_cyl(root,pp+Vector3(0,2.1,0),0.22,0.3,4.2,gold,0.3)
+		_vx_ball(root,pp+Vector3(0,4.4,0),0.4,Color("fff1c2"),3.0)
+	var vsign := _sign("VIP LOUNGE",c+f*9.4+Vector3(0,5.6,0),gold,60)
+	vsign.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	vsign.outline_size = 16
+	var vsub := _sign("Relax here 20 s for a daily VIP reward",c+f*9.4+Vector3(0,4.7,0),Color("ffe9b8"),24)
+	vsub.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	# red carpet runway from the plaza to the lounge
+	var rc := c+f*14.0
+	_vx_box(root,rc+Vector3(0,0.075,0),Vector3(9.0,0.05,2.6),Color("8c1c2c"),0.0,-phi0)
+	# chandelier: two glowing rings, bulbs and chains
+	var ch := c+Vector3(0,8.0,0)
+	_vx_ring(root,ch,3.2,0.12,gold,1.6).rotation.x = 0.0
+	_vx_ring(root,ch+Vector3(0,-0.6,0),1.6,0.1,gold,1.6)
+	for k in 14:
+		var a := TAU*float(k)/14.0
+		_vx_ball(root,ch+Vector3(cos(a)*3.2,-0.25,sin(a)*3.2),0.16,Color("fff1c2"),3.2)
+	for k in 3:
+		var a := TAU*float(k)/3.0
+		_vx_cyl(root,ch+Vector3(cos(a)*1.6,2.8,sin(a)*1.6),0.03,0.03,5.6,gold)
+	var vl := OmniLight3D.new()
+	vl.position = c+Vector3(0,5.5,0)
+	vl.light_color = Color("ffc98a")
+	vl.light_energy = 1.5
+	vl.omni_range = 16.0
+	vl.shadow_enabled = false
+	root.add_child(vl)
+	# potted palms at the back corners
+	var palms: Array = []
+	for d: float in [-1.9,1.9]:
+		var ph := phi0+PI+float(d)
+		palms.append([c+Vector3(cos(ph),0,sin(ph))*8.8,ph,1.0])
+	_model_batch("res://models/palm.glb",palms)
 
 func _hub_glass(node: Node) -> void:
 	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
@@ -15099,6 +15319,28 @@ func _hub_shots() -> void:
 		await get_tree().physics_frame
 	print("HOURLY NEAR ",hourly.near())
 	await _save_shot("hub-challenge-terminal")
+	var vf := (HUB_C-VIP_C)
+	vf.y = 0.0
+	vf = vf.normalized()
+	var vp := VIP_C+vf*15.0+Vector3(0,0.75,0)
+	player.position = vp
+	player.rotation.y = atan2(vf.x,vf.z)
+	look_pitch = 0.2
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("hub-vip-front")
+	player.position = VIP_C+vf*6.0+Vector3(0,0.75,0)
+	player.rotation.y = atan2(vf.x,vf.z)+PI
+	look_pitch = 0.15
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("hub-vip-inside")
+	player.position = Vector3(148,0.75,32)
+	player.rotation.y = -PI/2.0
+	look_pitch = 0.15
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("hub-gate-front")
 	print("DOME QUESTS SELFTEST ",dq.selftest())
 	player.position = dq.gift_pos(0)+Vector3(-6,0.75,0)
 	player.rotation.y = -PI/2.0

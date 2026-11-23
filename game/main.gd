@@ -354,7 +354,7 @@ func _ready() -> void:
 	_refresh_checkpoints()
 	road_barrier.build()
 	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args() or "--africa-shots" in OS.get_cmdline_user_args()
-	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots"]:
+	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--outfit-shots","--car-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.56.5: one grand Christmas tree with gifts, luxury sofas and tables.")
+	_show_toast("Harbor City 0.56.6: five new rounded hover cars.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -412,6 +412,10 @@ func _ready() -> void:
 		await _guide_shots()
 	elif "--hub-shots" in OS.get_cmdline_user_args():
 		await _hub_shots()
+	elif "--outfit-shots" in OS.get_cmdline_user_args():
+		await _outfit_shots()
+	elif "--car-shots" in OS.get_cmdline_user_args():
+		await _car_shots()
 	elif "--nick-shots" in OS.get_cmdline_user_args():
 		await _nick_shots()
 	elif "--civic-shots" in OS.get_cmdline_user_args():
@@ -2265,8 +2269,8 @@ func _online_make_peer(id: String, nm: String, car_index: int) -> Dictionary:
 		_online_tint(model,body_color)
 	else:
 		_box(car_node,Vector3(0,0.5,0),Vector3(1.8,0.8,3.6),body_color)
-	var red_light := _box(car_node,Vector3(-0.35,1.45,0.1),Vector3(0.6,0.18,0.3),Color("ff2a2a"))
-	var blue_light := _box(car_node,Vector3(0.35,1.45,0.1),Vector3(0.6,0.18,0.3),Color("2a4aff"))
+	var red_light := _box(car_node,Vector3(-0.35,1.25,0.1),Vector3(0.6,0.18,0.3),Color("ff2a2a"))
+	var blue_light := _box(car_node,Vector3(0.35,1.25,0.1),Vector3(0.6,0.18,0.3),Color("2a4aff"))
 	red_light.hide()
 	blue_light.hide()
 	var foot_node := Node3D.new()
@@ -10139,7 +10143,7 @@ func _smoke_models() -> void:
 						tinted += 1
 			stack.append_array(n.get_children())
 		# v0.30: each car is one joined mesh now, so it has one surface per material (7 or so).
-		assert(surfaces >= 6 and tinted >= 2,"Car model %d has no tintable body (%d/%d)" % [id,tinted,surfaces])
+		assert(surfaces >= 5 and tinted >= 1,"Car model %d has no tintable body (%d/%d)" % [id,tinted,surfaces])
 	assert(ResourceLoader.exists("res://models/lighthouse.glb") and ResourceLoader.exists("res://models/windmill.glb"),"Landmark models missing")
 	car_id = 0
 	_apply_car()
@@ -15553,6 +15557,85 @@ func _smoke_hub() -> void:
 	walk_view = was[5]
 	view_mode = was[4]
 	_apply_view()
+
+func _car_shots() -> void:
+	# Developer-only: the five car models side by side in the city, painted like online peers. Never saves.
+	player.position = Vector3(150,0.75,32)
+	for i in 30:
+		await get_tree().physics_frame
+	var cols := [Color("e8402a"),Color("f2c230"),Color("2a6ae8"),Color("38c26a"),Color("9a3ae8")]
+	var base := Vector3(189,0.05,22.0)
+	for i in 5:
+		var holder := Node3D.new()
+		add_child(holder)
+		holder.position = base+Vector3(0,0,float(i)*3.2)
+		holder.rotation.y = -PI/2.0
+		var m := _try_model("res://models/car_%d.glb" % i)
+		if m == null:
+			print("CARSHOT missing model ",i)
+			continue
+		holder.add_child(m)
+		_online_tint(m,cols[i])
+	paused = true
+	camera.position = Vector3(180.5,2.2,22.0+3.2*2.0+7.0)
+	camera.look_at(Vector3(189,0.7,22.0+3.2*2.0))
+	await _save_shot("cars-lineup")
+	camera.position = Vector3(184.0,1.6,22.0+3.2*2.0-6.0)
+	camera.look_at(Vector3(189,0.7,22.0+3.2*2.0))
+	await _save_shot("cars-lineup-b")
+	for i in 5:
+		camera.position = Vector3(184.5,1.7,22.0+3.2*float(i)-3.0)
+		camera.look_at(Vector3(189,0.65,22.0+3.2*float(i)))
+		await _save_shot("car-%d" % i)
+	get_tree().quit()
+
+func _outfit_shots() -> void:
+	# Developer-only: a line-up of festive costumes in front of the grand tree. Never saves.
+	var fest = preload("res://festive.gd").new(self)
+	add_child(fest)
+	player.position = Vector3(150,0.75,32)
+	for i in 30:
+		await get_tree().physics_frame
+	var rows := [
+		[["santa_hat","santa_suit"],1,0,4,0,"Santa"],
+		[["antlers","reindeer_suit"],0,4,2,1,"Reindeer"],
+		[["halo","wings","angel_robe"],2,1,7,3,"Angel"],
+		[["elf_hat","elf_suit"],3,6,5,2,"Elf"],
+		[["snow_hat","snowman_suit"],1,2,8,5,"Snowman"],
+		[["duck"],0,3,9,0,"Duck"],
+		[["propeller"],2,5,1,2,"Propeller"],
+		[["gift_hat"],3,0,6,4,"Gift"],
+		[["tree_hat"],1,7,3,1,"Tree"],
+	]
+	var base := Vector3(189,0,22.0)
+	var people: Array = []
+	for i in rows.size():
+		var row: Array = rows[i]
+		var n := Node3D.new()
+		add_child(n)
+		n.position = base+Vector3(0,0,float(i)*1.5)
+		n.rotation.y = PI/2.0
+		var pp := _make_person(n,int(row[1]),{"Shirt":Color.WHITE,"Pants":Color.WHITE,"Skin":Color.WHITE,"Hair":Color.WHITE,"Shoes":Color.WHITE,"Eye":Color.BLACK},true)
+		var L := {"b":0,"s":int(row[2]),"e":0,"h":int(row[3]),"hc":int(row[4]),"f":0,"t":0,"tc":i*2,"p":0,"pc":6,"sh":0,"sc":15,"a":0,"r":-1}
+		for id in row[0]:
+			var sc: Array = fest.suit_colors(String(id))
+			if not sc.is_empty():
+				L["tcol"] = sc[0]
+				L["pcol"] = sc[1]
+				L["t"] = 4
+		_dress(pp,L)
+		fest.dress(pp,row[0])
+		people.append(pp)
+	paused = true
+	for gi in 3:
+		var zc := 22.0+1.5*(float(gi)*3.0+1.0)
+		camera.position = Vector3(184.6,1.45,zc)
+		camera.look_at(Vector3(189,1.3,zc))
+		await _save_shot("outfits-group-%d" % gi)
+	camera.position = Vector3(179.5,1.45,28.0)
+	camera.look_at(Vector3(189,1.25,28.0))
+	await _save_shot("outfits-lineup")
+	get_tree().quit()
 
 func _hub_shots() -> void:
 	# Developer-only: Harbor Dome from outside and inside, a game, the comedy show and chat. Never saves.

@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.56.6 (code 116, 2026-11-23)
+- game/models/car_0..4.glb replaced by rev2 rounded hover vehicles (source ~/hover-vehicle-study/rev2, converted by blender-src/convert_new_cars.py: ~9.5k tris, 2x4.2 m, ~1.2 m tall, materials Body/Cabin/Glass/Light/Tail/Seat/Jet/Dark/Chrome/Beacon; old cars in reports/old-cars/). main.gd: --car-shots (_car_shots), peer cop-light boxes y=1.25. Slots: 0 Silver Coupe, 1 Taxi, 2 Police, 3 Shuttle, 4 Racer.
+
 ## 0.56.5 (code 115, 2026-11-23)
 - main.gd: _hub_christmas now builds only _xm_grand_tree(HUB_C+(-8,0,0)) (8 cone tiers, MultiMesh garlands/fairy lights/ornaments, star, 30 gifts with ribbons); ring of small trees and gate planters removed. Luxury furniture: _lux_sofa_mesh/_lux_chair_mesh/_lux_table_mesh/_lux_pouf_mesh (SurfaceTool ArrayMesh, velvet+gold+marble) placed with _lux_batch; replaces sofa/chair/game_table/beanbag glb in _build_hub and _hub_vip. dome_quests TREE=(-8,0,0), tree check radius 7. New-player spawn HUB_C+(-24,0.9,0). Shots: hub-grand-tree, hub-lux-tables, hub-lux-sofas.
 

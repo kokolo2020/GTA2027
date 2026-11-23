@@ -20,3 +20,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.56.3 | | | | Claude-built (Dome Quests, geodesic dome) |
 | 0.56.4 | | | | Claude-built (grand gate, VIP Lounge, plaza polish) |
 | 0.56.5 | | | | Claude-built (grand tree, luxury furniture) |
+| 0.56.6 | | | | Claude-built (new hover cars) |

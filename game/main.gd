@@ -354,7 +354,7 @@ func _ready() -> void:
 	_refresh_checkpoints()
 	road_barrier.build()
 	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args() or "--africa-shots" in OS.get_cmdline_user_args()
-	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--outfit-shots","--car-shots"]:
+	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--outfit-shots","--car-shots","--shop-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.56.6: five new rounded hover cars.")
+	_show_toast("Harbor City 0.56.7: Christmas Costume Boutique in the Harbor Dome.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -416,6 +416,8 @@ func _ready() -> void:
 		await _outfit_shots()
 	elif "--car-shots" in OS.get_cmdline_user_args():
 		await _car_shots()
+	elif "--shop-shots" in OS.get_cmdline_user_args():
+		await _shop_shots()
 	elif "--nick-shots" in OS.get_cmdline_user_args():
 		await _nick_shots()
 	elif "--civic-shots" in OS.get_cmdline_user_args():
@@ -4831,6 +4833,10 @@ func _build_hud() -> void:
 	hourly.build_terminal(HUB_C+Vector3(-18,0,12))
 	add_child(hourly)
 	hourly.build_panel(root)
+	fest_shop = preload("res://festive_shop.gd").new(self)
+	add_child(fest_shop)
+	fest_shop.build_boutique(HUB_C+Vector3(-14,0,-24),HUB_C)
+	fest_shop.build_panel(root)
 	dq = preload("res://dome_quests.gd").new(self)
 	add_child(dq)
 	dq.build(root)
@@ -7993,6 +7999,9 @@ func _interact() -> void:
 	if hourly != null and hourly.near():
 		hourly.open()
 		return
+	if fest_shop != null and fest_shop.near():
+		fest_shop.open()
+		return
 	if _puzzle_near():
 		_open_puzzle()
 		return
@@ -8197,6 +8206,8 @@ func _refresh_hud() -> void:
 		action_button.text = "OPEN " + String(MARKET[_market_near()]["name"])
 	elif hourly != null and hourly.near():
 		action_button.text = hourly.button_text()
+	elif fest_shop != null and fest_shop.near():
+		action_button.text = fest_shop.button_text()
 	elif _puzzle_near():
 		action_button.text = "DAILY PUZZLE ✓" if pz_day == _pz_today() else "DAILY PUZZLE"
 	elif _sg_near() >= 0:
@@ -8274,7 +8285,7 @@ func _layout_panels() -> void:
 	for xp_panel in extra_panels:
 		var xc := xp_panel as Control
 		xc.position = Vector2((view.x-xc.size.x)/2.0,maxf(8.0,(view.y-xc.size.y)/2.0))
-		if xc == style_panel:
+		if xc == style_panel or (fest_shop != null and xc == fest_shop.panel):
 			# v0.40: the store panel sits on the right so you can see yourself on the left.
 			xc.position = Vector2(maxf(8.0,view.x-xc.size.x-16.0),maxf(8.0,(view.y-xc.size.y)/2.0))
 
@@ -8283,6 +8294,8 @@ func _toggle_menu() -> void:
 		return
 	if style_panel != null and style_panel.visible:
 		_style_finish()
+	if fest_shop != null and fest_shop.panel != null and fest_shop.panel.visible:
+		fest_shop.finish()
 	if shop_kind >= 0:
 		shop_kind = -1
 		_apply_car()
@@ -8436,6 +8449,8 @@ func _save_progress() -> void:
 	file.set_value("progress","treasure_got",treasure_got)
 	file.set_value("progress","treasure_count",treasure_count)
 	file.set_value("progress","fm_refund",fm_refund)
+	if fest_shop != null:
+		fest_shop.save_to(file)
 	file.set_value("chapters","idx",ch_idx)
 	file.set_value("chapters","intro",1)
 	file.set_value("chapters","step",ch_step)
@@ -8457,6 +8472,8 @@ func _load_progress() -> void:
 		if not bool(file.get_value("progress","day_default_v036",false)) and day_mode == 0:
 			day_mode = 1
 		pz_day = String(file.get_value("progress","pz_day",""))
+		if fest_shop != null:
+			fest_shop.load_from(file)
 		bio_seen = int(file.get_value("progress","bio_seen",0)) & ((1 << BIO_SPECIES.size())-1)
 		bio_pass_day = String(file.get_value("progress","bio_pass_day",""))
 		if world_bio != null:
@@ -8830,6 +8847,8 @@ func _process(delta: float) -> void:
 	_on_foot_collision_guard()
 	_relic_tick()
 	_style_face_camera()
+	if fest_shop != null:
+		fest_shop.face_camera()
 	_ga_fun_tick(get_process_delta_time())
 	_sky_garden_tick(get_process_delta_time())
 	_cal_tick(get_process_delta_time())
@@ -9205,6 +9224,7 @@ func _smoke_test() -> void:
 	_smoke_bus()
 	_smoke_chase_extras()
 	_smoke_models()
+	_smoke_boutique()
 	legacy_rules = false
 	_update_gate()
 	quick_on = saved_quick[0]
@@ -10124,6 +10144,34 @@ func _smoke_radio_peds() -> void:
 	assert(radio_station == 2,"Radio station did not persist")
 	_radio_set(0)
 	assert(not radio_player.playing and not radio_caption.visible,"Radio did not switch off")
+
+func _smoke_boutique() -> void:
+	# v0.56.7: buy, wear, save and reload a costume; leave the save as it was.
+	assert(fest_shop != null and fest_shop.spot != Vector3.INF,"Costume boutique missing")
+	var keep_cash := cash
+	var keep_own: Array = fest_shop.own.duplicate()
+	var keep_worn: Array = fest_shop.worn.duplicate()
+	fest_shop.own = []
+	fest_shop.worn = []
+	cash = 3000
+	fest_shop.pick("santa_suit")
+	fest_shop.pick("santa_suit")
+	assert(fest_shop.own == ["santa_suit"] and cash == 1500,"Boutique purchase failed")
+	fest_shop.pick("antlers")
+	fest_shop.pick("antlers")
+	assert(fest_shop.worn.has("antlers") and fest_shop.worn.has("santa_suit") and cash == 1100,"Boutique wear failed")
+	_save_progress()
+	fest_shop.own = []
+	fest_shop.worn = []
+	_load_progress()
+	assert(fest_shop.own.size() == 2 and fest_shop.worn.size() == 2,"Boutique save did not persist")
+	fest_shop.pick("santa_suit")
+	assert(not fest_shop.worn.has("santa_suit"),"Boutique take-off failed")
+	fest_shop.own = keep_own
+	fest_shop.worn = keep_worn
+	cash = keep_cash
+	_apply_look()
+	_save_progress()
 
 func _smoke_models() -> void:
 	for id in CARS.size():
@@ -15558,6 +15606,55 @@ func _smoke_hub() -> void:
 	view_mode = was[4]
 	_apply_view()
 
+func _shop_shots() -> void:
+	# Developer-only: the Christmas Costume Boutique from outside, then the shop panel with a costume tried and bought. Never saves.
+	var at: Vector3 = fest_shop.spot
+	var keep_cash := cash
+	var keep_own: Array = fest_shop.own.duplicate()
+	var keep_worn: Array = fest_shop.worn.duplicate()
+	fest_shop.own = []
+	fest_shop.worn = []
+	cash = 5000
+	player.position = at+Vector3(0,0.75,9.0)
+	for i in 30:
+		await get_tree().physics_frame
+	paused = true
+	camera.position = HUB_C+Vector3(0,75,0.01)
+	camera.look_at(HUB_C)
+	await _save_shot("shop-top")
+	var back := (at-HUB_C).normalized()
+	camera.position = HUB_C+Vector3(0,6,0)+(at-HUB_C)*0.45+Vector3(0,0,0)
+	camera.look_at(at+Vector3(0,3.0,0))
+	await _save_shot("shop-outside")
+	camera.position = at+Vector3(0,2.2,13.0)
+	camera.look_at(at+Vector3(0,1.8,0))
+	await _save_shot("shop-front")
+	paused = false
+	player.position = at+Vector3(0,0.75,0.5)
+	for i in 10:
+		await get_tree().physics_frame
+	print("SHOP NEAR ",fest_shop.near())
+	fest_shop.open()
+	fest_shop.pick("santa_hat")
+	fest_shop.pick("santa_suit")
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("shop-try")
+	fest_shop.pick("santa_suit")
+	fest_shop.pick("santa_hat")
+	fest_shop.pick("santa_hat")
+	fest_shop.pick("wings")
+	fest_shop.pick("wings")
+	for i in 10:
+		await get_tree().physics_frame
+	print("SHOP OWN ",fest_shop.own," WORN ",fest_shop.worn," CASH ",cash)
+	await _save_shot("shop-bought")
+	fest_shop.own = keep_own
+	fest_shop.worn = keep_worn
+	cash = keep_cash
+	_save_progress()
+	get_tree().quit()
+
 func _car_shots() -> void:
 	# Developer-only: the five car models side by side in the city, painted like online peers. Never saves.
 	player.position = Vector3(150,0.75,32)
@@ -19855,6 +19952,7 @@ var cm_emote_t := 3.0
 var cm_sign: Label3D
 var sun_dome   # v0.56.2: Sun Dome removed (sun_dome.gd unused); hourly challenge has no terminal until it gets a new home
 var hourly
+var fest_shop   # v0.56.7: Christmas Costume Boutique in the Harbor Dome
 var dq   # v0.56.3 Dome Quests (dome_quests.gd)
 var hr_done := -1       # last UTC hour index whose challenge you solved
 var hr_total := 0
@@ -23047,7 +23145,12 @@ func _owns(cat: String, i: int) -> bool:
 func _apply_look() -> void:
 	if player_person.is_empty():
 		return
-	_dress(player_person,look_try if not look_try.is_empty() else look)
+	var Lk: Dictionary = (look_try if not look_try.is_empty() else look).duplicate()
+	if fest_shop != null:
+		fest_shop.tint_look(Lk)
+	_dress(player_person,Lk)
+	if fest_shop != null:
+		fest_shop.dress_player()
 	_relic_refresh()
 
 func _relic_model(i: int) -> Node3D:

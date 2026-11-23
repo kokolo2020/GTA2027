@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.56.7 (code 117, 2026-11-23)
+- New game/festive_shop.gd (built by main as fest_shop, HUB_C+(-14,0,-24)): boutique pavilion, extra_panels shop UI (try/buy/wear), items from festive.gd ITEMS, save keys progress/fest_own + fest_worn. main.gd hooks: interact + action button, _apply_look (suit tint via tint_look, then dress_player), _toggle_menu finish, _layout_panels right-hand panel, face_camera in _process, _smoke_boutique, --shop-shots (_shop_shots).
+
 ## 0.56.6 (code 116, 2026-11-23)
 - game/models/car_0..4.glb replaced by rev2 rounded hover vehicles (source ~/hover-vehicle-study/rev2, converted by blender-src/convert_new_cars.py: ~9.5k tris, 2x4.2 m, ~1.2 m tall, materials Body/Cabin/Glass/Light/Tail/Seat/Jet/Dark/Chrome/Beacon; old cars in reports/old-cars/). main.gd: --car-shots (_car_shots), peer cop-light boxes y=1.25. Slots: 0 Silver Coupe, 1 Taxi, 2 Police, 3 Shuttle, 4 Racer.
 

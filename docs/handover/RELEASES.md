@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.55.13 (code 109, 2026-11-23)
+- Extra animals (spawn k=100+, RESERVE_FILL groups k=120+ in empty slots), livelier free roam (rest 0.4-3.5 s, speed 1.0), lantern quest no longer needs dusk, smaller sign, monolith cap removed. Next idea: Blender animal model rework.
+
 ## 0.55.12 (code 108, 2026-11-23)
 - AFRICA_Y 3.4 -> 2.4 (all reserve domes); path_clear() keeps zone trees/boulders/mounds off the bridges (dome 0 zone props unchanged); PATHS gates set to "" (gate code kept, unused).
 

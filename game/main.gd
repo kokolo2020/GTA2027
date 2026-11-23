@@ -363,7 +363,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.55.12: lower platforms in the reserve domes, nothing under the bridges.")
+	_show_toast("Harbor City 0.55.13: more animals roaming, lantern quest works any time.")
 	booted = true
 	_sg_boot_note()
 	_stream_join_check()

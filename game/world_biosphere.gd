@@ -703,8 +703,13 @@ func habitats(i: int,parent: Node3D) -> void:
    continue
   if reserve(i):
    var zone_home = g.bio_hab[si]
-   for n in int(SPECIES[si].n):
+   var base_n = int(SPECIES[si].n)
+   for n in base_n:
     spawn_animal(si,n,parent,zone_home.c,float(zone_home.r))
+   # extra animals so the open habitats feel full (indices 100+ never count as quest animals)
+   var extra = maxi(1,(base_n+1)/2) if String(SPECIES[si].zone)!="fly" else 0
+   for n in extra:
+    spawn_animal(si,100+n,parent,zone_home.c,float(zone_home.r))
    continue
   var side = -1 if k%2==0 else 1
   var row = k/2
@@ -734,6 +739,12 @@ func habitats(i: int,parent: Node3D) -> void:
 
   for n in int(SPECIES[si].n):
    spawn_animal(si,n,parent,p,r-1.5)
+ if reserve(i) and RESERVE_FILL.has(i):
+  var fill: Dictionary = RESERVE_FILL[i]
+  for slot_index in fill:
+   var fs = RESERVE_SLOTS[int(slot_index)]
+   for n in 3:
+    spawn_animal(int(fill[slot_index]),120+n+int(slot_index)*5,parent,local_point(i,fs[0],fs[1]),float(fs[2])-1.0)
  # Families are visible every day; the sticker is tied to the daily birth announcement.
  if i==0 or i==3:
   var si = 17 if i==0 else 0
@@ -1015,8 +1026,6 @@ func prompt() -> String:
  if task>=0 and active==task/3:
   var p = quest_point(active,task%3,quest_step(task))
   if g.player.position.distance_to(p+Vector3(0,0.8,0))<3:
-   if task==4 and not dusk():
-    return "LANTERNS · COME AT DUSK"
    return ["COUNT WILDLIFE","CHECK LOOKOUT","STAMP TRAIL"][task%3] if active==0 else ("LIGHT LANTERN" if task==4 else "RANGER TASK")
  return ""
 
@@ -1031,9 +1040,6 @@ func interact() -> bool:
   open_panel()
   return true
  if task>=0 and active==task/3 and g.player.position.distance_to(quest_point(active,task%3,quest_step(task))+Vector3(0,0.8,0))<3:
-  if task==4 and not dusk():
-   g._show_toast("Lanterns are for dusk: Menu > Settings > Time, choose Sunset or Night.")
-   return true
   if task==0 or task==11:
    var show = feeding(active)
    if not show.active:
@@ -1228,7 +1234,7 @@ func tick_impl(delta: float) -> void:
   if auto_quest and task>=0 and task/3==active and not g.driving:
    auto_cd -= dt
    var arrive = quest_point(active,task%3,quest_step(task))+Vector3(0,0.8,0)
-   if auto_cd<=0.0 and g.player.position.distance_to(arrive)<2.8 and not (task==4 and not dusk()):
+   if auto_cd<=0.0 and g.player.position.distance_to(arrive)<2.8:
     var arrive_label = prompt()
     if arrive_label!="" and arrive_label!="BIOSPHERE PASSPORT":
      auto_cd = 4.0
@@ -1365,13 +1371,13 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
  elif a.get("free",false):
   if node.position.distance_to(a.target)<0.3:
    if float(a.get("rest",-1.0))<0.0:
-    a["rest"] = randf_range(2.0,8.0)
+    a["rest"] = randf_range(0.4,3.5)
    else:
     a["rest"] = float(a.rest)-delta
     if float(a.rest)<=0.0:
      a["rest"] = -1.0
      var wander = randf()*TAU
-     a.target = centre+Vector3(cos(wander),0.1,sin(wander))*sqrt(randf())*radius*0.9
+     a.target = centre+Vector3(cos(wander),0.1,sin(wander))*sqrt(randf())*radius*1.05
  elif node.position.distance_to(a.target)<0.3:
   var t = ph*0.7+int(a.k)*2.2
   a.target = centre+Vector3(cos(t),0.1,sin(t))*radius*0.75
@@ -1379,7 +1385,7 @@ func animate_animal(a: Dictionary,delta: float,show: bool) -> void:
  d.y = 0
  var moving = d.length()>0.2
  if moving:
-  node.position += d.normalized()*minf(delta*(1.6 if show else 0.65),d.length())
+  node.position += d.normalized()*minf(delta*(1.6 if show else (1.0 if a.get("free",false) else 0.65)),d.length())
   node.rotation.y = lerp_angle(node.rotation.y,atan2(-d.x,-d.z),delta*3)
  if a.kind=="elephant" and not moving:
   var toward_path = dome_c(int(a.dome))-node.position
@@ -3813,6 +3819,8 @@ const RESERVE_PLAN := {
  4:{35:0,34:1,4:2,37:3,5:4,6:5,36:6},
  5:{39:0,12:1,1:2,15:3,13:4,14:5,2:6},
  6:{42:1,40:2,41:3,43:5,44:6}}
+# species that also live in otherwise empty habitat slots (extra groups, no quest role)
+const RESERVE_FILL := {1:{4:22,6:24},3:{3:0,5:30,6:0},6:{0:40,4:42}}
 const AFRICA_ZONES := {
  8:[-9.0,21.0,8.0,"ACACIA PLAINS",Color("b3a548")],
  9:[-12.0,-17.0,9.0,"ZEBRA GRASSLAND",Color("c2a74f")],
@@ -3949,7 +3957,7 @@ func reserve_build(i: int,parent: Node3D) -> void:
      beam(parent,local_point(i,2.9,gz,gy+3.4),local_point(i,0,gz,gy+4.5),0.2,gcol)
     "rock":
      ball(parent,local_point(i,0,gz,gy+3.9),Vector3(3.6,0.8,0.9),gcol)
- text(parent,String(th.sign)+"\nThe animals roam free · look from the platform",local_point(i,0,0,AFRICA_Y+4.2),Color("fff2bd"),56,90)
+ text(parent,String(th.sign)+"\nThe animals roam free · look from the platform",local_point(i,0,0,AFRICA_Y+9.0),Color("fff2bd"),30,90)
  reserve_wow(i,parent)
  reserve_detail(i,parent)
  # Open habitat zones: a tinted patch and its own scenery, no fence.
@@ -4065,7 +4073,6 @@ func reserve_wow(i: int,parent: Node3D) -> void:
     shape(parent,g._bcone(0.3,5.2-float(k)*1.2,6.0),bc+Vector3(0,12.0+float(k)*3.6,0),Vector3.ONE,Color("2f6a3a"))
   "monolith":
    shape(parent,g._bcone(6.0,8.4,10.0),bc+Vector3(0,5.0,0),Vector3.ONE,Color("b5603a"))
-   ball(parent,bc+Vector3(0,10.2,0),Vector3(6.4,1.2,5.6),Color("c4703f"))
  var sp_start = Vector2(9.0,22.0)
  var sp_end = Vector2(21.0,13.0)
  for k in 14:

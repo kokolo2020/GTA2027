@@ -21,4 +21,5 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.56.4 | | | | Claude-built (grand gate, VIP Lounge, plaza polish) |
 | 0.56.5 | | | | Claude-built (grand tree, luxury furniture) |
 | 0.56.6 | | | | Claude-built (new hover cars) |
-| 0.56.7 | | | | Claude-built (costume boutique) |
+| 0.56.7 | | 9% session, 7% weekly | | Claude-built (costume boutique). Read 21:31 on 23 Nov. Weekly went 2% (0.55.8) to 7%, so 0.55.9 to 0.56.7 together used about 5% weekly (per-release split not recorded) |
+| 0.56.8 | | | | Claude-built (rename to Chit Chat City, new icon) |

@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.56.8 (code 118, 2026-11-23)
+- Renamed to Chit Chat City (CCC): project.godot config/name (use_custom_user_dir + custom_user_dir_name="Harbor City" keeps the desktop save folder), export package/name, main.gd player-facing strings, web_shell.html, site pages, publish-release.py release title. Package id com.koko.harborcity and APK file name unchanged on purpose. New game/icon.png (ChatGPT-made CCC icon; config/icon), site favicon, site/assets/ccc-hero.jpg banner, web_shell loading background (base64).
+
 ## 0.56.7 (code 117, 2026-11-23)
 - New game/festive_shop.gd (built by main as fest_shop, HUB_C+(-14,0,-24)): boutique pavilion, extra_panels shop UI (try/buy/wear), items from festive.gd ITEMS, save keys progress/fest_own + fest_worn. main.gd hooks: interact + action button, _apply_look (suit tint via tint_look, then dress_player), _toggle_menu finish, _layout_panels right-hand panel, face_camera in _process, _smoke_boutique, --shop-shots (_shop_shots).
 

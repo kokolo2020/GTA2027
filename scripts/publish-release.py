@@ -84,7 +84,7 @@ def main():
     run(["git", "push", "origin", tag])
     if existing.returncode != 0:
         run(["gh", "release", "create", tag, "--repo", REPO, "--verify-tag", "--draft",
-             "--title", "Harbor City " + version, "--notes-file", notes])
+             "--title", "Chit Chat City " + version, "--notes-file", notes])
     # Freeze a local copy so another build cannot replace the file mid-upload.
     with tempfile.TemporaryDirectory(prefix="harbor-release-") as folder:
         folder = Path(folder)

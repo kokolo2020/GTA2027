@@ -30,7 +30,7 @@ Regenerate with `python3 scripts/make-code-map.py` after every release. It is al
 | 4951-5069 | v0.29: clean screen (only the QR code and a small minimap; the rest is in the Menu) | 7 |
 | 5070-5107 | v0.30.1: nothing to collect stands in a road | 4 |
 | 5108-5247 | v0.30.1: quests are offered when you get near them; you choose to take them | 7 |
-| 5248-5615 | v0.31: a futuristic Harbor City (neon strips, holograms, flying traffic, glowing streets) | 13 |
+| 5248-5615 | v0.31: a futuristic Chit Chat City (neon strips, holograms, flying traffic, glowing streets) | 13 |
 | 5616-6115 | v0.32: social. Friends, invites, crews, gifts, high-fives, dance floor, photos | 31 |
 | 6116-6366 | v0.33.5: track a player (the arrow follows them around the city) | 9 |
 | 6367-6862 | v0.33: Harbor Dome arcade (Connect Four, Reaction Duel, Memory Match) and party quiz | 25 |

@@ -25,7 +25,7 @@ var vip_secs := 0.0
 var dry := false
 var test_log: Array = []
 
-const TREE := Vector3(0,0,-13)          # relative to HUB_C (the giant tree)
+const TREE := Vector3(-8,0,0)          # relative to HUB_C (the giant tree)
 const ALL_PAY := 3000
 const ALL_XP := 300
 const GIFT_N := 12
@@ -191,7 +191,7 @@ func check_at(p: Vector3, hr_total_now: int) -> void:
 	if Vector2(p.x-c.x,p.z-c.z).length() > g.HUB_R-2.0:
 		return
 	award(0)
-	if Vector2(p.x-(c.x+TREE.x),p.z-(c.z+TREE.z)).length() < 9.0:
+	if Vector2(p.x-(c.x+TREE.x),p.z-(c.z+TREE.z)).length() < 7.0:
 		award(1)
 	if Vector2(p.x-g.HUB_STAGE.x,p.z-g.HUB_STAGE.z).length() < 11.0:
 		award(2)

@@ -345,7 +345,7 @@ func _ready() -> void:
 	_load_progress()
 	# v0.56.2: brand-new players start in the middle of the Harbor Dome; Chapter 1 then guides them to the city.
 	if ch_idx == 0 and ch_step == 0 and deliveries == 0 and not driving:
-		player.position = HUB_C+Vector3(-10,0.9,0)
+		player.position = HUB_C+Vector3(-24,0.9,0)
 	_build_place_signs()
 	_quick_daily_check()
 	_web_perf_setup()
@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.56.4: grand dome entrance, VIP Lounge, richer floor. Snow is off.")
+	_show_toast("Harbor City 0.56.5: one grand Christmas tree with gifts, luxury sofas and tables.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -13490,7 +13490,7 @@ func _build_hub() -> void:
 			sofas.append([pos,PI/2.0])
 			for lx in [-0.6,0.6]:
 				_hub_seat(pos+Vector3(0.05,0,lx),-PI/2.0,"show",0,0,0.42)
-	_model_batch("res://models/sofa.glb",sofas)
+	_lux_batch(_lux_sofa_mesh(Color("1b2a5e")),sofas)
 	# Game tables with two chairs each (x axis). Tables 0-1 have a robot in chair B, 2-3 are for players.
 	var tables := []
 	var chairs := []
@@ -13512,16 +13512,16 @@ func _build_hub() -> void:
 				rps.append({"me":-1,"them":-1,"round":0,"bot":t < 2,"msg":"","reset":0.0})
 			var tag := _sign(("VS ROBOT" if t < 2 else "PLAYER VS PLAYER"),tp+Vector3(0,2.6,0),Color("cfe2ff") if t < 2 else Color("ffe9b8"),30)
 			tag.pixel_size = 0.012
-	_model_batch("res://models/game_table.glb",tables)
-	_model_batch("res://models/chair.glb",chairs)
+	_lux_batch(_lux_table_mesh(),tables)
+	_lux_batch(_lux_chair_mesh(Color("7a1630")),chairs)
 	# Lounge and cafe.
 	var bags := []
 	for p in [Vector3(176,0,54),Vector3(180,0,49),Vector3(184,0,55),Vector3(172,0,49)]:
 		bags.append([p,0.0])
 		_hub_seat(p,0.0,"lounge",0,0,0.35)
-	_model_batch("res://models/beanbag.glb",bags)
+	_lux_batch(_lux_pouf_mesh(Color("0d5c4a")),bags)
 	var lounge_sofa := Vector3(180,0,60)
-	_model_batch("res://models/sofa.glb",[[lounge_sofa,PI]])
+	_lux_batch(_lux_sofa_mesh(Color("0d5c4a")),[[lounge_sofa,PI]])
 	for lx in [-0.6,0.6]:
 		_hub_seat(lounge_sofa+Vector3(lx,0,-0.05),0.0,"lounge",0,0,0.42)
 	_prop("res://models/hub_counter.glb",Vector3(180,0,10),Vector3(6.2,1.2,1.4),0.0,Color("22b5c9"))
@@ -13593,35 +13593,300 @@ func _xm_tree(root: Node3D, pos: Vector3, scale: float, lights: bool) -> void:
 			var a := float(i)*2.4
 			_xm_mesh(t,bulb,Vector3(cos(a)*r,h,sin(a)*r),_xm_mat(cols[i % cols.size()],2.5))
 
+# ---------------- v0.56.5: one grand Christmas tree and luxury furniture ----------------
+var _lux_cache := {}
+
+func _xm_multi(root: Node3D, mesh: Mesh, mat: Material, xf: Array) -> void:
+	if xf.is_empty():
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = xf.size()
+	for i in xf.size():
+		var tr: Transform3D = xf[i]
+		mm.set_instance_transform(i,tr)
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.material_override = mat
+	root.add_child(mi)
+
+func _gt_surface(h: float) -> float:
+	# radius of the grand tree's foliage at height h (tiers overlap)
+	var r := 0.0
+	for i in 8:
+		var yb := 1.6+float(i)*2.05
+		var rb := 5.6-float(i)*0.66
+		if h >= yb and h <= yb+3.8:
+			r = maxf(r,rb*(1.0-(h-yb)/3.8))
+	return r
+
+func _xm_grand_tree(root: Node3D, c: Vector3) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5627
+	var gold := Color("f0c75e")
+	# skirt, trunk
+	_vx_cyl(root,c+Vector3(0,0.08,0),6.3,6.4,0.16,Color("6e1230"))
+	_vx_ring(root,c+Vector3(0,0.18,0),6.35,0.12,gold,0.9)
+	_vx_cyl(root,c+Vector3(0,1.2,0),0.55,0.8,2.4,Color("4a2e1a"))
+	_collider(root,c+Vector3(0,1.5,0),Vector3(1.8,3.0,1.8))
+	var greens := [Color("12582b"),Color("1b7138")]
+	for i in 8:
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.0
+		cm.bottom_radius = 5.6-float(i)*0.66
+		cm.height = 3.8
+		cm.radial_segments = 24
+		_xm_mesh(root,cm,c+Vector3(0,1.6+float(i)*2.05+1.9,0),_xm_mat(greens[i % 2]))
+	var unit_ball := SphereMesh.new()
+	unit_ball.radius = 0.5
+	unit_ball.height = 1.0
+	unit_ball.radial_segments = 10
+	unit_ball.rings = 5
+	# golden garlands and warm fairy lights spiralling up the tree
+	var garland: Array = []
+	var fairy: Array = []
+	for g in 2:
+		for k in 150:
+			var u := float(k)/150.0
+			var h := 2.0+u*16.5
+			var ang := u*TAU*5.0+float(g)*PI
+			var rr := _gt_surface(h)+0.12
+			var p := c+Vector3(cos(ang)*rr,h,sin(ang)*rr)
+			garland.append(Transform3D(Basis().scaled(Vector3.ONE*0.2),p))
+	for k in 260:
+		var u := rng.randf()
+		var h := 1.9+u*16.8
+		var ang := rng.randf()*TAU
+		var rr := _gt_surface(h)+0.08
+		fairy.append(Transform3D(Basis().scaled(Vector3.ONE*0.16),c+Vector3(cos(ang)*rr,h,sin(ang)*rr)))
+	_xm_multi(root,unit_ball,_xm_mat(gold,1.6),garland)
+	_xm_multi(root,unit_ball,_xm_mat(Color("fff1c2"),3.2),fairy)
+	# big ornaments in five colours
+	var orn_cols := [Color("d81f2f"),Color("f0c75e"),Color("cfd8e6"),Color("2a56d8"),Color("8a2be2")]
+	var orn: Array = [[],[],[],[],[]]
+	for k in 110:
+		var h := 2.4+rng.randf()*15.0
+		var ang := rng.randf()*TAU
+		var rr := _gt_surface(h)+0.22
+		var s := 0.42+rng.randf()*0.24
+		(orn[k % 5] as Array).append(Transform3D(Basis().scaled(Vector3.ONE*s),c+Vector3(cos(ang)*rr,h,sin(ang)*rr)))
+	for q in 5:
+		var om := _xm_mat(orn_cols[q],0.55)
+		om.metallic = 0.4
+		om.roughness = 0.25
+		_xm_multi(root,unit_ball,om,orn[q])
+	# star on top with a glowing halo and spikes
+	var sc := c+Vector3(0,20.5,0)
+	_vx_ball(root,sc,0.85,Color("ffd84a"),3.2)
+	var halo := _vx_ring(root,sc,1.7,0.06,Color("fff1c2"),2.5)
+	halo.rotation.x = PI/2.0
+	for k in 8:
+		var a := float(k)*PI/4.0
+		var d := Vector3(cos(a),sin(a),0)
+		var sp := CylinderMesh.new()
+		sp.top_radius = 0.0
+		sp.bottom_radius = 0.24
+		sp.height = 1.7
+		var sm := _xm_mesh(root,sp,sc+d*1.6,_xm_mat(Color("ffd84a"),3.0))
+		sm.rotation.z = a-PI/2.0
+	for k in 4:
+		var a := float(k)*PI/2.0+PI/4.0
+		var d := Vector3(0,sin(a),cos(a))
+		var sp := CylinderMesh.new()
+		sp.top_radius = 0.0
+		sp.bottom_radius = 0.2
+		sp.height = 1.2
+		var sm := _xm_mesh(root,sp,sc+d*1.3,_xm_mat(Color("ffd84a"),3.0))
+		sm.rotation.x = a
+	var l1 := OmniLight3D.new()
+	l1.position = c+Vector3(0,12,0)
+	l1.light_color = Color("ffcf8a")
+	l1.light_energy = 1.6
+	l1.omni_range = 28.0
+	root.add_child(l1)
+	var l2 := OmniLight3D.new()
+	l2.position = c+Vector3(0,2.2,0)
+	l2.light_color = Color("ffb36b")
+	l2.light_energy = 1.2
+	l2.omni_range = 14.0
+	root.add_child(l2)
+	# gifts under the tree: boxes with gold ribbons and bows
+	var unit_box := BoxMesh.new()
+	var pcols := [Color("c4152d"),Color("f0c75e"),Color("0d7a4e"),Color("2a56d8"),Color("7a2bd8"),Color("cfd8e6")]
+	var boxes: Array = [[],[],[],[],[],[]]
+	var ribbons: Array = []
+	var bows: Array = []
+	for k in 30:
+		var ang := rng.randf()*TAU
+		var rad := 2.3+rng.randf()*5.4
+		var w := 0.6+rng.randf()*0.9
+		var hh := 0.5+rng.randf()*0.8
+		var dd := 0.6+rng.randf()*0.9
+		var yaw := rng.randf()*TAU
+		var base := 0.17 if rad < 6.2 else 0.0
+		var pos := c+Vector3(cos(ang)*rad,base+hh*0.5,sin(ang)*rad)
+		var bs := Basis(Vector3.UP,yaw)
+		(boxes[k % 6] as Array).append(Transform3D(bs.scaled(Vector3(w,hh,dd)),pos))
+		ribbons.append(Transform3D(bs.scaled(Vector3(w*1.04,hh*1.04,0.14)),pos))
+		ribbons.append(Transform3D(bs.scaled(Vector3(0.14,hh*1.04,dd*1.04)),pos))
+		bows.append(Transform3D(Basis().scaled(Vector3.ONE*minf(w,dd)*0.4),pos+Vector3(0,hh*0.5+0.08,0)))
+	for q in 6:
+		_xm_multi(root,unit_box,_xm_mat(pcols[q]),boxes[q])
+	_xm_multi(root,unit_box,_xm_mat(gold,0.7),ribbons)
+	_xm_multi(root,unit_ball,_xm_mat(gold,0.9),bows)
+
+func _lux_mat(kind: String, col: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	if kind == "gold":
+		m.metallic = 0.6
+		m.roughness = 0.3
+		m.emission_enabled = true
+		m.emission = col
+		m.emission_energy_multiplier = 0.3
+	elif kind == "marble":
+		m.roughness = 0.12
+		m.metallic = 0.05
+	else:
+		m.roughness = 0.95
+	return m
+
+func _lux_part(st: SurfaceTool, mesh: Mesh, pos: Vector3) -> void:
+	st.append_from(mesh,0,Transform3D(Basis.IDENTITY,pos))
+
+func _lux_box(st: SurfaceTool, pos: Vector3, size: Vector3) -> void:
+	var b := BoxMesh.new()
+	b.size = size
+	_lux_part(st,b,pos)
+
+func _lux_cyl(st: SurfaceTool, pos: Vector3, r: float, h: float) -> void:
+	var c := CylinderMesh.new()
+	c.top_radius = r
+	c.bottom_radius = r
+	c.height = h
+	c.radial_segments = 20
+	_lux_part(st,c,pos)
+
+func _lux_ball(st: SurfaceTool, pos: Vector3, r: float) -> void:
+	var s := SphereMesh.new()
+	s.radius = r
+	s.height = r*2.0
+	s.radial_segments = 8
+	s.rings = 4
+	_lux_part(st,s,pos)
+
+func _lux_new() -> SurfaceTool:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	return st
+
+func _lux_commit(am: ArrayMesh, st: SurfaceTool, mat: Material) -> void:
+	st.commit(am)
+	am.surface_set_material(am.get_surface_count()-1,mat)
+
+func _lux_sofa_mesh(velvet: Color) -> ArrayMesh:
+	var key := "sofa"+velvet.to_html()
+	if _lux_cache.has(key):
+		return _lux_cache[key]
+	var gold := Color("f0c75e")
+	var v := _lux_new()
+	var cu := _lux_new()
+	var g := _lux_new()
+	_lux_box(v,Vector3(0,0.26,0),Vector3(2.1,0.24,0.9))
+	_lux_box(v,Vector3(-1.05,0.42,0),Vector3(0.2,0.56,0.9))
+	_lux_box(v,Vector3(1.05,0.42,0),Vector3(0.2,0.56,0.9))
+	_lux_box(v,Vector3(0,0.56,-0.35),Vector3(2.1,0.84,0.2))
+	for sx in [-0.5,0.5]:
+		_lux_box(cu,Vector3(float(sx),0.42,0.08),Vector3(0.98,0.08,0.7))
+		_lux_box(cu,Vector3(float(sx),0.68,-0.2),Vector3(0.98,0.4,0.12))
+	for sx in [-1.0,1.0]:
+		for sz in [-0.4,0.4]:
+			_lux_cyl(g,Vector3(sx*0.98,0.07,float(sz)),0.04,0.14)
+		_lux_box(g,Vector3(sx*1.05,0.715,0),Vector3(0.22,0.03,0.92))
+	for bx in [-0.75,-0.25,0.25,0.75]:
+		for by in [0.62,0.8]:
+			_lux_ball(g,Vector3(float(bx),float(by),-0.13),0.035)
+	_lux_box(g,Vector3(0,0.36,0.455),Vector3(2.1,0.03,0.03))
+	var am := ArrayMesh.new()
+	_lux_commit(am,v,_lux_mat("velvet",velvet))
+	_lux_commit(am,cu,_lux_mat("velvet",velvet.lightened(0.2)))
+	_lux_commit(am,g,_lux_mat("gold",gold))
+	_lux_cache[key] = am
+	return am
+
+func _lux_chair_mesh(velvet: Color) -> ArrayMesh:
+	var key := "chair"+velvet.to_html()
+	if _lux_cache.has(key):
+		return _lux_cache[key]
+	var v := _lux_new()
+	var g := _lux_new()
+	for sx in [-0.22,0.22]:
+		for sz in [-0.22,0.22]:
+			_lux_cyl(g,Vector3(float(sx),0.2,float(sz)),0.035,0.4)
+	_lux_box(v,Vector3(0,0.42,0),Vector3(0.56,0.08,0.56))
+	_lux_box(v,Vector3(0,0.72,-0.245),Vector3(0.56,0.46,0.07))
+	_lux_box(g,Vector3(0,0.96,-0.245),Vector3(0.58,0.03,0.09))
+	for sx in [-0.26,0.26]:
+		_lux_ball(g,Vector3(sx,0.99,-0.245),0.045)
+	var am := ArrayMesh.new()
+	_lux_commit(am,v,_lux_mat("velvet",velvet))
+	_lux_commit(am,g,_lux_mat("gold",Color("f0c75e")))
+	_lux_cache[key] = am
+	return am
+
+func _lux_table_mesh() -> ArrayMesh:
+	if _lux_cache.has("table"):
+		return _lux_cache["table"]
+	var m := _lux_new()
+	var g := _lux_new()
+	_lux_cyl(g,Vector3(0,0.03,0),0.55,0.06)
+	_lux_cyl(g,Vector3(0,0.42,0),0.12,0.8)
+	_lux_cyl(g,Vector3(0,0.82,0),1.04,0.06)
+	_lux_cyl(m,Vector3(0,0.86,0),1.0,0.08)
+	var am := ArrayMesh.new()
+	_lux_commit(am,m,_lux_mat("marble",Color("efeaf2")))
+	_lux_commit(am,g,_lux_mat("gold",Color("f0c75e")))
+	_lux_cache["table"] = am
+	return am
+
+func _lux_pouf_mesh(velvet: Color) -> ArrayMesh:
+	var key := "pouf"+velvet.to_html()
+	if _lux_cache.has(key):
+		return _lux_cache[key]
+	var v := _lux_new()
+	var g := _lux_new()
+	_lux_cyl(g,Vector3(0,0.04,0),0.5,0.08)
+	_lux_cyl(v,Vector3(0,0.23,0),0.46,0.3)
+	_lux_ball(g,Vector3(0,0.39,0),0.05)
+	var am := ArrayMesh.new()
+	_lux_commit(am,v,_lux_mat("velvet",velvet))
+	_lux_commit(am,g,_lux_mat("gold",Color("f0c75e")))
+	_lux_cache[key] = am
+	return am
+
+func _lux_batch(am: ArrayMesh, items: Array) -> void:
+	if items.is_empty():
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = am
+	mm.instance_count = items.size()
+	for i in items.size():
+		var it: Array = items[i]
+		var p: Vector3 = it[0]
+		var yaw: float = it[1]
+		mm.set_instance_transform(i,Transform3D(Basis(Vector3.UP,yaw),p))
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	add_child(mi)
+
 func _hub_christmas() -> void:
 	var root := Node3D.new()
 	root.name = "HubChristmas"
 	add_child(root)
-	# Giant tree in the middle (next to the game tiles), warm light, presents.
-	_xm_tree(root,HUB_C+Vector3(0,0,-13),2.2,true)
-	var glow := OmniLight3D.new()
-	glow.position = HUB_C+Vector3(0,7,-13)
-	glow.light_color = Color("ffcf8a")
-	glow.light_energy = 1.2
-	glow.omni_range = 22.0
-	root.add_child(glow)
-	var pcols := [Color("e23b3b"),Color("3b8fe2"),Color("f2c230"),Color("3bbf6a"),Color("c25be2")]
-	for i in 10:
-		var a := float(i)*0.63
-		var size := 1.0+float(i % 3)*0.35
-		var b := BoxMesh.new()
-		b.size = Vector3(size,size*0.8,size)
-		var pos := HUB_C+Vector3(-13+cos(a)*6.5,size*0.4,-13+sin(a)*6.5)
-		_xm_mesh(root,b,pos,_xm_mat(pcols[i % pcols.size()]))
-		var rb := BoxMesh.new()
-		rb.size = Vector3(size*1.04,size*0.82,size*0.18)
-		_xm_mesh(root,rb,pos,_xm_mat(Color("fff3c4")))
-	# A ring of smaller lit trees near the wall, between the palms.
-	for k in 14:
-		var a := TAU*(float(k)+0.5)/14.0
-		if absf(angle_difference(a,PI)) < 0.35:
-			continue
-		_xm_tree(root,HUB_C+Vector3(cos(a),0,sin(a))*35.0,1.0,k % 2 == 0)
+	# One grand tree just inside the entrance, with gifts underneath.
+	_xm_grand_tree(root,HUB_C+Vector3(-8,0,0))
 	# Two string-light rings that follow the dome wall.
 	var cols2 := [Color("ff3b3b"),Color("ffd84a"),Color("4ad0ff"),Color("7dff7a"),Color("ff7be0")]
 	var bulb2 := SphereMesh.new()
@@ -13648,7 +13913,7 @@ func _hub_christmas() -> void:
 		nm.rotation.z = PI/2.0
 		var hat := CylinderMesh.new(); hat.top_radius = 0.3; hat.bottom_radius = 0.35; hat.height = 0.55
 		_xm_mesh(root,hat,base+Vector3(0,3.8,0),_xm_mat(Color("c92b2b")))
-	var merry := _sign("MERRY CHRISTMAS",HUB_C+Vector3(0,15,0),Color("ff6a6a"),90)
+	var merry := _sign("MERRY CHRISTMAS",HUB_C+Vector3(-8,24.5,0),Color("ff6a6a"),90)
 	merry.outline_size = 14
 	merry.modulate = Color("ff7a7a")
 
@@ -13894,10 +14159,6 @@ func _hub_gate() -> void:
 		wreath.rotation.z = PI/2.0
 		_vx_ball(root,Vector3(gx+1.7,4.7,pz),0.3,Color("e23b3b"),0.6)
 		_collider(root,Vector3(gx,7.5,pz),Vector3(3.2,15.0,3.2))
-		# planter tree beside each pillar
-		var pot := Vector3(gx+4.5,0,gz+sz*(ro+0.2))
-		_vx_cyl(root,pot+Vector3(0,0.5,0),1.0,0.8,1.0,Color("2a2740"))
-		_xm_tree(root,pot+Vector3(0,0.9,0),0.7,true)
 	# open glass door leaves swung inward, with gold frames
 	for sz: float in [-1.0,1.0]:
 		var hinge := Node3D.new()
@@ -13964,7 +14225,7 @@ func _hub_vip() -> void:
 		for lx: float in [-0.6,0.6]:
 			_hub_seat(pos+lateral*float(lx),theta-PI,"lounge",0,0,0.42)
 		_vx_ball(root,pos+Vector3(0,1.9,0)+(pos-c).normalized()*0.8,0.12,gold,2.0)
-	_model_batch("res://models/sofa.glb",sofas)
+	_lux_batch(_lux_sofa_mesh(Color("7a1630")),sofas)
 	# curved bar behind the sofas: counters, marble tops, glowing back-bar with bottles, stools
 	var bottle_cols := [Color("ff7a3a"),Color("5ce6ed"),Color("e23b9c"),Color("7dff7a"),Color("ffd84a")]
 	for k in 3:
@@ -15341,6 +15602,24 @@ func _hub_shots() -> void:
 	for i in 20:
 		await get_tree().physics_frame
 	await _save_shot("hub-gate-front")
+	player.position = Vector3(180,0.75,32)
+	player.rotation.y = -PI/2.0
+	look_pitch = 0.4
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("hub-grand-tree")
+	player.position = Vector3(199,0.75,25)
+	player.rotation.y = 0.0
+	look_pitch = 0.35
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("hub-lux-tables")
+	player.position = Vector3(203,0.75,19)
+	player.rotation.y = -2.24
+	look_pitch = 0.3
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("hub-lux-sofas")
 	print("DOME QUESTS SELFTEST ",dq.selftest())
 	player.position = dq.gift_pos(0)+Vector3(-6,0.75,0)
 	player.rotation.y = -PI/2.0

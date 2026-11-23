@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.56.5 (code 115, 2026-11-23)
+- main.gd: _hub_christmas now builds only _xm_grand_tree(HUB_C+(-8,0,0)) (8 cone tiers, MultiMesh garlands/fairy lights/ornaments, star, 30 gifts with ribbons); ring of small trees and gate planters removed. Luxury furniture: _lux_sofa_mesh/_lux_chair_mesh/_lux_table_mesh/_lux_pouf_mesh (SurfaceTool ArrayMesh, velvet+gold+marble) placed with _lux_batch; replaces sofa/chair/game_table/beanbag glb in _build_hub and _hub_vip. dome_quests TREE=(-8,0,0), tree check radius 7. New-player spawn HUB_C+(-24,0.9,0). Shots: hub-grand-tree, hub-lux-tables, hub-lux-sofas.
+
 ## 0.56.4 (code 114, 2026-11-23)
 - main.gd: snow removed from _hub_christmas; floor disc is a darker polished StandardMaterial3D. New _hub_polish() (gold plaza rings, compass spokes, wall uplights), _hub_gate() (gold arch, pillars, open glass doors, welcome signs, red carpet, lamps; geodesic lattice carved at the west doorway), _hub_vip() (VIP_C=(234,0,52): dais, five sofas with seats, curved bar with stools, velvet ropes, chandelier, palms). dome_quests.gd: 11th quest "Relax in the VIP Lounge (20 s)" via vip_secs. Shots: hub-gate-front, hub-vip-front, hub-vip-inside.
 

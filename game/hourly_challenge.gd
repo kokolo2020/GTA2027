@@ -357,7 +357,7 @@ func _process(delta: float) -> void:
 	tick_t = 0.0
 	refresh_sign()
 	var h := now_hour()
-	if h != announced and g.booted and not g.paused:
+	if h != announced and g.sun_dome != null and g.booted and not g.paused:
 		announced = h
 		if g.hr_done != h:
 			g._show_toast("NEW HOURLY CHALLENGE: %s  ·  +$%d  ·  in the Sun Dome" % [KINDS[h % 3],PAY])

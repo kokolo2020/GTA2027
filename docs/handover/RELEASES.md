@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.56.2 (code 112, 2026-11-23)
+- _hub_christmas() in main.gd (end of _build_hub): CPUParticles3D snow, _xm_tree, presents, string-light rings, snowmen, MERRY CHRISTMAS sign; always on. New players (ch_idx 0, step 0, no deliveries) spawn at HUB_C+(-10,0.9,0) after _load_progress. Chapter 1 gained steps Dome gate (150,0,32) and Ridge Pass (69,0,5.5); saves without chapters/intro and step>0 get +2. Sun Dome call, SPAWN_SUN_DOME and --sundome-shots removed (sun_dome.gd left unused); hourly challenge has no terminal.
+
 ## 0.56.1 (code 111, 2026-11-23)
 - Sun Dome (game/sun_dome.gd: lattice, glass, sun core, pylons, floor inlays, Challenge Core with seats; built after _build_commons, skip with HC_SKIP=sundome). Spawn moved to SPAWN_SUN_DOME (-93,0.9,-22). Hourly Challenge (game/hourly_challenge.gd: kinds by UTC hour %3, selftest(), save keys hr_done/hr_total, hooks in action handler and action button). Stream Mode no longer blocks online autostart. Shots: run-sundome-shots.command (--sundome-shots). Next: Christmas theme, hangout features (emotes, jukebox), Blender animals.
 

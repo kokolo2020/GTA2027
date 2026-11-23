@@ -323,9 +323,6 @@ func _ready() -> void:
 	_build_future()
 	_build_food_court()
 	_build_commons()
-	if not OS.get_environment("HC_SKIP").contains("sundome"):
-		sun_dome = preload("res://sun_dome.gd").new(self,CM_C)
-		sun_dome.build()
 	if not OS.get_environment("HC_SKIP").contains("biosphere"):
 		_build_biosphere()
 	if not OS.get_environment("HC_SKIP").contains("galleria"):
@@ -346,6 +343,9 @@ func _ready() -> void:
 	add_child(radio_player)
 	_build_hud()
 	_load_progress()
+	# v0.56.2: brand-new players start in the middle of the Harbor Dome; Chapter 1 then guides them to the city.
+	if ch_idx == 0 and ch_step == 0 and deliveries == 0 and not driving:
+		player.position = HUB_C+Vector3(-10,0.9,0)
 	_build_place_signs()
 	_quick_daily_check()
 	_web_perf_setup()
@@ -354,7 +354,7 @@ func _ready() -> void:
 	_refresh_checkpoints()
 	road_barrier.build()
 	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args() or "--africa-shots" in OS.get_cmdline_user_args()
-	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--sundome-shots"]:
+	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.56.1: Sun Dome hangout, hourly challenges, Stream Mode goes online.")
+	_show_toast("Harbor City 0.56.2: Christmas in the Harbor Dome, new players start there.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -431,22 +431,6 @@ func _ready() -> void:
 			var e: Vector3 = sky_st_info[i]["entrance"]
 			print("SKYST ",i," ",e," road=",_on_road(e)," blk=",_blocker(e+Vector3(0,1.0,0),0.6)," side=",sky_st_info[i]["side"])
 		print("SKYLEN ",sky_len," period ",sky_period," pillars ",sky_pillars.size())
-		get_tree().quit()
-	elif "--sundome-shots" in OS.get_cmdline_user_args():
-		crate_done = true
-		crate_open = false
-		paused = false
-		var sd := [["sd-spawn",SPAWN_SUN_DOME,0.0,0.25],["sd-fountain",CM_C+Vector3(0,0.9,16),0.0,0.15],["sd-edge",CM_C+Vector3(-30,0.9,10),-1.2,0.3],["sd-outside",CM_C+Vector3(0,0.9,70),0.0,0.35],["sd-puzzle",CM_C+Vector3(0,0.9,-26),PI,0.25],["sd-core",CM_C+Vector3(0,0.9,16),PI,0.2],["sd-terminal",sun_dome.term+Vector3(0,0.9,-2.0),PI,0.2]]
-		for sp in sd:
-			player.position = sp[1]
-			player.velocity = Vector3.ZERO
-			cam_yaw = float(sp[2])
-			cam_pitch = float(sp[3])
-			for i in 40:
-				await get_tree().physics_frame
-			await _save_shot(String(sp[0]))
-		print("HOURLY SELFTEST ",hourly.selftest())
-		print("SUNDOMESHOTS DONE")
 		get_tree().quit()
 	elif "--barrier-shots" in OS.get_cmdline_user_args():
 		driving = true
@@ -4204,7 +4188,7 @@ func _build_panels(root: Control) -> void:
 func _build_player() -> void:
 	player = CharacterBody3D.new()
 	player.name = "Player"
-	player.position = SPAWN_SUN_DOME
+	player.position = SPAWN_FOOD_COURT
 	add_child(player)
 	var collision := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
@@ -8443,6 +8427,7 @@ func _save_progress() -> void:
 	file.set_value("progress","treasure_count",treasure_count)
 	file.set_value("progress","fm_refund",fm_refund)
 	file.set_value("chapters","idx",ch_idx)
+	file.set_value("chapters","intro",1)
 	file.set_value("chapters","step",ch_step)
 	file.set_value("chapters","best",ch_best)
 	file.save(SAVE_PATH)
@@ -8468,6 +8453,9 @@ func _load_progress() -> void:
 			world_bio.load_state(file)
 		ch_idx = clampi(int(file.get_value("chapters","idx",0)),0,CHAPTERS.size())
 		ch_step = maxi(0,int(file.get_value("chapters","step",0)))
+		# v0.56.2: Chapter 1 gained two intro steps (Dome gate, Ridge Pass); older saves skip past them.
+		if ch_idx == 0 and ch_step > 0 and int(file.get_value("chapters","intro",0)) == 0:
+			ch_step += 2
 		ch_best = clampi(maxi(int(file.get_value("chapters","best",0)),ch_idx),0,CHAPTERS.size())
 		pz_streak = maxi(0,int(file.get_value("progress","pz_streak",0)))
 		pz_total = maxi(0,int(file.get_value("progress","pz_total",0)))
@@ -13536,6 +13524,143 @@ func _build_hub() -> void:
 	_model_batch("res://models/palm.glb",palms)
 	_build_arcade()
 	_build_hub_bots()
+	_hub_christmas()
+
+# ---------------- v0.56.2: Christmas in the Harbor Dome (snow, giant tree, lights, snowmen, presents) ----------------
+func _xm_mat(col: Color, glow := 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	if glow > 0.0:
+		m.emission_enabled = true
+		m.emission = col
+		m.emission_energy_multiplier = glow
+	return m
+
+func _xm_mesh(parent: Node3D, mesh: Mesh, pos: Vector3, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.position = pos
+	parent.add_child(mi)
+	return mi
+
+func _xm_tree(root: Node3D, pos: Vector3, scale: float, lights: bool) -> void:
+	var t := Node3D.new()
+	t.position = pos
+	t.scale = Vector3.ONE*scale
+	root.add_child(t)
+	var trunk := CylinderMesh.new()
+	trunk.top_radius = 0.35
+	trunk.bottom_radius = 0.45
+	trunk.height = 1.4
+	_xm_mesh(t,trunk,Vector3(0,0.7,0),_xm_mat(Color("5a3a22")))
+	var green := _xm_mat(Color("1f7a3a"))
+	var tiers := [[3.2,3.0,2.4],[2.5,2.8,4.4],[1.8,2.6,6.2]]
+	for k in tiers:
+		var c := CylinderMesh.new()
+		c.top_radius = 0.0
+		c.bottom_radius = float(k[0])
+		c.height = float(k[1])
+		_xm_mesh(t,c,Vector3(0,float(k[2]),0),green)
+	var star := SphereMesh.new()
+	star.radius = 0.45
+	star.height = 0.9
+	_xm_mesh(t,star,Vector3(0,8.1,0),_xm_mat(Color("ffd84a"),3.0))
+	if lights:
+		var cols := [Color("ff3b3b"),Color("ffd84a"),Color("4ad0ff"),Color("ff7be0"),Color("7dff7a")]
+		var bulb := SphereMesh.new()
+		bulb.radius = 0.16
+		bulb.height = 0.32
+		for i in 26:
+			var h := 1.3+float(i)*0.25
+			var r := maxf(0.2,(1.0-(h-1.3)/6.8)*3.0)
+			var a := float(i)*2.4
+			_xm_mesh(t,bulb,Vector3(cos(a)*r,h,sin(a)*r),_xm_mat(cols[i % cols.size()],2.5))
+
+func _hub_christmas() -> void:
+	var root := Node3D.new()
+	root.name = "HubChristmas"
+	add_child(root)
+	# Snow falling inside the dome all day.
+	var snow := CPUParticles3D.new()
+	snow.amount = 650
+	snow.lifetime = 8.0
+	snow.preprocess = 8.0
+	snow.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	snow.emission_box_extents = Vector3(38,0.5,38)
+	snow.position = HUB_C+Vector3(0,27,0)
+	snow.direction = Vector3(0,-1,0)
+	snow.spread = 12.0
+	snow.gravity = Vector3(0.25,-0.4,0.1)
+	snow.initial_velocity_min = 2.6
+	snow.initial_velocity_max = 3.6
+	snow.scale_amount_min = 0.6
+	snow.scale_amount_max = 1.5
+	var q := QuadMesh.new()
+	q.size = Vector2(0.28,0.28)
+	var sm := StandardMaterial3D.new()
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sm.albedo_color = Color("ffffff")
+	sm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	sm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	q.material = sm
+	snow.mesh = q
+	snow.emitting = true
+	root.add_child(snow)
+	# Giant tree in the middle (next to the game tiles), warm light, presents.
+	_xm_tree(root,HUB_C+Vector3(0,0,-13),2.2,true)
+	var glow := OmniLight3D.new()
+	glow.position = HUB_C+Vector3(0,7,-13)
+	glow.light_color = Color("ffcf8a")
+	glow.light_energy = 1.2
+	glow.omni_range = 22.0
+	root.add_child(glow)
+	var pcols := [Color("e23b3b"),Color("3b8fe2"),Color("f2c230"),Color("3bbf6a"),Color("c25be2")]
+	for i in 10:
+		var a := float(i)*0.63
+		var size := 1.0+float(i % 3)*0.35
+		var b := BoxMesh.new()
+		b.size = Vector3(size,size*0.8,size)
+		var pos := HUB_C+Vector3(-13+cos(a)*6.5,size*0.4,-13+sin(a)*6.5)
+		_xm_mesh(root,b,pos,_xm_mat(pcols[i % pcols.size()]))
+		var rb := BoxMesh.new()
+		rb.size = Vector3(size*1.04,size*0.82,size*0.18)
+		_xm_mesh(root,rb,pos,_xm_mat(Color("fff3c4")))
+	# A ring of smaller lit trees near the wall, between the palms.
+	for k in 14:
+		var a := TAU*(float(k)+0.5)/14.0
+		if absf(angle_difference(a,PI)) < 0.35:
+			continue
+		_xm_tree(root,HUB_C+Vector3(cos(a),0,sin(a))*35.0,1.0,k % 2 == 0)
+	# Two string-light rings that follow the dome wall.
+	var cols2 := [Color("ff3b3b"),Color("ffd84a"),Color("4ad0ff"),Color("7dff7a"),Color("ff7be0")]
+	var bulb2 := SphereMesh.new()
+	bulb2.radius = 0.22
+	bulb2.height = 0.44
+	for ring in [[43.0,4.0,64],[39.0,13.0,56],[31.0,21.0,44]]:
+		for i in int(ring[2]):
+			var a := TAU*float(i)/float(ring[2])
+			if absf(angle_difference(a,PI)) < 0.2 and float(ring[1]) < 6.0:
+				continue
+			_xm_mesh(root,bulb2,HUB_C+Vector3(cos(a)*float(ring[0]),float(ring[1]),sin(a)*float(ring[0])),_xm_mat(cols2[i % cols2.size()],2.8))
+	# Snowmen by the comedy stage.
+	for sx in [-9.0,9.0]:
+		var base := HUB_STAGE+Vector3(-10,0,sx)
+		var snowmat := _xm_mat(Color("ffffff"))
+		var s1 := SphereMesh.new(); s1.radius = 0.9; s1.height = 1.8
+		var s2 := SphereMesh.new(); s2.radius = 0.65; s2.height = 1.3
+		var s3 := SphereMesh.new(); s3.radius = 0.45; s3.height = 0.9
+		_xm_mesh(root,s1,base+Vector3(0,0.9,0),snowmat)
+		_xm_mesh(root,s2,base+Vector3(0,2.2,0),snowmat)
+		_xm_mesh(root,s3,base+Vector3(0,3.2,0),snowmat)
+		var nose := CylinderMesh.new(); nose.top_radius = 0.0; nose.bottom_radius = 0.1; nose.height = 0.5
+		var nm := _xm_mesh(root,nose,base+Vector3(-0.55,3.2,0),_xm_mat(Color("ff8a2a")))
+		nm.rotation.z = PI/2.0
+		var hat := CylinderMesh.new(); hat.top_radius = 0.3; hat.bottom_radius = 0.35; hat.height = 0.55
+		_xm_mesh(root,hat,base+Vector3(0,3.8,0),_xm_mat(Color("c92b2b")))
+	var merry := _sign("MERRY CHRISTMAS",HUB_C+Vector3(0,15,0),Color("ff6a6a"),90)
+	merry.outline_size = 14
+	merry.modulate = Color("ff7a7a")
 
 func _hub_glass(node: Node) -> void:
 	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
@@ -18940,12 +19065,10 @@ var cm_people: Array = []
 var cm_cheer: Array = []
 var cm_emote_t := 3.0
 var cm_sign: Label3D
-var sun_dome
+var sun_dome   # v0.56.2: Sun Dome removed (sun_dome.gd unused); hourly challenge has no terminal until it gets a new home
 var hourly
 var hr_done := -1       # last UTC hour index whose challenge you solved
 var hr_total := 0
-# v0.56.1: everyone arrives in the Sun Dome, on the long path just south of the Commons fountain.
-const SPAWN_SUN_DOME := Vector3(-93,0.9,-22)
 
 func _cm_person(parent: Node3D, pos: Vector3, yaw: float, seed_i: int, kid := false) -> Dictionary:
 	var shirts := [Color("e04a3a"),Color("3f8fd2"),Color("5fbf7f"),Color("f2b24a"),Color("9b6bd6"),Color("f27fb2"),Color("2fb5a8"),Color("f2f2f2"),Color("ffd23f")]
@@ -31975,7 +32098,9 @@ func _home_build_layout(root: Node3D, kind: int) -> void:
 # Every district on the map is visited, and the wonders ask for their levels first. Finishing a
 # chapter pays cash and XP. Progress is saved; a chip under the top bar shows the next step.
 const CHAPTERS := [
-	{"name":"Welcome to Harbor","pay":500,"xp":60,"story":"Learn the old city around the waterfront.","steps":[
+	{"name":"Welcome to Harbor","pay":500,"xp":60,"story":"Start in the Harbor Dome, then follow the arrow into the old city.","steps":[
+		{"k":"go","t":"the Dome gate","p":Vector3(150,0,32)},
+		{"k":"go","t":"Ridge Pass Marker","p":Vector3(69,0,5.5)},
 		{"k":"go","t":"Harbor Waterfront","p":Vector3(10,0,27)},
 		{"k":"go","t":"Civic Center","p":Vector3(-150,0,23)},
 		{"k":"go","t":"Harbor Commons","p":Vector3(-93,0,-36)},
@@ -32257,7 +32382,7 @@ func _chapters_close() -> void:
 
 func _smoke_chapters() -> void:
 	# v0.51: chapters cover the whole map, point the guide arrow, advance on arrival and pay out.
-	assert(Vector2(SPAWN_SUN_DOME.x-CM_C.x,SPAWN_SUN_DOME.z-CM_C.z).length() < 30.0,"v0.56.1: everyone spawns inside the Sun Dome")
+	assert(Vector2(SPAWN_FOOD_COURT.x-FC_BLOCK.x,SPAWN_FOOD_COURT.z-FC_BLOCK.z).length() < 15.0 and SPAWN_FOOD_COURT.z > FC_Z+4.0,"v0.51: the spawn is in front of the food court stands")
 	assert(chat_quick != null and chat_quick.get_child_count() == 4 and HUB_PHRASES.size() == CHAT_SYM_END+4,"v0.51: four quick chat chips")
 	assert(HUB_PHRASES[CHAT_SYM_END] == "SCAN AND JOIN THE GAME" and HUB_PHRASES[CHAT_SYM_END+3] == "SUBSCRIBE & LIKE","v0.51: quick chat phrases")
 	for d in DIR_DESTS:
@@ -32869,7 +32994,7 @@ func _smoke_stream_join() -> void:
 	assert(online_on == _online_load_config(),"v0.51.3: stream joiners go online straight away")
 	online_on = true
 	online_joined_at = -100.0
-	player.position = SPAWN_SUN_DOME
+	player.position = SPAWN_FOOD_COURT
 	_online_peer_update({"i":"sjv1","n":"ViewerOne","x":-60.0,"y":0.9,"z":40.0,"r":0.0,"d":0,"l":3,"st":0})
 	_online_peer_update({"i":"sjst","n":"MasterKolo","x":12.0,"y":0.9,"z":30.0,"r":0.0,"d":0,"l":20,"st":1})
 	(online_peers["sjst"]["node"] as Node3D).position = Vector3(12.0,0.9,30.0)

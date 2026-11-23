@@ -3520,7 +3520,7 @@ func load_dome(i: int) -> void:
  if i>1:
   sky_gallery(i,detail)
  door_markers(i,detail)
- inside_signpost(i,detail)
+ # direction signposts removed inside domes (Koko 23 Nov); outside_signposts() in the hub stays
  if i<7:
   for step in 3:
    var p = africa_station(step) if i==0 else local_point(i,7,-29+step*20)
@@ -3839,7 +3839,7 @@ func africa_zone_centre(si: int) -> Vector3:
 func africa_reserve(parent: Node3D) -> void:
  var deck_col = Color("b8975f")
  # Raised visitor platform: a wide foyer at the door, a long gentle ramp, the central deck and a pier.
- walkway(parent,local_point(0,0,-37.4,0.09),local_point(0,0,-31,0.09),7.2)
+ walkway(parent,local_point(0,0,-38.4,0.09),local_point(0,0,-31,0.09),5.0)
  walkway(parent,local_point(0,0,-31,0.09),local_point(0,0,-5,AFRICA_Y),5.0)
  disc(parent,local_point(0,0,0,AFRICA_Y-0.15),6.5,0.3,deck_col,true)
  walkway(parent,local_point(0,0,5,AFRICA_Y),local_point(0,0,16,AFRICA_Y),3.4)
@@ -3920,10 +3920,16 @@ func africa_wow(parent: Node3D) -> void:
   var sp = Vector2(9.0,22.0).lerp(Vector2(21.0,13.0),t)+Vector2(sin(t*TAU*1.5)*2.2,cos(t*TAU)*1.0)
   disc(parent,local_point(0,sp.x,sp.y,0.13),1.9-0.5*absf(t-0.5),0.05,Color("5bbfd0"))
  for arm in [AFRICA_ARM_W,AFRICA_ARM_E]:
-  for q in arm:
-   var lp = local_point(0,q[0],q[1],AFRICA_Y)
-   beam(parent,lp,lp+Vector3(0,2.2,0),0.08,Color("6b4f2a"))
-   ball(parent,lp+Vector3(0,2.4,0),Vector3(0.35,0.35,0.35),Color("ffd36b"))
+  for k in arm.size():
+   # lanterns sit on the outer rail, never in the middle of the walkway
+   var q = arm[k]
+   var prev_q = arm[k-1] if k>0 else [0.0,0.0]
+   var next_q = arm[k+1] if k<arm.size()-1 else q
+   var dir2 = Vector2(next_q[0]-prev_q[0],next_q[1]-prev_q[1]).normalized()
+   var perp = Vector2(-dir2.y,dir2.x)
+   var lp = local_point(0,q[0]+perp.x*1.75,q[1]+perp.y*1.75,AFRICA_Y)
+   beam(parent,lp,lp+Vector3(0,1.45,0),0.07,Color("6b4f2a"))
+   ball(parent,lp+Vector3(0,1.6,0),Vector3(0.22,0.22,0.22),Color("ffd36b"))
 
 func africa_path_segs() -> Array:
  var segs: Array = [[Vector2(0,-38),Vector2(0,19)]]
@@ -4043,6 +4049,8 @@ func africa_shots() -> void:
   ["africa-r-east-arm",local_point(0,14,4,AFRICA_Y+1.7),local_point(0,21,13,1.5)],
   ["africa-r-deck-giraffes",local_point(0,0,2,AFRICA_Y+1.7),local_point(0,-9,21,2.5)],
   ["africa-r-ramp-zebra",local_point(0,0,-18,africa_ramp_y(-18.0)+1.7),local_point(0,-12,-17,1.0)],
+  ["africa-r-junction",local_point(0,7,-36,6.0),local_point(0,0,-30,0.2)],
+  ["africa-r-junction2",local_point(0,-6,-27,5.0),local_point(0,0,-33,0.2)],
   ["africa-r-east-end",local_point(0,27,-8,AFRICA_Y+1.7),local_point(0,12,-18,1.0)]]
  for sh in shots:
   g.camera.global_position = sh[1]

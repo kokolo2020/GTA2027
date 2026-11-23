@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.56.3 (code 113, 2026-11-23)
+- game/dome_quests.gd (Dome Quests: 10 daily quests, 12 gift boxes, streak, all-done bonus; saved under [domequests]; selftest asserted in smoke). hourly_challenge.gd now builds its own Challenge Corner via build_terminal(HUB_C+(-18,0,12)) (no sun_dome dependency). _hub_geodesic() in main.gd: icosphere frequency 5 hemisphere frame (MultiMesh struts and joint balls), amber outside-only film, base ring, interior omni lights; glass alpha 0.13.
+
 ## 0.56.2 (code 112, 2026-11-23)
 - _hub_christmas() in main.gd (end of _build_hub): CPUParticles3D snow, _xm_tree, presents, string-light rings, snowmen, MERRY CHRISTMAS sign; always on. New players (ch_idx 0, step 0, no deliveries) spawn at HUB_C+(-10,0.9,0) after _load_progress. Chapter 1 gained steps Dome gate (150,0,32) and Ridge Pass (69,0,5.5); saves without chapters/intro and step>0 get +2. Sun Dome call, SPAWN_SUN_DOME and --sundome-shots removed (sun_dome.gd left unused); hourly challenge has no terminal.
 

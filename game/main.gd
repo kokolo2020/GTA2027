@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Harbor City 0.56.2: Christmas in the Harbor Dome, new players start there.")
+	_show_toast("Harbor City 0.56.3: daily Dome Quests, gift boxes and the hourly challenge in the Harbor Dome.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -4824,8 +4824,12 @@ func _build_hud() -> void:
 	_build_home_panels(root)
 	_build_puzzle_panel(root)
 	hourly = preload("res://hourly_challenge.gd").new(self)
+	hourly.build_terminal(HUB_C+Vector3(-18,0,12))
 	add_child(hourly)
 	hourly.build_panel(root)
+	dq = preload("res://dome_quests.gd").new(self)
+	add_child(dq)
+	dq.build(root)
 	_build_streamer(root)
 	_build_ach(root)
 	_build_quiz(root)
@@ -8400,6 +8404,8 @@ func _save_progress() -> void:
 	file.set_value("progress","bio_seen",bio_seen)
 	if world_bio != null:
 		world_bio.save_state(file)
+	if dq != null:
+		dq.save_state(file)
 	file.set_value("progress","bio_pass_day",bio_pass_day)
 	file.set_value("progress","pz_streak",pz_streak)
 	file.set_value("progress","pz_total",pz_total)
@@ -8451,6 +8457,8 @@ func _load_progress() -> void:
 		bio_pass_day = String(file.get_value("progress","bio_pass_day",""))
 		if world_bio != null:
 			world_bio.load_state(file)
+		if dq != null:
+			dq.load_state(file)
 		ch_idx = clampi(int(file.get_value("chapters","idx",0)),0,CHAPTERS.size())
 		ch_step = maxi(0,int(file.get_value("chapters","step",0)))
 		# v0.56.2: Chapter 1 gained two intro steps (Dome gate, Ridge Pass); older saves skip past them.
@@ -13525,6 +13533,7 @@ func _build_hub() -> void:
 	_build_arcade()
 	_build_hub_bots()
 	_hub_christmas()
+	_hub_geodesic()
 
 # ---------------- v0.56.2: Christmas in the Harbor Dome (snow, giant tree, lights, snowmen, presents) ----------------
 func _xm_mat(col: Color, glow := 0.0) -> StandardMaterial3D:
@@ -13662,6 +13671,159 @@ func _hub_christmas() -> void:
 	merry.outline_size = 14
 	merry.modulate = Color("ff7a7a")
 
+# ---------------- v0.56.3: geodesic frame and warm glow so the Harbor Dome looks like a glass biosphere from outside ----------------
+func _hub_geodesic() -> void:
+	var root := Node3D.new()
+	root.name = "HubGeodesic"
+	root.position = HUB_C
+	add_child(root)
+	var f := 5
+	var top := Vector3(0,1,0)
+	var ring_y := 1.0/sqrt(5.0)
+	var ring_r := 2.0/sqrt(5.0)
+	var up_ring: Array = []
+	var lo_ring: Array = []
+	for k in 5:
+		var a := TAU*float(k)/5.0
+		up_ring.append(Vector3(cos(a)*ring_r,ring_y,sin(a)*ring_r))
+		lo_ring.append(Vector3(cos(a+PI/5.0)*ring_r,-ring_y,sin(a+PI/5.0)*ring_r))
+	var bottom := Vector3(0,-1,0)
+	var faces: Array = []
+	for k in 5:
+		var k2 := (k+1) % 5
+		faces.append([top,up_ring[k],up_ring[k2]])
+		faces.append([up_ring[k],lo_ring[k],up_ring[k2]])
+		faces.append([lo_ring[k],lo_ring[k2],up_ring[k2]])
+		faces.append([bottom,lo_ring[k2],lo_ring[k]])
+	var verts := {}
+	var edges := {}
+	var R := 46.6
+	var HS := 0.70
+	for face in faces:
+		var pts := {}
+		for a in range(0,f+1):
+			for b in range(0,f+1-a):
+				var p: Vector3 = ((face[0] as Vector3)*float(f-a-b)+(face[1] as Vector3)*float(a)+(face[2] as Vector3)*float(b)).normalized()
+				if p.y < 0.0:
+					p.y = 0.0
+					p = Vector3(p.x,0.0,p.z).normalized()
+				pts[Vector2i(a,b)] = p
+		for a in range(0,f+1):
+			for b in range(0,f+1-a):
+				var p0: Vector3 = pts[Vector2i(a,b)]
+				for d in [Vector2i(1,0),Vector2i(0,1),Vector2i(1,-1)]:
+					var n: Vector2i = Vector2i(a,b)+(d as Vector2i)
+					if not pts.has(n):
+						continue
+					var p1: Vector3 = pts[n]
+					if p0.y < 0.001 and p1.y < 0.001:
+						continue
+					var k0 := Vector3i(roundi(p0.x*100.0),roundi(p0.y*100.0),roundi(p0.z*100.0))
+					var k1 := Vector3i(roundi(p1.x*100.0),roundi(p1.y*100.0),roundi(p1.z*100.0))
+					var key := [k0,k1] if (k0.x*10000+k0.y*100+k0.z) < (k1.x*10000+k1.y*100+k1.z) else [k1,k0]
+					if edges.has(key):
+						continue
+					edges[key] = [p0,p1]
+					verts[k0] = p0
+					verts[k1] = p1
+	var tube := CylinderMesh.new()
+	tube.top_radius = 0.26
+	tube.bottom_radius = 0.26
+	tube.height = 1.0
+	tube.radial_segments = 6
+	tube.rings = 1
+	var frame := StandardMaterial3D.new()
+	frame.albedo_color = Color(0.93,0.96,1.0)
+	frame.metallic = 0.45
+	frame.roughness = 0.3
+	frame.emission_enabled = true
+	frame.emission = Color(0.55,0.85,1.0)
+	frame.emission_energy_multiplier = 0.22
+	tube.material = frame
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = tube
+	mm.instance_count = edges.size()
+	var idx := 0
+	for key in edges:
+		var e: Array = edges[key]
+		var a3 := Vector3((e[0] as Vector3).x*R,(e[0] as Vector3).y*R*HS,(e[0] as Vector3).z*R)
+		var b3 := Vector3((e[1] as Vector3).x*R,(e[1] as Vector3).y*R*HS,(e[1] as Vector3).z*R)
+		var dir := b3-a3
+		var elen := dir.length()
+		var ydir := dir/elen
+		var helper := Vector3.UP if absf(ydir.y) < 0.9 else Vector3.RIGHT
+		var xdir := ydir.cross(helper).normalized()
+		var zdir := xdir.cross(ydir).normalized()
+		mm.set_instance_transform(idx,Transform3D(Basis(xdir,ydir*elen,zdir),(a3+b3)*0.5))
+		idx += 1
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mmi)
+	# glowing nodes where the struts meet
+	var ball := SphereMesh.new()
+	ball.radius = 0.62
+	ball.height = 1.24
+	ball.radial_segments = 8
+	ball.rings = 4
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = Color("fff1c2")
+	glow.emission_enabled = true
+	glow.emission = Color("ffd98a")
+	glow.emission_energy_multiplier = 1.6
+	ball.material = glow
+	var mm2 := MultiMesh.new()
+	mm2.transform_format = MultiMesh.TRANSFORM_3D
+	mm2.mesh = ball
+	mm2.instance_count = verts.size()
+	idx = 0
+	for key in verts:
+		var v: Vector3 = verts[key]
+		mm2.set_instance_transform(idx,Transform3D(Basis.IDENTITY,Vector3(v.x*R,v.y*R*HS,v.z*R)))
+		idx += 1
+	var mmi2 := MultiMeshInstance3D.new()
+	mmi2.multimesh = mm2
+	mmi2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mmi2)
+	# a warm amber film that only shows from outside (inside faces are culled), like a lit glasshouse at dusk
+	var film := SphereMesh.new()
+	film.radius = R+0.1
+	film.height = R+0.1
+	film.is_hemisphere = true
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.albedo_color = Color(1.0,0.78,0.38,0.11)
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.cull_mode = BaseMaterial3D.CULL_BACK
+	film.material = fm
+	var fi := MeshInstance3D.new()
+	fi.mesh = film
+	fi.scale = Vector3(1.0,HS,1.0)
+	fi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(fi)
+	# a bright white base ring around the foot of the dome
+	var base := TorusMesh.new()
+	base.inner_radius = R-0.4
+	base.outer_radius = R+0.9
+	var bm := StandardMaterial3D.new()
+	bm.albedo_color = Color(0.95,0.97,1.0)
+	base.material = bm
+	var bi := MeshInstance3D.new()
+	bi.mesh = base
+	bi.scale = Vector3(1.0,0.5,1.0)
+	bi.position = Vector3(0,0.25,0)
+	root.add_child(bi)
+	# warm interior lights so the trees and presents glow through the glass
+	for p in [Vector3(-18,9,-18),Vector3(18,9,-18),Vector3(-18,9,18),Vector3(18,9,18),Vector3(0,14,0)]:
+		var l := OmniLight3D.new()
+		l.position = p
+		l.light_color = Color("ffcf8a")
+		l.light_energy = 1.1
+		l.omni_range = 34.0
+		l.shadow_enabled = false
+		root.add_child(l)
+
 func _hub_glass(node: Node) -> void:
 	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
 		var mi := node as MeshInstance3D
@@ -13669,7 +13831,7 @@ func _hub_glass(node: Node) -> void:
 			var m := mi.mesh.surface_get_material(s)
 			if m != null and m.resource_name.begins_with("DomeGlass"):
 				var g := StandardMaterial3D.new()
-				g.albedo_color = Color(0.66,0.86,0.94,0.22)
+				g.albedo_color = Color(0.55,0.82,0.95,0.13)
 				g.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 				g.cull_mode = BaseMaterial3D.CULL_DISABLED
 				g.roughness = 0.05
@@ -14926,6 +15088,28 @@ func _hub_shots() -> void:
 	for i in 15:
 		await get_tree().physics_frame
 	await _save_shot("hub-inside-eye")
+	player.position = HUB_C+Vector3(-18,0.75,12+6.0)
+	player.rotation.y = PI
+	look_pitch = 0.25
+	for i in 15:
+		await get_tree().physics_frame
+	await _save_shot("hub-challenge-corner")
+	player.position = hourly.term+Vector3(0,0.75,0.4)
+	for i in 10:
+		await get_tree().physics_frame
+	print("HOURLY NEAR ",hourly.near())
+	await _save_shot("hub-challenge-terminal")
+	print("DOME QUESTS SELFTEST ",dq.selftest())
+	player.position = dq.gift_pos(0)+Vector3(-6,0.75,0)
+	player.rotation.y = -PI/2.0
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("hub-gifts")
+	dq.open()
+	for i in 10:
+		await get_tree().physics_frame
+		await get_tree().process_frame
+	await _save_shot("hub-dome-quests")
 	_shot_stats("hub-inside-eye")
 	walk_view = 2
 	_apply_view()
@@ -19067,6 +19251,7 @@ var cm_emote_t := 3.0
 var cm_sign: Label3D
 var sun_dome   # v0.56.2: Sun Dome removed (sun_dome.gd unused); hourly challenge has no terminal until it gets a new home
 var hourly
+var dq   # v0.56.3 Dome Quests (dome_quests.gd)
 var hr_done := -1       # last UTC hour index whose challenge you solved
 var hr_total := 0
 
@@ -32382,6 +32567,7 @@ func _chapters_close() -> void:
 
 func _smoke_chapters() -> void:
 	# v0.51: chapters cover the whole map, point the guide arrow, advance on arrival and pay out.
+	assert(dq != null and dq.selftest() == "OK","v0.56.3: dome quests pay once per day")
 	assert(Vector2(SPAWN_FOOD_COURT.x-FC_BLOCK.x,SPAWN_FOOD_COURT.z-FC_BLOCK.z).length() < 15.0 and SPAWN_FOOD_COURT.z > FC_Z+4.0,"v0.51: the spawn is in front of the food court stands")
 	assert(chat_quick != null and chat_quick.get_child_count() == 4 and HUB_PHRASES.size() == CHAT_SYM_END+4,"v0.51: four quick chat chips")
 	assert(HUB_PHRASES[CHAT_SYM_END] == "SCAN AND JOIN THE GAME" and HUB_PHRASES[CHAT_SYM_END+3] == "SUBSCRIBE & LIKE","v0.51: quick chat phrases")

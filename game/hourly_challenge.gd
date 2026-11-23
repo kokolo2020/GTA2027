@@ -1,7 +1,7 @@
 extends Node
 # v0.56.1: the Hourly Challenge. A new hard puzzle every hour (same for everyone, from the UTC hour):
 # GRID 5x5 (lights out), SLIDE 15 and CODE BREAKER. First solve each hour pays; beating the par pays double.
-# The terminal is in the Sun Dome (sun_dome.gd builds it and holds the 3D sign).
+# The terminal is the Challenge Corner in the Harbor Dome (build_terminal).
 const PAY := 900
 const XP := 150
 const KINDS := ["NEON GRID 5x5","SLIDE 15","CODE BREAKER"]
@@ -27,6 +27,45 @@ var announced := -1
 var test_hour := -1
 var solution: Array = []
 var dry := false
+var term := Vector3.INF      # where you stand to play (set by build_terminal)
+var core := Vector3.ZERO
+var sign3d: Label3D
+
+func build_terminal(at: Vector3) -> void:
+	# v0.56.3: the Challenge Corner in the Harbor Dome: a glowing hologram pillar, a terminal and a ring of seats.
+	core = at
+	term = at+Vector3(0,0,-3.6)
+	var root := Node3D.new()
+	root.name = "ChallengeCorner"
+	g.add_child(root)
+	g._fc_part(root,g._fc_cone(3.0,3.4,0.6),at+Vector3(0,0.3,0),g._fc_pearl(),Vector3.ONE)
+	g._fc_part(root,g._fc_torus(3.2,3.5),at+Vector3(0,0.65,0),g._fc_glow(Color("ff5fd2")),Vector3.ONE)
+	g._fc_part(root,g._fc_cone(1.0,1.3,6.0),at+Vector3(0,3.4,0),g._fc_ghost(Color("4fe3ff")),Vector3.ONE)
+	g._fc_part(root,g._fc_cone(0.18,0.18,9.0),at+Vector3(0,4.5,0),g._fc_glow(Color("fff0b0")),Vector3.ONE)
+	var rot := Node3D.new()
+	rot.position = at+Vector3(0,8.0,0)
+	root.add_child(rot)
+	var r1: MeshInstance3D = g._fc_part(rot,g._fc_torus(1.8,1.95),Vector3.ZERO,g._fc_glow(Color("4fe3ff")),Vector3.ONE)
+	r1.rotation.x = PI/2.0
+	var r2: MeshInstance3D = g._fc_part(rot,g._fc_torus(2.4,2.55),Vector3.ZERO,g._fc_glow(Color("ff5fd2")),Vector3.ONE)
+	r2.rotation.z = PI/2.0
+	var tw: Tween = g.create_tween()
+	tw.set_loops()
+	tw.tween_property(rot,"rotation:y",TAU,14.0).from(0.0)
+	g._fc_part(root,g._fc_cone(0.3,0.42,1.0),term+Vector3(0,0.5,0.55),g._fc_pearl(),Vector3.ONE)
+	var scr: MeshInstance3D = g._fc_part(root,BoxMesh.new(),term+Vector3(0,1.15,0.6),g._fc_glow(Color("7dffea")),Vector3(1.0,0.6,0.05))
+	scr.rotation.x = 0.6
+	g._collider(root,at+Vector3(0,0.9,0),Vector3(3.8,1.8,3.8))
+	sign3d = g._sign("HOURLY CHALLENGE",at+Vector3(0,12.2,0),Color("7dffea"),56)
+	sign3d.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	sign3d.outline_size = 12
+	for k in 6:
+		var a := PI/6.0+TAU*float(k)/6.0
+		if absf(sin(a)+1.0) < 0.2:
+			continue
+		g._cm_bench(root,at+Vector3(cos(a)*8.6,0,sin(a)*8.6),atan2(cos(a),sin(a)))
+	var ring: MeshInstance3D = g._fc_part(root,g._fc_torus(10.2,10.5),at+Vector3(0,0.15,0),g._fc_glow(Color("ff5fd2")),Vector3(1,0.3,1))
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 func _init(g_main) -> void:
 	g = g_main
@@ -38,9 +77,9 @@ func secs_left() -> int:
 	return 3600-(int(Time.get_unix_time_from_system()) % 3600)
 
 func near() -> bool:
-	if g.driving or g.player == null or g.paused or g.sun_dome == null:
+	if g.driving or g.player == null or g.paused or term == Vector3.INF:
 		return false
-	var t: Vector3 = g.sun_dome.term
+	var t: Vector3 = term
 	return Vector2(g.player.position.x-t.x,g.player.position.z-t.z).length() < 3.4
 
 func button_text() -> String:
@@ -221,8 +260,8 @@ func win() -> void:
 	g._feed_add("Hourly challenge solved: +$%d" % pay,"")
 	if not ("--smoke-test" in OS.get_cmdline_user_args()):
 		g._play_coin()
-		if g.sun_dome != null:
-			g._quick_fx(g.sun_dome.core+Vector3(0,1,0))
+		if term != Vector3.INF:
+			g._quick_fx(core+Vector3(0,1,0))
 	refresh_sign()
 
 # ---------- panel ----------
@@ -339,16 +378,16 @@ func draw_code() -> void:
 
 # ---------- sign + announcements ----------
 func refresh_sign() -> void:
-	if g.sun_dome == null or g.sun_dome.hr_sign == null:
+	if sign3d == null:
 		return
 	var h := now_hour()
 	var nm: String = KINDS[h % 3]
 	var m := secs_left()/60
 	var s := secs_left() % 60
 	if g.hr_done == h:
-		g.sun_dome.hr_sign.text = "HOURLY CHALLENGE ✓\nnext in %d:%02d" % [m,s]
+		sign3d.text = "HOURLY CHALLENGE ✓\nnext in %d:%02d" % [m,s]
 	else:
-		g.sun_dome.hr_sign.text = "HOURLY CHALLENGE\n%s  ·  +$%d  ·  %d:%02d left" % [nm,PAY,m,s]
+		sign3d.text = "HOURLY CHALLENGE\n%s  ·  +$%d  ·  %d:%02d left" % [nm,PAY,m,s]
 
 func _process(delta: float) -> void:
 	tick_t += delta
@@ -357,10 +396,10 @@ func _process(delta: float) -> void:
 	tick_t = 0.0
 	refresh_sign()
 	var h := now_hour()
-	if h != announced and g.sun_dome != null and g.booted and not g.paused:
+	if h != announced and term != Vector3.INF and g.booted and not g.paused:
 		announced = h
 		if g.hr_done != h:
-			g._show_toast("NEW HOURLY CHALLENGE: %s  ·  +$%d  ·  in the Sun Dome" % [KINDS[h % 3],PAY])
+			g._show_toast("NEW HOURLY CHALLENGE: %s  ·  +$%d  ·  in the Harbor Dome" % [KINDS[h % 3],PAY])
 
 # developer check: every hour kind generates a puzzle that is not already solved and can be solved
 func selftest() -> String:

@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.56.9 (code 119, 2026-11-23)
+- Free chat: main.gd chat_edit LineEdit (max 150) + Send in chat_panel, _chat_send_text, _chat_clean (strips control/zero-width chars, links -> [link], CHAT_BAD words starred, cut at CHAT_MAX), _chat_wrap (26 per line), _chat_fit (panel stays on screen), _typing() guard in _input/keyboard poll. Net: position frame carries "qt" (text) for 4 s after sending; peers clean it again before showing (bubble + log). Smoke: _smoke_typed_chat. Shots: --chat-shots.
+
 ## 0.56.8 (code 118, 2026-11-23)
 - Renamed to Chit Chat City (CCC): project.godot config/name (use_custom_user_dir + custom_user_dir_name="Harbor City" keeps the desktop save folder), export package/name, main.gd player-facing strings, web_shell.html, site pages, publish-release.py release title. Package id com.koko.harborcity and APK file name unchanged on purpose. New game/icon.png (ChatGPT-made CCC icon; config/icon), site favicon, site/assets/ccc-hero.jpg banner, web_shell loading background (base64).
 

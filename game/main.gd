@@ -354,7 +354,7 @@ func _ready() -> void:
 	_refresh_checkpoints()
 	road_barrier.build()
 	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args() or "--africa-shots" in OS.get_cmdline_user_args()
-	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--outfit-shots","--car-shots","--shop-shots"]:
+	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--outfit-shots","--car-shots","--shop-shots","--chat-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.56.8: new name and logo.")
+	_show_toast("Chit Chat City 0.56.9: type your own chat messages (150 letters).")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -418,6 +418,8 @@ func _ready() -> void:
 		await _car_shots()
 	elif "--shop-shots" in OS.get_cmdline_user_args():
 		await _shop_shots()
+	elif "--chat-shots" in OS.get_cmdline_user_args():
+		await _chat_shots()
 	elif "--nick-shots" in OS.get_cmdline_user_args():
 		await _nick_shots()
 	elif "--civic-shots" in OS.get_cmdline_user_args():
@@ -2094,7 +2096,7 @@ func _online_pos_frame() -> Dictionary:
 		"i":online_id,"n":online_name,
 		"x":snappedf(body.position.x,0.01),"y":snappedf(body.position.y,0.01),"z":snappedf(body.position.z,0.01),
 		"r":snappedf(body.rotation.y,0.01),"c":car_id,"d":1 if driving else 0,"t":online_role,"l":_level(),
-		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"qc":1 if my_bubble_crew else 0,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on],"lk":_look_pack(look),"st":1 if streamer_on else 0,"wr":world_bio.rank_index() if world_bio != null else 0,"we":bool(world_bio.state.world) if world_bio != null else false}
+		"s":seat_id,"q":my_bubble,"qn":my_bubble_n,"qt":(my_text if clock-my_text_t < 4.0 else ""),"qc":1 if my_bubble_crew else 0,"e":my_emote,"en":my_emote_n,"rc":1 if race_car else 0,"cr":crew_name,"cc":crew_color,"k":kindness,"at":_my_ach_tier(),"ac":ach_got.size(),"av":[av_shirt,av_pants,av_hat,gear_on | 128,pet_on],"lk":_look_pack(look),"st":1 if streamer_on else 0,"wr":world_bio.rank_index() if world_bio != null else 0,"we":bool(world_bio.state.world) if world_bio != null else false}
 	return {"topic":ONLINE_TOPIC,"event":"broadcast","payload":{"type":"broadcast","event":"pos","payload":payload},"ref":str(_online_next_ref()),"join_ref":"1"}
 
 func _online_tick(delta: float) -> void:
@@ -2242,11 +2244,15 @@ func _online_peer_update(p: Dictionary) -> void:
 		var mate := crew_name != "" and String(p.get("cr","")) == crew_name
 		var me: Node3D = car if driving else player
 		var near := me != null and Vector2(float(p.get("x",0.0))-me.position.x,float(p.get("z",0.0))-me.position.z).length() <= CHAT_NEAR
+		var said: String = HUB_PHRASES[q]
+		var typed_msg := _chat_clean(String(p.get("qt","")))
+		if typed_msg != "":
+			said = typed_msg
 		if (near and not crew_msg) or (crew_msg and mate):
 			if near:
-				_bubble(peer["node"],HUB_PHRASES[q],3.0 if peer["driving"] else 2.6)
+				_bubble(peer["node"],said,3.0 if peer["driving"] else 2.6)
 			if int(peer.get("qn",0)) != 0 or qn == 1:
-				_chat_log_add(String(peer["name"]),HUB_PHRASES[q],crew_msg)
+				_chat_log_add(String(peer["name"]),said,crew_msg)
 	peer["qn"] = qn
 	var en := int(p.get("en",0))
 	var e := int(p.get("e",-1))
@@ -7669,6 +7675,11 @@ func _input(event: InputEvent) -> void:
 	if shot_on:
 		_shot_input(event)
 		return
+	if _typing():
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			chat_edit.release_focus()
+			get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F12:
 			_capture_preview()
@@ -7759,7 +7770,7 @@ func _physics_process(delta: float) -> void:
 	_fm_tick(delta)
 	_update_peds(delta)
 	road_barrier.tick(delta)
-	var keyboard := Vector2(
+	var keyboard := Vector2.ZERO if _typing() else Vector2(
 		float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT))-float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)),
 		float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))-float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
 	var control := keyboard.limit_length() if keyboard.length() > 0 else stick
@@ -9225,6 +9236,7 @@ func _smoke_test() -> void:
 	_smoke_chase_extras()
 	_smoke_models()
 	_smoke_boutique()
+	_smoke_typed_chat()
 	legacy_rules = false
 	_update_gate()
 	quick_on = saved_quick[0]
@@ -10144,6 +10156,25 @@ func _smoke_radio_peds() -> void:
 	assert(radio_station == 2,"Radio station did not persist")
 	_radio_set(0)
 	assert(not radio_player.playing and not radio_caption.visible,"Radio did not switch off")
+
+func _smoke_typed_chat() -> void:
+	# v0.56.9: free typing is clean, short and wrapped; it goes out in the position frame for a few seconds.
+	var c := _chat_clean("  hi \u200b there, FUCK this www.spam.com and https://x.io/a  ")
+	assert(c.find("FUCK") < 0 and c.find("www") < 0 and c.find("https") < 0 and c.find("\u200b") < 0,"Chat filter failed: "+c)
+	assert(_chat_clean("a".repeat(400)).length() == CHAT_MAX,"Chat text is cut at 150")
+	for ln in _chat_wrap("word ".repeat(40)+"x".repeat(60),26).split("\n"):
+		assert(String(ln).length() <= 26,"Chat bubble lines wrap at 26")
+	var n := my_bubble_n
+	var keep_t := my_text
+	chat_last_say = -10.0
+	chat_edit.text = "see you at the tree, 7 pm!"
+	_chat_send_text()
+	assert(my_bubble_n == n+1 and my_text == "see you at the tree, 7 pm!" and chat_edit.text == "","Typed chat is sent")
+	assert(String(_online_pos_frame()["payload"]["payload"]["qt"]) == my_text,"Typed chat rides the position frame")
+	chat_last_say = -10.0
+	_say(0)
+	assert(my_text == "" and String(_online_pos_frame()["payload"]["payload"]["qt"]) == "","Quick chat clears typed text")
+	my_text = keep_t
 
 func _smoke_boutique() -> void:
 	# v0.56.7: buy, wear, save and reload a costume; leave the save as it was.
@@ -14451,10 +14482,17 @@ func _bubble(parent: Node3D, text: String, height: float) -> void:
 	holder.position = Vector3(0,height-1.05,0)   # just above the head
 	parent.add_child(holder)
 	var sym := text.length() <= 2
-	var w := (0.42 if sym else 0.118*float(text.length())+0.32)
+	var shown := text
+	var lines := 1
+	if text.length() > 26:
+		shown = _chat_wrap(text,26)
+		lines = shown.count("\n")+1
+	var extra := 0.26*float(lines-1)
+	holder.position.y += extra*0.5
+	var w := (0.42 if sym else 0.118*float(mini(text.length(),26))+0.32)
 	var quad := MeshInstance3D.new()
 	var qm := QuadMesh.new()
-	qm.size = Vector2(w,0.36 if not sym else 0.42)
+	qm.size = Vector2(w,(0.36 if not sym else 0.42)+extra)
 	quad.mesh = qm
 	if bubble_mat == null:
 		bubble_mat = StandardMaterial3D.new()
@@ -14473,12 +14511,12 @@ func _bubble(parent: Node3D, text: String, height: float) -> void:
 	tm.size = Vector3(0.14,0.12,0.01)
 	tail.mesh = tm
 	tail.rotation.z = PI
-	tail.position = Vector3(0,-0.23 if not sym else -0.26,0)
+	tail.position = Vector3(0,(-0.23 if not sym else -0.26)-extra*0.5,0)
 	tail.material_override = bubble_tail_mat
 	tail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	holder.add_child(tail)
 	var lab := Label3D.new()
-	lab.text = text
+	lab.text = shown
 	lab.font_size = 40 if not sym else 56
 	lab.pixel_size = 0.0055
 	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -14488,7 +14526,7 @@ func _bubble(parent: Node3D, text: String, height: float) -> void:
 	lab.render_priority = 2
 	holder.add_child(lab)
 	_ui3d(holder)
-	hub_bubbles.append({"label":holder,"until":clock+6.0})
+	hub_bubbles.append({"label":holder,"until":clock+6.0+minf(6.0,float(text.length())*0.05)})
 
 func _emote(person: Dictionary, kind: int) -> void:
 	if person.is_empty():
@@ -15193,6 +15231,11 @@ func _play_rimshot() -> void:
 # ---------- quick chat and emotes ----------
 var my_bubble_crew := false
 var chat_to_crew := false
+const CHAT_MAX := 150          # v0.56.9: free typing, up to 150 characters
+const CHAT_BAD := ["fuck","shit","bitch","asshole","cunt","dick","pussy","nigger","nigga","faggot","slut","whore","bastard","porn","rape"]
+var chat_edit: LineEdit
+var my_text := ""
+var my_text_t := -10.0
 var chat_last_say := -10.0
 var chat_pill: Button
 var chat_quick: GridContainer
@@ -15229,6 +15272,23 @@ func _build_chat(root: Control) -> void:
 	col.add_theme_constant_override("separation",8)
 	chat_panel.add_child(col)
 	col.add_child(_label("Say to players near you (40 m)",18,Color("9fd8e6")))
+	var typed := HBoxContainer.new()
+	typed.add_theme_constant_override("separation",8)
+	col.add_child(typed)
+	chat_edit = LineEdit.new()
+	chat_edit.placeholder_text = "Type a message (%d letters max)" % CHAT_MAX
+	chat_edit.max_length = CHAT_MAX
+	chat_edit.custom_minimum_size = Vector2(620,52)
+	chat_edit.add_theme_font_size_override("font_size",20)
+	chat_edit.virtual_keyboard_enabled = true
+	chat_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
+	chat_edit.context_menu_enabled = false
+	chat_edit.text_submitted.connect(func(_t): _chat_send_text())
+	typed.add_child(chat_edit)
+	var send_b := _button("Send",_chat_send_text)
+	send_b.custom_minimum_size = Vector2(150,52)
+	send_b.add_theme_stylebox_override("normal",_panel(Color("2f7a4a"),18))
+	typed.add_child(send_b)
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation",8)
@@ -15274,7 +15334,7 @@ func _build_chat(root: Control) -> void:
 	close.custom_minimum_size = Vector2(150,50)
 	bottom.add_child(close)
 	chat_panel.reset_size()
-	chat_panel.position = Vector2((root.size.x-chat_panel.size.x)/2.0,120)
+	chat_panel.position = Vector2((root.size.x-chat_panel.size.x)/2.0,clampf(root.size.y-chat_panel.size.y-8.0,8.0,120.0))
 	chat_panel.hide()
 	# The nearby chat log: the area you're in, how many players are near, and the last few lines.
 	chat_log_panel = PanelContainer.new()
@@ -15383,6 +15443,8 @@ func _chat_tick(delta: float) -> void:
 			lab = kids[i] as Label
 		else:
 			lab = _label("",17,Color.WHITE)
+			lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			lab.custom_minimum_size.x = 360
 			lab.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			chat_log_box.add_child(lab)
 		var l: Dictionary = recent[i]
@@ -15404,10 +15466,82 @@ func _toggle_chat() -> void:
 	chat_panel.visible = not chat_panel.visible
 	if chat_panel.visible:
 		chat_panel.move_to_front()
+		_chat_fit()
 	if lfp_button != null:
 		var ok := _at_pvp_table()
 		lfp_button.disabled = not ok
 		lfp_button.text = "Looking for players!" if ok else "Invite: sit at a\nPvP table first"
+
+func _chat_fit() -> void:
+	# The chat box (with the typing line) sits as high as it needs to so every button stays on screen.
+	chat_panel.reset_size()
+	var vv := get_viewport().get_visible_rect().size
+	chat_panel.position.y = clampf(vv.y-chat_panel.size.y-8.0,8.0,150.0)
+
+func _chat_clean(raw: String) -> String:
+	# Free text from anyone: no control characters, links or bad words, at most CHAT_MAX letters.
+	var t := ""
+	for i in mini(raw.length(),CHAT_MAX*2):
+		var c := raw.unicode_at(i)
+		if c >= 32 and c != 127 and not (c >= 0x200B and c <= 0x200F) and not (c >= 0x202A and c <= 0x202E):
+			t += raw.substr(i,1)
+	t = t.strip_edges()
+	var re := RegEx.new()
+	re.compile("(?i)(https?://\\S+|www\\.\\S+|\\S+\\.(com|net|org|io|gg|me|ly)\\b\\S*)")
+	t = re.sub(t,"[link]",true)
+	for w in CHAT_BAD:
+		var rw := RegEx.new()
+		rw.compile("(?i)"+String(w))
+		t = rw.sub(t,"*".repeat(String(w).length()),true)
+	return t.substr(0,CHAT_MAX)
+
+func _chat_wrap(text: String, width: int) -> String:
+	var out: Array = []
+	var line := ""
+	for word in text.split(" ",false):
+		var wd := String(word)
+		while wd.length() > width:
+			if line != "":
+				out.append(line)
+				line = ""
+			out.append(wd.substr(0,width))
+			wd = wd.substr(width)
+		if line == "":
+			line = wd
+		elif line.length()+1+wd.length() <= width:
+			line += " "+wd
+		else:
+			out.append(line)
+			line = wd
+	if line != "":
+		out.append(line)
+	return "\n".join(out)
+
+func _chat_send_text() -> void:
+	if chat_edit == null:
+		return
+	var t := _chat_clean(chat_edit.text)
+	if t == "":
+		return
+	if clock-chat_last_say < 2.0:
+		_show_toast("Slow down a little!")
+		return
+	chat_last_say = clock
+	chat_edit.text = ""
+	chat_edit.release_focus()
+	chat_panel.hide()
+	my_text = t
+	my_text_t = clock
+	my_bubble = 0
+	my_bubble_n += 1
+	my_bubble_crew = chat_to_crew and crew_name != ""
+	_bubble(player if not driving else car,t,2.6 if not driving else 3.2)
+	_chat_log_add("You",t,my_bubble_crew)
+	if online_on and online_state >= 2 and online_ws != null:
+		_online_send(_online_pos_frame())
+
+func _typing() -> bool:
+	return chat_edit != null and chat_edit.has_focus()
 
 func _say(k: int) -> void:
 	if clock-chat_last_say < 1.2:
@@ -15415,6 +15549,8 @@ func _say(k: int) -> void:
 		return
 	chat_last_say = clock
 	chat_panel.hide()
+	my_text = ""
+	my_text_t = -10.0
 	my_bubble = k
 	my_bubble_n += 1
 	my_bubble_crew = chat_to_crew and crew_name != ""
@@ -15605,6 +15741,31 @@ func _smoke_hub() -> void:
 	walk_view = was[5]
 	view_mode = was[4]
 	_apply_view()
+
+func _chat_shots() -> void:
+	# Developer-only: a long typed message in a bubble, the chat log and the typing box. Never goes online.
+	player.position = HUB_C+Vector3(-4,0.75,12)
+	chat_preview = true
+	for i in 30:
+		await get_tree().physics_frame
+	var msg := _chat_clean("Hi everyone! I am new here. Anyone want to play Connect Four at the big tree? I can also show you the VIP lounge and the new costume shop!")
+	_bubble(player,msg,2.6)
+	_chat_log_add("Mia","Welcome! Costumes are in the pavilion near the tree.",false)
+	_chat_log_add("You",msg,false)
+	paused = false
+	camera.position = player.global_position+Vector3(0,1.9,4.2)
+	camera.look_at(player.global_position+Vector3(0,1.6,0))
+	for i in 12:
+		await get_tree().physics_frame
+	await _save_shot("chat-bubble")
+	chat_panel.show()
+	chat_panel.move_to_front()
+	_chat_fit()
+	chat_edit.text = "see you at the tree, 7 pm!"
+	for i in 6:
+		await get_tree().physics_frame
+	await _save_shot("chat-panel")
+	get_tree().quit()
 
 func _shop_shots() -> void:
 	# Developer-only: the Christmas Costume Boutique from outside, then the shop panel with a costume tried and bought. Never saves.
@@ -16231,7 +16392,7 @@ func _relayout_hud() -> void:
 	if travel_button != null:
 		travel_button.position = Vector2(view.x-194,480)
 	if chat_panel != null:
-		chat_panel.position = Vector2(view.x-chat_panel.size.x-212,150)
+		chat_panel.position = Vector2(view.x-chat_panel.size.x-212,clampf(view.y-chat_panel.size.y-8.0,8.0,150.0))
 	if feed_box != null:
 		feed_box.position = Vector2(view.x/2.0-330.0,view.y-250.0)
 	if hud_arrow != null:

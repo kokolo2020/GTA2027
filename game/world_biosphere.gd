@@ -390,6 +390,7 @@ func build() -> void:
  text(root,"WORLD BIOSPHERE · LEVEL 7",ENTRY+Vector3(0,4,0),Color("d5fff0"),54,90)
  build_open_paths()
  build_dome_loop()
+ build_corner_rails()
  outside_signposts()
  build_visitors()
  build_garden_edges()
@@ -2058,6 +2059,19 @@ func screenshots() -> void:
  g.camera.global_position = C+Vector3(5,270,310)
  g.camera.look_at(C)
  await g._save_shot("open-campus")
+ # v0.58: the entry walk (hedges, park lamps, rails) and a closed loop corner.
+ g.camera.far = 400
+ g.camera.global_position = C+Vector3(0,2.6,150)
+ g.camera.look_at(C+Vector3(0,2.0,60))
+ await g._save_shot("entry-walk")
+ g.camera.global_position = C+Vector3(1.5,1.9,112)
+ g.camera.look_at(C+Vector3(7.5,0.9,104))
+ await g._save_shot("entry-hedge-close")
+ var co = (dome_c(2)-C).normalized()
+ var cr = Vector3(co.z,0,-co.x)
+ g.camera.global_position = C+co*(RING_R-14.0)+cr*0.5+Vector3(0,3.2,0)
+ g.camera.look_at(C+co*(RING_R+2.0)+cr*4.0+Vector3(0,0.8,0))
+ await g._save_shot("loop-corner")
  print("WORLD_BIOSPHERE_SHOTS_OK")
 
 func backdrop(i: int,parent: Node3D) -> void:
@@ -2310,6 +2324,54 @@ func route_clear(i: int,p: Vector3) -> bool:
    return false
  return true
 
+func park_lamp(parent: Node3D,q: Vector3,h := 3.4) -> void:
+ # v0.58: a proper park lamp: weighted base, tapered dark pole, and a glowing lantern with a cap.
+ var dark = Color("3a4650")
+ var glass = Color("fff3d0")
+ if not mats.has(glass.to_html()):
+  mats[glass.to_html()] = g._fc_glow(glass)
+ shape(parent,g._bcone(0.13,0.21,0.5),q+Vector3(0,0.25,0),Vector3.ONE,dark)
+ shape(parent,g._bcone(0.09,0.14,0.12),q+Vector3(0,0.56,0),Vector3.ONE,dark)
+ shape(parent,g._bcone(0.045,0.075,h-0.6),q+Vector3(0,0.6+(h-0.6)*0.5,0),Vector3.ONE,dark)
+ shape(parent,g._bsph(0.085),q+Vector3(0,h,0),Vector3.ONE,dark)
+ shape(parent,g._bcone(0.2,0.07,0.12),q+Vector3(0,h+0.1,0),Vector3.ONE,dark)
+ shape(parent,g._bcone(0.24,0.18,0.42),q+Vector3(0,h+0.37,0),Vector3.ONE,glass)
+ shape(parent,g._bcone(0.05,0.3,0.2),q+Vector3(0,h+0.68,0),Vector3.ONE,dark)
+ shape(parent,g._bsph(0.05),q+Vector3(0,h+0.82,0),Vector3.ONE,dark)
+
+func rail(a: Vector3,b: Vector3) -> void:
+ collision_wall(root,a,b,1.2)
+ beam(root,a+Vector3(0,1.0,0),b+Vector3(0,1.0,0),0.08,Color("a7ddc3"))
+
+func build_corner_rails() -> void:
+ # v0.58: close every corner. Where a hub spoke / dome door walk crosses the loop, the straight rails
+ # stopped 2.5 m short of the loop rails, so players could step out onto the lawns at all four corners
+ # of every crossing. A short diagonal rail now joins each pair. The entry walk from the city gets
+ # rails and corners too, so the paths are closed all the way round.
+ var seg = TAU/7.0/12.0
+ var low = Vector3(0,-0.05,0)
+ for i in 7:
+  var a0 = -PI/2.0+float(i)*TAU/7.0
+  var out = Vector3(cos(a0),0,sin(a0))
+  var perp = Vector3(out.z,0,-out.x)
+  for sg in [-1.0,1.0]:
+   # side*sg (walk rail) pairs with the loop rail that ends at angle a0-seg*sg
+   var ang = a0-seg*sg
+   var ring_dir = Vector3(cos(ang),0,sin(ang))
+   rail(C+out*(RING_R-3.5)+perp*2.8*sg+low,C+ring_dir*(RING_R-2.8)+low)
+   rail(C+out*(RING_R+3.5)+perp*2.8*sg+low,C+ring_dir*(RING_R+2.8)+low)
+ # Entry walk (7 m wide, runs south from the hub door): rails on both sides and corners at the loop.
+ # The loop rails stop two segments short on each side of it.
+ var south = Vector3(0,0,1)
+ for sg in [-1.0,1.0]:
+  var x = Vector3(3.6*sg,0,0)
+  var ang2 = PI/2.0-seg*sg
+  var rd = Vector3(cos(ang2),0,sin(ang2))
+  rail(C+south*19.6+x+low,C+south*(RING_R-3.5)+x+low)
+  rail(C+south*(RING_R-3.5)+x+low,C+rd*(RING_R-2.8)+low)
+  rail(C+south*(RING_R+3.5)+x+low,C+rd*(RING_R+2.8)+low)
+  rail(C+south*(RING_R+3.5)+x+low,C+south*172.0+x+low)
+
 func build_dome_loop() -> void:
  # v0.55.3: open, roofless ground path joining each dome's door area to its neighbours so visitors
  # can go dome to dome without returning to the hub. Visual surface only (the ground already collides);
@@ -2330,8 +2392,7 @@ func build_dome_loop() -> void:
     var out = ((p0+p1)*0.5-C).normalized()
     for sg in [-1,1]:
      var q = (p0+p1)*0.5+out*(2.9*sg)
-     shape(root,g._bcone(0.06,0.09,3.2),q+Vector3(0,1.6,0),Vector3.ONE,Color("c8d4da"))
-     shape(root,g._bsph(0.26),q+Vector3(0,3.3,0),Vector3.ONE,Color("bff6ff"))
+     park_lamp(root,q,3.1)
   # v0.55.5: solid rails along both edges of the loop stop cars and hoverboards cutting across the lawns.
  # They leave an opening at every dome axis, where the hub spoke and the dome door line up.
   for k in range(1,steps-1):
@@ -3761,15 +3822,19 @@ func build_garden_edges() -> void:
    var base = a+along*(float(k)*2.2)
    for sg in [-1,1]:
     var q = base+side*(4.3*sg)
-    shape(root,g._blow(0.55),q+Vector3(0,0.3,0),Vector3(1,0.85,1),[Color("3f9450"),Color("2f7d45")][k%2])
-    shape(root,g._bsph(0.2),q+Vector3(rng.randf_range(-0.3,0.3),0.8,rng.randf_range(-0.3,0.3)),Vector3.ONE,flowers[(k+(1 if sg>0 else 0))%5])
+    # v0.58: leafy hedges that match the trees (leaf cards and blossoms) instead of plain green balls.
+    var hedge_name = "nature_hedge" if (k+(1 if sg>0 else 0))%2==0 else "nature_hedge2"
+    if foliage_mesh(hedge_name)!=null:
+     nature(root,hedge_name,q+Vector3(rng.randf_range(-0.12,0.12),0.0,rng.randf_range(-0.12,0.12)),rng.randf_range(1.15,1.4),rng.randf()*TAU)
+    else:
+     shape(root,g._blow(0.55),q+Vector3(0,0.3,0),Vector3(1,0.85,1),[Color("3f9450"),Color("2f7d45")][k%2])
+     shape(root,g._bsph(0.2),q+Vector3(rng.randf_range(-0.3,0.3),0.8,rng.randf_range(-0.3,0.3)),Vector3.ONE,flowers[(k+(1 if sg>0 else 0))%5])
   var lamps = int(length/14.0)
   for k in lamps+1:
    var base = a+along*(float(k)*14.0+3.0)
    for sg in [-1,1]:
     var q = base+side*(5.4*sg)
-    shape(root,g._bcone(0.06,0.09,3.6),q+Vector3(0,1.8,0),Vector3.ONE,Color("c8d4da"))
-    shape(root,g._bsph(0.28),q+Vector3(0,3.7,0),Vector3.ONE,Color("bff6ff"))
+    park_lamp(root,q,3.4)
   # A few leafy oaks set back from the path.
   var trees = int(length/16.0)
   for k in trees:

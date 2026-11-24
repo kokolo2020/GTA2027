@@ -33,6 +33,8 @@ var getoff_set := false
 var strolled := false
 var finished := false
 var dbg_t := 0.0
+var travel_t := 0.0           # time since the player last travelled somewhere new
+const TRAVEL_EVERY := 300.0  # v0.58: move on at least every 5 minutes so a stuck spot never lasts
 
 func _init(g_main) -> void:
 	g = g_main
@@ -114,6 +116,7 @@ func _physics_process(delta: float) -> void:
 			dbg_t = 0.0
 			print("AUTOPLAY waiting: booted=%s paused=%s crate=%s" % [g.booted,g.paused,g.crate_open])
 		return
+	clear_screen()
 	total += delta
 	state_t += delta
 	if total >= duration:
@@ -128,6 +131,10 @@ func _physics_process(delta: float) -> void:
 		g.driving = false
 		goto("to_dome")
 		start_dome_route()
+		return
+	travel_t += delta
+	if travel_t > TRAVEL_EVERY*scale_t and state in ["to_dome","dome_quests","dome_stroll","leave_dome","city"]:
+		force_travel()
 		return
 	match state:
 		"boot":
@@ -151,7 +158,39 @@ func _physics_process(delta: float) -> void:
 		"city":
 			city_tick(delta)
 
+func clear_screen() -> void:
+	# v0.58: Stream Mode shows a clean picture like Photo mode: no buttons, panels, toasts, name tags or arrows.
+	# (Set AUTOPLAY_UI=1 to keep the normal screen.)
+	if OS.get_environment("AUTOPLAY_UI") != "":
+		return
+	for c in g.get_children():
+		if (c is CanvasLayer or c is Control) and c.visible:
+			c.visible = false
+	var mask: int = g.camera.cull_mask
+	var ui_layer: int = g.UI3D_LAYER
+	if mask & ui_layer != 0:
+		g.camera.cull_mask = mask & ~ui_layer
+
+func force_travel() -> void:
+	# Five minutes in one place: take the sky train somewhere new (from the nearest station in the city,
+	# from the biosphere station when inside a dome).
+	print("AUTOPLAY travel timer: moving on from ",state)
+	travel_t = 0.0
+	var st := 5
+	if state == "city":
+		var best := 1e9
+		for i in g.sky_st_info.size():
+			var d: float = g.player.position.distance_to(g.sky_st_info[i]["entrance"])
+			if d < best:
+				best = d
+				st = i
+	else:
+		dome = (dome+1) % 7
+	goto("to_station")
+	prepare_station(st)
+
 func start_dome_route() -> void:
+	travel_t = 0.0
 	var c: Vector3 = wb.C
 	var entry: Vector3 = wb.ENTRY
 	g.player.position = entry+Vector3(0,0.8,0)
@@ -288,16 +327,86 @@ func arrive_city() -> void:
 	if near == 9 or near == 8 or near == 7:
 		wander_centre = g.sky_st_info[near]["entrance"]
 	cycles += 1
+	travel_t = 0.0
 	pick_wander()
 	goto("city")
 
+func road_edge_dist(p: Vector3) -> float:
+	# Distance from p to the nearest road edge (0 on the road), so "sidewalk" = just off a road.
+	var best := 1e9
+	for r in g.road_rects:
+		var d: Vector2 = Vector2(p.x,p.z)-(r[0] as Vector2)
+		if float(r[2]) != 0.0:
+			d = d.rotated(float(r[2]))
+		var h: Vector2 = r[1]
+		var dx := maxf(absf(d.x)-h.x,0.0)
+		var dy := maxf(absf(d.y)-h.y,0.0)
+		best = minf(best,sqrt(dx*dx+dy*dy))
+	return best
+
+func sidewalk_ok(p: Vector3) -> bool:
+	# Walkable pavement: not on the road, nothing solid there, and close to a road (within a sidewalk's width).
+	if g._on_road(p):
+		return false
+	if g._blocked_at(p+Vector3(0,1.0,0),0.6):
+		return false
+	return road_edge_dist(p) < 7.5
+
+func path_clear(from: Vector3, to: Vector3) -> bool:
+	# A straight walk with nothing solid in the way (buildings, fences, glass barriers) that stays on the
+	# pavement. It may cross one road (at most 14 m of asphalt in a row), never walk along it.
+	var space = g.get_world_3d().direct_space_state
+	var ex: Array[RID] = []
+	ex.append(g.player.get_rid())
+	for hgt in [-0.3,0.6]:
+		var q := PhysicsRayQueryParameters3D.create(from+Vector3(0,hgt,0),to+Vector3(0,hgt,0))
+		q.exclude = ex
+		if not space.intersect_ray(q).is_empty():
+			return false
+	var n := int(from.distance_to(to)/1.6)+1
+	var step := from.distance_to(to)/float(n)
+	var run := 0.0
+	for i in range(1,n+1):
+		var q2 := from.lerp(to,float(i)/float(n))
+		if g._blocked_at(q2+Vector3(0,1.0,0),0.6):
+			return false
+		if g._on_road(q2):
+			run += step
+			if run > 14.0:
+				return false
+		else:
+			run = 0.0
+			if road_edge_dist(q2) > 9.0:
+				return false
+	return true
+
 func pick_wander() -> void:
-	var a := rng.randf()*TAU
-	var r := rng.randf_range(8.0,32.0)
-	wander_target = wander_centre+Vector3(cos(a),0,sin(a))*r
+	# Auto run keeps to the sidewalks: only choose targets on pavement with a clear walk there (no buildings).
+	var from: Vector3 = g.player.position
+	if g._on_road(from):
+		# standing on the road: step onto the nearest pavement first
+		wander_target = g._ped_curb(from)
+		return
+	for k in 48:
+		var a := rng.randf()*TAU
+		var r := rng.randf_range(8.0,32.0)
+		var c := wander_centre+Vector3(cos(a),0,sin(a))*r
+		c.y = from.y
+		if sidewalk_ok(c) and path_clear(from,c):
+			wander_target = c
+			return
+	# Nothing clear around the plaza: stay near the player's own pavement instead.
+	for k in 48:
+		var a2 := rng.randf()*TAU
+		var c2 := from+Vector3(cos(a2),0,sin(a2))*rng.randf_range(5.0,14.0)
+		c2.y = from.y
+		if sidewalk_ok(c2) and path_clear(from,c2):
+			wander_target = c2
+			return
+	wander_target = g._ped_curb(from)
 
 func city_tick(delta: float) -> void:
-	var budget := 330.0*scale_t
+	var budget := 300.0*scale_t
 	if state_t > budget:
 		if rides_left <= 0:
 			rides_left = 3

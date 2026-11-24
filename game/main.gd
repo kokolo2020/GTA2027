@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.57.1: redesigned Roastery café, sit-down lounge facing the tree, closed dome gaps.")
+	_show_toast("Chit Chat City 0.58.0: rain showers, sky train voice, a more natural look, and you can type in chat on phones.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -1067,11 +1067,14 @@ func _build_world() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("c9dcef")
 	env.ambient_light_energy = 0.55
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-	env.tonemap_exposure = 0.94
+	# v0.58 photo look: a film-style tone curve (bright areas roll off softly instead of clipping),
+	# natural colour and a little contrast; the sun does the work, not the grading.
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 1.06
+	env.tonemap_white = 1.6
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.16
-	env.adjustment_contrast = 1.1
+	env.adjustment_saturation = 1.04
+	env.adjustment_contrast = 1.06
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_DEPTH
 	env.fog_light_color = HAZE
@@ -1088,7 +1091,7 @@ func _build_world() -> void:
 	sun.light_energy = 1.05
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.6
-	sun.shadow_opacity = 0.82
+	sun.shadow_opacity = 0.9
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_max_distance = 110.0
 	add_child(sun)
@@ -4853,6 +4856,8 @@ func _build_hud() -> void:
 	add_child(cafe)
 	cafe.build_cafe(HUB_C+Vector3(-8,0,33),HUB_C)
 	cafe.build_panel(root)
+	weather = preload("res://weather.gd").new(self)
+	add_child(weather)
 	dq = preload("res://dome_quests.gd").new(self)
 	add_child(dq)
 	dq.build(root)
@@ -4903,6 +4908,7 @@ func _build_hud() -> void:
 	mode_button = _button("Switch activity",_toggle_activity)
 	nick_button = _button("Nickname: (not set)",_open_nick)
 	time_button = _button("Time: Always day",_cycle_day_mode)
+	weather_button = _button("Weather: On",_toggle_weather)
 	menu_view_button = _button("View",_menu_stay.bind(_cycle_view))
 	menu_radio_button = _button("Radio",_menu_stay.bind(_radio_next))
 	menu_online_button = _button("Online",_menu_stay.bind(_online_toggle))
@@ -4913,7 +4919,7 @@ func _build_hud() -> void:
 		["PLAY",Color("c9612f"),[["World Biosphere Passport",_menu_go.bind(_world_bio_passport)],["Chapters",_open_chapters],["Careers",_open_careers],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
 		["ME",Color("8a5ad0"),[["My Home",_open_homes],["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
 		["FRIENDS",Color("2fa37a"),[["Chat",_menu_go.bind(_toggle_chat)],["Players & friends",_open_social],[menu_online_button]]],
-		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[time_button]]],
+		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[time_button],[weather_button]]],
 	]
 	var page_box := MarginContainer.new()
 	page_box.custom_minimum_size = Vector2(0,210)
@@ -7672,6 +7678,11 @@ func _draw_joystick() -> void:
 	joystick.draw_circle(Vector2(90,90)+stick*58,32,Color(0.6,0.87,0.88,0.85))
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch and event.pressed:
+		# Touch mouse-emulation is off, so text boxes never got taps: focus them (and the on-screen keyboard) here.
+		if _touch_text_focus(event.position):
+			get_viewport().set_input_as_handled()
+			return
 	if world_bio != null and world_bio.panel != null and world_bio.panel.visible and event is InputEventKey and event.pressed and (event.keycode == KEY_ESCAPE or event.keycode == KEY_BACK):
 		world_bio.close_panel()
 		get_viewport().set_input_as_handled()
@@ -7752,6 +7763,26 @@ func _input(event: InputEvent) -> void:
 		_look(event.relative)
 	if joystick:
 		joystick.queue_redraw()
+
+func _touch_text_focus(pos: Vector2) -> bool:
+	# v0.58: a finger tap on a text box starts typing there (opens the phone keyboard); a tap anywhere else stops.
+	var edits: Array = [chat_edit, nick_edit, social_crew_edit]
+	for e in edits:
+		var le: LineEdit = e
+		if le != null and is_instance_valid(le) and le.is_visible_in_tree() and le.get_global_rect().has_point(pos):
+			le.grab_focus()
+			if le.has_method("edit"):
+				le.edit()
+			le.caret_column = le.text.length()
+			return true
+	for e in edits:
+		var le2: LineEdit = e
+		if le2 != null and is_instance_valid(le2) and le2.has_focus():
+			if le2.has_method("unedit"):
+				le2.unedit()
+			le2.release_focus()
+			DisplayServer.virtual_keyboard_hide()
+	return false
 
 func _stick_zone(point: Vector2) -> bool:
 	var size := get_viewport().get_visible_rect().size
@@ -8442,6 +8473,7 @@ func _save_progress() -> void:
 	file.set_value("progress","quick_day",quick_day)
 	file.set_value("progress","quick_got",quick_got)
 	file.set_value("progress","day_mode",day_mode)
+	file.set_value("progress","weather_on",weather_on)
 	file.set_value("progress","day_default_v036",true)
 	file.set_value("progress","pz_day",pz_day)
 	file.set_value("progress","bio_seen",bio_seen)
@@ -8494,6 +8526,8 @@ func _load_progress() -> void:
 		quick_day = String(file.get_value("progress","quick_day",""))
 		quick_got = int(file.get_value("progress","quick_got",0)) & ((1 << QUICK.size())-1)
 		day_mode = clampi(int(file.get_value("progress","day_mode",1)),0,DAY_MODES.size()-1)
+		weather_on = bool(file.get_value("progress","weather_on",true))
+		_refresh_weather_button()
 		# v0.36: daytime is the default. Saves that never chose a time move from live day & night to day once.
 		if not bool(file.get_value("progress","day_default_v036",false)) and day_mode == 0:
 			day_mode = 1
@@ -9740,6 +9774,7 @@ func _smoke_test() -> void:
 	assert(run_on,"Running is on by default")
 	hud_clean = saved_clean
 	_relayout_hud()
+	await _smoke_chat_touch()
 	print("HARBOR_SMOKE_OK: Harbor International Airport, no walls and joined roads, sea tow, Harbor Loop sky train, City Tour, day and night, find me, treasure hunt, player rings, name tag, quests list, quick quests, 40 levels, all towns open, starter crate, QR join code, graphics, RUN, fast travel, roadside job stops, follow camera on foot, Call Car, Harbor Raceway (inside parking, pit lane, 1.4 km circuit, identical race cars for players and AI, GP, time attack, boosters, spikes, online race), Civic Center, nicknames, Harbor Dome hub (tables, show, chat), quest arrows, checkpoints, walk-in stadium, eye view, level-up celebration, minimap and map, camera views and in-car driving, Skyline District, traffic and signals, two-finger input, driving, chase mode, online roles, player levels, Marina Heights shops, six routes, eight collectibles, no duplicate rewards, save persistence, exit, rescue, legacy save, garage, tuning, ridge gate/ramp/sites, bay road, time trials, street events, missions, radio stations, pedestrians, Blender models")
 	get_tree().quit()
 
@@ -10191,6 +10226,27 @@ func _smoke_typed_chat() -> void:
 	_say(0)
 	assert(my_text == "" and String(_online_pos_frame()["payload"]["payload"]["qt"]) == "","Quick chat clears typed text")
 	my_text = keep_t
+
+func _smoke_chat_touch() -> void:
+	# v0.58: a finger tap on the typing line starts typing (touch never reached text boxes before).
+	var was_paused := paused
+	paused = false
+	chat_panel.show()
+	chat_panel.move_to_front()
+	_chat_fit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var tap := InputEventScreenTouch.new()
+	tap.pressed = true
+	tap.position = chat_edit.get_global_rect().get_center()
+	_input(tap)
+	assert(chat_edit.has_focus() and _typing(),"A tap on the chat line starts typing")
+	if chat_edit.has_method("is_editing"):
+		assert(chat_edit.is_editing(),"The chat line is in edit mode after a tap")
+	_touch_text_focus(Vector2(-200,-200))   # a tap away from the box (not through _input: it could press a button)
+	assert(not chat_edit.has_focus(),"A tap elsewhere stops typing")
+	chat_panel.hide()
+	paused = was_paused
 
 func _smoke_cafe() -> void:
 	assert(cafe != null and cafe.spot != Vector3.INF,"Roastery missing")
@@ -12148,6 +12204,14 @@ func _web_perf_setup() -> void:
 				get_tree().quit()))
 	web_lite = OS.has_feature("android") or OS.has_feature("web") or "--web-lite" in OS.get_cmdline_user_args()
 	if not web_lite:
+		# v0.58: soft contact shadows where things meet (computers only; phones and browsers skip it for speed).
+		if world_env_res != null:
+			world_env_res.ssao_enabled = true
+			world_env_res.ssao_radius = 1.2
+			world_env_res.ssao_intensity = 1.6
+			world_env_res.ssao_power = 1.4
+			if world_env_res.sky != null:
+				world_env_res.sky.radiance_size = Sky.RADIANCE_SIZE_128
 		return
 	if sun_light != null:
 		# One shadow split and a shorter shadow range: much cheaper, still has shadows near you.
@@ -12506,8 +12570,8 @@ func _apply_view() -> void:
 		world_env_res.fog_enabled = true
 		world_env_res.fog_mode = Environment.FOG_MODE_DEPTH
 		world_env_res.fog_light_color = haze_now
-		world_env_res.fog_depth_begin = 60.0 if close_up else (75.0 if follow_view else 120.0)
-		world_env_res.fog_depth_end = camera.far-4.0
+		world_env_res.fog_depth_begin = (60.0 if close_up else (75.0 if follow_view else 120.0))*(1.0-0.75*rain_amt)
+		world_env_res.fog_depth_end = lerpf(camera.far-4.0,minf(camera.far-4.0,170.0),rain_amt)
 		world_env_res.fog_density = 1.0
 	if cockpit != null:
 		cockpit.visible = in_car_view
@@ -13566,7 +13630,18 @@ func _build_hub() -> void:
 		if absf(angle_difference(a,PI)) < deg_to_rad(13.5):
 			continue
 		var p := HUB_C+Vector3(cos(a),0,sin(a))*(HUB_R+0.4)
-		_collider_yaw(p+Vector3(0,3,0),Vector3(TAU*(HUB_R+0.4)/float(n)+0.4,6,1.0),-a-PI/2.0)
+		# Full-height wall (it was only 6 m, so anyone high up could drift over the glass): wall to 40 m, 1.6 m thick.
+		_collider_yaw(p+Vector3(0,20,0),Vector3(TAU*(HUB_R+0.4)/float(n)+0.6,40,1.6),-a-PI/2.0)
+	# A solid lid above the dome so nobody can leave through the top.
+	var lid := StaticBody3D.new()
+	lid.position = HUB_C+Vector3(0,40.5,0)
+	var lid_shape := CollisionShape3D.new()
+	var lid_cyl := CylinderShape3D.new()
+	lid_cyl.radius = HUB_R+3.0
+	lid_cyl.height = 1.0
+	lid_shape.shape = lid_cyl
+	lid.add_child(lid_shape)
+	add_child(lid)
 	var holo := _sign("HARBOR DOME",HUB_C+Vector3(0,20,0),Color("e6d9ff"),110)
 	holo.outline_size = 14
 	_sign("COMEDY STAGE",HUB_STAGE+Vector3(0,11,0),Color("ffd86a"),60)
@@ -28470,12 +28545,35 @@ func _build_skytrain() -> void:
 			var yaw := atan2(dir.x,dir.z)
 			# v0.34.5: slim white columns with a glowing seam and neon collars, a thin saddle on top.
 			var ph := SKY_Y-0.7
-			pil.append([g+Vector3(0,ph/2.0,0),0.32,ph])
-			seams.append([g+Vector3(0,ph/2.0,0)+Vector3(-dir.z,0,dir.x)*0.31,Vector3(0.06,ph*0.86,0.06),yaw])
-			collars.append([g+Vector3(0,0.35,0),Vector3(0.95,0.08,0.95),yaw+PI/4.0])
-			collars.append([g+Vector3(0,ph-0.5,0),Vector3(0.95,0.08,0.95),yaw+PI/4.0])
-			caps.append([g+Vector3(0,ph-0.15,0),Vector3(1.9,0.3,0.8),yaw])
-			_collider(self,g+Vector3(0,2.5,0),Vector3(0.7,5.0,0.7))
+			# v0.58: no pillar in the road. Where the track runs over a road, a portal frame carries it:
+			# one leg on the pavement each side and a beam across. Off the roads it stays a single column.
+			var reach := [0.0,0.0]
+			for side in 2:
+				var sgn := -1.0 if side == 0 else 1.0
+				var d := 0.5
+				while d <= 12.0:
+					if _on_road(g+nrm*sgn*d):
+						reach[side] = d
+					d += 0.5
+			var legs: Array = []
+			if _on_road(g) or reach[0] > 0.0 or reach[1] > 0.0:
+				for side in 2:
+					var sgn2 := -1.0 if side == 0 else 1.0
+					var off: float = (float(reach[side])+1.1) if float(reach[side]) > 0.0 else 1.6
+					legs.append(g+nrm*sgn2*off)
+				var a_leg: Vector3 = legs[0]
+				var b_leg: Vector3 = legs[1]
+				caps.append([(a_leg+b_leg)*0.5+Vector3(0,ph-0.2,0),Vector3(a_leg.distance_to(b_leg)+0.9,0.5,0.9),yaw])
+			else:
+				legs.append(g)
+				caps.append([g+Vector3(0,ph-0.15,0),Vector3(1.9,0.3,0.8),yaw])
+			for lg in legs:
+				var lp: Vector3 = lg
+				pil.append([lp+Vector3(0,ph/2.0,0),0.32,ph])
+				seams.append([lp+Vector3(0,ph/2.0,0)+Vector3(-dir.z,0,dir.x)*0.31,Vector3(0.06,ph*0.86,0.06),yaw])
+				collars.append([lp+Vector3(0,0.35,0),Vector3(0.95,0.08,0.95),yaw+PI/4.0])
+				collars.append([lp+Vector3(0,ph-0.5,0),Vector3(0.95,0.08,0.95),yaw+PI/4.0])
+				_collider(self,lp+Vector3(0,2.5,0),Vector3(0.7,5.0,0.7))
 			sky_pillars.append(g)
 		s += 2.0
 	var pearl := StandardMaterial3D.new()
@@ -28708,6 +28806,7 @@ func _sky_board(k: int, at: int) -> void:
 	player.get_child(0).set_deferred("disabled",true)
 	_tour_stamp(at)
 	_show_toast("All aboard the Harbor Loop! Next stop: %s. Tap GET OFF NEXT to hop off at the next station." % SKY_STATIONS[(at+1) % SKY_STATIONS.size()]["name"])
+	_speak("Welcome aboard the Harbor Loop. Next station: %s." % SKY_STATIONS[(at+1) % SKY_STATIONS.size()]["name"])
 
 func _sky_alight(i: int) -> void:
 	sky_riding = false
@@ -28720,6 +28819,7 @@ func _sky_alight(i: int) -> void:
 	player.get_child(0).set_deferred("disabled",false)
 	safe_hist.clear()
 	_show_toast("Welcome to %s!" % SKY_STATIONS[i]["name"])
+	_speak("%s. Mind the gap." % SKY_STATIONS[i]["name"])
 	_follow_camera(1.0)
 
 func _sky_action() -> void:
@@ -28770,11 +28870,13 @@ func _sky_tick(_delta: float) -> void:
 			_tour_stamp(sky_last_at)
 			_sky_alight(sky_last_at)
 			return
+		_speak("Arriving at %s." % name)
 		var stamped := _tour_stamp(sky_last_at)
 		if not stamped:
 			_show_toast("%s  ·  tap GET OFF to hop off" % name)
 	elif not dwell and sky_was_dwell:
 		_show_toast("Next stop: %s" % SKY_STATIONS[int(st["next"])]["name"])
+		_speak("Next station: %s." % SKY_STATIONS[int(st["next"])]["name"])
 	sky_was_dwell = dwell
 
 func _sky_camera(weight: float) -> void:
@@ -28850,8 +28952,8 @@ const DAY_KEYS := [
 	[4.9,"060b1d","1b2645","0c1220","56679a",0.5,"a9bcff",0.24,"141c33",1.0,1.0],
 	[5.7,"1d2c5a","e08b6a","2a2a3a","8a7f9a",0.48,"ffb07a",0.3,"9c7f86",0.3,1.0],
 	[6.6,"3b6db8","f5c39a","5d7f7a","c0c8d8",0.52,"ffd2a0",0.8,"d9c7b5",0.0,0.3],
-	[8.0,"3d7cc9","c6e1ea","6d8f86","c9dcef",0.55,"fff1d6",1.05,"c6e1ea",0.0,0.0],
-	[16.8,"3d7cc9","c6e1ea","6d8f86","c9dcef",0.55,"fff1d6",1.05,"c6e1ea",0.0,0.0],
+	[8.0,"3d7cc9","c6e1ea","6d8f86","b3c9ea",0.44,"ffe9c6",1.32,"c6e1ea",0.0,0.0],
+	[16.8,"3d7cc9","c6e1ea","6d8f86","b3c9ea",0.44,"ffe9c6",1.32,"c6e1ea",0.0,0.0],
 	[18.0,"3a62a8","f2b27a","6d7f80","d8c0b0",0.52,"ffb066",0.85,"e8b590",0.0,0.25],
 	[18.8,"283c78","ff8a55","3a3a48","a88a98",0.48,"ff7a40",0.45,"c88070",0.15,0.9],
 	[19.6,"141d42","6a4a78","1a1d2c","6a6a9a",0.48,"9fb0ff",0.22,"3a3558",0.6,1.0],
@@ -28904,6 +29006,8 @@ void sky() {
 }
 """
 
+var rain_amt := 0.0   # v0.58: 0 dry .. 1 full rain (set by weather.gd)
+var weather
 var day_mode := 1   # v0.36: always day by default (brighter); Menu > Time cycles the others
 var day_hour_override := -1.0
 var night_amt := 0.0
@@ -28919,6 +29023,18 @@ var lamp_pool_mat: StandardMaterial3D
 var head_spot: SpotLight3D
 var clock_label: Label
 var time_button: Button
+var weather_button: Button
+var weather_on := true   # v0.58: Menu > Settings > Weather switches the rain showers off
+
+func _toggle_weather() -> void:
+	weather_on = not weather_on
+	_refresh_weather_button()
+	_save_progress()
+	_show_toast("Weather on: a rain shower now and then." if weather_on else "Weather off: always dry.")
+
+func _refresh_weather_button() -> void:
+	if weather_button != null:
+		weather_button.text = "Weather: %s" % ("On" if weather_on else "Off")
 var day_tick_t := 0.0
 var day_last_hour := -100.0
 
@@ -29088,6 +29204,15 @@ func _daynight_apply(force: bool) -> void:
 	var fog: Color = k[8]
 	var stars: float = k[9]
 	night_amt = k[10]
+	if rain_amt > 0.0:
+		# v0.58 rain: the sky greys over, the sun dims and the haze closes in.
+		var grey := Color("6c7782").lerp(Color("1a2030"),night_amt)
+		top = top.lerp(grey.darkened(0.25),rain_amt*0.85)
+		hor = hor.lerp(grey,rain_amt*0.85)
+		fog = fog.lerp(grey,rain_amt*0.8)
+		amb = amb.lerp(Color("9aa6b4").lerp(amb,night_amt),rain_amt*0.7)
+		le *= 1.0-0.55*rain_amt
+		lc = lc.lerp(Color("dfe6ee"),rain_amt*0.6)
 	# Sun goes east to west between sunrise and sunset; the moon takes over at night.
 	var day := h >= SUNRISE_H and h <= SUNSET_H
 	var f := clampf((h-SUNRISE_H)/(SUNSET_H-SUNRISE_H),0.0,1.0)

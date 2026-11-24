@@ -8,6 +8,16 @@ ROOT = Path(os.environ.get("HARBOR_PROJECT_ROOT", Path(__file__).resolve().paren
 _src = (ROOT / "blender-src/make_downtown.py").read_text()
 exec(_src.split("# ---------- towers ----------")[0])
 
+# --- toy / Roblox-style pass: flat saturated colours, no shine, rounder chunkier edges ---
+TOY_COL = {"d9a441": "ffb703", "c9d0d6": "8aa4c8", "1c1b1a": "3d4466", "f3ead6": "ffe9bf", "1f5a3c": "2fb67a",
+           "cfc8bb": "7bd3cf", "b9b4aa": "ff8f5c", "ffd596": "ffd43b", "6f9fb4": "5cb8f2", "f2a58e": "ff7d6b", "c79a62": "e0994d"}
+_mat_orig = mat
+def mat(name, hexcol, rough=0.6, metal=0.0, emit=0.0):
+    return _mat_orig(name, TOY_COL.get(hexcol, hexcol), 0.85, 0.0, emit)
+_block_orig = block
+def block(size, loc, m, bevel=0.0, rot=(0, 0, 0)):
+    return _block_orig(size, loc, m, max(bevel * 2.4, 0.07), rot)
+
 BRASS = mat("CafeBrass", "d9a441", 0.3, 0.8)
 CHROME = mat("CafeChrome", "c9d0d6", 0.2, 0.9)
 BLACK = mat("CafeBlack", "1c1b1a", 0.35, 0.3)

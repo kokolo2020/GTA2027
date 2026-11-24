@@ -82,7 +82,14 @@ func gift_count() -> int:
 func gift_pos(i: int) -> Vector3:
 	var a := TAU*float(i)/float(GIFT_N)+0.2
 	var r := 12.0+float(i % 4)*7.0
-	return g.HUB_C+Vector3(cos(a)*r,0.0,sin(a)*r)
+	var p: Vector3 = g.HUB_C+Vector3(cos(a)*r,0.0,sin(a)*r)
+	# Keep gift boxes out of the Roastery cafe footprint (cafe sits at HUB_C + (-8,0,33)).
+	var cc: Vector3 = g.HUB_C+Vector3(-8,0,33)
+	var d := Vector3(p.x-cc.x,0.0,p.z-cc.z)
+	if d.length() < 14.0:
+		d = d.normalized() if d.length() > 0.01 else Vector3(1,0,0)
+		p = Vector3(cc.x+d.x*14.0,p.y,cc.z+d.z*14.0)
+	return p
 
 func gift_pay(i: int) -> int:
 	return 500 if i % 4 == 3 else 100+((i*37) % 150)

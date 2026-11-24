@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.58.0 (code 123, 2026-11-24)
+- New game/weather.gd (clock-seeded random showers, GPUParticles3D drops, under_roof ray, sets g.rain_amt; main.gd _daynight_apply greys sky/sun, fog closes in, road_mats go wet; Menu > Settings > Weather, saved as progress/weather_on; --rain forces it; dev modes stay dry). main.gd: _touch_text_focus() (touch -> LineEdit.edit(), tested in _smoke_typed_chat), filmic tonemap + new DAY_KEYS day rows, SSAO + radiance 128 on desktop only, sky train _speak() lines, Harbor Dome wall 40 m + lid. world_biosphere.gd: build_corner_rails()/rail(), park_lamp(), hedges via nature("nature_hedge"/"nature_hedge2") from blender-src/make_hedge.py. cafe.gd: toy palette (make_cafe.py TOY_COL override), barista arm pose with ForeArm. dome_quests.gd gift_pos keeps 14 m off the café. Sky train pillars over roads become portal frames (legs 1.1 m past the road edge, beam in caps). autoplay.gd: sidewalk_ok/path_clear/road_edge_dist, force_travel() every TRAVEL_EVERY=300 s, clear_screen() (AUTOPLAY_UI=1 keeps the HUD).
+
 ## 0.57.1 (code 122, 2026-11-24)
 - cafe.gd rebuilt: pearl layout (alcove, wallpanel, canopy), StaticBody solids (solid()), barista arms +1.05, counter_spot at the plaza, plaza + lounge seats via g._hub_seat(...,"lounge"), lounge opens toward the tree. blender-src/make_cafe.py adds cafe_alcove/cafe_wallpanel. world_biosphere.gd hex_roof: edges clipped to the base ring. --cafe-shots sets dq.dry.
 

@@ -94,16 +94,16 @@ func build_cafe(at: Vector3, face_to: Vector3) -> void:
 	root.rotation.y = atan2(d.x,d.z)
 	root.scale = Vector3.ONE*0.85
 	g.add_child(root)
-	var gold := Color("e0b85a")
-	var brass := Color("c9a24a")
-	var pearl := Color("d6cfc2")
-	var pearl_top := Color("ece6da")
+	var gold := Color("ffb703")
+	var brass := Color("ffb703")
+	var pearl := Color("7bd3cf")
+	var pearl_top := Color("a8e6e2")
 	var glow := Color("ffd596")
 	solid_body = StaticBody3D.new()
 	solid_body.name = "RoasterySolids"
 	root.add_child(solid_body)
 	# --- floor: warm pearl platform with a glowing rim ---
-	fest.cyl(root,Vector3(0,0.1,0),9.6,9.8,0.2,Color("7d766a"))
+	fest.cyl(root,Vector3(0,0.1,0),9.6,9.8,0.2,Color("e0a85c"))
 	fest.torus(root,Vector3(0,0.22,0),9.5,0.08,glow,1.0)
 	fest.torus(root,Vector3(0,0.22,0),5.4,0.04,brass,0.5)
 	# --- back wall: lit alcove bar in the middle, tall porthole panels either side ---
@@ -180,13 +180,13 @@ func build_cafe(at: Vector3, face_to: Vector3) -> void:
 	root.add_child(cup_pickup)
 	build_cup(cup_pickup,Color("f6f3ec"))
 	# --- pearl canopy with a glowing ring, and hanging lamps ---
-	var can: MeshInstance3D = fest.cyl(root,Vector3(0,6.1,-2.0),8.6,8.8,0.3,Color("c9c2b4"))
+	var can: MeshInstance3D = fest.cyl(root,Vector3(0,6.1,-2.0),8.6,8.8,0.3,Color("ff9f68"))
 	can.scale.z = 0.95
 	var can_rim: MeshInstance3D = fest.torus(root,Vector3(0,5.92,-2.0),8.6,0.07,glow,1.3)
 	can_rim.scale.z = 0.95
 	var can_ring: MeshInstance3D = fest.torus(root,Vector3(0,5.94,-2.0),4.6,0.14,glow,1.4)
 	can_ring.scale.z = 0.95
-	fest.cyl(root,Vector3(0,5.96,-2.0),4.5,4.5,0.04,Color("f1dfba"),0.35).scale.z = 0.95
+	fest.cyl(root,Vector3(0,5.96,-2.0),4.5,4.5,0.04,Color("ffe3a8"),0.35).scale.z = 0.95
 	for k in 5:
 		var px := -3.6+float(k)*1.8
 		var pz := -2.6+0.06*px*px*0.3
@@ -250,9 +250,9 @@ func build_cafe(at: Vector3, face_to: Vector3) -> void:
 			fest.ball(root,pp3+Vector3(sin(float(q)*1.6)*0.25,0.95+float(q)*0.18,cos(float(q)*1.6)*0.25),Vector3(0.62,0.52,0.62),Color("3f8a52"))
 	# --- the baristas (they stand between the two counters and face the customers) ---
 	var looks := [
-		{"Shirt":Color("22384f"),"Pants":Color("2a2a2e"),"Skin":Color("ac7552"),"Hair":Color("1e140e"),"Shoes":Color("2a2a2a"),"Eye":Color("1c1c22")},
-		{"Shirt":Color("2d4a3a"),"Pants":Color("2a2a2e"),"Skin":Color("e0b48c"),"Hair":Color("5a3a22"),"Shoes":Color("2a2a2a"),"Eye":Color("1c1c22")},
-		{"Shirt":Color("5a3025"),"Pants":Color("2a2a2e"),"Skin":Color("8c5a3a"),"Hair":Color("14100c"),"Shoes":Color("2a2a2a"),"Eye":Color("1c1c22")},
+		{"Shirt":Color("3d7bd9"),"Pants":Color("2a2a2e"),"Skin":Color("ac7552"),"Hair":Color("1e140e"),"Shoes":Color("2a2a2a"),"Eye":Color("1c1c22")},
+		{"Shirt":Color("2fb67a"),"Pants":Color("2a2a2e"),"Skin":Color("e0b48c"),"Hair":Color("5a3a22"),"Shoes":Color("2a2a2a"),"Eye":Color("1c1c22")},
+		{"Shirt":Color("ff7d6b"),"Pants":Color("2a2a2e"),"Skin":Color("8c5a3a"),"Hair":Color("14100c"),"Shoes":Color("2a2a2a"),"Eye":Color("1c1c22")},
 	]
 	for k in 3:
 		var person: Dictionary = g._make_person(root,k,looks[k])
@@ -287,10 +287,10 @@ func build_lounge(at: Vector3) -> void:
 	g.add_child(lounge)
 	var lbody := StaticBody3D.new()
 	lounge.add_child(lbody)
-	var pearl := Color("8d8578")
+	var pearl := Color("5fbfbf")
 	fest.cyl(lounge,Vector3(0,0.1,0),LOUNGE_R,LOUNGE_R+0.2,0.2,pearl)
 	fest.torus(lounge,Vector3(0,0.22,0),LOUNGE_R-0.05,0.08,Color("ffd596"),0.8)
-	fest.torus(lounge,Vector3(0,0.22,0),3.2,0.05,Color("e0b85a"),0.8)
+	fest.torus(lounge,Vector3(0,0.22,0),3.2,0.05,Color("ffb703"),0.8)
 	# the open side faces the giant Christmas tree
 	var tree: Vector3 = g.HUB_C+Vector3(-8,0,0)
 	var open_phi := atan2(tree.x-at.x,tree.z-at.z)
@@ -366,7 +366,7 @@ func build_lounge(at: Vector3) -> void:
 	lounge.add_child(lsign)
 	for sd in [-1.0,1.0]:
 		var pp: Vector3 = lp(open_phi+1.0*sd,6.9,0.0)
-		fest.cyl(lounge,pp+Vector3(0,0.35,0),0.42,0.34,0.7,Color("f4f6f7"))
+		fest.cyl(lounge,pp+Vector3(0,0.35,0),0.42,0.34,0.7,Color("ffd9a0"))
 		for q in 4:
 			fest.ball(lounge,pp+Vector3(sin(float(q)*1.6)*0.25,1.0+float(q)*0.2,cos(float(q)*1.6)*0.25),Vector3(0.7,0.6,0.7),Color("3f8a52"))
 	for sv in seat_list:
@@ -446,10 +446,19 @@ func _process(delta: float) -> void:
 			var ar: Node3D = limbs.get("ArmR",null)
 			var al: Node3D = limbs.get("ArmL",null)
 			if ar != null and al != null:
-				var speed := 7.0 if busy else 1.6
-				var amp := 0.4 if busy else 0.12
-				ar.rotation.x = 1.05+sin(t*speed+ph)*amp
-				al.rotation.x = 0.95+sin(t*speed*0.8+ph+1.4)*amp
+				# Relaxed arms: upper arm hangs near the body, the forearm bends up so the hands rest at counter height.
+				var speed := 6.0 if busy else 1.3
+				var amp := 0.3 if busy else 0.05
+				var base_a := 0.45 if busy else 0.18
+				var base_f := 1.15 if busy else 0.95
+				ar.rotation.x = base_a+sin(t*speed+ph)*amp
+				al.rotation.x = base_a+sin(t*speed*0.8+ph+1.4)*amp
+				var far: Node3D = limbs.get("ForeArmR",null)
+				var fal: Node3D = limbs.get("ForeArmL",null)
+				if far != null:
+					far.rotation.x = base_f+sin(t*speed*1.1+ph+0.8)*amp*1.2
+				if fal != null:
+					fal.rotation.x = base_f+sin(t*speed*0.9+ph+2.2)*amp*1.2
 			var pr: Node3D = person["root"]
 			var turn := sin(t*0.5+ph)*0.25
 			pr.rotation.y = PI+turn

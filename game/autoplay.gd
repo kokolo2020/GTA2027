@@ -132,7 +132,6 @@ func _physics_process(delta: float) -> void:
 	match state:
 		"boot":
 			g.board_on = false
-			g.run_on = false
 			start_dome_route()
 			goto("to_dome")
 		"to_dome":
@@ -163,7 +162,6 @@ func start_dome_route() -> void:
 	route.append_array(wb.visitor_stage_route(dome))
 	ri = 0
 	strolled = false
-	g.run_on = false
 	g.board_on = false
 
 func walk_route_tick(delta: float, next_state: String) -> void:

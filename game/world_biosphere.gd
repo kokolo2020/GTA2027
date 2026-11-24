@@ -1284,8 +1284,12 @@ func tick_impl(delta: float) -> void:
    continue
   # Movement is updated by the distance-aware animation clock above.
   var p = a.node.global_position+Vector3(0,0.7,0)
-  if not a.has("rare") and me.position.distance_to(p)<(30.0 if reserve(int(a.dome)) else 17.0) and g.camera.is_position_in_frustum(p):
-   spot(int(a.si))
+  if not a.has("rare"):
+   var dist: float = me.position.distance_to(p)
+   var reach: float = 30.0 if reserve(int(a.dome)) else 17.0
+   # v0.56.10: close animals count even when off-screen (high flyers, platypus in water)
+   if dist<reach and (dist<22.0 or g.camera.is_position_in_frustum(p)):
+    spot(int(a.si))
  for m in markers:
   m.node.visible = active==int(m.dome) and task==int(m.dome)*3+int(m.q) and quest_step(task)==int(m.step)
   if m.node.visible:
@@ -1498,6 +1502,12 @@ func refresh_panel() -> void:
   for q in 3:
    completed += 1 if state.quests.has(str(page*3+q)) else 0
  ui_label("VISIT %s   ·   WILDLIFE %d/%d   ·   QUESTS %d/3" % ["STAMPED" if int(state.visits)&(1<<page) else "NOT YET",count,g._bits(mask),completed])
+ var missing: Array = []
+ for si in SPECIES.size():
+  if (mask&(1<<si))!=0 and (int(g.bio_seen)&(1<<si))==0:
+   missing.append(SPECIES[si].name)
+ if missing.size()>0:
+  ui_label("STILL TO SPOT: "+", ".join(missing)+" · walk close to their habitat",Color("ffe09b"),18)
  if page<7:
   for q in 3:
    var id = page*3+q

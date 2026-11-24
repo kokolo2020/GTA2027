@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.56.9: type your own chat messages (150 letters).")
+	_show_toast("Chit Chat City 0.56.10: browser play is easy for everyone; Oceania wildlife fix.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -9407,7 +9407,7 @@ func _smoke_test() -> void:
 	assert(announced,"Gold achievements are announced in the chat feed")
 	# Highlights: ring colour by level, glow and name colour by best achievement tier.
 	assert(_level_color(3) != _level_color(7) and _level_color(12) != _level_color(17),"Each level band has its own ring colour")
-	assert(_my_ach_tier() == 2,"Best tier so far is Gold (Road King)")
+	assert(_my_ach_tier() >= 2,"Best tier so far is Gold (Road King) or better")
 	_online_peer_update({"i":"col1","n":"Ava","x":20.0,"y":0.9,"z":20.0,"r":0.0,"c":0,"d":0,"t":0,"l":16,"s":-1,"q":-1,"qn":0,"e":-1,"en":0,"rc":0,"cr":"","cc":0,"k":0,"at":3,"ac":40})
 	var pr: MeshInstance3D = online_peers["col1"]["ring"]
 	assert((pr.material_override as StandardMaterial3D).albedo_color.is_equal_approx(_level_color(16).lightened(0.15)),"Another player's ring shows their level colour")

@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.56.10 (code 120, 2026-11-24)
+- world_biosphere.gd: spotting no longer needs the camera frustum within 22 m; passport lists STILL TO SPOT animals. Site: Play in browser button first, ~60 MB note. main.gd smoke: _my_ach_tier() >= 2.
+
 ## 0.56.9 (code 119, 2026-11-23)
 - Free chat: main.gd chat_edit LineEdit (max 150) + Send in chat_panel, _chat_send_text, _chat_clean (strips control/zero-width chars, links -> [link], CHAT_BAD words starred, cut at CHAT_MAX), _chat_wrap (26 per line), _chat_fit (panel stays on screen), _typing() guard in _input/keyboard poll. Net: position frame carries "qt" (text) for 4 s after sending; peers clean it again before showing (bubble + log). Smoke: _smoke_typed_chat. Shots: --chat-shots.
 

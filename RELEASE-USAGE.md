@@ -24,4 +24,5 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.56.7 | | 9% session, 7% weekly | | Claude-built (costume boutique). Read 21:31 on 23 Nov. Weekly went 2% (0.55.8) to 7%, so 0.55.9 to 0.56.7 together used about 5% weekly (per-release split not recorded) |
 | 0.56.8 | | | | Claude-built (rename to Chit Chat City, new icon) |
 | 0.56.9 | | | | Claude-built (free chat, 150 characters) |
-| 0.56.10 | | | | Claude-built (browser front door, Oceania spot fix) |
+| 0.56.10 | | 1% session, 7% weekly | | Claude-built (browser front door, Oceania spot fix). Read 13:44 on 24 Nov. Weekly stayed 7% since 0.56.7, so 0.56.8 to 0.56.10 used about 0% weekly |
+| 0.57.0 | | | 8% weekly | Claude-built (Roastery café, lounge, café quests, dome polish). Read 15:59 on 24 Nov. Weekly went 7% to 8% since 0.56.10 |

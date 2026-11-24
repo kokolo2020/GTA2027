@@ -353,8 +353,8 @@ func _ready() -> void:
 	_refresh_time_button()
 	_refresh_checkpoints()
 	road_barrier.build()
-	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args() or "--africa-shots" in OS.get_cmdline_user_args()
-	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--outfit-shots","--car-shots","--shop-shots","--chat-shots"]:
+	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args() or "--dome-shots" in OS.get_cmdline_user_args() or "--africa-shots" in OS.get_cmdline_user_args()
+	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--outfit-shots","--car-shots","--shop-shots","--chat-shots","--dome-shots","--cafe-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.56.10: browser play is easy for everyone; Oceania wildlife fix.")
+	_show_toast("Chit Chat City 0.57.0: new Chit Chat Roastery café, lounge and café quests in the Harbor Dome.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -388,6 +388,12 @@ func _ready() -> void:
 		get_tree().quit()
 	elif "--africa-shots" in OS.get_cmdline_user_args():
 		await world_bio.africa_shots()
+		get_tree().quit()
+	elif "--cafe-shots" in OS.get_cmdline_user_args():
+		await _cafe_shots()
+		get_tree().quit()
+	elif "--dome-shots" in OS.get_cmdline_user_args():
+		await world_bio.dome_shots()
 		get_tree().quit()
 	elif "--world-bio-shots" in OS.get_cmdline_user_args():
 		await world_bio.screenshots()
@@ -4843,6 +4849,10 @@ func _build_hud() -> void:
 	add_child(fest_shop)
 	fest_shop.build_boutique(HUB_C+Vector3(-14,0,-24),HUB_C)
 	fest_shop.build_panel(root)
+	cafe = preload("res://cafe.gd").new(self)
+	add_child(cafe)
+	cafe.build_cafe(HUB_C+Vector3(-8,0,33),HUB_C)
+	cafe.build_panel(root)
 	dq = preload("res://dome_quests.gd").new(self)
 	add_child(dq)
 	dq.build(root)
@@ -8013,6 +8023,9 @@ func _interact() -> void:
 	if fest_shop != null and fest_shop.near():
 		fest_shop.open()
 		return
+	if cafe != null and cafe.near():
+		cafe.open()
+		return
 	if _puzzle_near():
 		_open_puzzle()
 		return
@@ -8219,6 +8232,8 @@ func _refresh_hud() -> void:
 		action_button.text = hourly.button_text()
 	elif fest_shop != null and fest_shop.near():
 		action_button.text = fest_shop.button_text()
+	elif cafe != null and cafe.near():
+		action_button.text = cafe.button_text()
 	elif _puzzle_near():
 		action_button.text = "DAILY PUZZLE ✓" if pz_day == _pz_today() else "DAILY PUZZLE"
 	elif _sg_near() >= 0:
@@ -8296,7 +8311,7 @@ func _layout_panels() -> void:
 	for xp_panel in extra_panels:
 		var xc := xp_panel as Control
 		xc.position = Vector2((view.x-xc.size.x)/2.0,maxf(8.0,(view.y-xc.size.y)/2.0))
-		if xc == style_panel or (fest_shop != null and xc == fest_shop.panel):
+		if xc == style_panel or (fest_shop != null and xc == fest_shop.panel) or (cafe != null and xc == cafe.panel):
 			# v0.40: the store panel sits on the right so you can see yourself on the left.
 			xc.position = Vector2(maxf(8.0,view.x-xc.size.x-16.0),maxf(8.0,(view.y-xc.size.y)/2.0))
 
@@ -9236,6 +9251,7 @@ func _smoke_test() -> void:
 	_smoke_chase_extras()
 	_smoke_models()
 	_smoke_boutique()
+	_smoke_cafe()
 	_smoke_typed_chat()
 	legacy_rules = false
 	_update_gate()
@@ -10175,6 +10191,32 @@ func _smoke_typed_chat() -> void:
 	_say(0)
 	assert(my_text == "" and String(_online_pos_frame()["payload"]["payload"]["qt"]) == "","Quick chat clears typed text")
 	my_text = keep_t
+
+func _smoke_cafe() -> void:
+	assert(cafe != null and cafe.spot != Vector3.INF,"Roastery missing")
+	assert(cafe.staff.size() == 3,"Roastery needs three baristas")
+	assert(cafe.lounge != null and cafe.lounge.get_child_count() > 40 and cafe.in_lounge(cafe.lounge_at),"Roastery lounge missing")
+	assert(dq.QUESTS.size() == 21,"Roastery quests missing")
+	var keep_cash := cash
+	var keep_xp := bonus_xp
+	cash = 1000
+	var base := _walk_speed()
+	cafe.pick(0)
+	assert(cash == 1000-cafe.price_of(0),"Roastery order did not charge")
+	cafe.making_t = 0.01
+	cafe._process(0.1)
+	assert(cafe.boost_until > Time.get_ticks_msec()/1000.0 and _walk_speed() > base,"Roastery speed perk missing")
+	cafe.boost_until = 0.0
+	cafe.xp_hour.clear()
+	cafe.pick(5)
+	cafe.making_t = 0.01
+	cafe._process(0.1)
+	assert(bonus_xp == keep_xp+40,"Roastery XP perk missing")
+	assert(dq.cq_orders >= 2 and dq.cq_kinds != 0,"Roastery orders did not count for quests")
+	cash = keep_cash
+	bonus_xp = keep_xp
+	cafe.boost_until = 0.0
+	cafe.xp_hour.clear()
 
 func _smoke_boutique() -> void:
 	# v0.56.7: buy, wear, save and reload a costume; leave the save as it was.
@@ -15767,6 +15809,50 @@ func _chat_shots() -> void:
 	await _save_shot("chat-panel")
 	get_tree().quit()
 
+func _cafe_shots() -> void:
+	# Developer-only: the Chit Chat Roastery from outside, behind the counter, and mid-order. Never saves.
+	var at: Vector3 = cafe.spot
+	var f := (HUB_C-at).normalized()
+	player.position = at+f*7.0+Vector3(0,0.75,0)
+	for i in 40:
+		await get_tree().physics_frame
+	paused = true
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.hide()
+	camera.position = at+Vector3(0,60,0.01)
+	camera.look_at(at)
+	await _save_shot("cafe-top")
+	camera.position = at+f*17.0+Vector3(0,4.0,0)
+	camera.look_at(at+Vector3(0,2.6,0))
+	await _save_shot("cafe-front")
+	var side := Vector3(-f.z,0,f.x)
+	camera.position = at+f*9.0+side*9.0+Vector3(0,3.2,0)
+	camera.look_at(at-f*1.0+Vector3(0,2.0,0))
+	await _save_shot("cafe-side")
+	camera.position = at+f*6.6+Vector3(0,1.9,0)+side*0.8
+	camera.look_at(at+Vector3(0,1.9,0))
+	await _save_shot("cafe-counter")
+	var lp0: Vector3 = cafe.lounge_at
+	camera.position = lp0+Vector3(0,40,0.01)
+	camera.look_at(lp0)
+	await _save_shot("cafe-lounge-top")
+	camera.position = lp0+Vector3(sin(0.5),0,cos(0.5))*13.0+Vector3(0,4.2,0)
+	camera.look_at(lp0+Vector3(0,1.4,0))
+	await _save_shot("cafe-lounge")
+	camera.position = lp0+Vector3(sin(0.2),0,cos(0.2))*3.2+Vector3(0,2.3,0)
+	camera.look_at(lp0+Vector3(sin(3.14),0,cos(3.14))*5.0+Vector3(0,1.2,0))
+	await _save_shot("cafe-lounge-bay")
+	camera.position = lp0+Vector3(sin(4.2),0,cos(4.2))*3.0+Vector3(0,2.3,0)
+	camera.look_at(lp0+Vector3(sin(1.9),0,cos(1.9))*5.0+Vector3(0,1.2,0))
+	await _save_shot("cafe-lounge-bay2")
+	cafe.making_t = 2.5
+	cafe.making_id = "gold"
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("cafe-making")
+	get_tree().quit()
+
 func _shop_shots() -> void:
 	# Developer-only: the Christmas Costume Boutique from outside, then the shop panel with a costume tried and bought. Never saves.
 	var at: Vector3 = fest_shop.spot
@@ -18304,7 +18390,8 @@ var travel_ready_at := 0.0
 func _walk_speed() -> float:
 	if board_on and not driving:
 		return BOARD_SPEED
-	return RUN_SPEED if run_on else WALK_SPEED
+	var base_speed := RUN_SPEED if run_on else WALK_SPEED
+	return base_speed*(cafe.speed_mult() if cafe != null else 1.0)
 
 func _build_travel(root: Control) -> void:
 	run_button = _button("RUN: OFF",_toggle_run)
@@ -20114,6 +20201,7 @@ var cm_sign: Label3D
 var sun_dome   # v0.56.2: Sun Dome removed (sun_dome.gd unused); hourly challenge has no terminal until it gets a new home
 var hourly
 var fest_shop   # v0.56.7: Christmas Costume Boutique in the Harbor Dome
+var cafe   # v0.57.0: Chit Chat Roastery coffee house in the Harbor Dome
 var dq   # v0.56.3 Dome Quests (dome_quests.gd)
 var hr_done := -1       # last UTC hour index whose challenge you solved
 var hr_total := 0

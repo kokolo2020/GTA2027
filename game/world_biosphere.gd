@@ -113,7 +113,7 @@ var walk_surfaces: Array = []
 var raised_boundaries: Array = []
 var scenery_bounds: Array = []
 var scenery_group := ""
-var rail_mesh: BoxMesh
+var rail_mesh: Mesh
 var parked_nests := {}
 var loaded_dome := -1
 var exterior_visuals: Array = []
@@ -227,8 +227,7 @@ func beam(parent: Node3D,a: Vector3,b: Vector3,w: float,col: Color,solid := fals
  if d.length()<0.0001:
   return
  if rail_mesh==null:
-  rail_mesh = BoxMesh.new()
-  rail_mesh.size = Vector3.ONE
+  rail_mesh = round_rail_mesh()
  var z = d.normalized()
  var x = Vector3.UP.cross(z).normalized() if absf(z.dot(Vector3.UP))<0.99 else Vector3.RIGHT
  var y = z.cross(x).normalized()
@@ -319,7 +318,9 @@ func build() -> void:
   # v0.55.3 old look: pearl pillars with a glowing green strip and a pearl sign bar.
   shape(root,g._bcone(0.45,0.6,7.2),C+Vector3(gx,3.6,34),Vector3.ONE,Color("f4f7f9"))
   beam(root,C+Vector3(gx,0.2,33.6),C+Vector3(gx,6.8,33.6),0.12,Color("7dff9a"))
- box(root,C+Vector3(0,7.3,34),Vector3(14.2,1.3,0.7),Color("f4f7f9"))
+ beam(root,C+Vector3(-6.9,7.3,34),C+Vector3(6.9,7.3,34),1.1,Color("f4f7f9"))
+ ball(root,C+Vector3(-6.9,7.3,34),Vector3(0.62,0.62,0.62),Color("f4f7f9"))
+ ball(root,C+Vector3(6.9,7.3,34),Vector3(0.62,0.62,0.62),Color("f4f7f9"))
  beam(root,C+Vector3(-6.8,6.7,33.6),C+Vector3(6.8,6.7,33.6),0.1,Color("7dff9a"))
  text(root,"WORLD BIOSPHERE",C+Vector3(0,8.4,34),Color("c4fff1"),56,90)
  var hub_gaps = [[PI/2.0,asin(3.5/20.0),"ENTRANCE\nfrom the city",Color("c4fff1")]]
@@ -362,8 +363,9 @@ func build() -> void:
   var sign_yaw = atan2(-door_s.z,door_s.x)
   box(root,door_p+Vector3(0,9.0,0),Vector3(17.0,3.4,0.5),Color("14232b"),false,Vector3(0,sign_yaw,0))
   beam(root,door_p+door_s.normalized()*8.7+Vector3(0,7.3,0),door_p-door_s.normalized()*8.7+Vector3(0,7.3,0),0.3,COLORS[i])
-  var sign_name = text(root,NAMES[i].to_upper()+" BIODOME",door_p+Vector3(0,9.6,0),Color.WHITE,90,170)
-  sign_name.pixel_size = 0.016
+  sign_frame(root,door_p+Vector3(0,9.0,0),door_s,17.0,3.4,Color("ffe08a"),0.22)
+  var sign_name = text(root,NAMES[i].to_upper()+" BIODOME",door_p+Vector3(0,9.0,0)-dir*0.45,Color.WHITE,90,170)
+  sign_name.pixel_size = 0.016 if NAMES[i].length()<=8 else (0.0135 if NAMES[i].length()<=10 else 0.0112)
   sign_name.outline_size = 10
   # v0.55.3: bright gold door frame and ENTER sign so the door is easy to find from outside.
   var gold_door = Color("ffe08a")
@@ -396,6 +398,65 @@ func build() -> void:
  flush()
  capture_exterior(root)
 
+func round_rail_mesh() -> Mesh:
+ # v0.56.11: beams are 10-sided rounded bars (unit length along z, unit width) instead of square blocks.
+ var st = SurfaceTool.new()
+ st.begin(Mesh.PRIMITIVE_TRIANGLES)
+ var n = 10
+ for k in n:
+  var a0 = float(k)/n*TAU
+  var a1 = float(k+1)/n*TAU
+  var p0 = Vector3(cos(a0)*0.5,sin(a0)*0.5,-0.5)
+  var p1 = Vector3(cos(a1)*0.5,sin(a1)*0.5,-0.5)
+  var q0 = Vector3(cos(a0)*0.5,sin(a0)*0.5,0.5)
+  var q1 = Vector3(cos(a1)*0.5,sin(a1)*0.5,0.5)
+  var n0 = Vector3(cos(a0),sin(a0),0)
+  var n1 = Vector3(cos(a1),sin(a1),0)
+  for item in [[p0,n0],[q0,n0],[p1,n1],[p1,n1],[q0,n0],[q1,n1]]:
+   st.set_normal(item[1])
+   st.add_vertex(item[0])
+ var m = st.commit()
+ return m
+
+func hex_roof(parent: Node3D,c: Vector3,r: float,h: float,col: Color,frame: Color,sc: float) -> void:
+ # v0.56.11: honeycomb roof. A flat hexagon grid is wrapped onto the dome (equidistant from the top), so the
+ # roof is made of six-sided glass panels with rounded ribs. Edges are cut at the base ring.
+ var cell = 0.15
+ var rows = 9
+ var corner_dirs: Array = []
+ for k in 6:
+  var ang = PI/6.0+float(k)*TAU/6.0
+  corner_dirs.append(Vector2(cos(ang),sin(ang))*cell)
+ var seen: Dictionary = {}
+ var step_x = cell*sqrt(3.0)
+ var step_y = cell*1.5
+ for row in range(-rows,rows+1):
+  for col_i in range(-rows-1,rows+2):
+   var centre = Vector2(float(col_i)*step_x+(step_x*0.5 if row%2!=0 else 0.0),float(row)*step_y)
+   if centre.length()>1.0+cell*1.2:
+    continue
+   for k in 6:
+    var a: Vector2 = centre+corner_dirs[k]
+    var b: Vector2 = centre+corner_dirs[(k+1)%6]
+    var key = "%d,%d,%d,%d" % [roundi(minf(a.x,b.x)*1000.0),roundi(minf(a.y,b.y)*1000.0),roundi(maxf(a.x,b.x)*1000.0),roundi(maxf(a.y,b.y)*1000.0)]
+    if seen.has(key):
+     continue
+    seen[key] = true
+    var prev = Vector3.ZERO
+    var have_prev = false
+    for sub in range(0,4):
+     var q: Vector2 = a.lerp(b,float(sub)/3.0)
+     if q.length()>1.0:
+      have_prev = false
+      continue
+     var t = (1.0-q.length())*PI/2
+     var ang = atan2(q.y,q.x)
+     var pt = c+Vector3(cos(ang)*r*cos(t),4+h*sin(t),sin(ang)*r*cos(t))
+     if have_prev:
+      beam(parent,prev,pt,0.34*sc,frame)
+     prev = pt
+     have_prev = true
+
 func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool,gaps := []) -> void:
  var st = SurfaceTool.new()
  st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -413,10 +474,9 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool,gap
    # v0.55.3: the old Biosphere look: thick, saturated coloured ribs (not thin pale lines).
    var frame = Color.from_hsv(col.h,minf(1.0,col.s*1.35+0.12),minf(1.0,col.v*1.05+0.05))
    var sc = clampf(r/38.5,0.6,1.0)
-   beam(parent,points[0],points[1],0.42*sc,frame)
-   beam(parent,points[0],points[2],0.52*sc,frame)
-   if j<6:
-    beam(parent,points[0] if (j+k)%2==0 else points[1],points[3] if (j+k)%2==0 else points[2],0.30*sc,frame)
+   if j==0:
+    beam(parent,points[0],points[1],0.5*sc,frame)
+ hex_roof(parent,c,r,h,col,Color.from_hsv(col.h,minf(1.0,col.s*1.35+0.12),minf(1.0,col.v*1.05+0.05)),clampf(r/38.5,0.6,1.0))
  st.generate_normals()
  var mi = MeshInstance3D.new()
  var shell_mesh = st.commit()
@@ -525,6 +585,15 @@ func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool,gap
   var jamb = c+dir*r
   beam(parent,jamb,jamb+Vector3(0,4.2,0),0.16,col)
 
+func sign_frame(parent: Node3D,centre: Vector3,across: Vector3,w: float,h: float,col: Color,t: float) -> void:
+ # v0.56.11: a rounded bar frame with ball corners around a flat sign board (no more bare slabs).
+ var a = across.normalized()*w*0.5
+ var up = Vector3(0,h*0.5,0)
+ var corners = [centre-a+up,centre+a+up,centre+a-up,centre-a-up]
+ for k in 4:
+  beam(parent,corners[k],corners[(k+1)%4],t,col)
+  ball(parent,corners[k],Vector3(t*0.8,t*0.8,t*0.8),col)
+
 func hub_doors(parent: Node3D,c: Vector3,r: float,gaps: Array) -> void:
  # v0.55.6: a real door at every opening of the hub wall: gold frame, lintel, a name board, a glowing
  # threshold and two glass leaves swung open against the wall. Decoration only: the gap stays open.
@@ -546,10 +615,15 @@ func hub_doors(parent: Node3D,c: Vector3,r: float,gaps: Array) -> void:
   beam(parent,mid+tang*width+Vector3(0,5.2,0),mid-tang*width+Vector3(0,5.2,0),0.6,gold)
   box(parent,mid+Vector3(0,0.06,0),Vector3(width*2.0,0.05,1.6),gold,false,Vector3(0,yaw,0))
   box(parent,mid+Vector3(0,6.2,0),Vector3(width*2.0+0.8,1.5,0.3),Color("14232b"),false,Vector3(0,yaw,0))
+  sign_frame(parent,mid+Vector3(0,6.2,0),tang,width*2.0+0.8,1.5,gold,0.14)
   beam(parent,mid+tang*(width+0.4)+Vector3(0,5.45,0),mid-tang*(width+0.4)+Vector3(0,5.45,0),0.12,gap[3])
   var label = text(parent,str(gap[2]),mid+Vector3(0,6.2,0)-dir*0.25,Color.WHITE,52,60)
   label.pixel_size = 0.011
   label.outline_size = 8
+  # v0.56.11: the same name on the outside face, so the board is not blank from the city side.
+  var label_out = text(parent,str(gap[2]),mid+Vector3(0,6.2,0)+dir*0.25,Color.WHITE,52,60)
+  label_out.pixel_size = 0.011
+  label_out.outline_size = 8
 
 func gate(i: int,p: Vector3,dir: Vector3) -> void:
  var n = Node3D.new()
@@ -1864,6 +1938,44 @@ func drive_body(direction: Vector3,speed: float,steps: int) -> void:
  for step in steps:
   g.player.velocity = Vector3(direction.x*speed,g.player.velocity.y-24*delta,direction.z*speed)
   g.player.move_and_slide()
+
+func dome_shots() -> void:
+ # Developer-only: the hub and the Asia dome from outside and inside, to check the honeycomb roof. Never saves.
+ g.place_test_level = 40
+ g._places_refresh()
+ g.set_process(false)
+ g.set_physics_process(false)
+ g.paused = false
+ g.driving = false
+ g.cam_lock = true
+ g.world_env_res.fog_enabled = false
+ for child in g.get_children():
+  if child is CanvasLayer or child is Control:
+   child.hide()
+ g.player.hide()
+ g.player.position = C+Vector3(0,0.79,40)
+ await g.get_tree().physics_frame
+ await g.get_tree().physics_frame
+ g.camera.global_position = C+Vector3(0,3.0,95)
+ g.camera.look_at(C+Vector3(0,12,0))
+ await g._save_shot("hub-front")
+ g.camera.global_position = C+Vector3(60,30,60)
+ g.camera.look_at(C+Vector3(0,10,0))
+ await g._save_shot("hub-side")
+ g.camera.global_position = C+Vector3(0,2.0,48)
+ g.camera.look_at(C+Vector3(0,6,0))
+ await g._save_shot("hub-door-close")
+ for di in 7:
+  var dir1 = (dome_c(di)-C).normalized()
+  var door1 = dome_c(di)-dir1*RADIUS
+  g.camera.global_position = door1-dir1*30.0+Vector3(0,4.0,0)
+  g.camera.look_at(door1+Vector3(0,9.0,0))
+  await g._save_shot("dome-outside-"+NAMES[di].to_lower().replace(" ","-"))
+ activate_dome(1)
+ await g.get_tree().physics_frame
+ g.camera.global_position = local_point(1,0,-20,2.4)
+ g.camera.look_at(local_point(1,0,0,30.0))
+ await g._save_shot("asia-roof-inside")
 
 func screenshots() -> void:
  g.place_test_level = 40

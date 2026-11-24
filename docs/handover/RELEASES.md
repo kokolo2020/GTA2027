@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.57.0 (code 121, 2026-11-24)
+- New game/cafe.gd (Roastery + lounge, build_lounge, props from blender-src/make_cafe.py -> game/models/cafe_*.glb), hooks in main.gd (cafe var, interact, panel, speed perk, --cafe-shots, _smoke_cafe). dome_quests.gd: 10 café quests (idx 11-20), cq_* state saved. world_biosphere.gd: round beams, hex_roof, sign_frame.
+
 ## 0.56.10 (code 120, 2026-11-24)
 - world_biosphere.gd: spotting no longer needs the camera frustum within 22 m; passport lists STILL TO SPOT animals. Site: Play in browser button first, ~60 MB note. main.gd smoke: _my_ach_tier() >= 2.
 

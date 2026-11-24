@@ -21,6 +21,11 @@ var last_day := ""
 var hr_start := 0
 var all_paid := false
 var tick_t := 0.0
+var cq_orders := 0
+var cq_kinds := 0
+var cq_special := false
+var cq_marks := 0
+var lounge_secs := 0.0
 var vip_secs := 0.0
 var dry := false
 var test_log: Array = []
@@ -41,7 +46,18 @@ const QUESTS := [
 	{"n":"Hang out for 10 minutes","pay":1000,"xp":80},
 	{"n":"Solve the hourly challenge","pay":500,"xp":50},
 	{"n":"Relax in the VIP Lounge (20 s)","pay":400,"xp":40},
+	{"n":"Walk into the Chit Chat Roastery","pay":150,"xp":15},
+	{"n":"Say hi to all 3 baristas","pay":250,"xp":25},
+	{"n":"Order your first drink","pay":200,"xp":20},
+	{"n":"Try 3 different drinks","pay":400,"xp":35},
+	{"n":"Try all 6 drinks","pay":1000,"xp":90},
+	{"n":"Order the drink of the hour","pay":300,"xp":30},
+	{"n":"Order 10 drinks today","pay":700,"xp":60},
+	{"n":"Hang out in the Roastery Lounge (2 min)","pay":500,"xp":40},
+	{"n":"Bring your coffee to the giant tree","pay":350,"xp":30},
+	{"n":"Take your coffee to the VIP Lounge","pay":350,"xp":30},
 ]
+const Q_CAFE := 11
 
 func _init(g_main) -> void:
 	g = g_main
@@ -93,6 +109,11 @@ func quest_pos(i: int) -> Variant:
 			return null
 		9: return g.hourly.term if g.hourly != null and g.hourly.term != Vector3.INF else null
 		10: return g.VIP_C
+		11, 12, 13, 14, 15, 16, 17:
+			return g.cafe.spot if g.cafe != null and g.cafe.spot != Vector3.INF else null
+		18: return g.cafe.lounge_at if g.cafe != null and g.cafe.lounge_at != Vector3.INF else null
+		19: return g.HUB_C+TREE
+		20: return g.VIP_C
 	return null
 
 func progress(i: int) -> String:
@@ -103,7 +124,19 @@ func progress(i: int) -> String:
 		7: return "%d:%02d/3:00" % [mini(int(secs),180)/60,mini(int(secs),180) % 60]
 		8: return "%d:%02d/10:00" % [mini(int(secs),600)/60,mini(int(secs),600) % 60]
 		10: return "%ds/20s" % mini(int(vip_secs),20)
+		12: return "%d/3" % _bits(cq_marks)
+		14: return "%d/3" % mini(_bits(cq_kinds),3)
+		15: return "%d/6" % _bits(cq_kinds)
+		17: return "%d/10" % mini(cq_orders,10)
+		18: return "%d:%02d/2:00" % [mini(int(lounge_secs),120)/60,mini(int(lounge_secs),120) % 60]
 	return ""
+
+func _bits(m: int) -> int:
+	var n := 0
+	for i in 8:
+		if m & (1 << i):
+			n += 1
+	return n
 
 # ---------- state ----------
 func new_day(d: String) -> void:
@@ -115,6 +148,11 @@ func new_day(d: String) -> void:
 	marks = 0
 	secs = 0.0
 	vip_secs = 0.0
+	cq_orders = 0
+	cq_kinds = 0
+	cq_special = false
+	cq_marks = 0
+	lounge_secs = 0.0
 	all_paid = false
 	hr_start = g.hr_total
 	refresh_presents()
@@ -129,6 +167,11 @@ func save_state(file: ConfigFile) -> void:
 	file.set_value("domequests","last",last_day)
 	file.set_value("domequests","hr_start",hr_start)
 	file.set_value("domequests","all",all_paid)
+	file.set_value("domequests","cq_orders",cq_orders)
+	file.set_value("domequests","cq_kinds",cq_kinds)
+	file.set_value("domequests","cq_special",cq_special)
+	file.set_value("domequests","cq_marks",cq_marks)
+	file.set_value("domequests","lounge_secs",lounge_secs)
 
 func load_state(file: ConfigFile) -> void:
 	day = String(file.get_value("domequests","day",""))
@@ -140,6 +183,11 @@ func load_state(file: ConfigFile) -> void:
 	last_day = String(file.get_value("domequests","last",""))
 	hr_start = int(file.get_value("domequests","hr_start",g.hr_total))
 	all_paid = bool(file.get_value("domequests","all",false))
+	cq_orders = maxi(0,int(file.get_value("domequests","cq_orders",0)))
+	cq_kinds = int(file.get_value("domequests","cq_kinds",0)) & 63
+	cq_special = bool(file.get_value("domequests","cq_special",false))
+	cq_marks = int(file.get_value("domequests","cq_marks",0)) & 7
+	lounge_secs = maxf(0.0,float(file.get_value("domequests","lounge_secs",0.0)))
 	refresh_presents()
 
 # ---------- rewards ----------
@@ -185,6 +233,26 @@ func take_gift(i: int) -> void:
 		g._save_progress()
 		refresh_ui()
 
+# called by the café when a drink is handed over
+func cafe_order(idx: int, special: bool) -> void:
+	cq_orders += 1
+	cq_kinds |= 1 << clampi(idx,0,5)
+	if special:
+		cq_special = true
+	cafe_check()
+
+func cafe_check() -> void:
+	if cq_orders >= 1:
+		award(13)
+	if _bits(cq_kinds) >= 3:
+		award(14)
+	if _bits(cq_kinds) >= 6:
+		award(15)
+	if cq_special:
+		award(16)
+	if cq_orders >= 10:
+		award(17)
+
 # checks for a position (the player's, or a test position)
 func check_at(p: Vector3, hr_total_now: int) -> void:
 	var c: Vector3 = g.HUB_C
@@ -216,6 +284,23 @@ func check_at(p: Vector3, hr_total_now: int) -> void:
 		award(9)
 	if vip_secs >= 20.0 and Vector2(p.x-g.VIP_C.x,p.z-g.VIP_C.z).length() < 9.0:
 		award(10)
+	if g.cafe != null and g.cafe.spot != Vector3.INF:
+		if Vector2(p.x-g.cafe.spot.x,p.z-g.cafe.spot.z).length() < 9.0:
+			award(11)
+		for k in 3:
+			var sp: Vector3 = g.cafe.counter_spot(k)
+			if Vector2(p.x-sp.x,p.z-sp.z).length() < 2.0:
+				cq_marks |= 1 << k
+		if cq_marks == 7:
+			award(12)
+		if lounge_secs >= 120.0 and g.cafe.in_lounge(p):
+			award(18)
+		if g.cafe.holding_cup():
+			if Vector2(p.x-(c.x+TREE.x),p.z-(c.z+TREE.z)).length() < 7.0:
+				award(19)
+			if Vector2(p.x-g.VIP_C.x,p.z-g.VIP_C.z).length() < 9.0:
+				award(20)
+	cafe_check()
 
 # ---------- 3D gift boxes ----------
 func build_presents() -> void:
@@ -345,6 +430,8 @@ func _process(delta: float) -> void:
 		secs += delta
 		if Vector2(g.player.position.x-g.VIP_C.x,g.player.position.z-g.VIP_C.z).length() < 9.0:
 			vip_secs += delta
+		if g.cafe != null and g.cafe.in_lounge(g.player.position):
+			lounge_secs += delta
 	tick_t += delta
 	if tick_t < 0.25:
 		return
@@ -370,7 +457,7 @@ func _process(delta: float) -> void:
 
 # developer / smoke check: every quest pays exactly once, gifts pay once, the all-done bonus pays once
 func selftest() -> String:
-	var keep := [day,mask,gifts,marks,secs,streak,last_day,hr_start,all_paid,g.cash,g.bonus_xp,g.quick_test_day,test_log.duplicate()]
+	var keep := [day,mask,gifts,marks,secs,streak,last_day,hr_start,all_paid,g.cash,g.bonus_xp,g.quick_test_day,test_log.duplicate(),cq_orders,cq_kinds,cq_special,cq_marks,lounge_secs]
 	dry = true
 	test_log.clear()
 	g.quick_test_day = "2031-03-10"
@@ -399,6 +486,21 @@ func selftest() -> String:
 		res = "gifts %d" % gift_count()
 	secs = 700.0
 	vip_secs = 25.0
+	if g.cafe != null and g.cafe.spot != Vector3.INF:
+		check_at(g.cafe.spot,g.hr_total)
+		for k in 3:
+			check_at(g.cafe.counter_spot(k),g.hr_total)
+		for k in 6:
+			cafe_order(k,k == 2)
+		lounge_secs = 130.0
+		check_at(g.cafe.lounge_at,g.hr_total)
+		var keep_hand: float = g.cafe.hand_until
+		g.cafe.hand_until = Time.get_ticks_msec()/1000.0+100.0
+		check_at(c+TREE,g.hr_total)
+		check_at(g.VIP_C,g.hr_total)
+		g.cafe.hand_until = keep_hand
+		cq_orders = 10
+		cafe_check()
 	check_at(g.VIP_C,g.hr_total)
 	check_at(c,g.hr_total)
 	check_at(c,g.hr_total+1)
@@ -416,6 +518,7 @@ func selftest() -> String:
 	last_day = keep[6]; hr_start = keep[7]; all_paid = keep[8]; g.cash = keep[9]; g.bonus_xp = keep[10]
 	g.quick_test_day = keep[11]
 	test_log = keep[12]
+	cq_orders = keep[13]; cq_kinds = keep[14]; cq_special = keep[15]; cq_marks = keep[16]; lounge_secs = keep[17]
 	refresh_presents()
 	dry = false
 	return res

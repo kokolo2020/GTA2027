@@ -442,19 +442,23 @@ func hex_roof(parent: Node3D,c: Vector3,r: float,h: float,col: Color,frame: Colo
     if seen.has(key):
      continue
     seen[key] = true
+    if a.length()>1.0 and b.length()>1.0:
+     continue
     var prev = Vector3.ZERO
+    var prev_rim = false
     var have_prev = false
-    for sub in range(0,4):
-     var q: Vector2 = a.lerp(b,float(sub)/3.0)
-     if q.length()>1.0:
-      have_prev = false
-      continue
+    for sub in range(0,5):
+     var q: Vector2 = a.lerp(b,float(sub)/4.0)
+     var on_rim = q.length()>=1.0
+     if on_rim:
+      q = q.normalized()
      var t = (1.0-q.length())*PI/2
      var ang = atan2(q.y,q.x)
      var pt = c+Vector3(cos(ang)*r*cos(t),4+h*sin(t),sin(ang)*r*cos(t))
-     if have_prev:
+     if have_prev and not (on_rim and prev_rim):
       beam(parent,prev,pt,0.34*sc,frame)
      prev = pt
+     prev_rim = on_rim
      have_prev = true
 
 func shell(parent: Node3D,c: Vector3,r: float,h: float,col: Color,wall: bool,gaps := []) -> void:

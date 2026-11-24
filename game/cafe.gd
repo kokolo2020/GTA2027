@@ -1,6 +1,6 @@
 extends Node
 # v0.57.0: the Chit Chat Roastery, a premium coffee house in the Harbor Dome. A curved marble counter, a
-# green tile wall, a wood-slat ceiling, brass lamps, candy-stripe columns and three baristas who really make
+# pearl porthole walls, a lit back-bar alcove, a glowing curved counter, a pearl canopy and three baristas who really make
 # your drink. Order from the menu: each drink gives a small perk (a speed burst or bonus XP) and a cup to hold.
 # The drink of the hour is 30% off. Original design; not a copy of any real brand.
 var g
@@ -16,6 +16,8 @@ var cup_pickup: Node3D
 var hand_cup: Node3D
 var t := 0.0
 var lounge: Node3D
+var solid_body: StaticBody3D
+var plaza_seats: Array = []
 var lounge_at := Vector3.INF
 const LOUNGE_R := 8.0
 var making_t := 0.0            # >0 while the baristas are preparing an order
@@ -57,6 +59,15 @@ func prop(parent: Node3D, path: String, pos: Vector3, rot_y: float, sc: float) -
 	parent.add_child(n)
 	return true
 
+func solid(pos: Vector3, size: Vector3, rot_y: float) -> void:
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = size
+	cs.shape = bs
+	cs.position = pos
+	cs.rotation.y = rot_y
+	solid_body.add_child(cs)
+
 func glass(parent: Node3D, pos: Vector3, size: Vector3, col: Color) -> MeshInstance3D:
 	var b := BoxMesh.new()
 	b.size = size
@@ -85,190 +96,187 @@ func build_cafe(at: Vector3, face_to: Vector3) -> void:
 	g.add_child(root)
 	var gold := Color("e0b85a")
 	var brass := Color("c9a24a")
-	var r := RandomNumberGenerator.new()
-	r.seed = 5150
-	# --- terrazzo floor with brass edge ---
-	fest.cyl(root,Vector3(0,0.1,0),9.6,9.8,0.2,Color("8f887b"))
-	fest.torus(root,Vector3(0,0.22,0),9.55,0.09,brass,0.5)
-	var fleck_cols := [Color("e8e2d4"),Color("c4b08a"),Color("3d4a3c"),Color("222222"),Color("c98f6a")]
-	for i in 44:
-		var a := r.randf()*TAU
-		var rr := sqrt(r.randf())*9.0
-		var f: MeshInstance3D = fest.cyl(root,Vector3(cos(a)*rr,0.215,sin(a)*rr),0.16+r.randf()*0.22,0.16+r.randf()*0.22,0.02,fleck_cols[r.randi() % fleck_cols.size()])
-		f.scale.z = 0.6+r.randf()*0.8
-		f.rotation.y = r.randf()*TAU
-	# --- green tile wall, curved around the back, with a wood band and a glowing wave ---
-	var greens := [Color("5f7f4e"),Color("6c8c58"),Color("587648")]
-	var slabs := 26
-	for k in slabs:
-		var ang := PI-PI*0.38+float(k)/float(slabs-1)*(PI*0.76)
-		var ridge := 0.0 if k % 3 != 0 else 0.1
-		tangent_box(root,ang,7.9-ridge,2.15,Vector3(0.64,4.3,0.26),greens[k % 3])
-		if k % 3 == 0:
-			tangent_box(root,ang,7.72,2.15,Vector3(0.18,4.3,0.12),Color("86a672"))
-	for k in 20:
-		var ang2 := PI-PI*0.38+float(k)/19.0*(PI*0.76)
-		tangent_box(root,ang2,7.9,4.75,Vector3(1.0,1.2,0.34),Color("b07a44"))
-		var wy := 3.0+sin(float(k)*0.55)*0.35
-		tangent_box(root,ang2,7.7,wy,Vector3(0.95,0.07,0.07),Color("ffd98a"),1.6)
-	# wall menu boards on brass rails
-	var board_names := [["COFFEE",-0.55],["SPECIAL",0.0],["COLD & TEA",0.55]]
+	var pearl := Color("d6cfc2")
+	var pearl_top := Color("ece6da")
+	var glow := Color("ffd596")
+	solid_body = StaticBody3D.new()
+	solid_body.name = "RoasterySolids"
+	root.add_child(solid_body)
+	# --- floor: warm pearl platform with a glowing rim ---
+	fest.cyl(root,Vector3(0,0.1,0),9.6,9.8,0.2,Color("7d766a"))
+	fest.torus(root,Vector3(0,0.22,0),9.5,0.08,glow,1.0)
+	fest.torus(root,Vector3(0,0.22,0),5.4,0.04,brass,0.5)
+	# --- back wall: lit alcove bar in the middle, tall porthole panels either side ---
+	prop(root,"res://models/cafe_alcove.glb",Vector3(0,0,-6.3),0.0,1.0)
+	for wx: float in [-6.25,-3.75,3.75,6.25]:
+		var wz := -6.3+0.018*wx*wx
+		prop(root,"res://models/cafe_wallpanel.glb",Vector3(wx,0,wz),-atan(0.036*wx),1.0)
+	for sx: float in [-1.0,1.0]:
+		for zz: float in [-4.2,-1.7]:
+			prop(root,"res://models/cafe_wallpanel.glb",Vector3(sx*8.2,0,zz),sx*PI/2.0,1.0)
+	solid(Vector3(0,1.8,-6.5),Vector3(17.0,3.6,0.7),0.0)
+	for sx: float in [-1.0,1.0]:
+		solid(Vector3(sx*8.3,1.8,-3.4),Vector3(0.7,3.6,6.4),0.0)
+		# low glowing half-walls close the staff area from the counter end to the side wall
+		fest.box(root,Vector3(sx*6.3,0.55,-1.5),Vector3(3.8,1.1,0.3),pearl)
+		fest.box(root,Vector3(sx*6.3,0.1,-1.34),Vector3(3.8,0.06,0.05),glow,1.4)
+		fest.box(root,Vector3(sx*6.3,1.12,-1.5),Vector3(3.9,0.06,0.34),pearl_top)
+		solid(Vector3(sx*6.3,0.7,-1.5),Vector3(3.8,1.4,0.5),0.0)
+	# wall menu screens on the alcove
+	var board_names := [["COLD & TEA",-2.15],["SPECIAL",0.0],["COFFEE",2.15]]
 	for bn in board_names:
-		var ang3: float = PI+float(bn[1])
-		tangent_box(root,ang3,7.55,3.5,Vector3(2.0,1.15,0.1),Color("17252b"))
+		var bx: float = float(bn[1])
+		fest.box(root,Vector3(bx,3.35,-5.9),Vector3(1.96,1.06,0.05),glow,0.5)
+		fest.box(root,Vector3(bx,3.35,-5.84),Vector3(1.86,0.96,0.08),Color("14202a"))
 		var bl := Label3D.new()
 		bl.text = String(bn[0])
-		bl.font_size = 64
-		bl.pixel_size = 0.0065
+		bl.font_size = 56
+		bl.pixel_size = 0.0050
 		bl.modulate = Color("ffe9b8")
 		bl.outline_size = 8
-		bl.position = lp(ang3,7.4,3.55)
-		bl.rotation.y = ang3+PI
+		bl.position = Vector3(bx,3.38,-5.78)
 		root.add_child(bl)
-		for sx: float in [-0.85,0.85]:
-			var pp := lp(ang3,7.5,3.5)+Vector3(cos(ang3)*float(sx),0,-sin(ang3)*float(sx))
-			fest.cyl(root,Vector3(pp.x,4.3,pp.z),0.025,0.025,2.0,brass)
-	# --- curved marble counter ---
-	var cn := 19
+	# --- curved counter: pearl body, soft glowing strips, marble-cream top ---
+	var cn := 21
 	for k in cn:
-		var phi2 := -1.12+float(k)/float(cn-1)*2.24
-		tangent_box(root,phi2,4.6,0.55,Vector3(0.98,1.1,1.1),Color("1b1a19"))
-		tangent_box(root,phi2,4.62,1.16,Vector3(1.0,0.14,1.34),Color("cbbfae") if k % 2 == 0 else Color("b09a7c"))
-		tangent_box(root,phi2,5.3,1.0,Vector3(1.0,0.05,0.06),brass,0.4)
-		tangent_box(root,phi2,5.28,0.12,Vector3(0.98,0.05,0.05),Color("ffcf7a"),1.8)
-	# back counter with espresso machines and grinders
-	for k in 9:
-		var phi3 := -0.78+float(k)/8.0*1.56
-		tangent_box(root,phi3,2.2,0.55,Vector3(0.9,1.1,0.8),Color("2a2623"))
-		tangent_box(root,phi3,2.2,1.14,Vector3(0.94,0.1,0.9),Color("cdbba3"))
+		var a2 := -0.52+float(k)/float(cn-1)*1.04
+		var cp2 := Vector3(8.6*sin(a2),0.0,-9.0+8.6*cos(a2))
+		var cb: MeshInstance3D = fest.box(root,cp2+Vector3(0,0.55,0),Vector3(0.9,1.1,1.1),pearl)
+		cb.rotation.y = a2
+		var ct: MeshInstance3D = fest.box(root,cp2+Vector3(0,1.16,0.02),Vector3(0.92,0.14,1.4),pearl_top)
+		ct.rotation.y = a2
+		var cg: MeshInstance3D = fest.box(root,cp2+Vector3(sin(a2)*0.0,1.04,0.0)+Vector3(sin(a2),0,cos(a2))*0.58,Vector3(0.9,0.05,0.05),glow,1.5)
+		cg.rotation.y = a2
+		var cg2: MeshInstance3D = fest.box(root,cp2+Vector3(0,0.12,0)+Vector3(sin(a2),0,cos(a2))*0.57,Vector3(0.9,0.05,0.05),glow,1.5)
+		cg2.rotation.y = a2
+		if k % 4 == 0:
+			solid(cp2+Vector3(0,0.7,0),Vector3(2.8,1.4,1.2),a2)
+	# --- back counter with the espresso machines and grinders ---
+	for k in 7:
+		var bx2 := -3.0+float(k)
+		fest.box(root,Vector3(bx2,0.55,-5.4),Vector3(0.98,1.1,0.8),pearl)
+		fest.box(root,Vector3(bx2,1.14,-5.4),Vector3(1.0,0.1,0.9),pearl_top)
+		fest.box(root,Vector3(bx2,0.1,-4.98),Vector3(0.98,0.05,0.05),glow,1.4)
+	solid(Vector3(0,0.7,-5.4),Vector3(7.2,1.4,1.0),0.0)
 	for k in 3:
-		var phi4 := -0.52+float(k)*0.52
-		if not prop(root,"res://models/cafe_espresso.glb",lp(phi4,2.2,1.19),phi4,0.72):
-			tangent_box(root,phi4,2.2,1.55,Vector3(0.7,0.7,0.6),Color("1d1d1f"))
-			tangent_box(root,phi4,2.2,1.95,Vector3(0.78,0.08,0.68),brass,0.5)
+		var mx := -1.8+float(k)*1.8
+		if not prop(root,"res://models/cafe_espresso.glb",Vector3(mx,1.19,-5.4),0.0,0.78):
+			fest.box(root,Vector3(mx,1.6,-5.4),Vector3(0.8,0.8,0.6),Color("1d1d1f"))
 		if k < 2:
-			prop(root,"res://models/cafe_grinder.glb",lp(phi4+0.26,2.2,1.19),phi4+0.26,0.9)
-		var sp: Vector3 = lp(phi4,2.2,2.1)
+			prop(root,"res://models/cafe_grinder.glb",Vector3(mx+0.9,1.19,-5.4),0.0,0.9)
+		var sp := Vector3(mx,2.2,-5.2)
 		for si in 2:
 			var puff: MeshInstance3D = fest.ball(root,sp,Vector3(0.22,0.22,0.22),Color("ffffff"),0.4)
 			puff.visible = false
 			steam.append({"node":puff,"base":sp,"ph":float(si)*0.5+float(k)*0.17})
-	# pastry display on the counter
-	glass(root,lp(0.62,4.62,1.62),Vector3(1.6,0.8,0.9),Color("cfe8ee"))
-	if not prop(root,"res://models/cafe_pastry.glb",lp(0.62,4.62,1.22),0.62,0.95):
-		fest.box(root,lp(0.62,4.62,1.28),Vector3(1.5,0.1,0.8),Color("f6f3ec"))
-	# pickup spot where the finished cup appears
+	# pastry stand on the counter and the spot where the finished cup appears
+	var pa2 := 0.4
+	var pst := Vector3(8.6*sin(pa2),1.22,-9.0+8.6*cos(pa2))
+	glass(root,pst+Vector3(0,0.4,0),Vector3(1.6,0.8,0.9),Color("cfe8ee")).rotation.y = pa2
+	prop(root,"res://models/cafe_pastry.glb",pst,pa2,0.95)
 	cup_pickup = Node3D.new()
-	cup_pickup.position = lp(0.0,4.62,1.23)
+	cup_pickup.position = Vector3(0,1.23,-0.4)
 	cup_pickup.visible = false
 	root.add_child(cup_pickup)
 	build_cup(cup_pickup,Color("f6f3ec"))
-	# --- wood-slat swooping ceiling ---
-	var woods := [Color("4a3426"),Color("5a4030"),Color("6b4c37"),Color("5a4030"),Color("4a3426"),Color("6b4c37"),Color("7a5842")]
-	for k in 7:
-		var rad := 9.4-float(k)*1.05
-		var slat: MeshInstance3D = fest.cyl(root,Vector3(0,5.0+float(k)*0.17,-1.1-float(k)*0.12),rad,rad,0.26,woods[k])
-		slat.scale.z = 0.82
-		if k % 2 == 0:
-			var rim: MeshInstance3D = fest.torus(root,Vector3(0,5.0+float(k)*0.17+0.04,-1.1-float(k)*0.12),rad,0.05,Color("b8734a"),0.35)
-			rim.scale.z = 0.82
-	# hanging brass pendants
+	# --- pearl canopy with a glowing ring, and hanging lamps ---
+	var can: MeshInstance3D = fest.cyl(root,Vector3(0,6.1,-2.0),8.6,8.8,0.3,Color("c9c2b4"))
+	can.scale.z = 0.95
+	var can_rim: MeshInstance3D = fest.torus(root,Vector3(0,5.92,-2.0),8.6,0.07,glow,1.3)
+	can_rim.scale.z = 0.95
+	var can_ring: MeshInstance3D = fest.torus(root,Vector3(0,5.94,-2.0),4.6,0.14,glow,1.4)
+	can_ring.scale.z = 0.95
+	fest.cyl(root,Vector3(0,5.96,-2.0),4.5,4.5,0.04,Color("f1dfba"),0.35).scale.z = 0.95
 	for k in 5:
-		var pa := -0.9+float(k)*0.45
-		var pp2 := lp(pa,3.9,0.0)
-		if not prop(root,"res://models/cafe_pendant.glb",Vector3(pp2.x,3.06,pp2.z),0.0,1.0):
-			fest.cyl(root,Vector3(pp2.x,4.4,pp2.z),0.015,0.015,1.2,brass)
-			fest.cyl(root,Vector3(pp2.x,3.75,pp2.z),0.34,0.34,0.14,Color("c0763f"),0.3)
-			fest.ball(root,Vector3(pp2.x,3.62,pp2.z),Vector3(0.3,0.2,0.3),Color("fff0c8"),2.6)
-	# --- two candy-stripe columns with big bows ---
+		var px := -3.6+float(k)*1.8
+		var pz := -2.6+0.06*px*px*0.3
+		if not prop(root,"res://models/cafe_pendant.glb",Vector3(px,3.0,pz),0.0,1.0):
+			fest.ball(root,Vector3(px,3.5,pz),Vector3(0.3,0.2,0.3),Color("fff0c8"),2.6)
+	# --- two slim pearl pillars with glowing bands at the counter ends ---
 	for sx: float in [-1.0,1.0]:
-		var cp := Vector3(sx*7.0,0,3.4)
-		fest.cyl(root,cp+Vector3(0,0.6,0),0.88,0.92,1.2,Color("708a58"))
-		fest.cyl(root,cp+Vector3(0,3.2,0),0.7,0.7,4.2,Color("858a8c"))
-		for ri in 3:
-			var ry := 1.9+float(ri)*1.15
-			for st in 3:
-				var rc: MeshInstance3D = fest.torus(root,cp+Vector3(0,ry+float(st)*0.13,0),0.72,0.045,Color("cf2a3c") if st != 1 else Color("f6f3ec"))
-				rc.rotation.x = 0.18*float(ri-1)
-		fest.ball(root,cp+Vector3(0.64,4.4,0),Vector3(0.7,0.5,0.35),Color("cf2a3c"))
-		fest.ball(root,cp+Vector3(0.64,4.4,0.5),Vector3(0.7,0.5,0.35),Color("f6f3ec"))
-		fest.ball(root,cp+Vector3(0.64,4.4,0.25),Vector3(0.3,0.3,0.3),Color("cf2a3c"))
-	# --- seating: two round tables with stools, two lounge chairs, a ficus ---
-	for tp2: Vector3 in [Vector3(-5.2,0,6.2),Vector3(5.4,0,6.0)]:
-		fest.cyl(root,tp2+Vector3(0,0.95,0),0.7,0.7,0.07,Color("2c2420"))
-		fest.cyl(root,tp2+Vector3(0,0.5,0),0.07,0.07,0.95,brass)
-		fest.cyl(root,tp2+Vector3(0,0.24,0),0.4,0.4,0.06,brass)
-		for si2 in 3:
-			var sa := float(si2)/3.0*TAU+0.5
-			var sp2 := tp2+Vector3(cos(sa)*1.15,0,sin(sa)*1.15)
-			fest.cyl(root,sp2+Vector3(0,0.6,0),0.26,0.26,0.1,Color("3a5a46"))
-			fest.cyl(root,sp2+Vector3(0,0.3,0),0.04,0.04,0.6,brass)
-	for lc in [[Vector3(-8.2,0,2.4),0.5],[Vector3(8.3,0,2.3),-0.5]]:
-		var lcp: Vector3 = lc[0]
-		var lb: MeshInstance3D = fest.box(root,lcp+Vector3(0,0.35,0),Vector3(1.1,0.5,1.1),Color("8c6a4c"))
-		lb.rotation.y = float(lc[1])
-		var lbk: MeshInstance3D = fest.box(root,lcp+Vector3(0,0.85,-0.45),Vector3(1.1,0.7,0.2),Color("7a5a40"))
-		lbk.rotation.y = float(lc[1])
-	fest.cyl(root,Vector3(-8.6,0.25,-1.2),0.8,0.9,0.5,Color("3d3a36"))
-	fest.cyl(root,Vector3(-8.6,1.3,-1.2),0.1,0.14,2.0,Color("6a4a32"))
-	for k in 5:
-		fest.ball(root,Vector3(-8.6+sin(float(k)*1.4)*0.6,2.5+float(k)*0.22,-1.2+cos(float(k)*1.4)*0.5),Vector3(1.0,0.8,1.0),Color("2f7a3a"))
-	# --- gold sign over the counter ---
-	var plate: MeshInstance3D = fest.box(root,Vector3(0,6.35,3.2),Vector3(7.6,1.2,0.16),Color("1a2428"))
-	fest.torus(root,Vector3(0,6.35,3.31),0.46,0.04,gold,1.4).rotation.x = PI/2.0
+		var cpp := Vector3(sx*4.7,0,0.2)
+		fest.cyl(root,cpp+Vector3(0,3.0,0),0.34,0.38,6.0,pearl)
+		fest.cyl(root,cpp+Vector3(0,0.3,0),0.62,0.66,0.6,pearl_top)
+		for ry in [1.6,3.2,4.8]:
+			fest.torus(root,cpp+Vector3(0,float(ry),0),0.36,0.05,glow,1.4)
+		solid(cpp+Vector3(0,1.5,0),Vector3(0.9,3.0,0.9),0.0)
+	# --- sign above the alcove ---
+	var P := Vector3(0,4.95,-5.95)
+	var plate: MeshInstance3D = fest.box(root,P,Vector3(7.6,1.0,0.16),Color("1a2428"))
+	fest.torus(root,P+Vector3(-3.0,0,0.11),0.4,0.04,gold,1.2).rotation.x = PI/2.0
 	var title := Label3D.new()
 	title.text = "CHIT CHAT ROASTERY"
 	title.font_size = 96
-	title.pixel_size = 0.0058
+	title.pixel_size = 0.0054
 	title.modulate = Color("f4d27a")
 	title.outline_size = 12
 	title.outline_modulate = Color("2a1a08")
-	title.position = Vector3(0.45,6.45,3.34)
+	title.position = P+Vector3(0.45,0.12,0.14)
 	root.add_child(title)
 	var sub := Label3D.new()
 	sub.text = "Small-batch coffee · night-owl specials"
 	sub.font_size = 56
-	sub.pixel_size = 0.0052
+	sub.pixel_size = 0.0048
 	sub.modulate = Color("ffffff")
 	sub.outline_size = 8
-	sub.position = Vector3(0.45,5.95,3.34)
+	sub.position = P+Vector3(0.45,-0.34,0.14)
 	root.add_child(sub)
 	plate.name = "Plate"
-	# moon-in-a-cup emblem in the ring
-	fest.cyl(root,Vector3(0,6.28,3.3),0.17,0.14,0.2,Color("f6f3ec"),0.4).rotation.x = 0.0
-	fest.ball(root,Vector3(0,6.55,3.3),Vector3(0.2,0.2,0.04),Color("ffe9a8"),1.8)
+	fest.cyl(root,P+Vector3(-3.0,-0.06,0.12),0.15,0.12,0.18,Color("f6f3ec"),0.4)
+	fest.ball(root,P+Vector3(-3.0,0.2,0.12),Vector3(0.18,0.18,0.04),Color("ffe9a8"),1.8)
+	# --- plaza seating: three round pearl tables with slatted chairs, every chair can be sat on ---
+	for tp2: Vector3 in [Vector3(-5.6,0,4.2),Vector3(0.0,0,6.6),Vector3(5.6,0,4.2)]:
+		prop(root,"res://models/cafe_table.glb",tp2,0.0,1.0)
+		solid(tp2+Vector3(0,0.5,0),Vector3(1.1,1.0,1.1),0.0)
+		for si2 in 3:
+			var sa := float(si2)/3.0*TAU+0.5
+			var dirv := Vector3(sin(sa),0,cos(sa))
+			var cpos := tp2+dirv*1.25
+			prop(root,"res://models/cafe_chair.glb",cpos,sa+PI,1.0)
+			plaza_seats.append([cpos,sa])
 	# warm lights
-	for lpos: Vector3 in [Vector3(0,4.2,1.0),Vector3(-4.6,3.8,5.0),Vector3(4.6,3.8,5.0)]:
+	for lpos: Vector3 in [Vector3(0,4.2,-2.8),Vector3(-5.0,3.8,3.5),Vector3(5.0,3.8,3.5)]:
 		var om := OmniLight3D.new()
 		om.position = lpos
 		om.light_color = Color("ffd9a0")
-		om.light_energy = 1.1
+		om.light_energy = 0.4
 		om.omni_range = 11.0
 		root.add_child(om)
-	# --- the baristas ---
+	# potted plants at the alcove
+	for sx: float in [-1.0,1.0]:
+		var pp3 := Vector3(sx*3.3,0,-5.7)
+		fest.cyl(root,pp3+Vector3(0,0.3,0),0.4,0.32,0.6,Color("f1ece2"))
+		for q in 4:
+			fest.ball(root,pp3+Vector3(sin(float(q)*1.6)*0.25,0.95+float(q)*0.18,cos(float(q)*1.6)*0.25),Vector3(0.62,0.52,0.62),Color("3f8a52"))
+	# --- the baristas (they stand between the two counters and face the customers) ---
 	var looks := [
 		{"Shirt":Color("22384f"),"Pants":Color("2a2a2e"),"Skin":Color("ac7552"),"Hair":Color("1e140e"),"Shoes":Color("2a2a2a"),"Eye":Color("1c1c22")},
 		{"Shirt":Color("2d4a3a"),"Pants":Color("2a2a2e"),"Skin":Color("e0b48c"),"Hair":Color("5a3a22"),"Shoes":Color("2a2a2a"),"Eye":Color("1c1c22")},
 		{"Shirt":Color("5a3025"),"Pants":Color("2a2a2e"),"Skin":Color("8c5a3a"),"Hair":Color("14100c"),"Shoes":Color("2a2a2a"),"Eye":Color("1c1c22")},
 	]
 	for k in 3:
-		var phi5 := -0.5+float(k)*0.5
 		var person: Dictionary = g._make_person(root,k,looks[k])
 		if person.is_empty():
 			continue
 		var pr: Node3D = person["root"]
-		pr.position = lp(phi5,3.3,0.2)
-		pr.rotation.y = phi5+PI
-		# red apron on the front (the person faces -z in its own space)
+		pr.position = Vector3(-1.8+float(k)*1.8,0.2,-3.7)
+		pr.rotation.y = PI
 		fest.box(pr,Vector3(0,0.82,-0.17),Vector3(0.34,0.56,0.03),Color("a8202f"))
 		fest.box(pr,Vector3(0,1.12,-0.17),Vector3(0.22,0.05,0.03),Color("a8202f"))
-		staff.append({"person":person,"phi":phi5,"ph":float(k)*1.3})
+		staff.append({"person":person,"phi":0.0,"ph":float(k)*1.3})
 	# the cup the player holds
 	hand_cup = Node3D.new()
 	hand_cup.visible = false
 	g.add_child(hand_cup)
 	build_cup(hand_cup,Color("f6f3ec"))
 	build_lounge(face_to+Vector3(-24,0,23))
+	# seats: the plaza chairs
+	for ps in plaza_seats:
+		var wp: Vector3 = root.to_global(ps[0])
+		var sa2: float = ps[1]
+		var dir_out := Vector3(sin(sa2),0,cos(sa2))
+		var dir_w: Vector3 = (root.global_transform.basis*dir_out).normalized()
+		g._hub_seat(wp,atan2(dir_w.x,dir_w.z),"lounge",0,0,0.42)
 
 # ---------- the lounge: a big partitioned hang-out area with booth bays (white, porthole screens, glowing strips) ----------
 func build_lounge(at: Vector3) -> void:
@@ -277,22 +285,48 @@ func build_lounge(at: Vector3) -> void:
 	lounge.name = "RoasteryLounge"
 	lounge.position = at
 	g.add_child(lounge)
+	var lbody := StaticBody3D.new()
+	lounge.add_child(lbody)
 	var pearl := Color("8d8578")
 	fest.cyl(lounge,Vector3(0,0.1,0),LOUNGE_R,LOUNGE_R+0.2,0.2,pearl)
 	fest.torus(lounge,Vector3(0,0.22,0),LOUNGE_R-0.05,0.08,Color("ffd596"),0.8)
 	fest.torus(lounge,Vector3(0,0.22,0),3.2,0.05,Color("e0b85a"),0.8)
+	# the open side faces the giant Christmas tree
+	var tree: Vector3 = g.HUB_C+Vector3(-8,0,0)
+	var open_phi := atan2(tree.x-at.x,tree.z-at.z)
+	var seat_list: Array = []
 	for bi in 4:
-		var phi := deg_to_rad(120.0+float(bi)*60.0)
+		var phi := open_phi+PI+(float(bi)-1.5)*(PI/3.0)
 		var tp: Vector3 = lp(phi,4.2,0.0)
 		prop(lounge,"res://models/cafe_table.glb",tp,phi,1.0)
+		var tcs := CollisionShape3D.new()
+		var tbs := BoxShape3D.new()
+		tbs.size = Vector3(1.2,1.0,1.2)
+		tcs.shape = tbs
+		tcs.position = tp+Vector3(0,0.5,0)
+		lbody.add_child(tcs)
 		prop(lounge,"res://models/cafe_booth.glb",tp,phi+PI,1.0)
 		for j in 3:
 			var ang := phi+(float(j)-1.0)*0.36
-			prop(lounge,"res://models/cafe_partition.glb",lp(ang,6.95,0.0),ang+PI,1.0)
+			var pp2: Vector3 = lp(ang,6.95,0.0)
+			prop(lounge,"res://models/cafe_partition.glb",pp2,ang+PI,1.0)
+			var wcs := CollisionShape3D.new()
+			var wbs := BoxShape3D.new()
+			wbs.size = Vector3(2.5,3.4,0.4)
+			wcs.shape = wbs
+			wcs.position = pp2+Vector3(0,1.7,0)
+			wcs.rotation.y = ang+PI
+			lbody.add_child(wcs)
+		# three booth seats on the bench behind the table, two chairs on the open side
+		for sa: float in [-0.6,0.0,0.6]:
+			var dv := Vector3(sin(phi+sa),0,cos(phi+sa))
+			seat_list.append([tp+dv*1.5,atan2(dv.x,dv.z)])
 		var inward := Vector3(-sin(phi),0,-cos(phi))
 		var tang := Vector3(cos(phi),0,-sin(phi))
 		for sd in [-1.0,1.0]:
-			prop(lounge,"res://models/cafe_chair.glb",tp+inward*1.4+tang*0.62*sd,phi,1.0)
+			var cp2: Vector3 = tp+inward*1.4+tang*0.62*sd
+			prop(lounge,"res://models/cafe_chair.glb",cp2,phi,1.0)
+			seat_list.append([cp2,phi+PI])
 		var lamp := OmniLight3D.new()
 		lamp.position = lp(phi,4.6,2.6)
 		lamp.light_color = Color("ffe0b0")
@@ -301,9 +335,17 @@ func build_lounge(at: Vector3) -> void:
 		lounge.add_child(lamp)
 	# the middle: a communal round table with six chairs
 	prop(lounge,"res://models/cafe_table.glb",Vector3.ZERO,0.0,1.5)
+	var mcs := CollisionShape3D.new()
+	var mbs := BoxShape3D.new()
+	mbs.size = Vector3(1.7,1.0,1.7)
+	mcs.shape = mbs
+	mcs.position = Vector3(0,0.5,0)
+	lbody.add_child(mcs)
 	for k in 6:
 		var a := float(k)/6.0*TAU
-		prop(lounge,"res://models/cafe_chair.glb",Vector3(sin(a),0,cos(a))*1.55,a,1.0)
+		var cp3 := Vector3(sin(a),0,cos(a))*1.7
+		prop(lounge,"res://models/cafe_chair.glb",cp3,a+PI,1.0)
+		seat_list.append([cp3,a])
 	# oval ceiling light hung over the lounge
 	prop(lounge,"res://models/cafe_ringlight.glb",Vector3(0,6.6,0),0.0,1.15)
 	var ring_l := OmniLight3D.new()
@@ -322,19 +364,21 @@ func build_lounge(at: Vector3) -> void:
 	lsign.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 	lsign.position = Vector3(0,4.3,0)
 	lounge.add_child(lsign)
-	for k in 3:
-		var pa := deg_to_rad(20.0+float(k)*40.0)
-		var pp: Vector3 = lp(pa,6.9,0.0)
+	for sd in [-1.0,1.0]:
+		var pp: Vector3 = lp(open_phi+1.0*sd,6.9,0.0)
 		fest.cyl(lounge,pp+Vector3(0,0.35,0),0.42,0.34,0.7,Color("f4f6f7"))
 		for q in 4:
 			fest.ball(lounge,pp+Vector3(sin(float(q)*1.6)*0.25,1.0+float(q)*0.2,cos(float(q)*1.6)*0.25),Vector3(0.7,0.6,0.7),Color("3f8a52"))
+	for sv in seat_list:
+		var wp: Vector3 = at+(sv[0] as Vector3)
+		g._hub_seat(wp,float(sv[1]),"lounge",0,0,0.42)
 
 func in_lounge(p: Vector3) -> bool:
 	return lounge_at != Vector3.INF and Vector2(p.x-lounge_at.x,p.z-lounge_at.z).length() < LOUNGE_R
 
 func counter_spot(k: int) -> Vector3:
 	# the three places in front of the counter where you can say hi to a barista (world position)
-	return root.to_global(lp(-0.55+float(k)*0.55,5.9,0.0))
+	return root.to_global(Vector3(-2.4+float(k)*2.4,0.0,1.4))
 
 func holding_cup() -> bool:
 	return Time.get_ticks_msec()/1000.0 < hand_until
@@ -404,11 +448,11 @@ func _process(delta: float) -> void:
 			if ar != null and al != null:
 				var speed := 7.0 if busy else 1.6
 				var amp := 0.4 if busy else 0.12
-				ar.rotation.x = -1.05+sin(t*speed+ph)*amp
-				al.rotation.x = -0.95+sin(t*speed*0.8+ph+1.4)*amp
+				ar.rotation.x = 1.05+sin(t*speed+ph)*amp
+				al.rotation.x = 0.95+sin(t*speed*0.8+ph+1.4)*amp
 			var pr: Node3D = person["root"]
 			var turn := sin(t*0.5+ph)*0.25
-			pr.rotation.y = float(s["phi"])+PI+turn
+			pr.rotation.y = PI+turn
 		for st in steam:
 			var n: Node3D = st["node"]
 			var show := making_t > 0.0 or int(t*0.4+float(st["ph"])*3.0) % 3 == 0

@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.57.1 (code 122, 2026-11-24)
+- cafe.gd rebuilt: pearl layout (alcove, wallpanel, canopy), StaticBody solids (solid()), barista arms +1.05, counter_spot at the plaza, plaza + lounge seats via g._hub_seat(...,"lounge"), lounge opens toward the tree. blender-src/make_cafe.py adds cafe_alcove/cafe_wallpanel. world_biosphere.gd hex_roof: edges clipped to the base ring. --cafe-shots sets dq.dry.
+
 ## 0.57.0 (code 121, 2026-11-24)
 - New game/cafe.gd (Roastery + lounge, build_lounge, props from blender-src/make_cafe.py -> game/models/cafe_*.glb), hooks in main.gd (cafe var, interact, panel, speed perk, --cafe-shots, _smoke_cafe). dome_quests.gd: 10 café quests (idx 11-20), cq_* state saved. world_biosphere.gd: round beams, hex_roof, sign_frame.
 

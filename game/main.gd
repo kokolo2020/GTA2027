@@ -366,7 +366,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.57.0: new Chit Chat Roastery café, lounge and café quests in the Harbor Dome.")
+	_show_toast("Chit Chat City 0.57.1: redesigned Roastery café, sit-down lounge facing the tree, closed dome gaps.")
 	booted = true
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
@@ -15813,7 +15813,8 @@ func _cafe_shots() -> void:
 	# Developer-only: the Chit Chat Roastery from outside, behind the counter, and mid-order. Never saves.
 	var at: Vector3 = cafe.spot
 	var f := (HUB_C-at).normalized()
-	player.position = at+f*7.0+Vector3(0,0.75,0)
+	dq.dry = true
+	player.position = at+f*30.0+Vector3(0,0.75,0)
 	for i in 40:
 		await get_tree().physics_frame
 	paused = true
@@ -15830,9 +15831,17 @@ func _cafe_shots() -> void:
 	camera.position = at+f*9.0+side*9.0+Vector3(0,3.2,0)
 	camera.look_at(at-f*1.0+Vector3(0,2.0,0))
 	await _save_shot("cafe-side")
-	camera.position = at+f*6.6+Vector3(0,1.9,0)+side*0.8
-	camera.look_at(at+Vector3(0,1.9,0))
+	camera.position = at+f*5.2+Vector3(0,2.2,0)+side*1.2
+	camera.look_at(at-f*3.5+Vector3(0,1.8,0))
 	await _save_shot("cafe-counter")
+	cafe.making_t = 2.5
+	cafe.making_id = "gold"
+	for i in 20:
+		await get_tree().physics_frame
+	await _save_shot("cafe-making")
+	camera.position = at+f*3.0+side*7.5+Vector3(0,2.0,0)
+	camera.look_at(at-f*3.5+side*-1.0+Vector3(0,1.8,0))
+	await _save_shot("cafe-inside")
 	var lp0: Vector3 = cafe.lounge_at
 	camera.position = lp0+Vector3(0,40,0.01)
 	camera.look_at(lp0)
@@ -15846,11 +15855,6 @@ func _cafe_shots() -> void:
 	camera.position = lp0+Vector3(sin(4.2),0,cos(4.2))*3.0+Vector3(0,2.3,0)
 	camera.look_at(lp0+Vector3(sin(1.9),0,cos(1.9))*5.0+Vector3(0,1.2,0))
 	await _save_shot("cafe-lounge-bay2")
-	cafe.making_t = 2.5
-	cafe.making_id = "gold"
-	for i in 20:
-		await get_tree().physics_frame
-	await _save_shot("cafe-making")
 	get_tree().quit()
 
 func _shop_shots() -> void:

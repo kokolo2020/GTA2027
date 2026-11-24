@@ -59,12 +59,12 @@ def pastry():
     export("cafe_pastry")
 
 def pendant():
-    cyl(0.012, 1.2, (0, 0, 1.4), BRASS, verts=6)
-    cone(0.42, 0.1, 0.26, (0, 0, 0.72), BRASS, verts=18)
-    cyl(0.43, 0.03, (0, 0, 0.58), GREENM, verts=18)
+    SHADE = mat("PendantShade", "b9b4aa", 0.45)
+    cyl(0.012, 2.4, (0, 0, 1.8), CHROME, verts=6)
+    cone(0.42, 0.1, 0.26, (0, 0, 0.72), SHADE, verts=18)
+    cyl(0.43, 0.03, (0, 0, 0.58), CHROME, verts=18)
     ico(0.14, (0, 0, 0.56), BULB, 1)
     export("cafe_pendant")
-
 
 PEARL = mat("LoungePearl", "cfc8bb", 0.35)
 GLOW = mat("LoungeGlow", "ffd596", 0.3, 0.0, 1.3)
@@ -153,6 +153,36 @@ def ringlight():
         cyl(0.015, 3.0, (math.cos(a) * 2.7, math.sin(a) * 2.7, 1.5), CHROME, verts=5)
     export("cafe_ringlight")
 
+
+def alcove():
+    # back-bar alcove (5 m wide, 4.4 m tall): pearl frame, glowing arch, two lit shelves with bottles
+    block((0.8, 0.55, 4.4), (-2.1, 0, 2.2), PEARL, 0.05)
+    block((0.8, 0.55, 4.4), (2.1, 0, 2.2), PEARL, 0.05)
+    block((5.0, 0.55, 0.9), (0, 0, 3.95), PEARL, 0.08)
+    block((3.4, 0.12, 3.5), (0, 0.2, 1.95), CREAMM, 0.02)
+    block((0.07, 0.12, 3.4), (-1.65, 0.1, 1.9), GLOW)
+    block((0.07, 0.12, 3.4), (1.65, 0.1, 1.9), GLOW)
+    block((3.4, 0.12, 0.07), (0, 0.1, 3.55), GLOW)
+    cols = ["8a4b3a", "d9b44a", "3f6f4a", "b0b6bb", "6a3a2a", "caa86a"]
+    for lvl, z in enumerate((1.55, 2.5)):
+        block((3.3, 0.34, 0.06), (0, 0.0, z), SLAT, 0.01)
+        block((3.2, 0.05, 0.05), (0, -0.18, z - 0.06), GLOW)
+        for i in range(9):
+            x = -1.45 + i * 0.36
+            h = 0.3 + ((i * 7 + lvl * 3) % 4) * 0.06
+            cyl(0.06, h, (x, 0.0, z + 0.03 + h / 2), mat("Bottle%d" % ((i + lvl * 2) % 6), cols[(i + lvl * 2) % 6], 0.35, 0.1), verts=8)
+    export("cafe_alcove")
+
+def wallpanel():
+    # tall pearl wall panel with two tall oval windows and glowing pills
+    block((2.5, 0.22, 4.4), (0, 0, 2.2), PEARL, 0.05)
+    block((2.7, 0.3, 0.14), (0, 0, 0.07), GLOW, 0.02)
+    block((2.7, 0.3, 0.22), (0, 0, 4.4), PEARL, 0.05)
+    oval_window(-0.58, -0.12, 2.5, 0.85, 2.0)
+    oval_window(0.58, -0.12, 2.5, 0.85, 2.0)
+    pill(0, -0.12, 2.5, 0.12, 1.5)
+    export("cafe_wallpanel")
+
 def fin():
     # low freestanding oval-window screen to close the gaps between bays
     block((1.6, 0.16, 2.2), (0, 0, 1.1), PEARL, 0.05)
@@ -161,7 +191,7 @@ def fin():
     export("cafe_fin")
 
 try:
-    espresso(); grinder(); pastry(); pendant(); table(); chair(); booth(); partition(); ringlight(); fin()
+    espresso(); grinder(); pastry(); pendant(); table(); chair(); booth(); partition(); ringlight(); fin(); alcove(); wallpanel()
     print("HARBOR_CAFE DONE")
 except Exception:
     import traceback

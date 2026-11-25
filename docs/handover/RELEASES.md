@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.59.0 (code 124, 2026-11-25)
+- New game/paris.gd (RefCounted, built lazily on first portal entry at C=(900,0,700); hub portal at HUB_C+(0,0,64), return portal at C+(95,0,115)). Data game/map/paris_osm.json (OSM metres from the tower, lat0 48.8583 lon0 2.2945). Chunked building meshes + trimesh collider, window mesh visibility_range_end 170, MultiMesh roads/trees/lamps/tower. 4 quests, state saved via save_state/load_state. main.gd hooks: paris var, interact, action button prompt, save/load, _biosphere_tick, --paris-shots. OSM credit in menu line + credits.txt.
+
 ## 0.58.0 (code 123, 2026-11-24)
 - New game/weather.gd (clock-seeded random showers, GPUParticles3D drops, under_roof ray, sets g.rain_amt; main.gd _daynight_apply greys sky/sun, fog closes in, road_mats go wet; Menu > Settings > Weather, saved as progress/weather_on; --rain forces it; dev modes stay dry). main.gd: _touch_text_focus() (touch -> LineEdit.edit(), tested in _smoke_typed_chat), filmic tonemap + new DAY_KEYS day rows, SSAO + radiance 128 on desktop only, sky train _speak() lines, Harbor Dome wall 40 m + lid. world_biosphere.gd: build_corner_rails()/rail(), park_lamp(), hedges via nature("nature_hedge"/"nature_hedge2") from blender-src/make_hedge.py. cafe.gd: toy palette (make_cafe.py TOY_COL override), barista arm pose with ForeArm. dome_quests.gd gift_pos keeps 14 m off the café. Sky train pillars over roads become portal frames (legs 1.1 m past the road edge, beam in caps). autoplay.gd: sidewalk_ok/path_clear/road_edge_dist, force_travel() every TRAVEL_EVERY=300 s, clear_screen() (AUTOPLAY_UI=1 keeps the HUD).
 

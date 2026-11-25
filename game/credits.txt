@@ -28,3 +28,6 @@ Run animation source (v0.53 character trial): Kenney Animated Characters, CC0 pu
 
 Symbols font (v0.33.2): Noto Sans Symbols 2, Copyright 2022 The Noto Project Authors
   (https://github.com/notofonts/symbols), SIL Open Font License 1.1 (game/fonts/OFL.txt).
+
+
+Paris district map data: © OpenStreetMap contributors, licensed under the Open Database Licence (ODbL) 1.0. https://www.openstreetmap.org/copyright

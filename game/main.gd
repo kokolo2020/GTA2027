@@ -7,6 +7,8 @@ var road_barrier = RoadBarrier.new(self)
 
 const WorldBiosphere := preload("res://world_biosphere.gd")
 var world_bio
+const Paris := preload("res://paris.gd")
+var paris   # v0.59: portal to a real Paris district (paris.gd)
 ## Chit Chat City: original single-player driving prototype. No external assets or services.
 
 # v0.23: job stops sit on the pavement beside the road (6.5 m from the road centre), not in the lanes.
@@ -325,6 +327,8 @@ func _ready() -> void:
 	_build_commons()
 	if not OS.get_environment("HC_SKIP").contains("biosphere"):
 		_build_biosphere()
+	paris = Paris.new(self)
+	paris.build_hub()
 	if not OS.get_environment("HC_SKIP").contains("galleria"):
 		_build_galleria()
 	if not OS.get_environment("HC_SKIP").contains("sky_garden"):
@@ -366,8 +370,13 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.58.0: rain showers, sky train voice, a more natural look, and you can type in chat on phones.")
+	_show_toast("Chit Chat City 0.59.0: a portal to real Paris! Walk the streets around the Eiffel Tower and finish 4 daily quests.")
 	booted = true
+	if "--promo" in OS.get_cmdline_user_args():
+		# Developer-only: films the highlight video (see promo.gd). Never goes online.
+		var pr = load("res://promo.gd").new(self)
+		pr.name = "Promo"
+		add_child(pr)
 	if "--autoplay" in OS.get_cmdline_user_args():
 		var ap = preload("res://autoplay.gd").new(self)
 		ap.name = "Autoplay"
@@ -394,6 +403,9 @@ func _ready() -> void:
 		get_tree().quit()
 	elif "--dome-shots" in OS.get_cmdline_user_args():
 		await world_bio.dome_shots()
+		get_tree().quit()
+	elif "--paris-shots" in OS.get_cmdline_user_args():
+		await _paris_shots()
 		get_tree().quit()
 	elif "--world-bio-shots" in OS.get_cmdline_user_args():
 		await world_bio.screenshots()
@@ -4962,7 +4974,7 @@ func _build_hud() -> void:
 	cont.add_theme_color_override("font_color",Color("182b38"))
 	cont.add_theme_color_override("font_hover_color",Color("182b38"))
 	foot.add_child(cont)
-	items.add_child(_label("Built with Godot Engine • MIT license · credits.txt in the project",12,Color("6f9aa6")))
+	items.add_child(_label("Built with Godot Engine • MIT license · Paris map © OpenStreetMap contributors (ODbL) · credits.txt",12,Color("6f9aa6")))
 	_menu_tab(0)
 	_build_panels(root)
 	_build_nick_panel(root)
@@ -8015,6 +8027,8 @@ func _interact() -> void:
 		return
 	if world_bio != null and world_bio.interact():
 		return
+	if paris != null and paris.interact():
+		return
 	if race_car:
 		if rec_act > 0:
 			_rec_stop()
@@ -8288,6 +8302,8 @@ func _refresh_hud() -> void:
 	_rw_hud()
 	if world_bio != null and world_bio.prompt() != "":
 		action_button.text = world_bio.prompt()
+	if paris != null and paris.prompt() != "":
+		action_button.text = paris.prompt()
 	_refresh_nick_button()
 	var discovered: PackedStringArray = []
 	for find_index in FINDS.size():
@@ -8479,6 +8495,8 @@ func _save_progress() -> void:
 	file.set_value("progress","bio_seen",bio_seen)
 	if world_bio != null:
 		world_bio.save_state(file)
+	if paris != null:
+		paris.save_state(file)
 	if dq != null:
 		dq.save_state(file)
 	file.set_value("progress","bio_pass_day",bio_pass_day)
@@ -8538,6 +8556,8 @@ func _load_progress() -> void:
 		bio_pass_day = String(file.get_value("progress","bio_pass_day",""))
 		if world_bio != null:
 			world_bio.load_state(file)
+		if paris != null:
+			paris.load_state(file)
 		if dq != null:
 			dq.load_state(file)
 		ch_idx = clampi(int(file.get_value("chapters","idx",0)),0,CHAPTERS.size())
@@ -10711,6 +10731,70 @@ func _save_shot(name: String) -> void:
 		folder = ProjectSettings.globalize_path("user://screenshots")
 	DirAccess.make_dir_recursive_absolute(folder)
 	get_viewport().get_texture().get_image().save_png(folder.path_join(name+".png"))
+
+func _paris_shots() -> void:
+	# Developer-only: the portal in the Harbor Dome, then Paris from the street, the tower, the cafe, the quay and the air. Never saves.
+	paris.dry = true
+	var hp: Vector3 = paris.hub_pos
+	var hf := (HUB_C-hp).normalized()
+	player.position = hp+hf*9.0+Vector3(0,0.75,0)
+	for i in 40:
+		await get_tree().physics_frame
+	paused = true
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.hide()
+	camera.position = HUB_C+Vector3(0,150,0.01)
+	camera.look_at(HUB_C)
+	await _save_shot("paris-0-hub-top")
+	paused = false
+	var pr: String = paris.prompt()
+	print("PARIS_PROMPT_AT_PORTAL=",pr)
+	var t0 := Time.get_ticks_msec()
+	await paris.enter()
+	print("PARIS_ENTER_MS=",Time.get_ticks_msec()-t0," pos=",player.position," blocked=",_blocked_at(player.position,0.3)," nodes=",get_tree().get_node_count()," trees=",paris.tree_n," quests=",paris.done_count())
+	for i in 30:
+		await get_tree().physics_frame
+	print("PARIS_PROMPT_AT_RETURN=",paris.prompt(), " on_floor=",player.is_on_floor()," y=",player.position.y)
+	paused = true
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.hide()
+	var C: Vector3 = Paris.C
+	camera.position = hp+hf*15.0+Vector3(0,3.5,0)
+	camera.look_at(hp+Vector3(0,3,0))
+	await _save_shot("paris-1-hub-portal")
+	camera.position = C+Vector3(70,6,95)
+	camera.look_at(C+Vector3(0,60,0))
+	await _save_shot("paris-2-tower-from-lawn")
+	camera.position = C+Vector3(12,2,14)
+	camera.look_at(C+Vector3(0,40,0))
+	await _save_shot("paris-3-under-tower")
+	camera.position = C+Vector3(180,30,230)
+	camera.look_at(C+Vector3(0,70,0))
+	await _save_shot("paris-4-tower-far")
+	var cp: Vector3 = paris.cafe_pos
+	camera.position = cp+Vector3(9,2.2,16)
+	camera.look_at(cp+Vector3(0,1.8,0))
+	await _save_shot("paris-5-cafe")
+	camera.position = C+Vector3(160,2,-160)
+	camera.look_at(C+Vector3(215,9,-112))
+	await _save_shot("paris-6-avenue")
+	camera.position = C+Vector3(250,5,-40)
+	camera.look_at(C+Vector3(300,14,-10))
+	await _save_shot("paris-7-buildings")
+	var qp: Vector3 = paris.quay_pos
+	camera.position = qp+Vector3(14,3,20)
+	camera.look_at(qp+Vector3(-25,2,-40))
+	await _save_shot("paris-8-quay")
+	camera.position = C+Vector3(60,340,380)
+	camera.look_at(C+Vector3(160,0,-20))
+	await _save_shot("paris-9-aerial")
+	var rp: Vector3 = paris.ret_pos
+	camera.position = rp+Vector3(10,3,13)
+	camera.look_at(rp+Vector3(0,3,0))
+	await _save_shot("paris-10-return-portal")
+	print("PARIS_SHOTS_DONE")
 
 func _people_shots() -> void:
 	# Developer-only: close-up frames of the player and pedestrians. Never saves.
@@ -22816,6 +22900,8 @@ func _bio_stuck_check(delta: float) -> void:
 		_show_toast("STUCK at %d,%d: %s | wide: %s | gates pass=%s" % [int(p.x),int(p.z),_blocker(p+Vector3(0,0.9,0),0.45),_blocker(p+Vector3(0,0.9,0),1.1),str(_bio_pass_ok())])
 
 func _biosphere_tick(delta: float) -> void:
+	if paris != null:
+		paris.tick(delta)
 	if world_bio != null:
 		if place_open[1] and not paused:
 			_bio_gate_tick(delta)

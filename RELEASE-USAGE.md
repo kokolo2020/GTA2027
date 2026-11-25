@@ -27,4 +27,5 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.56.10 | | 1% session, 7% weekly | | Claude-built (browser front door, Oceania spot fix). Read 13:44 on 24 Nov. Weekly stayed 7% since 0.56.7, so 0.56.8 to 0.56.10 used about 0% weekly |
 | 0.57.0 | | | 8% weekly | Claude-built (Roastery café, lounge, café quests, dome polish). Read 15:59 on 24 Nov. Weekly went 7% to 8% since 0.56.10 |
 | 0.57.1 | | | | Claude-built (Roastery redesign, sit-down lounge, dome gaps). Usage screenshot not sent before release (Koko said Release) |
-| 0.58.0 | | | | Claude-built (rain, station voice, natural look, chat typing on phones, Biosphere rails/hedges/lamps, café toy look, Stream Mode fixes). Usage screenshot not sent before release (Koko said Release) |
+| 0.58.0 | | 35% session, 14% weekly (Fable only 10%) | about 6% weekly with 0.57.1 | Claude-built (rain, station voice, natural look, chat typing on phones, Biosphere rails/hedges/lamps, café toy look, Stream Mode fixes). Read 20:21 on 24 Nov, after release. Weekly went 8% to 14% since 0.57.0, covering 0.57.1 and 0.58.0 |
+| 0.59.0 | | | | Claude-built (Portal to Paris, OSM district). Usage not read before release |

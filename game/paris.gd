@@ -827,9 +827,9 @@ func submit_case(code: String) -> bool:
 	relic = true
 	if case_day != today:
 		case_day = today
-		pay(600,60,"CASE SOLVED")
+		pay(2000,200,"CASE SOLVED")
 	if first:
-		g.cash += 1000
+		g.cash += 10000
 		if not dry:
 			g._show_toast("RELIC FOUND: %s! The sky world needs 4 relics." % W["relic"])
 			g._feed_add("%s relic found: %s" % [W["name"],W["relic"]],"")

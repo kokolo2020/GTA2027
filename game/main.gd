@@ -370,7 +370,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.61: new mystery cases in every city. Tap WORLD PORTAL, find 3 clues, win relics.")
+	_show_toast("Chit Chat City 0.61.1: bigger mystery rewards and a grander sky shrine. Tap WORLD PORTAL.")
 	booted = true
 	if "--promo" in OS.get_cmdline_user_args():
 		# Developer-only: films the highlight video (see promo.gd). Never goes online.

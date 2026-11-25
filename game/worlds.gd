@@ -140,6 +140,55 @@ func build_sky() -> void:
 		g._hm(sky_root,pp+Vector3(0,2.5,0),Vector3(1.0,5.0,1.0),Color("e8e3f5"),true)
 		g._fc_part(sky_root,g._bsph(0.7),pp+Vector3(0,5.8,0),g._fc_glow(cols[k]))
 	g._fc_part(sky_root,g._bsph(1.4),Vector3(0,6.5,0),g._fc_glow(Color("f4ecff")))
+	# v0.61.1: a grander shrine: glowing floor rings, tiers, spinning halos, orbiting crystals, a sky beam
+	g._fc_part(sky_root,g._bcone(11.0,11.0,0.06),Vector3(0,0.05,0),g._fc_glow(Color("b48cff")))
+	g._fc_part(sky_root,g._bcone(8.4,8.4,0.08),Vector3(0,0.08,0),g._material(Color("2c2442")))
+	g._fc_part(sky_root,g._bcone(7.2,7.2,0.1),Vector3(0,0.1,0),g._fc_glow(Color("ffd98a")))
+	g._fc_part(sky_root,g._bcone(6.4,6.4,0.12),Vector3(0,0.12,0),g._material(Color("2c2442")))
+	g._hm(sky_root,Vector3(0,1.5,0),Vector3(6.4,0.5,6.4),Color("e8dcff"))
+	for k in 4:
+		var ang := float(k)/4.0*TAU
+		g._hm(sky_root,Vector3(cos(ang)*5.6,5.4,sin(ang)*5.6),Vector3(0.5,0.5,0.5),Color("ffd98a"))
+	var halo_cols := [Color("ffd98a"),Color("b48cff"),Color("8ee0ff")]
+	for h in 3:
+		var pivot := Node3D.new()
+		pivot.position = Vector3(0,6.5,0)
+		pivot.rotation = Vector3(float(h)*0.9,0,float(h)*0.6)
+		sky_root.add_child(pivot)
+		var ring := MeshInstance3D.new()
+		ring.mesh = g._fc_torus(3.0+float(h)*1.4,3.2+float(h)*1.4)
+		ring.material_override = g._fc_glow(halo_cols[h])
+		pivot.add_child(ring)
+		var tw: Tween = g.create_tween()
+		tw.set_loops()
+		tw.tween_property(pivot,"rotation:y",TAU if h%2 == 0 else -TAU,10.0+float(h)*4.0).from(0.0)
+	var orbit := Node3D.new()
+	orbit.position = Vector3(0,4.5,0)
+	sky_root.add_child(orbit)
+	for k in 10:
+		var ang := float(k)/10.0*TAU
+		var cr: MeshInstance3D = g._fc_part(orbit,g._bcone(0.05,0.55,1.6),Vector3(cos(ang)*10.0,sin(ang*3.0)*1.8,sin(ang)*10.0),g._fc_glow(halo_cols[k%3].lightened(0.2)))
+		cr.rotation.x = 0.4
+	var otw: Tween = g.create_tween()
+	otw.set_loops()
+	otw.tween_property(orbit,"rotation:y",TAU,18.0).from(0.0)
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bm.albedo_color = Color(0.75,0.6,1.0,0.22)
+	bm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var cm := CylinderMesh.new()
+	cm.top_radius = 1.0
+	cm.bottom_radius = 3.0
+	cm.height = 220.0
+	cm.radial_segments = 14
+	cm.rings = 1
+	var beam := MeshInstance3D.new()
+	beam.mesh = cm
+	beam.material_override = bm
+	beam.position = Vector3(0,112.0,0)
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	sky_root.add_child(beam)
 	list[0].label(sky_root,"MYSTIC SHRINE",Vector3(0,11.0,0),Color("e9d8ff"),72)
 	var ol := OmniLight3D.new()
 	ol.light_color = Color("c7a8ff")
@@ -184,16 +233,16 @@ func sky_interact(pr: String) -> void:
 	if not shrine_done:
 		shrine_done = true
 		shrine_day = today
-		g.cash += 5000
+		g.cash += 100000
 		if not g.legacy_rules:
-			g.bonus_xp += 500
-		g._show_toast("THE SHRINE AWAKENS! 4 relics joined. +$5000  +500 XP")
+			g.bonus_xp += 5000
+		g._show_toast("THE SHRINE AWAKENS! 4 relics joined. +$100,000  +5000 XP")
 		g._feed_add("Mystic Shrine awakened!","")
 		g._save_progress()
 	elif shrine_day != today:
 		shrine_day = today
-		g.cash += 500
-		g._show_toast("The shrine grants a wish: +$500. Come back tomorrow.")
+		g.cash += 5000
+		g._show_toast("The shrine grants a wish: +$5,000. Come back tomorrow.")
 		g._save_progress()
 	else:
 		g._show_toast("The shrine glows softly. Come back tomorrow.")

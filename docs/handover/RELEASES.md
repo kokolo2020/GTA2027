@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.61.1 (code 129, 2026-11-25)
+- worlds.gd: shrine reward $100000+5000 XP, wish $5000; paris.gd: relic $10000, daily case 2000/200. build_sky: shrine floor rings, halos (tweened torus), orbiting crystals, sky beam.
+
 ## 0.61.0 (code 128, 2026-11-25)
 - paris.gd: mystery (W clues/riddles/code/relic; clue orbs, case board at ret+(5,0,0), found_clue, submit_case, clue/relic save keys). worlds.gd: sky island at (9600,260,700) built lazily, relic_count/sky_open/enter_sky, shrine prompt, "sky" save section. main.gd: case_panel (_open_case, digit spinners), sky_button in world picker, shots test runs the mystery + sky flow.
 

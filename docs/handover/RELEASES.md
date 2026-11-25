@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.59.2 (code 126, 2026-11-25)
+- paris.gd PORTAL_REL now (-126,0,-40) = world (84,0,-8) on the Ridge lawn (the old south-of-dome spot was water); in_paris(). main.gd: portal_button "WORLD PORTAL"/"PORTAL HOME" (_build_travel, _place_portal_button, _portal_pressed, shown in the HUD refresh, hidden on clean screen / Stream Mode).
+
 ## 0.59.1 (code 125, 2026-11-25)
 - paris.gd: light beam (140 m CylinderMesh, unshaded alpha) over the hub portal; go_portal() teleports next to it. main.gd: Menu GO list gets "Paris portal" (_menu_go.bind(paris.go_portal)).
 

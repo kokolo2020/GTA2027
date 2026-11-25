@@ -86,447 +86,447 @@ Every function in game/main.gd under its section, with line numbers. See CODE-MA
 
 `_stat_add`:7362, `_sites_found`:7365, `_sites_total`:7368, `_bits`:7371, `_ach_value`:7378, `_ach_tick`:7433, `_ach_check`:7458, `_ach_by_id`:7494, `_ach_msg`:7500, `_build_ach`:7513, `_ach_show`:7544, `_open_ach`:7564, `_close_ach`:7570, `_refresh_ach`:7574, `_ach_num`:7605, `_minimap_tap`:7608, `_menu_go`:7615, `_menu_stay`:7620, `_menu_call_car`:7624, `_toggle_clean_hud`:7630, `_refresh_menu_buttons`:7636, `_clean_hud_tick`:7646, `_draw_joystick`:7687, `_input`:7692, `_touch_text_focus`:7779, `_stick_zone`:7799, `_notification`:7803, `_physics_process`:7818, `_follow_camera`:7966, `_follow_walk_camera`:8002, `_interact`:8025, `_refresh_hud`:8187, `_open_panel`:8316, `_layout_panels`:8342, `_toggle_menu`:8365, `_rescue`:8407, `_show_toast`:8439, `_save_progress`:8443, `_load_progress`:8536
 
-## 8744-11051  v0.5.0: original synthesized radio and ambient pedestrians
+## 8744-11055  v0.5.0: original synthesized radio and ambient pedestrians
 
-`_midi`:8745, `_radio_voice`:8748, `_radio_make`:8781, `_radio_set`:8852, `_radio_play`:8874, `_radio_next`:8879, `_radio_talk_line`:8883, `_radio_caption`:8904, `_radio_refresh`:8912, `_process`:8925, `_build_peds`:8976, `_update_peds`:9087, `_update_ped`:9106, `_smoke_test`:9160, `_smoke_chase`:9803, `_smoke_orole`:9836, `_smoke_levels`:9865, `_smoke_bus`:9906, `_smoke_chase_extras`:9991, `_smoke_marina`:10019, `_blocked_at`:10121, `_blocker`:10136, `_on_screen`:10149, `_wait_radio`:10154, `_smoke_radio_peds`:10161, `_smoke_typed_chat`:10231, `_smoke_chat_touch`:10250, `_smoke_cafe`:10271, `_smoke_boutique`:10297, `_smoke_models`:10325, `_smoke_garage_ridge`:10349, `_save_shot`:10725, `_paris_shots`:10735, `_people_shots`:10799, `_shots`:10840, `_shot_car`:11034, `_capture_preview`:11044
+`_midi`:8745, `_radio_voice`:8748, `_radio_make`:8781, `_radio_set`:8852, `_radio_play`:8874, `_radio_next`:8879, `_radio_talk_line`:8883, `_radio_caption`:8904, `_radio_refresh`:8912, `_process`:8925, `_build_peds`:8976, `_update_peds`:9087, `_update_ped`:9106, `_smoke_test`:9160, `_smoke_chase`:9803, `_smoke_orole`:9836, `_smoke_levels`:9865, `_smoke_bus`:9906, `_smoke_chase_extras`:9991, `_smoke_marina`:10019, `_blocked_at`:10121, `_blocker`:10136, `_on_screen`:10149, `_wait_radio`:10154, `_smoke_radio_peds`:10161, `_smoke_typed_chat`:10231, `_smoke_chat_touch`:10250, `_smoke_cafe`:10271, `_smoke_boutique`:10297, `_smoke_models`:10325, `_smoke_garage_ridge`:10349, `_save_shot`:10725, `_paris_shots`:10735, `_people_shots`:10803, `_shots`:10844, `_shot_car`:11038, `_capture_preview`:11048
 
-## 11052-11700  v0.16.0: Skyline District (big downtown), traffic with signals, busier streets
+## 11056-11704  v0.16.0: Skyline District (big downtown), traffic with signals, busier streets
 
-`_downtown_open`:11119, `_downtown_count`:11122, `_nearest_downtown`:11129, `_check_downtown`:11143, `_discover_downtown`:11156, `_box_batch`:11170, `_model_batch`:11190, `_cut_ranges`:11244, `_dt_ranges`:11256, `_dt_has`:11263, `_dt_near_cross`:11269, `_place`:11275, `_signal_pole`:11286, `_cyl_batch`:11305, `_city_signals`:11329, `_ensure_light_mats`:11380, `_city_lamps`:11390, `_build_downtown`:11434, `_dt_block`:11634, `_downtown_token`:11640, `_build_park`:11657, `_build_plaza`:11686
+`_downtown_open`:11123, `_downtown_count`:11126, `_nearest_downtown`:11133, `_check_downtown`:11147, `_discover_downtown`:11160, `_box_batch`:11174, `_model_batch`:11194, `_cut_ranges`:11248, `_dt_ranges`:11260, `_dt_has`:11267, `_dt_near_cross`:11273, `_place`:11279, `_signal_pole`:11290, `_cyl_batch`:11309, `_city_signals`:11333, `_ensure_light_mats`:11384, `_city_lamps`:11394, `_build_downtown`:11438, `_dt_block`:11638, `_downtown_token`:11644, `_build_park`:11661, `_build_plaza`:11690
 
-## 11701-11804  old city and Bay details
+## 11705-11808  old city and Bay details
 
-`_build_city_detail`:11702
+`_build_city_detail`:11706
 
-## 11805-12214  traffic
+## 11809-12218  traffic
 
-`_build_traffic`:11806, `_path_sample`:11901, `_light_look`:11915, `_light_green`:11923, `_traffic_place`:11927, `_traffic_blocked_by`:11939, `_traffic_tick`:11951, `_smoke_downtown`:12057, `_skyline_shot`:12169, `_skyline_shots`:12177
+`_build_traffic`:11810, `_path_sample`:11905, `_light_look`:11919, `_light_green`:11927, `_traffic_place`:11931, `_traffic_blocked_by`:11943, `_traffic_tick`:11955, `_smoke_downtown`:12061, `_skyline_shot`:12173, `_skyline_shots`:12181
 
-## 12215-12575  v0.17.0: minimap, full map and camera views (Far / Close / In-car)
+## 12219-12579  v0.17.0: minimap, full map and camera views (Far / Close / In-car)
 
-`_web_perf_setup`:12261, `_web_scale`:12324, `_web_fps_tick`:12334, `_world_to_uv`:12351, `_map_angle`:12354, `_build_minimap`:12362, `_open_map`:12435, `_close_map`:12446, `_mini_point`:12453, `_site_markers`:12457, `_draw_arrow`:12489, `_draw_minimap`:12496, `_draw_full_map`:12543, `_minimap_tick`:12568
+`_web_perf_setup`:12265, `_web_scale`:12328, `_web_fps_tick`:12338, `_world_to_uv`:12355, `_map_angle`:12358, `_build_minimap`:12366, `_open_map`:12439, `_close_map`:12450, `_mini_point`:12457, `_site_markers`:12461, `_draw_arrow`:12493, `_draw_minimap`:12500, `_draw_full_map`:12547, `_minimap_tick`:12572
 
-## 12576-12833  camera views
+## 12580-12837  camera views
 
-`_build_view_controls`:12577, `_cycle_view`:12619, `_apply_view`:12629, `_hide_labels`:12667, `_unfade`:12673, `_bake_map`:12679, `_shot_stats`:12729, `_view_shots`:12732, `_smoke_views`:12773
+`_build_view_controls`:12581, `_cycle_view`:12623, `_apply_view`:12633, `_hide_labels`:12671, `_unfade`:12677, `_bake_map`:12683, `_shot_stats`:12733, `_view_shots`:12736, `_smoke_views`:12777
 
-## 12834-13081  v0.17.0: level-up celebration
+## 12838-13085  v0.17.0: level-up celebration
 
-`_build_level_fx`:12845, `_draw_level_rays`:12882, `_level_fx_tick`:12892, `_level_sound`:12897, `_fx_material`:12939, `_level_up_fx`:12947, `_smoke_level_fx`:13048, `_levelup_shots`:13057
+`_build_level_fx`:12849, `_draw_level_rays`:12886, `_level_fx_tick`:12896, `_level_sound`:12901, `_fx_material`:12943, `_level_up_fx`:12951, `_smoke_level_fx`:13052, `_levelup_shots`:13061
 
-## 13082-13201  v0.18.0: walk-in stadium
+## 13086-13205  v0.18.0: walk-in stadium
 
-`_collider_yaw`:13087, `_build_stadium_walls`:13098, `_look`:13126, `_smoke_stadium_eye`:13135, `_stadium_shots`:13171
+`_collider_yaw`:13091, `_build_stadium_walls`:13102, `_look`:13130, `_smoke_stadium_eye`:13139, `_stadium_shots`:13175
 
-## 13202-13363  v0.18.0: guidance arrows and checkpoints
+## 13206-13367  v0.18.0: guidance arrows and checkpoints
 
-`_hidden_place`:13226, `_arrow_mesh`:13238, `_build_guidance`:13261, `_guide_target`:13286, `_guidance_tick`:13315, `_draw_hud_arrow`:13341
+`_hidden_place`:13230, `_arrow_mesh`:13242, `_build_guidance`:13265, `_guide_target`:13290, `_guidance_tick`:13319, `_draw_hud_arrow`:13345
 
-## 13364-13549  checkpoints
+## 13368-13553  checkpoints
 
-`_build_checkpoints`:13365, `_refresh_checkpoints`:13410, `_check_checkpoints`:13416, `_activate_checkpoint`:13426, `_checkpoint_spawn`:13447, `_spawn_at_checkpoint`:13452, `_draw_checkpoint_icon`:13468, `_smoke_guidance_checkpoints`:13474, `_guide_shots`:13524
+`_build_checkpoints`:13369, `_refresh_checkpoints`:13414, `_check_checkpoints`:13420, `_activate_checkpoint`:13430, `_checkpoint_spawn`:13451, `_spawn_at_checkpoint`:13456, `_draw_checkpoint_icon`:13472, `_smoke_guidance_checkpoints`:13478, `_guide_shots`:13528
 
-## 13550-13828  v0.18.0: Harbor Dome social hub
+## 13554-13832  v0.18.0: Harbor Dome social hub
 
-`_hub_seat`:13608, `_build_hub`:13612
+`_hub_seat`:13612, `_build_hub`:13616
 
-## 13829-13879  v0.56.2: Christmas in the Harbor Dome (snow, giant tree, lights, snowmen, presents)
+## 13833-13883  v0.56.2: Christmas in the Harbor Dome (snow, giant tree, lights, snowmen, presents)
 
-`_xm_mat`:13830, `_xm_mesh`:13839, `_xm_tree`:13847
+`_xm_mat`:13834, `_xm_mesh`:13843, `_xm_tree`:13851
 
-## 13880-14203  v0.56.5: one grand Christmas tree and luxury furniture
+## 13884-14207  v0.56.5: one grand Christmas tree and luxury furniture
 
-`_xm_multi`:13883, `_gt_surface`:13898, `_xm_grand_tree`:13908, `_lux_mat`:14023, `_lux_part`:14039, `_lux_box`:14042, `_lux_cyl`:14047, `_lux_ball`:14055, `_lux_new`:14063, `_lux_commit`:14068, `_lux_sofa_mesh`:14072, `_lux_chair_mesh`:14102, `_lux_table_mesh`:14122, `_lux_pouf_mesh`:14137, `_lux_batch`:14152, `_hub_christmas`:14168
+`_xm_multi`:13887, `_gt_surface`:13902, `_xm_grand_tree`:13912, `_lux_mat`:14027, `_lux_part`:14043, `_lux_box`:14046, `_lux_cyl`:14051, `_lux_ball`:14059, `_lux_new`:14067, `_lux_commit`:14072, `_lux_sofa_mesh`:14076, `_lux_chair_mesh`:14106, `_lux_table_mesh`:14126, `_lux_pouf_mesh`:14141, `_lux_batch`:14156, `_hub_christmas`:14172
 
-## 14204-14359  v0.56.3: geodesic frame and warm glow so the Harbor Dome looks like a glass biosphere from outside
+## 14208-14363  v0.56.3: geodesic frame and warm glow so the Harbor Dome looks like a glass biosphere from outside
 
-`_hub_geodesic`:14205
+`_hub_geodesic`:14209
 
-## 14360-14608  v0.56.4: grand entrance, VIP Lounge and a richer plaza for the Harbor Dome
+## 14364-14612  v0.56.4: grand entrance, VIP Lounge and a richer plaza for the Harbor Dome
 
-`_vx_box`:14363, `_vx_cyl`:14370, `_vx_ball`:14378, `_vx_ring`:14386, `_hub_polish`:14394, `_hub_gate`:14417, `_hub_vip`:14479, `_hub_glass`:14592
+`_vx_box`:14367, `_vx_cyl`:14374, `_vx_ball`:14382, `_vx_ring`:14390, `_hub_polish`:14398, `_hub_gate`:14421, `_hub_vip`:14483, `_hub_glass`:14596
 
-## 14609-14823  people: sitting pose, bots, bubbles, emotes
+## 14613-14827  people: sitting pose, bots, bubbles, emotes
 
-`_sit_pose`:14610, `_build_hub_bots`:14635, `_seat_of`:14666, `_bubble`:14676, `_emote`:14732, `_hub_people_tick`:14746
+`_sit_pose`:14614, `_build_hub_bots`:14639, `_seat_of`:14670, `_bubble`:14680, `_emote`:14736, `_hub_people_tick`:14750
 
-## 14824-14942  seats
+## 14828-14946  seats
 
-`_seat_taken`:14825, `_nearest_seat`:14833, `_seat_label`:14845, `_sit`:14861, `_stand_up`:14905, `_seated_tick`:14924
+`_seat_taken`:14829, `_nearest_seat`:14837, `_seat_label`:14849, `_sit`:14865, `_stand_up`:14909, `_seated_tick`:14928
 
-## 14943-15099  game panel
+## 14947-15103  game panel
 
-`_build_game_panel`:14944, `_open_game_panel`:14999, `_refresh_game_panel`:15018, `_play_robot`:15063, `_peer_at`:15077, `_opponent_name`:15084, `_pay`:15092
+`_build_game_panel`:14948, `_open_game_panel`:15003, `_refresh_game_panel`:15022, `_play_robot`:15067, `_peer_at`:15081, `_opponent_name`:15088, `_pay`:15096
 
-## 15100-15220  tic-tac-toe
+## 15104-15224  tic-tac-toe
 
-`_ttt_ready`:15103, `_ttt_winner`:15109, `_ttt_bot_move`:15119, `_ttt_tap`:15145, `_ttt_code`:15165, `_ttt_check`:15171, `_ttt_tick`:15194
+`_ttt_ready`:15107, `_ttt_winner`:15113, `_ttt_bot_move`:15123, `_ttt_tap`:15149, `_ttt_code`:15169, `_ttt_check`:15175, `_ttt_tick`:15198
 
-## 15221-15272  rock paper scissors
+## 15225-15276  rock paper scissors
 
-`_rps_ready`:15222, `_rps_pick`:15228, `_rps_resolve`:15246, `_rps_tick`:15270
+`_rps_ready`:15226, `_rps_pick`:15232, `_rps_resolve`:15250, `_rps_tick`:15274
 
-## 15273-15355  online table messages
+## 15277-15359  online table messages
 
-`_online_game_send`:15274, `_hub_game_msg`:15280
+`_online_game_send`:15278, `_hub_game_msg`:15284
 
-## 15356-15431  comedy show
+## 15360-15435  comedy show
 
-`_joke_start`:15357, `_joke_tick`:15369, `_speak`:15395, `_play_rimshot`:15404
+`_joke_start`:15361, `_joke_tick`:15373, `_speak`:15399, `_play_rimshot`:15408
 
-## 15432-16331  quick chat and emotes
+## 15436-16335  quick chat and emotes
 
-`_build_chat`:15454, `_chat_toggle_to`:15571, `_chat_log_add`:15579, `_chat_area`:15585, `_chat_near_count`:15603, `_chat_tick`:15612, `_toggle_chat`:15661, `_chat_fit`:15676, `_chat_clean`:15682, `_chat_wrap`:15699, `_chat_send_text`:15721, `_typing`:15744, `_say`:15747, `_do_emote`:15763, `_smoke_hub`:15772, `_chat_shots`:15946, `_cafe_shots`:15971, `_shop_shots`:16019, `_car_shots`:16068, `_outfit_shots`:16099, `_hub_shots`:16147, `_sg_on_terrace`:16282, `_people_only`:16285, `_people_only_keep_cars_out`:16289, `_car_barrier`:16301, `_hub_keep_cars_out`:16315
+`_build_chat`:15458, `_chat_toggle_to`:15575, `_chat_log_add`:15583, `_chat_area`:15589, `_chat_near_count`:15607, `_chat_tick`:15616, `_toggle_chat`:15665, `_chat_fit`:15680, `_chat_clean`:15686, `_chat_wrap`:15703, `_chat_send_text`:15725, `_typing`:15748, `_say`:15751, `_do_emote`:15767, `_smoke_hub`:15776, `_chat_shots`:15950, `_cafe_shots`:15975, `_shop_shots`:16023, `_car_shots`:16072, `_outfit_shots`:16103, `_hub_shots`:16151, `_sg_on_terrace`:16286, `_people_only`:16289, `_people_only_keep_cars_out`:16293, `_car_barrier`:16305, `_hub_keep_cars_out`:16319
 
-## 16332-16494  v0.18.1: main chat feed and "looking for players" invites
+## 16336-16498  v0.18.1: main chat feed and "looking for players" invites
 
-`_build_feed`:16341, `_feed_add`:16350, `_feed_render`:16356, `_feed_tick`:16384, `_online_event_send`:16393, `_at_pvp_table`:16400, `_game_name`:16407, `_send_lfp`:16410, `_lfp_msg`:16427, `_accept_invite`:16448
+`_build_feed`:16345, `_feed_add`:16354, `_feed_render`:16360, `_feed_tick`:16388, `_online_event_send`:16397, `_at_pvp_table`:16404, `_game_name`:16411, `_send_lfp`:16414, `_lfp_msg`:16431, `_accept_invite`:16452
 
-## 16495-16735  v0.18.2: nickname and HUD relayout
+## 16499-16740  v0.18.2: nickname and HUD relayout
 
-`_nick_rude`:16507, `_clean_nick`:16522, `_build_nick_panel`:16534, `_open_nick`:16572, `_random_nick`:16581, `_save_nick`:16587, `_close_nick`:16606, `_refresh_nick_button`:16615, `_relayout_hud`:16619, `_smoke_nick`:16655, `_nick_shots`:16687, `_smoke_sites_reachable`:16705
+`_nick_rude`:16511, `_clean_nick`:16526, `_build_nick_panel`:16538, `_open_nick`:16576, `_random_nick`:16585, `_save_nick`:16591, `_close_nick`:16610, `_refresh_nick_button`:16619, `_relayout_hud`:16623, `_smoke_nick`:16660, `_nick_shots`:16692, `_smoke_sites_reachable`:16710
 
-## 16736-17023  v0.19.0: Civic Center (bigger starting area: police, hospital, school, hotels, mall, park)
+## 16741-17028  v0.19.0: Civic Center (bigger starting area: police, hospital, school, hotels, mall, park)
 
-`_civic_count`:16762, `_nearest_civic`:16769, `_check_civic`:16783, `_discover_civic`:16796, `_civ_ranges`:16809, `_civ_has`:16823, `_civ_near_cross`:16829, `_build_civic`:16835, `_civic_token`:16961, `_civic_shots`:16978, `_hub_focus`:17000
+`_civic_count`:16767, `_nearest_civic`:16774, `_check_civic`:16788, `_discover_civic`:16801, `_civ_ranges`:16814, `_civ_has`:16828, `_civ_near_cross`:16834, `_build_civic`:16840, `_civic_token`:16966, `_civic_shots`:16983, `_hub_focus`:17005
 
-## 17024-17133  v0.21.0: Harbor Raceway (real circuit, pit lane, inside parking, boosters, spikes)
+## 17029-17138  v0.21.0: Harbor Raceway (real circuit, pit lane, inside parking, boosters, spikes)
 
-`_in_raceway`:17095, `_in_rw_lot`:17098, `_box_batch_rot`:17101, `_multi_collider`:17119
+`_in_raceway`:17100, `_in_rw_lot`:17103, `_box_batch_rot`:17106, `_multi_collider`:17124
 
-## 17134-17461  circuit geometry
+## 17139-17466  circuit geometry
 
-`_cr_point`:17135, `_rw_build_path`:17149, `_rw_dir`:17177, `_rw_bend`:17182, `_ribbon`:17188, `_rw_band`:17208, `_rw_keepout`:17226, `_build_raceway`:17235, `_build_rw_parking`:17269, `_build_rw_pits`:17314, `_build_rw_track`:17351, `_build_rw_trackside`:17392
+`_cr_point`:17140, `_rw_build_path`:17154, `_rw_dir`:17182, `_rw_bend`:17187, `_ribbon`:17193, `_rw_band`:17213, `_rw_keepout`:17231, `_build_raceway`:17240, `_build_rw_parking`:17274, `_build_rw_pits`:17319, `_build_rw_track`:17356, `_build_rw_trackside`:17397
 
-## 17462-17559  race car rental
+## 17467-17564  race car rental
 
-`_model_key`:17463, `_race_car_start`:17466, `_tint_ghost`:17504, `_race_car_end`:17517, `_race_keep_cars_out`:17542
+`_model_key`:17468, `_race_car_start`:17471, `_tint_ghost`:17509, `_race_car_end`:17522, `_race_keep_cars_out`:17547
 
-## 17560-17574  speed effects
+## 17565-17579  speed effects
 
-`_eff_max`:17561, `_eff_accel`:17572
+`_eff_max`:17566, `_eff_accel`:17577
 
-## 17575-17625  track helpers
+## 17580-17630  track helpers
 
-`_rw_seg_progress`:17576, `_rw_track_dist`:17596, `_rw_point_dist`:17607, `_rw_player_progress`:17614, `_rw_target`:17620
+`_rw_seg_progress`:17581, `_rw_track_dist`:17601, `_rw_point_dist`:17612, `_rw_player_progress`:17619, `_rw_target`:17625
 
-## 17626-17862  events
+## 17631-17867  events
 
-`_rec_stop`:17627, `_rw_place`:17643, `_rw_grid_pos`:17650, `_rw_start`:17655, `_rw_spawn_ai`:17687, `_rw_ai_place`:17711, `_rw_tick`:17722, `_rw_ai_tick`:17775, `_rw_lap_done`:17817, `_rw_finish`:17829, `_rw_fmt`:17860
+`_rec_stop`:17632, `_rw_place`:17648, `_rw_grid_pos`:17655, `_rw_start`:17660, `_rw_spawn_ai`:17692, `_rw_ai_place`:17716, `_rw_tick`:17727, `_rw_ai_tick`:17780, `_rw_lap_done`:17822, `_rw_finish`:17834, `_rw_fmt`:17865
 
-## 17863-17915  boosters and spikes
+## 17868-17920  boosters and spikes
 
-`_rw_buy`:17864, `_rw_use_boost`:17882, `_rw_use_spike`:17890, `_rw_drop_spike_at`:17901
+`_rw_buy`:17869, `_rw_use_boost`:17887, `_rw_use_spike`:17895, `_rw_drop_spike_at`:17906
 
-## 17916-17973  online races
+## 17921-17978  online races
 
-`_race_msg`:17917, `_join_race`:17939
+`_race_msg`:17922, `_join_race`:17944
 
-## 17974-18329  raceway panel, HUD, board
+## 17979-18334  raceway panel, HUD, board
 
-`_build_raceway_ui`:17975, `_rw_layout`:18035, `_rw_open`:18042, `_rw_close`:18048, `_rw_refresh_panel`:18052, `_rw_refresh_board`:18065, `_rw_hud`:18077, `_peer_car_model`:18101, `_smoke_raceway`:18111, `_race_shots`:18292
+`_build_raceway_ui`:17980, `_rw_layout`:18040, `_rw_open`:18047, `_rw_close`:18053, `_rw_refresh_panel`:18057, `_rw_refresh_board`:18070, `_rw_hud`:18082, `_peer_car_model`:18106, `_smoke_raceway`:18116, `_race_shots`:18297
 
-## 18330-18537  v0.22.0: Call Car
+## 18335-18542  v0.22.0: Call Car
 
-`_call_block_reason`:18336, `_call_spot`:18353, `_call_car`:18384, `_play_horn`:18408, `_smoke_follow_call`:18432, `_follow_shots`:18505
+`_call_block_reason`:18341, `_call_spot`:18358, `_call_car`:18389, `_play_horn`:18413, `_smoke_follow_call`:18437, `_follow_shots`:18510
 
-## 18538-18838  v0.23: RUN toggle and fast travel between districts
+## 18543-18867  v0.23: RUN toggle and fast travel between districts
 
-`_walk_speed`:18553, `_build_travel`:18559, `_toggle_run`:18601, `_refresh_run`:18605, `_hud_v23_tick`:18613, `_travel_block_reason`:18642, `_travel_open`:18662, `_open_travel`:18668, `_close_travel`:18674, `_refresh_travel`:18678, `_travel_to`:18686, `_smoke_travel`:18713, `_v23_shots`:18751
+`_walk_speed`:18559, `_place_portal_button`:18565, `_portal_pressed`:18572, `_build_travel`:18580, `_toggle_run`:18627, `_refresh_run`:18631, `_hud_v23_tick`:18639, `_travel_block_reason`:18671, `_travel_open`:18691, `_open_travel`:18697, `_close_travel`:18703, `_refresh_travel`:18707, `_travel_to`:18715, `_smoke_travel`:18742, `_v23_shots`:18780
 
-## 18839-18912  v0.24: "Scan to play" QR code (opens the browser version and turns Online on)
+## 18868-18941  v0.24: "Scan to play" QR code (opens the browser version and turns Online on)
 
-`_build_qr`:18846, `_qr_button`:18861, `_qr_layout`:18900, `_smoke_qr`:18906
+`_build_qr`:18875, `_qr_button`:18890, `_qr_layout`:18929, `_smoke_qr`:18935
 
-## 18913-19349  v0.24: starter crate (new players) / welcome-back crate (one time for existing saves)
+## 18942-19378  v0.24: starter crate (new players) / welcome-back crate (one time for existing saves)
 
-`_crate_roll`:18933, `_open_crate`:18949, `_build_crate_ui`:18966, `_crate_pick`:19053, `_crate_reveal`:19076, `_crate_draw_car`:19103, `_crate_confetti`:19122, `_crate_sound`:19147, `_crate_drive`:19173, `_feed_add_system`:19203, `_smoke_crate`:19206, `_crate_shots`:19254
+`_crate_roll`:18962, `_open_crate`:18978, `_build_crate_ui`:18995, `_crate_pick`:19082, `_crate_reveal`:19105, `_crate_draw_car`:19132, `_crate_confetti`:19151, `_crate_sound`:19176, `_crate_drive`:19202, `_feed_add_system`:19232, `_smoke_crate`:19235, `_crate_shots`:19283
 
-## 19350-19841  v0.25: quick quests (short pick-ups, paid on the spot, next one starts at once)
+## 19379-19870  v0.25: quick quests (short pick-ups, paid on the spot, next one starts at once)
 
-`_quick_pay`:19391, `_quick_today`:19396, `_quick_is_done`:19399, `_quick_left`:19402, `_quick_next`:19409, `_quick_fix_target`:19422, `_quick_daily_check`:19436, `_quick_complete`:19450, `_quick_side`:19484, `_build_quick_props`:19502, `_daily_shots`:19654, `_quick_props_refresh`:19696, `_quick_fx`:19700, `_play_coin`:19716, `_smoke_quick`:19733
+`_quick_pay`:19420, `_quick_today`:19425, `_quick_is_done`:19428, `_quick_left`:19431, `_quick_next`:19438, `_quick_fix_target`:19451, `_quick_daily_check`:19465, `_quick_complete`:19479, `_quick_side`:19513, `_build_quick_props`:19531, `_daily_shots`:19683, `_quick_props_refresh`:19725, `_quick_fx`:19729, `_play_coin`:19745, `_smoke_quick`:19762
 
-## 19842-19992  v0.24.1: Quests list (nearby quick quests, pick any one)
+## 19871-20021  v0.24.1: Quests list (nearby quick quests, pick any one)
 
-`_build_quest_list`:19851, `_quest_nearby`:19906, `_open_quests`:19913, `_close_quests`:19920, `_refresh_quests`:19924, `_quest_pick`:19950, `_quest_mode`:19964, `_smoke_quests`:19967
+`_build_quest_list`:19880, `_quest_nearby`:19935, `_open_quests`:19942, `_close_quests`:19949, `_refresh_quests`:19953, `_quest_pick`:19979, `_quest_mode`:19993, `_smoke_quests`:19996
 
-## 19993-20027  v0.24.1: your own name tag above your head (or above your car)
+## 20022-20056  v0.24.1: your own name tag above your head (or above your car)
 
-`_my_name`:19997, `_my_tag_tick`:20000
+`_my_name`:20026, `_my_tag_tick`:20029
 
-## 20028-20342  v0.33.6: Harbor Food Court (three street stands with crowds, old city)
+## 20057-20371  v0.33.6: Harbor Food Court (three street stands with crowds, old city)
 
-`_fc_part`:20045, `_fc_torus`:20055, `_fc_pearl`:20063, `_fc_chrome`:20073, `_fc_glass`:20082, `_fc_glow`:20092, `_fc_ghost`:20101, `_fc_holo`:20113, `_fc_mesh`:20123, `_fc_sphere`:20143, `_fc_capsule`:20151, `_fc_cone`:20159, `_build_food_court`:20168, `_food_court_tick`:20322
+`_fc_part`:20074, `_fc_torus`:20084, `_fc_pearl`:20092, `_fc_chrome`:20102, `_fc_glass`:20111, `_fc_glow`:20121, `_fc_ghost`:20130, `_fc_holo`:20142, `_fc_mesh`:20152, `_fc_sphere`:20172, `_fc_capsule`:20180, `_fc_cone`:20188, `_build_food_court`:20197, `_food_court_tick`:20351
 
-## 20343-20664  v0.36: Harbor Commons, a modern park in the empty field by Bay Road
+## 20372-20693  v0.36: Harbor Commons, a modern park in the empty field by Bay Road
 
-`_cm_person`:20372, `_cm_bench`:20388, `_build_commons`:20401, `_commons_tick`:20623
+`_cm_person`:20401, `_cm_bench`:20417, `_build_commons`:20430, `_commons_tick`:20652
 
-## 20665-20979  v0.36: the daily puzzle
+## 20694-21008  v0.36: the daily puzzle
 
-`_pz_today`:20688, `_pz_new`:20691, `_pz_neighbours`:20736, `_pz_flip`:20746, `_pz_done`:20751, `_pz_tap`:20759, `_pz_win`:20775, `_pz_reset`:20796, `_puzzle_near`:20800, `_open_puzzle`:20805, `_close_puzzle`:20813, `_pz_refresh_sign`:20817, `_build_puzzle_panel`:20825, `_pz_draw`:20856, `_smoke_chat`:20897, `_smoke_feet`:20935, `_smoke_commons`:20956
+`_pz_today`:20717, `_pz_new`:20720, `_pz_neighbours`:20765, `_pz_flip`:20775, `_pz_done`:20780, `_pz_tap`:20788, `_pz_win`:20804, `_pz_reset`:20825, `_puzzle_near`:20829, `_open_puzzle`:20834, `_close_puzzle`:20842, `_pz_refresh_sign`:20846, `_build_puzzle_panel`:20854, `_pz_draw`:20885, `_smoke_chat`:20926, `_smoke_feet`:20964, `_smoke_commons`:20985
 
-## 20980-21168  v0.37 - v0.39: THE BIOSPHERE
+## 21009-21197  v0.37 - v0.39: THE BIOSPHERE
 
-`_bio_dome_c`:21042, `_bio_theta`:21046, `_bio_sec_n`:21051, `_bio_sec_of`:21054, `_bio_pt`:21057, `_bio_lp`:21062, `_bio_la`:21066, `_bio_dir`:21070, `_bio_hex_r`:21073, `_bio_apo`:21078, `_bio_open_angles`:21084, `_bio_si`:21094, `_bm`:21100, `_bsph`:21105, `_blow`:21108, `_bcone`:21119, `_bbox`:21122, `_bp`:21125, `_bq`:21130, `_bio_glass_mat`:21134, `_bio_water_mat`:21147, `_bio_mat`:21159
+`_bio_dome_c`:21071, `_bio_theta`:21075, `_bio_sec_n`:21080, `_bio_sec_of`:21083, `_bio_pt`:21086, `_bio_lp`:21091, `_bio_la`:21095, `_bio_dir`:21099, `_bio_hex_r`:21102, `_bio_apo`:21107, `_bio_open_angles`:21113, `_bio_si`:21123, `_bm`:21129, `_bsph`:21134, `_blow`:21137, `_bcone`:21148, `_bbox`:21151, `_bp`:21154, `_bq`:21159, `_bio_glass_mat`:21163, `_bio_water_mat`:21176, `_bio_mat`:21188
 
-## 21169-21541  building blocks
+## 21198-21570  building blocks
 
-`_bio_inst`:21170, `_bio_add`:21176, `_bio_model`:21179, `_bio_nature_mesh`:21185, `_bio_flush`:21219, `_bio_bar`:21254, `_bio_slab`:21267, `_bio_body`:21282, `_bio_cyl_col`:21295, `_bio_hexmesh`:21308, `_bio_hexslab`:21320, `_bio_hexpt`:21326, `_bio_gridshell`:21333, `_bio_rail`:21440, `_bio_rail_arc`:21445, `_bio_disc_deck`:21457, `_bio_ring_deck`:21463, `_bio_helix`:21474, `_bio_pillar`:21494, `_bio_cafe`:21500, `_bio_fence_line`:21514, `_bio_fence_seg`:21519, `_bio_pen`:21529
+`_bio_inst`:21199, `_bio_add`:21205, `_bio_model`:21208, `_bio_nature_mesh`:21214, `_bio_flush`:21248, `_bio_bar`:21283, `_bio_slab`:21296, `_bio_body`:21311, `_bio_cyl_col`:21324, `_bio_hexmesh`:21337, `_bio_hexslab`:21349, `_bio_hexpt`:21355, `_bio_gridshell`:21362, `_bio_rail`:21469, `_bio_rail_arc`:21474, `_bio_disc_deck`:21486, `_bio_ring_deck`:21492, `_bio_helix`:21503, `_bio_pillar`:21523, `_bio_cafe`:21529, `_bio_fence_line`:21543, `_bio_fence_seg`:21548, `_bio_pen`:21558
 
-## 21542-22043  building
+## 21571-22072  building
 
-`_build_biosphere`:21543, `_build_biosphere_legacy`:21547, `_bio_text`:21709, `_bio_plaque`:21727, `_bio_ticket_hall`:21741, `_on_foot_collision_guard`:21797, `_bio_inside`:21807, `_bio_pass_ok`:21810, `_ticket_near`:21814, `_bio_buy_pass`:21819, `_bio_gates_update`:21835, `_bio_gate_tick`:21861, `_bio_tunnel`:21873, `_bio_grounds`:21926, `_bio_dome`:21972, `_bio_deck_mats`:22040
+`_build_biosphere`:21572, `_build_biosphere_legacy`:21576, `_bio_text`:21738, `_bio_plaque`:21756, `_bio_ticket_hall`:21770, `_on_foot_collision_guard`:21826, `_bio_inside`:21836, `_bio_pass_ok`:21839, `_ticket_near`:21843, `_bio_buy_pass`:21848, `_bio_gates_update`:21864, `_bio_gate_tick`:21890, `_bio_tunnel`:21902, `_bio_grounds`:21955, `_bio_dome`:22001, `_bio_deck_mats`:22069
 
-## 22044-22199  garden planting
+## 22073-22228  garden planting
 
-`_bio_free`:22045, `_bio_spot`:22062, `_bio_garden`:22070, `_bio_pine`:22111, `_bio_tree`:22114, `_bio_big_tree`:22124, `_bio_rock`:22129, `_bio_pond`:22132, `_bio_particles`:22136, `_bio_mist`:22164, `_bio_mini_dome`:22193
+`_bio_free`:22074, `_bio_spot`:22091, `_bio_garden`:22099, `_bio_pine`:22140, `_bio_tree`:22143, `_bio_big_tree`:22153, `_bio_rock`:22158, `_bio_pond`:22161, `_bio_particles`:22165, `_bio_mist`:22193, `_bio_mini_dome`:22222
 
-## 22200-22607  the four layouts
+## 22229-22636  the four layouts
 
-`_bio_winter`:22201, `_bio_spring`:22293, `_bio_summer`:22418, `_bio_autumn`:22502
+`_bio_winter`:22230, `_bio_spring`:22322, `_bio_summer`:22447, `_bio_autumn`:22531
 
-## 22608-22878  animals
+## 22637-22907  animals
 
-`_bio_spawn`:22609, `_bio_load_animal`:22681, `_bio_make_quad`:22702, `_bio_load_bird`:22779, `_bio_make_penguin`:22799, `_bio_make_bird`:22821, `_bio_make_flamingo`:22845, `_bio_make_butterfly`:22866
+`_bio_spawn`:22638, `_bio_load_animal`:22710, `_bio_make_quad`:22731, `_bio_load_bird`:22808, `_bio_make_penguin`:22828, `_bio_make_bird`:22850, `_bio_make_flamingo`:22874, `_bio_make_butterfly`:22895
 
-## 22879-23010  animation, spotting and rewards
+## 22908-23039  animation, spotting and rewards
 
-`_bio_stuck_check`:22884, `_biosphere_tick`:22902, `_bio_animate`:22911, `_bio_spot_check`:22991, `_bio_spotted`:23003, `_smoke_biosphere`:23007
+`_bio_stuck_check`:22913, `_biosphere_tick`:22931, `_bio_animate`:22940, `_bio_spot_check`:23020, `_bio_spotted`:23032, `_smoke_biosphere`:23036
 
-## 23011-23528  v0.40: STYLE - hair, faces, builds, clothes, accessories and relics
+## 23040-23557  v0.40: STYLE - hair, faces, builds, clothes, accessories and relics
 
-`_lk`:23098, `_wear_piece`:23101, `_wear_mat`:23124, `_person_index`:23140, `_dress`:23163, `_smoke_style`:23269, `_style_shots`:23420, `_npc_look`:23492
+`_lk`:23127, `_wear_piece`:23130, `_wear_mat`:23153, `_person_index`:23169, `_dress`:23192, `_smoke_style`:23298, `_style_shots`:23449, `_npc_look`:23521
 
-## 23529-23682  your look: apply, save, share
+## 23558-23711  your look: apply, save, share
 
-`_look_clean`:23533, `_look_pack`:23548, `_owns`:23554, `_apply_look`:23559, `_relic_model`:23570, `_fc_mesh_mat`:23635, `_relic_refresh`:23638, `_relic_tick`:23652, `_peer_style`:23663
+`_look_clean`:23562, `_look_pack`:23577, `_owns`:23583, `_apply_look`:23588, `_relic_model`:23599, `_fc_mesh_mat`:23664, `_relic_refresh`:23667, `_relic_tick`:23681, `_peer_style`:23692
 
-## 23683-24110  stores and the wardrobe
+## 23712-24139  stores and the wardrobe
 
-`_style_today`:23702, `_style_items`:23705, `_style_cat`:23713, `_style_price`:23716, `_style_deal`:23730, `_style_price_base`:23743, `_relic_stock`:23750, `_build_style_panel`:23762, `_open_store`:23802, `_open_wardrobe`:23821, `_style_close`:23824, `_style_finish`:23828, `_sync_old_avatar`:23843, `_style_tabs_for`:23850, `_refresh_style`:23855, `_style_body_rows`:24006, `_style_set_tab`:24023, `_style_step`:24027, `_style_color`:24032, `_style_pick`:24037, `_style_buy`:24072, `_ach_relics_check`:24094, `_style_face_camera`:24099
+`_style_today`:23731, `_style_items`:23734, `_style_cat`:23742, `_style_price`:23745, `_style_deal`:23759, `_style_price_base`:23772, `_relic_stock`:23779, `_build_style_panel`:23791, `_open_store`:23831, `_open_wardrobe`:23850, `_style_close`:23853, `_style_finish`:23857, `_sync_old_avatar`:23872, `_style_tabs_for`:23879, `_refresh_style`:23884, `_style_body_rows`:24035, `_style_set_tab`:24052, `_style_step`:24056, `_style_color`:24061, `_style_pick`:24066, `_style_buy`:24101, `_ach_relics_check`:24123, `_style_face_camera`:24128
 
-## 24111-24578  HARBOR GALLERIA: the shopping mall
+## 24140-24607  HARBOR GALLERIA: the shopping mall
 
-`_ga_walkable`:24147, `_ga_text`:24153, `_ga_box`:24170, `_build_galleria`:24186, `_ga_inner_tick`:24327, `_ga_shell`:24343, `_ga_inside`:24393, `_bio_cyl_col_on`:24396, `_ga_models`:24408, `_ga_lbox`:24423, `_ga_ltext`:24437, `_ga_store`:24444, `_bio_cafe_on`:24546, `_ga_mannequins`:24554
+`_ga_walkable`:24176, `_ga_text`:24182, `_ga_box`:24199, `_build_galleria`:24215, `_ga_inner_tick`:24356, `_ga_shell`:24372, `_ga_inside`:24422, `_bio_cyl_col_on`:24425, `_ga_models`:24437, `_ga_lbox`:24452, `_ga_ltext`:24466, `_ga_store`:24473, `_bio_cafe_on`:24575, `_ga_mannequins`:24583
 
-## 24579-24730  featured outfits and the Sky Run
+## 24608-24759  featured outfits and the Sky Run
 
-`_ga_featured_look`:24592, `_build_ga_fun`:24613, `_ga_fun_tick`:24658, `_sky_finish`:24685, `_extra_near`:24704, `_extra_open`:24713, `_store_near`:24722
+`_ga_featured_look`:24621, `_build_ga_fun`:24642, `_ga_fun_tick`:24687, `_sky_finish`:24714, `_extra_near`:24733, `_extra_open`:24742, `_store_near`:24751
 
-## 24731-24827  v0.41: THE SKY GARDEN
+## 24760-24856  v0.41: THE SKY GARDEN
 
-`_sg_now`:24785, `_sg_progress`:24788, `_sg_time`:24794, `_sg_stock`:24801, `_sg_mut_roll`:24816
+`_sg_now`:24814, `_sg_progress`:24817, `_sg_time`:24823, `_sg_stock`:24830, `_sg_mut_roll`:24845
 
-## 24828-24965  building
+## 24857-24994  building
 
-`_sg_box`:24829, `_sg_text`:24835, `_build_sky_garden`:24849, `_sg_seed_spot`:24960, `_sg_codex_spot`:24963
+`_sg_box`:24858, `_sg_text`:24864, `_build_sky_garden`:24878, `_sg_seed_spot`:24989, `_sg_codex_spot`:24992
 
-## 24966-25146  plants
+## 24995-25175  plants
 
-`_sg_plant_model`:24967, `_sg_refresh_all`:25072, `_sg_refresh`:25076, `_sky_garden_tick`:25112, `_sg_ready_count`:25131, `_sg_boot_note`:25138
+`_sg_plant_model`:24996, `_sg_refresh_all`:25101, `_sg_refresh`:25105, `_sky_garden_tick`:25141, `_sg_ready_count`:25160, `_sg_boot_note`:25167
 
-## 25147-25266  interacting
+## 25176-25295  interacting
 
-`_sg_near`:25148, `_sg_button_text`:25171, `_sg_value`:25184, `_sg_interact`:25188, `_sg_buy`:25204, `_sg_plant`:25226, `_sg_harvest`:25237
+`_sg_near`:25177, `_sg_button_text`:25200, `_sg_value`:25213, `_sg_interact`:25217, `_sg_buy`:25233, `_sg_plant`:25255, `_sg_harvest`:25266
 
-## 25267-25510  the garden screen
+## 25296-25539  the garden screen
 
-`_build_sg_panel`:25268, `_sg_open`:25303, `_sg_close`:25312, `_sg_row`:25316, `_sg_refresh_panel`:25331, `_sg_pick_buy`:25376, `_sg_pick_plant`:25380, `_smoke_car_barriers`:25386, `_smoke_sky_garden`:25427
+`_build_sg_panel`:25297, `_sg_open`:25332, `_sg_close`:25341, `_sg_row`:25345, `_sg_refresh_panel`:25360, `_sg_pick_buy`:25405, `_sg_pick_plant`:25409, `_smoke_car_barriers`:25415, `_smoke_sky_garden`:25456
 
-## 25511-25549  v0.43: HARBOR ALBUM, the free SEASON PASS, HARBOR NIGHT and the CHECK-IN calendar
+## 25540-25578  v0.43: HARBOR ALBUM, the free SEASON PASS, HARBOR NIGHT and the CHECK-IN calendar
 
-`_pass_now`:25542, `_pass_day`:25545
+`_pass_now`:25571, `_pass_day`:25574
 
-## 25550-25581  album
+## 25579-25610  album
 
-`_album_pages`:25551, `_album_claim`:25566
+`_album_pages`:25580, `_album_claim`:25595
 
-## 25582-25633  season
+## 25611-25662  season
 
-`_season_index`:25583, `_season_tick`:25586, `_season_xp`:25595, `_season_tier`:25598, `_season_reward`:25601, `_season_claim`:25615
+`_season_index`:25612, `_season_tick`:25615, `_season_xp`:25624, `_season_tier`:25627, `_season_reward`:25630, `_season_claim`:25644
 
-## 25634-25641  Harbor Night
+## 25663-25670  Harbor Night
 
-`_harbor_night`:25635
+`_harbor_night`:25664
 
-## 25642-25673  check-in calendar
+## 25671-25702  check-in calendar
 
-`_cal_tick`:25643
+`_cal_tick`:25672
 
-## 25674-25850  the panel
+## 25703-25879  the panel
 
-`_build_hp_panel`:25675, `_open_pass`:25710, `_hp_open`:25713, `_hp_close`:25720, `_hp_row`:25724, `_hp_bar`:25739, `_hp_refresh`:25743, `_smoke_pass`:25788
+`_build_hp_panel`:25704, `_open_pass`:25739, `_hp_open`:25742, `_hp_close`:25749, `_hp_row`:25753, `_hp_bar`:25768, `_hp_refresh`:25772, `_smoke_pass`:25817
 
-## 25851-26065  v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard")
+## 25880-26094  v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard")
 
-`_money`:25855, `_cash_pill_tick`:25863, `_build_lb`:25901, `_open_lb`:25944, `_close_lb`:25952, `_lb_pick`:25956, `_lb_headers`:25961, `_lb_url`:25965, `_lb_me`:25968, `_lb_tick`:25971, `_lb_upload`:25979, `_lb_fetch`:25989, `_lb_got`:25997, `_lb_value`:26008, `_lb_refresh_ui`:26019
+`_money`:25884, `_cash_pill_tick`:25892, `_build_lb`:25930, `_open_lb`:25973, `_close_lb`:25981, `_lb_pick`:25985, `_lb_headers`:25990, `_lb_url`:25994, `_lb_me`:25997, `_lb_tick`:26000, `_lb_upload`:26008, `_lb_fetch`:26018, `_lb_got`:26026, `_lb_value`:26037, `_lb_refresh_ui`:26048
 
-## 26066-26489  v0.34: Neon Market (gear for your avatar, pets from level 20) and the hoverboard
+## 26095-26518  v0.34: Neon Market (gear for your avatar, pets from level 20) and the hoverboard
 
-`_build_market`:26090, `_market_near`:26167, `_build_gear`:26177, `_gear_piece`:26185, `_build_pet`:26230, `_market_apply`:26272, `_market_tick`:26296, `_build_market_panel`:26318, `_open_market`:26344, `_close_market`:26351, `_refresh_market`:26355, `_market_pick`:26408, `_toggle_board`:26446, `_board_tick`:26453
+`_build_market`:26119, `_market_near`:26196, `_build_gear`:26206, `_gear_piece`:26214, `_build_pet`:26259, `_market_apply`:26301, `_market_tick`:26325, `_build_market_panel`:26347, `_open_market`:26373, `_close_market`:26380, `_refresh_market`:26384, `_market_pick`:26437, `_toggle_board`:26475, `_board_tick`:26482
 
-## 26490-26731  v0.34.2: Harbor Live, a plaza of giant screens (leaderboards and city news)
+## 26519-26760  v0.34.2: Harbor Live, a plaza of giant screens (leaderboards and city news)
 
-`_ds_screen`:26522, `_ds_label`:26541, `_build_display`:26555, `_ds_got`:26634, `_ds_sorted`:26643, `_ds_render_board`:26657, `_ds_render_news`:26683, `_display_tick`:26702
+`_ds_screen`:26551, `_ds_label`:26570, `_build_display`:26584, `_ds_got`:26663, `_ds_sorted`:26672, `_ds_render_board`:26686, `_ds_render_news`:26712, `_display_tick`:26731
 
-## 26732-26910  v0.34.3: streamer mode (a clean, viewer-friendly screen for livestreams)
+## 26761-26939  v0.34.3: streamer mode (a clean, viewer-friendly screen for livestreams)
 
-`_build_streamer`:26749, `_toggle_streamer`:26836, `_streamer_badge_tap`:26852, `_streamer_tick`:26856
+`_build_streamer`:26778, `_toggle_streamer`:26865, `_streamer_badge_tap`:26881, `_streamer_tick`:26885
 
-## 26911-26947  v0.34.5: a parked car drives itself home after 2 minutes
+## 26940-26976  v0.34.5: a parked car drives itself home after 2 minutes
 
-`_car_away`:26917, `_car_back`:26924, `_car_park_tick`:26931
+`_car_away`:26946, `_car_back`:26953, `_car_park_tick`:26960
 
-## 26948-27044  v0.34.7: modern bus shelters with live displays, and city buses in traffic
+## 26977-27073  v0.34.7: modern bus shelters with live displays, and city buses in traffic
 
-`_bus_shelter`:26952, `_bus_eta`:27006, `_bus_displays_tick`:27022
+`_bus_shelter`:26981, `_bus_eta`:27035, `_bus_displays_tick`:27051
 
-## 27045-27336  v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online)
+## 27074-27365  v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online)
 
-`_treasure_now`:27063, `_treasure_pick`:27066, `_treasure_spot`:27075, `_treasure_district`:27079, `_treasure_clue`:27091, `_treasure_prop`:27104, `_tp_part`:27107, `_tp_sphere`:27117, `_tp_cyl`:27125, `_treasure_prop_side`:27134, `_build_treasure_props`:27146, `_build_treasure`:27190, `_treasure_dir_char`:27259, `_treasure_tick`:27268, `_treasure_claim`:27322
+`_treasure_now`:27092, `_treasure_pick`:27095, `_treasure_spot`:27104, `_treasure_district`:27108, `_treasure_clue`:27120, `_treasure_prop`:27133, `_tp_part`:27136, `_tp_sphere`:27146, `_tp_cyl`:27154, `_treasure_prop_side`:27163, `_build_treasure_props`:27175, `_build_treasure`:27219, `_treasure_dir_char`:27288, `_treasure_tick`:27297, `_treasure_claim`:27351
 
-## 27337-27437  v0.24.1: glowing ring under real players (NPC walkers have none)
+## 27366-27466  v0.24.1: glowing ring under real players (NPC walkers have none)
 
-`_player_ring`:27338, `_halo_mat`:27370, `_smoke_treasure`:27395
+`_player_ring`:27367, `_halo_mat`:27399, `_smoke_treasure`:27424
 
-## 27438-27761  v0.24.1: FIND ME! (online hide-and-seek with prize money)
+## 27467-27790  v0.24.1: FIND ME! (online hide-and-seek with prize money)
 
-`_fm_now`:27459, `_fm_send`:27462, `_fm_area`:27468, `_fm_glow_mesh`:27484, `_fm_block_reason`:27502, `_fm_start`:27514, `_fm_announce`:27542, `_fm_finish`:27545, `_fm_msg`:27563, `_fm_check_paid`:27614, `_fm_tick`:27632, `_smoke_findme`:27688
+`_fm_now`:27488, `_fm_send`:27491, `_fm_area`:27497, `_fm_glow_mesh`:27513, `_fm_block_reason`:27531, `_fm_start`:27543, `_fm_announce`:27571, `_fm_finish`:27574, `_fm_msg`:27592, `_fm_check_paid`:27643, `_fm_tick`:27661, `_smoke_findme`:27717
 
-## 27762-27872  v0.24.2: road map (for moving people off the road)
+## 27791-27901  v0.24.2: road map (for moving people off the road)
 
-`_floor_note`:27768, `_floor_disc`:27782, `_floor_top`:27791, `_ground_at`:27809, `_note_road`:27827, `_on_road`:27834, `_ped_curb`:27844, `_curb_spot`:27854
+`_floor_note`:27797, `_floor_disc`:27811, `_floor_top`:27820, `_ground_at`:27838, `_note_road`:27856, `_on_road`:27863, `_ped_curb`:27873, `_curb_spot`:27883
 
-## 27873-28168  v0.26: Sunset Beach (east island) and Westside (west of the Civic Center)
+## 27902-28197  v0.26: Sunset Beach (east island) and Westside (west of the Civic Center)
 
-`_ex_house`:27895, `_ex_grid`:27903, `_ex_lamps`:27938, `_ex_umbrella`:27961, `_ex_yards`:27968, `_build_expansion`:27983, `_expand_shots`:28146
+`_ex_house`:27924, `_ex_grid`:27932, `_ex_lamps`:27967, `_ex_umbrella`:27990, `_ex_yards`:27997, `_build_expansion`:28012, `_expand_shots`:28175
 
-## 28169-28363  v0.27: one connected city, Harbor Loop sky train, day and night
+## 28198-28392  v0.27: one connected city, Harbor Loop sky train, day and night
 
-`_build_connect`:28210, `_v27_near_cross`:28302, `_v27_near_any_road`:28309, `_v27_in_district`:28315, `_sea_tick`:28329, `_sea_tow`:28348
+`_build_connect`:28239, `_v27_near_cross`:28331, `_v27_near_any_road`:28338, `_v27_in_district`:28344, `_sea_tick`:28358, `_sea_tow`:28377
 
-## 28364-29031  Harbor Loop sky train
+## 28393-29060  Harbor Loop sky train
 
-`_sky_build_path`:28415, `_sky_pos`:28456, `_sky_dir`:28470, `_sky_project`:28475, `_sky_trip_time`:28494, `_sky_trip_dist`:28500, `_sky_now`:28511, `_sky_state`:28514, `_sky_time_at_station`:28529, `_sky_next_arrival`:28536, `_build_skytrain`:28549, `_sky_make_car`:28701, `_sky_skin`:28738, `_sky_place_trains`:28758, `_sky_build_station`:28777, `_sky_near`:28842, `_sky_fmt`:28851, `_sky_enter`:28855, `_sky_leave_platform`:28873, `_sky_board`:28883, `_sky_alight`:28897, `_sky_action`:28911, `_sky_tick`:28928, `_sky_camera`:28968, `_tour_today`:28984, `_tour_stamp`:28987, `_sky_hud`:29010
+`_sky_build_path`:28444, `_sky_pos`:28485, `_sky_dir`:28499, `_sky_project`:28504, `_sky_trip_time`:28523, `_sky_trip_dist`:28529, `_sky_now`:28540, `_sky_state`:28543, `_sky_time_at_station`:28558, `_sky_next_arrival`:28565, `_build_skytrain`:28578, `_sky_make_car`:28730, `_sky_skin`:28767, `_sky_place_trains`:28787, `_sky_build_station`:28806, `_sky_near`:28871, `_sky_fmt`:28880, `_sky_enter`:28884, `_sky_leave_platform`:28902, `_sky_board`:28912, `_sky_alight`:28926, `_sky_action`:28940, `_sky_tick`:28957, `_sky_camera`:28997, `_tour_today`:29013, `_tour_stamp`:29016, `_sky_hud`:29039
 
-## 29032-29392  Day and night
+## 29061-29421  Day and night
 
-`_toggle_weather`:29115, `_refresh_weather_button`:29121, `_game_hour`:29127, `_day_key`:29139, `_night_setup`:29154, `_night_scan_mesh`:29244, `_daynight_tick`:29269, `_daynight_apply`:29276, `_daynight_lights`:29377, `_cycle_day_mode`:29382, `_refresh_time_button`:29389
+`_toggle_weather`:29144, `_refresh_weather_button`:29150, `_game_hour`:29156, `_day_key`:29168, `_night_setup`:29183, `_night_scan_mesh`:29273, `_daynight_tick`:29298, `_daynight_apply`:29305, `_daynight_lights`:29406, `_cycle_day_mode`:29411, `_refresh_time_button`:29418
 
-## 29393-30028  v0.27 smoke test and screenshots
+## 29422-30057  v0.27 smoke test and screenshots
 
-`_smoke_v27`:29394, `_city_shots`:29597
+`_smoke_v27`:29423, `_city_shots`:29626
 
-## 30029-30445  v0.27: Harbor International Airport (north of the city)
+## 30058-30474  v0.27: Harbor International Airport (north of the city)
 
-`_build_airport`:30063, `_ap_plane`:30239, `_ap_truck`:30259, `_ap_baggage_train`:30300, `_ap_loop_pos`:30313, `_ap_loop_len`:30329, `_ap_flight_at`:30335, `_ap_tick`:30359, `_airport_ped_plan`:30382, `_smoke_airport`:30402
+`_build_airport`:30092, `_ap_plane`:30268, `_ap_truck`:30288, `_ap_baggage_train`:30329, `_ap_loop_pos`:30342, `_ap_loop_len`:30358, `_ap_flight_at`:30364, `_ap_tick`:30388, `_airport_ped_plan`:30411, `_smoke_airport`:30431
 
-## 30446-30959  v0.44: people who walk around (Galleria, Biosphere, plazas)
+## 30475-30988  v0.44: people who walk around (Galleria, Biosphere, plazas)
 
-`_nav_area`:30460, `_nav_spot`:30467, `_nav_idx`:30471, `_nav_pos`:30478, `_nav_blocked`:30482, `_nav_nearest_free`:30492, `_nav_bfs`:30520, `_nav_build`:30564, `_stroller`:30635, `_stroll_place`:30651, `_stroll_next`:30672, `_nav_clear_line`:30706, `_stroll_aim`:30717, `_strollers_tick`:30749, `_smoke_strollers`:30844
+`_nav_area`:30489, `_nav_spot`:30496, `_nav_idx`:30500, `_nav_pos`:30507, `_nav_blocked`:30511, `_nav_nearest_free`:30521, `_nav_bfs`:30549, `_nav_build`:30593, `_stroller`:30664, `_stroll_place`:30680, `_stroll_next`:30701, `_nav_clear_line`:30735, `_stroll_aim`:30746, `_strollers_tick`:30778, `_smoke_strollers`:30873
 
-## 30960-31120  v0.44: directions (signposts at junctions, Directions menu)
+## 30989-31149  v0.44: directions (signposts at junctions, Directions menu)
 
-`_dir_pos`:30995, `_dir_fmt`:30998, `_signpost_spot`:31001, `_build_signposts`:31018
+`_dir_pos`:31024, `_dir_fmt`:31027, `_signpost_spot`:31030, `_build_signposts`:31047
 
-## 31121-31217  the Directions panel and chip
+## 31150-31246  the Directions panel and chip
 
-`_build_dir_panel`:31122, `_open_dir`:31164, `_dir_close`:31173, `_dir_pick`:31177, `_dir_stop`:31182, `_dir_stop_and_close`:31187, `_dir_tick`:31191
+`_build_dir_panel`:31151, `_open_dir`:31193, `_dir_close`:31202, `_dir_pick`:31206, `_dir_stop`:31211, `_dir_stop_and_close`:31216, `_dir_tick`:31220
 
-## 31218-31759  v0.44: Grand Central
+## 31247-31788  v0.44: Grand Central
 
-`_gc_mesh`:31247, `_gc_mat`:31280, `_gc_glass`:31289, `_gb`:31299, `_gb_solid`:31305, `_gb_flush`:31309, `_gc_tree`:31339, `_gc_text`:31344, `_gc_planter`:31359, `_gc_kiosk`:31365, `_goods_color`:31395, `_goods_mat`:31398, `_kiosk_goods`:31402, `_build_grand_central`:31480, `_build_gc_towers`:31648, `_gc_tick`:31743
+`_gc_mesh`:31276, `_gc_mat`:31309, `_gc_glass`:31318, `_gb`:31328, `_gb_solid`:31334, `_gb_flush`:31338, `_gc_tree`:31368, `_gc_text`:31373, `_gc_planter`:31388, `_gc_kiosk`:31394, `_goods_color`:31424, `_goods_mat`:31427, `_kiosk_goods`:31431, `_build_grand_central`:31509, `_build_gc_towers`:31677, `_gc_tick`:31772
 
-## 31760-32051  v0.44: filling the empty land
+## 31789-32080  v0.44: filling the empty land
 
-`_loft`:31777, `_fill_clear`:31819, `_build_fill`:31829, `_hg_in_lake`:31877, `_hg_path`:31881, `_floor_note_rot`:31889, `_build_gardens`:31897, `_build_fan_plaza`:32007
+`_loft`:31806, `_fill_clear`:31848, `_build_fill`:31858, `_hg_in_lake`:31906, `_hg_path`:31910, `_floor_note_rot`:31918, `_build_gardens`:31926, `_build_fan_plaza`:32036
 
-## 32052-32086  v0.45: hover car underglow
+## 32081-32115  v0.45: hover car underglow
 
-`_car_underglow`:32055
+`_car_underglow`:32084
 
-## 32087-32251  v0.46: what is inside the Grand Central shops
+## 32116-32280  v0.46: what is inside the Grand Central shops
 
-`_gc_shop_inside`:32088
+`_gc_shop_inside`:32117
 
-## 32252-32283  v0.47: street stalls downtown
+## 32281-32312  v0.47: street stalls downtown
 
-`_build_street_stalls`:32256, `_cull_people_in`:32276
+`_build_street_stalls`:32285, `_cull_people_in`:32305
 
-## 32284-32382  v0.48: places that open as you level up
+## 32313-32411  v0.48: places that open as you level up
 
-`_place_lock_of`:32297, `_place_root`:32303, `_place_unlocked`:32306, `_build_place_signs`:32314, `_places_refresh`:32359, `_places_tick`:32376
+`_place_lock_of`:32326, `_place_root`:32332, `_place_unlocked`:32335, `_build_place_signs`:32343, `_places_refresh`:32388, `_places_tick`:32405
 
-## 32383-32427  v0.50: city careers
+## 32412-32456  v0.50: city careers
 
-`_career_rank_name`:32408, `_career_mult`:32411, `_career_block_reason`:32416, `_career_start`:32419, `_career_end`:32424
+`_career_rank_name`:32437, `_career_mult`:32440, `_career_block_reason`:32445, `_career_start`:32448, `_career_end`:32453
 
-## 32428-32478  v0.52: careers as clear job loops
+## 32457-32507  v0.52: careers as clear job loops
 
-`_cid`:32455, `_career_target`:32469, `_career_tick`:32476
+`_cid`:32484, `_career_target`:32498, `_career_tick`:32505
 
-## 32479-32486  taxi
+## 32508-32515  taxi
 
-`_taxi_meter`:32480
+`_taxi_meter`:32509
 
-## 32487-32490  paramedic
+## 32516-32519  paramedic
 
 (no functions)
 
-## 32491-32495  police
+## 32520-32524  police
 
-`_career_chase_over`:32493
+`_career_chase_over`:32522
 
-## 32496-32501  firefighter
+## 32525-32530  firefighter
 
-`_fire_aimed`:32497
+`_fire_aimed`:32526
 
-## 32502-32511  the step bar
+## 32531-32540  the step bar
 
-`_career_bar_text`:32505, `_career_hud`:32509
+`_career_bar_text`:32534, `_career_hud`:32538
 
-## 32512-32538  cut scenes
+## 32541-32567  cut scenes
 
-`_cs_skip`:32530
+`_cs_skip`:32559
 
-## 32539-32543  siren
+## 32568-32572  siren
 
 (no functions)
 
-## 32544-32555  the Careers panel
+## 32573-32584  the Careers panel
 
-`_build_career_panel`:32545, `_open_careers`:32548, `_career_close`:32552
+`_build_career_panel`:32574, `_open_careers`:32577, `_career_close`:32581
 
-## 32556-32979  v0.50: homes
+## 32585-33008  v0.50: homes
 
-`_home_door_spots`:32596, `_build_homes`:32611, `_home_labels`:32640, `_home_door_near`:32649, `_home_origin`:32658, `_home_slot_near`:32661, `_home_exit_near`:32672, `_home_btn`:32679, `_home_interact`:32692, `_home_buy`:32711, `_home_default_layout`:32725, `_home_enter`:32733, `_home_leave`:32753, `_hm`:32761, `_home_build_room`:32780, `_home_refresh_room`:32889, `_furni_build`:32903
+`_home_door_spots`:32625, `_build_homes`:32640, `_home_labels`:32669, `_home_door_near`:32678, `_home_origin`:32687, `_home_slot_near`:32690, `_home_exit_near`:32701, `_home_btn`:32708, `_home_interact`:32721, `_home_buy`:32740, `_home_default_layout`:32754, `_home_enter`:32762, `_home_leave`:32782, `_hm`:32790, `_home_build_room`:32809, `_home_refresh_room`:32918, `_furni_build`:32932
 
-## 32980-33315  decorating
+## 33009-33344  decorating
 
-`_build_home_panels`:32981, `_open_homes`:33026, `_home_row_go`:33036, `_home_panel_close`:33056, `_deco_open`:33060, `_deco_pick`:33083, `_smoke_careers_homes`:33106
+`_build_home_panels`:33010, `_open_homes`:33055, `_home_row_go`:33065, `_home_panel_close`:33085, `_deco_open`:33089, `_deco_pick`:33112, `_smoke_careers_homes`:33135
 
-## 33316-33450  v0.51: home layout (living room, bedroom, bathroom)
+## 33345-33479  v0.51: home layout (living room, bedroom, bathroom)
 
-`_home_zones`:33320, `_home_slots`:33328, `_home_ring`:33355, `_furni_cat`:33361, `_home_fix_layout`:33367, `_home_build_layout`:33395
+`_home_zones`:33349, `_home_slots`:33357, `_home_ring`:33384, `_furni_cat`:33390, `_home_fix_layout`:33396, `_home_build_layout`:33424
 
-## 33451-33884  v0.51: Chapters (a guided story across the whole map)
+## 33480-33913  v0.51: Chapters (a guided story across the whole map)
 
-`_ch_jobs`:33514, `_ch_homes`:33520, `_ch_step_text`:33527, `_ch_step_done`:33538, `_ch_target`:33552, `_ch_finish_chapter`:33561, `_chapters_tick`:33583, `_hud_top_stack`:33623, `_build_chapters_ui`:33653, `_chapters_restart_ask`:33695, `_chapters_restart`:33698, `_chapters_text`:33708, `_open_chapters`:33728, `_chapters_close`:33735, `_smoke_chapters`:33739, `_step_sound`:33860
+`_ch_jobs`:33543, `_ch_homes`:33549, `_ch_step_text`:33556, `_ch_step_done`:33567, `_ch_target`:33581, `_ch_finish_chapter`:33590, `_chapters_tick`:33612, `_hud_top_stack`:33652, `_build_chapters_ui`:33682, `_chapters_restart_ask`:33724, `_chapters_restart`:33727, `_chapters_text`:33737, `_open_chapters`:33757, `_chapters_close`:33764, `_smoke_chapters`:33768, `_step_sound`:33889
 
-## 33885-33923  v0.51.1: join and leave messages
+## 33914-33952  v0.51.1: join and leave messages
 
-`_announce_join`:33892, `_announce_already_here`:33911, `_announce_leave`:33919
+`_announce_join`:33921, `_announce_already_here`:33940, `_announce_leave`:33948
 
-## 33924-34188  v0.51.2: Photo mode (clean screenshots)
+## 33953-34217  v0.51.2: Photo mode (clean screenshots)
 
-`_ui3d`:33940, `_shot_tick`:33946, `_draw_shot_icon`:33978, `_shot_enter`:33987, `_shot_exit`:34001, `_shot_release_controls`:34013, `_shot_stick_zone`:34020, `_shot_input`:34023, `_smoke_photo`:34095
+`_ui3d`:33969, `_shot_tick`:33975, `_draw_shot_icon`:34007, `_shot_enter`:34016, `_shot_exit`:34030, `_shot_release_controls`:34042, `_shot_stick_zone`:34049, `_shot_input`:34052, `_smoke_photo`:34124
 
-## 34189-34487  v0.51.3: stream joiners
+## 34218-34516  v0.51.3: stream joiners
 
-`_viewer_count`:34209, `_stream_join_check`:34215, `_stream_join_start`:34222, `_sj_streamer`:34239, `_stream_join_tick`:34248, `_stream_join_land`:34272, `_sj_welcome`:34288, `_smoke_stream_join`:34322, `_career_shot`:34405
+`_viewer_count`:34238, `_stream_join_check`:34244, `_stream_join_start`:34251, `_sj_streamer`:34268, `_stream_join_tick`:34277, `_stream_join_land`:34301, `_sj_welcome`:34317, `_smoke_stream_join`:34351, `_career_shot`:34434
 
-## 34488-34604  v0.52.1: streamer mode shows only what the stream needs
+## 34517-34633  v0.52.1: streamer mode shows only what the stream needs
 
-`_st_hide_tick`:34492, `_st_restore`:34530, `_smoke_streamer_clean`:34551, `_world_bio_passport`:34602
+`_st_hide_tick`:34521, `_st_restore`:34559, `_smoke_streamer_clean`:34580, `_world_bio_passport`:34631
 

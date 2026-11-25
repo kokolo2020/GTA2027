@@ -370,7 +370,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.59.1: a portal to real Paris! Menu > GO > Paris portal takes you to it.")
+	_show_toast("Chit Chat City 0.59.2: tap WORLD PORTAL (bottom right) to visit real Paris.")
 	booted = true
 	if "--promo" in OS.get_cmdline_user_args():
 		# Developer-only: films the highlight video (see promo.gd). Never goes online.
@@ -7662,7 +7662,7 @@ func _clean_hud_tick() -> void:
 			_relayout_hud()
 		return
 	hud_clean_applied = true
-	for c in [hud_info,hud_pause_button,radio_button,radio_caption,online_button,view_button,chat_button,travel_button,run_button,feed_box,clock_label,treasure_label]:
+	for c in [hud_info,hud_pause_button,radio_button,radio_caption,online_button,view_button,chat_button,travel_button,portal_button,run_button,feed_box,clock_label,treasure_label]:
 		if c != null and not (streamer_on and c == run_button):
 			(c as CanvasItem).visible = false
 	# v0.32: invites, gifts and crew news still pop up on the clean screen.
@@ -10737,19 +10737,23 @@ func _paris_shots() -> void:
 	paris.dry = true
 	var hp: Vector3 = paris.hub_pos
 	var hf := (HUB_C-hp).normalized()
-	player.position = hp+hf*9.0+Vector3(0,0.75,0)
+	player.position = hp+hf*3.0+Vector3(0,0.75,0)
 	for i in 40:
 		await get_tree().physics_frame
 	paused = true
 	for ch in get_children():
 		if ch is CanvasLayer:
 			ch.hide()
-	camera.position = HUB_C+Vector3(0,150,0.01)
-	camera.look_at(HUB_C)
+	print("PARIS_HUB_POS=",hp," pad_blocked=",_blocked_at(hp+Vector3(0,0.9,0),1.5)," floor_y=",player.position.y," on_floor=",player.is_on_floor())
+	camera.position = hp+Vector3(0,70,0.01)
+	camera.look_at(hp)
 	await _save_shot("paris-0-hub-top")
 	paused = false
 	var pr: String = paris.prompt()
 	print("PARIS_PROMPT_AT_PORTAL=",pr)
+	camera.position = hp+hf*30.0+Vector3(0,14,0)
+	camera.look_at(hp+Vector3(0,3,0))
+	await _save_shot("paris-0b-hub-wide")
 	var t0 := Time.get_ticks_msec()
 	await paris.enter()
 	print("PARIS_ENTER_MS=",Time.get_ticks_msec()-t0," pos=",player.position," blocked=",_blocked_at(player.position,0.3)," nodes=",get_tree().get_node_count()," trees=",paris.tree_n," quests=",paris.done_count())
@@ -16640,6 +16644,7 @@ func _relayout_hud() -> void:
 		chat_button.position = Vector2(view.x-194,412)
 	if travel_button != null:
 		travel_button.position = Vector2(view.x-194,480)
+	_place_portal_button(view)
 	if chat_panel != null:
 		chat_panel.position = Vector2(view.x-chat_panel.size.x-212,clampf(view.y-chat_panel.size.y-8.0,8.0,150.0))
 	if feed_box != null:
@@ -18545,6 +18550,7 @@ const TRAVEL_COOL := 20.0
 var run_on := true
 var run_button: Button
 var travel_button: Button
+var portal_button: Button   # v0.59.2: one-tap WORLD PORTAL (to Paris and back)
 var travel_panel: PanelContainer
 var travel_info: Label
 var travel_buttons: Array = []
@@ -18555,6 +18561,21 @@ func _walk_speed() -> float:
 		return BOARD_SPEED
 	var base_speed := RUN_SPEED if run_on else WALK_SPEED
 	return base_speed*(cafe.speed_mult() if cafe != null else 1.0)
+
+func _place_portal_button(view: Vector2) -> void:
+	if portal_button == null:
+		return
+	portal_button.custom_minimum_size = Vector2(view.x*0.17,60)
+	portal_button.size = portal_button.custom_minimum_size
+	portal_button.position = Vector2(view.x*0.81,view.y*0.80)
+
+func _portal_pressed() -> void:
+	if paris == null or paris.entering:
+		return
+	if paris.player_in_paris():
+		paris.go_home()
+	else:
+		paris.enter()
 
 func _build_travel(root: Control) -> void:
 	run_button = _button("RUN: OFF",_toggle_run)
@@ -18569,6 +18590,11 @@ func _build_travel(root: Control) -> void:
 	root.add_child(travel_button)
 	travel_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	travel_button.position = Vector2(root.size.x-194,480)
+	portal_button = _button("WORLD PORTAL",_portal_pressed)
+	portal_button.add_theme_font_size_override("font_size",22)
+	root.add_child(portal_button)
+	portal_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_place_portal_button(root.size)
 	travel_panel = PanelContainer.new()
 	root.add_child(travel_panel)
 	travel_panel.custom_minimum_size = Vector2(760,0)
@@ -18619,6 +18645,9 @@ func _hud_v23_tick() -> void:
 	var on_foot := not driving and not race_car and seat_id < 0 and not bus_riding and not sky_riding and not paused
 	run_button.visible = on_foot
 	travel_button.visible = not paused and not race_car
+	if portal_button != null and paris != null:
+		portal_button.visible = not paused and not race_car and not driving and seat_id < 0 and not bus_riding and not sky_riding and not hud_clean_applied
+		portal_button.text = "PORTAL HOME" if paris.player_in_paris() else "WORLD PORTAL"
 	if feed_box != null:
 		feed_box.visible = not paused
 	if quests_button != null:
@@ -26744,7 +26773,7 @@ var st_hold: Control                 # v0.52.1: hidden holder for everything str
 var st_held := {}                    # element -> [original parent, index]
 var st_run_was: Array = []           # RUN's visibility and spot before streamer mode
 # What streamer mode hides (by name, so elements built later are covered too).
-const ST_HIDE := ["hud_info","hud_pause_button","radio_button","radio_caption","online_button","view_button","chat_button","travel_button","clock_label","treasure_label","chase_label","quest_bar","quest_offer_panel","quests_button","players_button","chat_pill","chat_log_panel","chat_panel","minimap","cash_pill","online_pill","feed_box","status_label","qr_small","qr_big","hud_arrow","ach_banner","st_badge","st_top","sj_banner"]
+const ST_HIDE := ["hud_info","hud_pause_button","radio_button","radio_caption","online_button","view_button","chat_button","travel_button","portal_button","clock_label","treasure_label","chase_label","quest_bar","quest_offer_panel","quests_button","players_button","chat_pill","chat_log_panel","chat_panel","minimap","cash_pill","online_pill","feed_box","status_label","qr_small","qr_big","hud_arrow","ach_banner","st_badge","st_top","sj_banner"]
 
 func _build_streamer(root: Control) -> void:
 	st_root = Control.new()

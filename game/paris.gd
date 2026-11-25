@@ -6,7 +6,7 @@ extends RefCounted
 const C := Vector3(900,0,700)                 # world position of the Eiffel Tower
 const AREA := Rect2(-256.0,-354.0,951.0,719.0) # x, z, width, depth of the downloaded map, metres from the tower
 const S := 0.6                                # Eiffel Tower scale
-const PORTAL_REL := Vector3(0,0,64)             # hub portal, on the plaza south of the Harbor Dome, relative to the dome centre
+const PORTAL_REL := Vector3(-126,0,-40)         # hub portal, on the Ridge lawn at world (84,0,-8), relative to HUB_C (210,0,32)
 const RET := Vector2(95,115)                  # return portal, in the open lawn of the Champ de Mars
 const CAFE := Vector2(65,70)
 const QUAY := Vector2(-68.6,-118.0)
@@ -242,6 +242,12 @@ func build_hub() -> void:
 	beam.position = hub_pos+Vector3(0,70.0,0)
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	hub_root.add_child(beam)
+
+func player_in_paris() -> bool:
+	if g.player == null:
+		return false
+	var pp: Vector3 = g.player.position
+	return in_paris(pp)
 
 func go_portal() -> void:
 	if g.player == null:

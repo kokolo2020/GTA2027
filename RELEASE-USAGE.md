@@ -29,4 +29,5 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.57.1 | | | | Claude-built (Roastery redesign, sit-down lounge, dome gaps). Usage screenshot not sent before release (Koko said Release) |
 | 0.58.0 | | 35% session, 14% weekly (Fable only 10%) | about 6% weekly with 0.57.1 | Claude-built (rain, station voice, natural look, chat typing on phones, Biosphere rails/hedges/lamps, café toy look, Stream Mode fixes). Read 20:21 on 24 Nov, after release. Weekly went 8% to 14% since 0.57.0, covering 0.57.1 and 0.58.0 |
 | 0.59.0 | | | | Claude-built (Portal to Paris, OSM district). Usage not read before release |
-| 0.59.1 | | | | Claude-built (Paris portal beam + GO menu button) |\n
+| 0.59.1 | | | | Claude-built (Paris portal beam + GO menu button) |
+| 0.59.2 | | | | Claude-built (WORLD PORTAL button, portal moved to the Ridge) |

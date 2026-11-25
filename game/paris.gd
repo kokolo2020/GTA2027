@@ -66,6 +66,12 @@ var bcells := {}
 var rcells := {}
 var tree_n := 0
 var test_log: Array = []
+var clue_mask := 0              # v0.61: mystery case, 3 clues found today
+var clue_day := ""
+var relic := false              # solved the case at least once = relic kept for ever
+var case_day := ""
+var clue_nodes: Array = []
+var board_pos: Vector3
 
 func _init(game, def: Dictionary, hub: Vector3) -> void:
 	g = game
@@ -82,6 +88,7 @@ func _init(game, def: Dictionary, hub: Vector3) -> void:
 	ret_pos = C+Vector3(RET.x,0,RET.y)
 	cafe_pos = C+Vector3(CAFE.x,0,CAFE.y)
 	quay_pos = C+Vector3(QUAY.x,0,QUAY.y)
+	board_pos = ret_pos+Vector3(5,0,0)
 
 # ---------- helpers ----------
 func in_area(x: float, z: float, m := 0.0) -> bool:
@@ -253,6 +260,7 @@ func ensure_built() -> void:
 	build_landmark()
 	build_cafe()
 	make_portal(root,Vector3(RET.x,0,RET.y),"BACK TO CHIT CHAT CITY","Portal home",Color("ffcf6b"))
+	build_mystery()
 	print("%s built in %d ms" % [W["name"],Time.get_ticks_msec()-t0])
 
 func build_ground() -> void:
@@ -755,6 +763,82 @@ func build_cafe() -> void:
 			g._hm(root,tp+Vector3(s*0.8,0.45,0),Vector3(0.45,0.9,0.45),Color("4a3a2c"))
 	label(root,String(W["cafe_name"]),c+Vector3(0,5.6,0.6),Color("ffe9b0"),56)
 
+func clue_world(i: int) -> Vector3:
+	var c: Vector2 = W["clues"][i]
+	return C+Vector3(c.x,0,c.y)
+
+func build_mystery() -> void:
+	# v0.61: three glowing clues and a case board next to the return portal.
+	var b := Vector3(5,0,0)+Vector3(RET.x,0,RET.y)
+	g._hm(root,b+Vector3(0,0.5,0),Vector3(2.4,1.0,1.0),Color("4a3a2c"),true)
+	g._hm(root,b+Vector3(0,1.55,0),Vector3(2.6,1.1,0.12),Color("2d3a4a"))
+	label(root,"CASE BOARD",b+Vector3(0,3.0,0),Color("ffd98a"),48)
+	clue_nodes.clear()
+	for i in 3:
+		var n := Node3D.new()
+		n.position = Vector3(W["clues"][i].x,1.5,W["clues"][i].y)
+		root.add_child(n)
+		g._fc_part(n,g._bsph(0.45),Vector3.ZERO,g._fc_glow(Color("ffd24f")))
+		g._fc_part(n,g._bcone(0.04,0.04,2.6),Vector3(0,-0.75,0),g._fc_glow(Color("ffe8a0")))
+		var tw: Tween = g.create_tween()
+		tw.set_loops()
+		tw.tween_property(n,"position:y",2.0,1.2).from(1.5)
+		tw.tween_property(n,"position:y",1.5,1.2)
+		label(n,"CLUE",Vector3(0,1.1,0),Color("fff0b0"),40)
+		clue_nodes.append(n)
+	update_clues()
+
+func update_clues() -> void:
+	for i in clue_nodes.size():
+		(clue_nodes[i] as Node3D).visible = (clue_mask & (1 << i)) == 0
+
+func clue_text(i: int) -> String:
+	return String(W["riddles"][i])
+
+func found_clue(i: int) -> void:
+	clue_mask |= 1 << i
+	update_clues()
+	var n := 0
+	for k in 3:
+		if clue_mask & (1 << k):
+			n += 1
+	if not dry:
+		g._play_coin()
+		g._show_toast("CLUE %d/3: %s" % [n,clue_text(i)])
+		if n == 3:
+			g._feed_add("%s: all clues found. Go to the CASE BOARD by the portal." % W["name"],"")
+		g._save_progress()
+	test_log.append("clue%d" % i)
+
+func clue_count() -> int:
+	var n := 0
+	for k in 3:
+		if clue_mask & (1 << k):
+			n += 1
+	return n
+
+func submit_case(code: String) -> bool:
+	if code != String(W["code"]):
+		if not dry:
+			g._show_toast("The lock stays shut. Re-read the riddles.")
+		return false
+	var today := Time.get_date_string_from_system()
+	var first := not relic
+	relic = true
+	if case_day != today:
+		case_day = today
+		pay(600,60,"CASE SOLVED")
+	if first:
+		g.cash += 1000
+		if not dry:
+			g._show_toast("RELIC FOUND: %s! The sky world needs 4 relics." % W["relic"])
+			g._feed_add("%s relic found: %s" % [W["name"],W["relic"]],"")
+	elif not dry:
+		g._show_toast("Case solved again. Come back tomorrow for a new case.")
+	if not dry:
+		g._save_progress()
+	return true
+
 func facing(pos: Vector3) -> float:
 	# Y rotation that turns a thin panel's front towards the map origin.
 	return atan2(-pos.x,-pos.z)
@@ -871,6 +955,8 @@ func prompt() -> String:
 	var p: Vector3 = g.player.position
 	if built and near(p,ret_pos,4.8):
 		return "PORTAL HOME"
+	if built and near(p,board_pos,3.8):
+		return "SOLVE THE CASE"
 	if built and near(p,cafe_pos+Vector3(0,0,3.0),5.0):
 		return String(W["order"])
 	return ""
@@ -887,6 +973,12 @@ func interact() -> bool:
 		return true
 	if p == "PORTAL HOME":
 		go_home()
+	elif p == "SOLVE THE CASE":
+		roll_day()
+		if clue_count() < 3:
+			g._show_toast("Find all 3 glowing clues first (%d/3). Look around the map." % clue_count())
+		else:
+			g._open_case(self)
 	else:
 		order()
 	return true
@@ -941,6 +1033,10 @@ func done_count() -> int:
 
 func roll_day() -> void:
 	var today := Time.get_date_string_from_system()
+	if clue_day != today:
+		clue_day = today
+		clue_mask = 0
+		update_clues()
 	if day != today:
 		day = today
 		mask = 0
@@ -983,6 +1079,10 @@ func tick(delta: float) -> void:
 			award(1)
 		if near(p,quay_pos,16.0):
 			award(3)
+		roll_day()
+		for i in 3:
+			if (clue_mask & (1 << i)) == 0 and near(p,clue_world(i),3.2):
+				found_clue(i)
 	var pr := prompt()
 	if pr != last_prompt:
 		last_prompt = pr
@@ -994,6 +1094,10 @@ func save_state(file: ConfigFile) -> void:
 	file.set_value(sec,"mask",mask)
 	file.set_value(sec,"all",all_paid)
 	file.set_value(sec,"visits",visits)
+	file.set_value(sec,"clue_day",clue_day)
+	file.set_value(sec,"clues",clue_mask)
+	file.set_value(sec,"relic",relic)
+	file.set_value(sec,"case_day",case_day)
 
 func load_state(file: ConfigFile) -> void:
 	var sec := String(W["save"])
@@ -1001,3 +1105,8 @@ func load_state(file: ConfigFile) -> void:
 	mask = int(file.get_value(sec,"mask",0)) & ((1 << QUESTS.size())-1)
 	all_paid = bool(file.get_value(sec,"all",false))
 	visits = maxi(0,int(file.get_value(sec,"visits",0)))
+	clue_day = String(file.get_value(sec,"clue_day",""))
+	clue_mask = int(file.get_value(sec,"clues",0)) & 7
+	relic = bool(file.get_value(sec,"relic",false))
+	case_day = String(file.get_value(sec,"case_day",""))
+	update_clues()

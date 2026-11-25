@@ -32,3 +32,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.59.1 | | | | Claude-built (Paris portal beam + GO menu button) |
 | 0.59.2 | | | | Claude-built (WORLD PORTAL button, portal moved to the Ridge) |
 | 0.60.0 | | | | Claude-built (world portal: Paris, Tokyo, New York, Bangkok) |
+| 0.61.0 | | | | Claude-built (mystery cases, relics, mystic sky island) |

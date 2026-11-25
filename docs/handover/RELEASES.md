@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.61.0 (code 128, 2026-11-25)
+- paris.gd: mystery (W clues/riddles/code/relic; clue orbs, case board at ret+(5,0,0), found_clue, submit_case, clue/relic save keys). worlds.gd: sky island at (9600,260,700) built lazily, relic_count/sky_open/enter_sky, shrine prompt, "sky" save section. main.gd: case_panel (_open_case, digit spinners), sky_button in world picker, shots test runs the mystery + sky flow.
+
 ## 0.60.0 (code 127, 2026-11-25)
 - New game/worlds.gd (manager, DEFS for Paris/Tokyo/New York/Bangkok at C x=900/3200/5200/7200, z=700; hub portal + beam; picker API; save/load forwarding). paris.gd is now a data-driven per-world instance (W dict: landmark eiffel/crossing/times/prang, café, quests, save section). New data game/map/{tokyo,newyork,bangkok}_osm.json. main.gd: `paris` var is now a Worlds instance; world_panel picker (_open_worlds/_world_go), _portal_pressed, GO menu "World portal", _paris_shots loops all worlds.
 

@@ -17,6 +17,7 @@ const DEFS := [
 		"roof":Color("5d6772"),"ground":Color("b3ad9f"),
 		"cafe_name":"CAFÉ DE LA TOUR","cafe_roof":Color("2d4a3c"),"awning":[Color("b5322e"),Color("f1ead9")],
 		"order":"ORDER A CAFÉ","order_msg":"Un café au lait, s'il vous plaît! Merci.",
+		"clues":[Vector2(74,42),Vector2(-80,29),Vector2(15,-84)],"code":"431","relic":"Tower Key","riddles":["How many legs does the Iron Lady stand on?","How many levels can visitors climb, from the ground to the top?","You order un café au lait. Un means how many?"],
 		"hello":"Bonjour! Welcome to Paris.",
 		"quests":[
 			{"n":"Step through the portal to Paris","pay":300,"xp":30},
@@ -35,6 +36,7 @@ const DEFS := [
 		"roof":Color("7b828c"),"ground":Color("8d9096"),
 		"cafe_name":"SHIBUYA CAFÉ","cafe_roof":Color("3b3f5c"),"awning":[Color("e8456b"),Color("f6efe2")],
 		"order":"ORDER MATCHA","order_msg":"Matcha latte, onegaishimasu! Arigato!",
+		"clues":[Vector2(43,74),Vector2(-85,0),Vector2(29,-80)],"code":"493","relic":"Hachiko Bell","riddles":["The scramble crosses the road on this many sides (not counting diagonals).","Hachiko waited for his owner for this many years.","Giant screens glow above the crossing: how many are there?"],
 		"hello":"Irasshaimase! Welcome to Tokyo.",
 		"quests":[
 			{"n":"Step through the portal to Tokyo","pay":300,"xp":30},
@@ -52,6 +54,7 @@ const DEFS := [
 		"roof":Color("5a5d63"),"ground":Color("7d7f84"),
 		"cafe_name":"BROADWAY DINER","cafe_roof":Color("7a2a2a"),"awning":[Color("2b5fa8"),Color("f4efe4")],
 		"order":"ORDER COFFEE","order_msg":"One large coffee, coming right up!",
+		"clues":[Vector2(74,42),Vector2(-80,-29),Vector2(0,-85)],"code":"523","relic":"Broadway Star","riddles":["Count the red steps in Times Square.","Seventh Avenue crosses Broadway: this many streets meet here.","N-Y-C: how many letters?"],
 		"hello":"Welcome to New York!",
 		"quests":[
 			{"n":"Step through the portal to New York","pay":300,"xp":30},
@@ -69,6 +72,7 @@ const DEFS := [
 		"roof":Color("a4574a"),"ground":Color("a9a08c"),
 		"cafe_name":"CAFÉ ARUN","cafe_roof":Color("6b4a2e"),"awning":[Color("2e8f7a"),Color("f3ead6")],
 		"order":"ORDER THAI TEA","order_msg":"Cha yen, khrap! Sawasdee!",
+		"clues":[Vector2(74,42),Vector2(-84,15),Vector2(0,-85)],"code":"541","relic":"Arun Lotus","riddles":["The central prang rises in this many stepped tiers.","Small prangs stand round the big one: how many?","One spire crowns the main prang. One means how many?"],
 		"hello":"Sawasdee! Welcome to Bangkok.",
 		"quests":[
 			{"n":"Step through the portal to Bangkok","pay":300,"xp":30},
@@ -85,6 +89,114 @@ var hub_pos: Vector3
 var hub_root: Node3D
 var dry := false : set = _set_dry
 var last_hub := false
+# v0.61: the mystic sky island, unlocked by one relic from each of the four cities
+const SKY := Vector3(9600,260,700)
+const SKY_NEED := 4
+var sky_root: Node3D
+var sky_built := false
+var shrine_done := false
+var shrine_day := ""
+var last_sky := ""
+
+func relic_count() -> int:
+	var n := 0
+	for w in list:
+		if w.relic:
+			n += 1
+	return n
+
+func sky_open() -> bool:
+	return relic_count() >= SKY_NEED
+
+func in_sky(p: Vector3) -> bool:
+	return absf(p.x-SKY.x) < 70.0 and absf(p.z-SKY.z) < 70.0 and p.y > SKY.y-60.0
+
+func sky_portal_pos() -> Vector3:
+	return SKY+Vector3(0,0,24)
+
+func build_sky() -> void:
+	if sky_built:
+		return
+	sky_built = true
+	sky_root = Node3D.new()
+	sky_root.name = "MysticSky"
+	sky_root.position = SKY
+	g.add_child(sky_root)
+	var grass := Color("8fd08a")
+	for yaw: float in [0.0,PI/4.0]:
+		g._hm(sky_root,Vector3(0,-1.0,0),Vector3(52,2.0,52),grass if yaw == 0.0 else grass.darkened(0.03),true,yaw)
+	g._fc_part(sky_root,g._bcone(26.0,1.5,46.0),Vector3(0,-25.0,0),g._material(Color("6d6a78")))
+	g._fc_part(sky_root,g._bcone(18.0,1.0,60.0),Vector3(6,-45.0,3),g._material(Color("57546a")))
+	for k in 6:
+		var ang := float(k)/6.0*TAU+0.4
+		var rp := Vector3(cos(ang)*56.0,12.0+float(k%3)*9.0,sin(ang)*56.0)
+		g._hm(sky_root,rp,Vector3(9,2.0,9),Color("9a96b4"),true)
+		g._fc_part(sky_root,g._bcone(0.05,1.2,4.0),rp+Vector3(0,3.4,0),g._fc_glow(Color("b48cff")))
+	var cols := [list[0].W["col"],list[1].W["col"],list[2].W["col"],list[3].W["col"]]
+	g._hm(sky_root,Vector3(0,0.6,0),Vector3(9,1.2,9),Color("cfc9e6"),true)
+	for k in 4:
+		var ang := float(k)/4.0*TAU+PI/4.0
+		var pp := Vector3(cos(ang)*5.5,0,sin(ang)*5.5)
+		g._hm(sky_root,pp+Vector3(0,2.5,0),Vector3(1.0,5.0,1.0),Color("e8e3f5"),true)
+		g._fc_part(sky_root,g._bsph(0.7),pp+Vector3(0,5.8,0),g._fc_glow(cols[k]))
+	g._fc_part(sky_root,g._bsph(1.4),Vector3(0,6.5,0),g._fc_glow(Color("f4ecff")))
+	list[0].label(sky_root,"MYSTIC SHRINE",Vector3(0,11.0,0),Color("e9d8ff"),72)
+	var ol := OmniLight3D.new()
+	ol.light_color = Color("c7a8ff")
+	ol.light_energy = 1.6
+	ol.omni_range = 40.0
+	ol.position = Vector3(0,7,0)
+	sky_root.add_child(ol)
+	list[0].make_portal(sky_root,Vector3(0,0,24),"BACK TO CHIT CHAT CITY","Portal home",Color("ffcf6b"))
+	for sx: float in [-1.0,1.0]:
+		g._collider(sky_root,Vector3(sx*28.0,3,0),Vector3(2,8,58))
+		g._collider(sky_root,Vector3(0,3,sx*28.0),Vector3(58,8,2))
+
+func enter_sky() -> void:
+	if g.player == null or busy():
+		return
+	if not sky_open():
+		g._show_toast("The sky world is locked: %d/%d relics. Solve the case in every city (find 3 clues, then the CASE BOARD)." % [relic_count(),SKY_NEED])
+		return
+	build_sky()
+	list[0].move_player(SKY+Vector3(0,0.9,16))
+	g._show_toast("The mystic sky island. Step to the shrine.")
+	g._refresh_hud()
+
+func sky_prompt() -> String:
+	if g.player == null or g.paused or not sky_built:
+		return ""
+	var p: Vector3 = g.player.position
+	if not in_sky(p):
+		return ""
+	if Vector2(p.x-sky_portal_pos().x,p.z-sky_portal_pos().z).length() < 4.8:
+		return "PORTAL HOME"
+	if Vector2(p.x-SKY.x,p.z-SKY.z).length() < 7.5:
+		return "ACTIVATE SHRINE" if not shrine_done else "MAKE A WISH"
+	return ""
+
+func sky_interact(pr: String) -> void:
+	if pr == "PORTAL HOME":
+		go_portal()
+		g._show_toast("Back in Chit Chat City.")
+		return
+	var today := Time.get_date_string_from_system()
+	if not shrine_done:
+		shrine_done = true
+		shrine_day = today
+		g.cash += 5000
+		if not g.legacy_rules:
+			g.bonus_xp += 500
+		g._show_toast("THE SHRINE AWAKENS! 4 relics joined. +$5000  +500 XP")
+		g._feed_add("Mystic Shrine awakened!","")
+		g._save_progress()
+	elif shrine_day != today:
+		shrine_day = today
+		g.cash += 500
+		g._show_toast("The shrine grants a wish: +$500. Come back tomorrow.")
+		g._save_progress()
+	else:
+		g._show_toast("The shrine glows softly. Come back tomorrow.")
 
 func _init(game) -> void:
 	g = game
@@ -132,6 +244,8 @@ func current():
 	return null
 
 func player_in_world() -> bool:
+	if g.player != null and sky_built and in_sky(g.player.position):
+		return true
 	return current() != null
 
 func near_hub() -> bool:
@@ -141,6 +255,9 @@ func near_hub() -> bool:
 	return Vector2(pp.x-hub_pos.x,pp.z-hub_pos.z).length() < 6.0
 
 func prompt() -> String:
+	var sp := sky_prompt()
+	if sp != "":
+		return sp
 	for w in list:
 		var s: String = w.prompt()
 		if s != "":
@@ -150,6 +267,10 @@ func prompt() -> String:
 	return ""
 
 func interact() -> bool:
+	var sp := sky_prompt()
+	if sp != "":
+		sky_interact(sp)
+		return true
 	for w in list:
 		if w.interact():
 			return true
@@ -173,6 +294,9 @@ func enter(i: int) -> void:
 	list[i].enter()
 
 func go_home() -> void:
+	if g.player != null and sky_built and in_sky(g.player.position):
+		go_portal()
+		return
 	var w = current()
 	if w != null:
 		w.go_home()
@@ -190,6 +314,12 @@ func go_portal() -> void:
 func tick(delta: float) -> void:
 	for w in list:
 		w.tick(delta)
+	if sky_built and g.player != null and absf(g.player.position.x-SKY.x) < 80.0 and absf(g.player.position.z-SKY.z) < 80.0 and g.player.position.y < SKY.y-30.0:
+		list[0].move_player(SKY+Vector3(0,0.9,16))
+	var spr := sky_prompt()
+	if spr != last_sky:
+		last_sky = spr
+		g._refresh_hud()
 	var nh := near_hub()
 	if nh != last_hub:
 		last_hub = nh
@@ -198,12 +328,16 @@ func tick(delta: float) -> void:
 func save_state(file: ConfigFile) -> void:
 	for w in list:
 		w.save_state(file)
+	file.set_value("sky","shrine",shrine_done)
+	file.set_value("sky","day",shrine_day)
 
 func load_state(file: ConfigFile) -> void:
 	for w in list:
 		w.load_state(file)
+	shrine_done = bool(file.get_value("sky","shrine",false))
+	shrine_day = String(file.get_value("sky","day",""))
 
 func summary(i: int) -> String:
 	var w = list[i]
 	w.roll_day()
-	return "%d/%d quests today" % [w.done_count(),w.QUESTS.size()]
+	return "%d/%d quests · %s" % [w.done_count(),w.QUESTS.size(),"relic ✓" if w.relic else "clues %d/3" % w.clue_count()]

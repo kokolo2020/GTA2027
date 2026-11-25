@@ -370,7 +370,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.60: tap WORLD PORTAL (bottom right) to visit Paris, Tokyo, New York or Bangkok.")
+	_show_toast("Chit Chat City 0.61: new mystery cases in every city. Tap WORLD PORTAL, find 3 clues, win relics.")
 	booted = true
 	if "--promo" in OS.get_cmdline_user_args():
 		# Developer-only: films the highlight video (see promo.gd). Never goes online.
@@ -7735,7 +7735,7 @@ func _input(event: InputEvent) -> void:
 					touch_buttons.remove_at(ti)
 			for button: Button in touch_buttons:
 				if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
-					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (world_panel != null and world_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button)) or (quest_panel != null and quest_panel.is_ancestor_of(button)) or (social_panel != null and social_panel.is_ancestor_of(button)) or (ach_panel != null and ach_panel.is_ancestor_of(button))
+					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (world_panel != null and world_panel.is_ancestor_of(button)) or (case_panel != null and case_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button)) or (quest_panel != null and quest_panel.is_ancestor_of(button)) or (social_panel != null and social_panel.is_ancestor_of(button)) or (ach_panel != null and ach_panel.is_ancestor_of(button))
 					if not paused and in_overlay:
 						continue
 					if paused and not in_overlay:
@@ -8329,6 +8329,8 @@ func _open_panel(panel: Control) -> void:
 		travel_panel.hide()
 	if world_panel != null:
 		world_panel.hide()
+	if case_panel != null:
+		case_panel.hide()
 	if quest_panel != null:
 		quest_panel.hide()
 	if social_panel != null:
@@ -8353,6 +8355,8 @@ func _layout_panels() -> void:
 		travel_panel.position = Vector2((view.x-travel_panel.size.x)/2.0,maxf(8.0,(view.y-travel_panel.size.y)/2.0))
 	if world_panel != null:
 		world_panel.position = Vector2((view.x-world_panel.size.x)/2.0,maxf(8.0,(view.y-world_panel.size.y)/2.0))
+	if case_panel != null:
+		case_panel.position = Vector2((view.x-case_panel.size.x)/2.0,maxf(8.0,(view.y-case_panel.size.y)/2.0))
 	if quest_panel != null:
 		quest_panel.position = Vector2((view.x-quest_panel.size.x)/2.0,maxf(8.0,(view.y-quest_panel.size.y)/2.0))
 	if social_panel != null:
@@ -8392,6 +8396,8 @@ func _toggle_menu() -> void:
 		travel_panel.hide()
 	if world_panel != null:
 		world_panel.hide()
+	if case_panel != null:
+		case_panel.hide()
 	if quest_panel != null:
 		quest_panel.hide()
 	if social_panel != null:
@@ -10812,6 +10818,44 @@ func _paris_shots() -> void:
 		w.go_home()
 		for i in 20:
 			await get_tree().physics_frame
+	paused = false
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.show()
+	for w in paris.list:
+		var k := String(w.W["save"])
+		print("MYSTERY_",k," locked_sky=",paris.sky_open())
+		for i in 3:
+			w.found_clue(i)
+		var bad: bool = w.submit_case("000")
+		var good: bool = w.submit_case(String(w.W["code"]))
+		print("MYSTERY_",k," clues=",w.clue_count()," wrong=",bad," right=",good," relic=",w.relic)
+	print("SKY_OPEN=",paris.sky_open()," relics=",paris.relic_count())
+	paris.enter_sky()
+	for i in 40:
+		await get_tree().physics_frame
+	print("SKY_ENTER pos=",player.position," on_floor=",player.is_on_floor()," blocked=",_blocked_at(player.position,0.3)," in_sky=",paris.in_sky(player.position))
+	player.position = paris.SKY+Vector3(0,0.9,5)
+	for i in 30:
+		await get_tree().physics_frame
+	print("SKY_PROMPT_SHRINE=",paris.prompt())
+	player.position = paris.SKY+Vector3(0,0.9,24)
+	for i in 30:
+		await get_tree().physics_frame
+	print("SKY_PROMPT_PORTAL=",paris.prompt()," home_btn=",paris.player_in_world())
+	paused = true
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.hide()
+	camera.position = paris.SKY+Vector3(45,14,60)
+	camera.look_at(paris.SKY+Vector3(0,2,0))
+	await _save_shot("sky-1-island")
+	camera.position = paris.SKY+Vector3(9,4,13)
+	camera.look_at(paris.SKY+Vector3(0,5,0))
+	await _save_shot("sky-2-shrine")
+	camera.position = paris.SKY+Vector3(-90,-60,120)
+	camera.look_at(paris.SKY+Vector3(0,-15,0))
+	await _save_shot("sky-3-from-below")
 	print("PARIS_SHOTS_DONE")
 
 func _people_shots() -> void:
@@ -18569,6 +18613,12 @@ var travel_panel: PanelContainer
 var world_panel: PanelContainer      # v0.60: world picker
 var world_buttons: Array = []
 var world_info: Label
+var sky_button: Button        # v0.61: mystic sky island (needs 4 relics)
+var case_panel: PanelContainer   # v0.61: mystery case lock
+var case_riddles: Label
+var case_digit_labels: Array = []
+var case_digits := [0,0,0]
+var case_world = null
 var travel_info: Label
 var travel_buttons: Array = []
 var travel_ready_at := 0.0
@@ -18648,7 +18698,7 @@ func _build_travel(root: Control) -> void:
 	wr.add_theme_constant_override("separation",10)
 	world_panel.add_child(wr)
 	wr.add_child(_label("WORLD PORTAL",26,Color("8ec5ff")))
-	world_info = _label("Step into a real city. Each world has a landmark, a café and 4 daily quests. Real maps © OpenStreetMap contributors.",17,Color("cbd8de"))
+	world_info = _label("Step into a real city. Each world has 4 daily quests and a mystery case: find 3 clues, crack the code at the case board, win a relic. 4 relics open the mystic sky island. Maps © OpenStreetMap contributors.",17,Color("cbd8de"))
 	world_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	world_info.custom_minimum_size.x = 700
 	wr.add_child(world_info)
@@ -18658,8 +18708,46 @@ func _build_travel(root: Control) -> void:
 		wb.add_theme_font_size_override("font_size",20)
 		world_buttons.append(wb)
 		wr.add_child(wb)
+	sky_button = _button("",_sky_go)
+	sky_button.custom_minimum_size = Vector2(700,58)
+	sky_button.add_theme_font_size_override("font_size",20)
+	wr.add_child(sky_button)
 	wr.add_child(_button("Close",_close_worlds))
 	world_panel.hide()
+	case_panel = PanelContainer.new()
+	root.add_child(case_panel)
+	case_panel.custom_minimum_size = Vector2(700,0)
+	case_panel.add_theme_stylebox_override("panel",_panel(Color("2a2140"),24))
+	var cr := VBoxContainer.new()
+	cr.add_theme_constant_override("separation",10)
+	case_panel.add_child(cr)
+	cr.add_child(_label("THE CASE",26,Color("ffd98a")))
+	case_riddles = _label("",18,Color("e8e0f5"))
+	case_riddles.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	case_riddles.custom_minimum_size.x = 640
+	cr.add_child(case_riddles)
+	cr.add_child(_label("Each riddle answer is one digit. Enter the 3-digit code.",16,Color("b9acd6")))
+	var drow := HBoxContainer.new()
+	drow.alignment = BoxContainer.ALIGNMENT_CENTER
+	drow.add_theme_constant_override("separation",24)
+	cr.add_child(drow)
+	case_digit_labels.clear()
+	for k in 3:
+		var col := VBoxContainer.new()
+		var up := _button("▲",_case_step.bind(k,1))
+		up.custom_minimum_size = Vector2(90,50)
+		col.add_child(up)
+		var dl := _label("0",40,Color.WHITE)
+		dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		case_digit_labels.append(dl)
+		col.add_child(dl)
+		var dn := _button("▼",_case_step.bind(k,-1))
+		dn.custom_minimum_size = Vector2(90,50)
+		col.add_child(dn)
+		drow.add_child(col)
+	cr.add_child(_button("TRY THE CODE",_case_submit))
+	cr.add_child(_button("Close",_close_case))
+	case_panel.hide()
 
 func _toggle_run() -> void:
 	run_on = not run_on
@@ -18743,6 +18831,49 @@ func _open_worlds() -> void:
 	_refresh_worlds()
 	_open_panel(world_panel)
 
+func _open_case(w) -> void:
+	case_world = w
+	case_digits = [0,0,0]
+	var t := "%s case. Clues:\n" % w.W["name"]
+	for i in 3:
+		t += "%d. %s\n" % [i+1,w.clue_text(i)]
+	case_riddles.text = t
+	_case_refresh()
+	if not paused:
+		_toggle_menu()
+	_open_panel(case_panel)
+
+func _case_step(k: int, d: int) -> void:
+	case_digits[k] = (int(case_digits[k])+d+10) % 10
+	_case_refresh()
+
+func _case_refresh() -> void:
+	for k in 3:
+		(case_digit_labels[k] as Label).text = str(case_digits[k])
+
+func _case_submit() -> void:
+	if case_world == null:
+		return
+	var code := "%d%d%d" % [case_digits[0],case_digits[1],case_digits[2]]
+	if case_world.submit_case(code):
+		_close_case()
+	else:
+		_show_toast("Wrong code. Re-read the riddles.")
+
+func _close_case() -> void:
+	if paused:
+		_toggle_menu()
+
+func _sky_go() -> void:
+	if paris == null or paris.busy():
+		return
+	if not paris.sky_open():
+		_show_toast("Locked: %d/%d relics. Solve the case in each city." % [paris.relic_count(),paris.SKY_NEED])
+		return
+	if paused:
+		_toggle_menu()
+	paris.enter_sky()
+
 func _close_worlds() -> void:
 	if paused:
 		_toggle_menu()
@@ -18751,6 +18882,7 @@ func _refresh_worlds() -> void:
 	for i in world_buttons.size():
 		var d: Dictionary = paris.list[i].W
 		world_buttons[i].text = "%s  ·  %s  ·  %s" % [d["title"],d["sub"],paris.summary(i)]
+	sky_button.text = "MYSTIC SKY ISLAND  ·  %s" % ("OPEN" if paris.sky_open() else "LOCKED  %d/%d relics" % [paris.relic_count(),paris.SKY_NEED])
 
 func _world_go(i: int) -> void:
 	if paris == null or paris.busy():

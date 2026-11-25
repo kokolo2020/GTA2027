@@ -5,7 +5,7 @@ Regenerate with `python3 scripts/make-code-map.py` after every release. It is al
 
 ## How the code is organised
 
-- `game/main.gd` (34824 lines, 1250 functions): one big script holding the whole city. GDScript has no partial classes, so it is indexed rather than split: sections and name prefixes below.
+- `game/main.gd` (34868 lines, 1250 functions): one big script holding the whole city. GDScript has no partial classes, so it is indexed rather than split: sections and name prefixes below.
 - `game/world_biosphere.gd`: the World Biosphere (self-contained module, talks to main through `g`). The model for new modules.
 - `game/hub_jokes.gd`, `game/natural_player_trial.gd`: small helper scripts.
 - `scripts/`: publisher and tools. `docs/world-biosphere/0.55.2/*.py`: preview, verify (smoke), profile, export.
@@ -15,138 +15,138 @@ Regenerate with `python3 scripts/make-code-map.py` after every release. It is al
 
 | Lines | Section | Funcs |
 |---|---|---|
-| 1-602 | Core: constants, setup, input, driving, save/load, HUD (unlabelled) | 4 |
-| 603-675 | v0.34.6: futuristic towers for the old city | 1 |
-| 676-754 | v0.34.4: "100 years from now" skins for walls, roofs and pavements | 5 |
-| 755-815 | v0.34.4: futuristic road surface | 2 |
-| 816-2024 | v0.30: real-looking materials (CC0 photo textures from Poly Haven, see credits.txt) | 57 |
-| 2025-2508 | Online (v0.9.0): Supabase Realtime broadcast, other players shown as ghost cars. | 20 |
-| 2509-2681 | v0.13.0: Marina Heights (Level 5 district: showroom, style shop, paint shop) | 11 |
-| 2682-3197 | public bus (Airport Line): Marina Heights - Waterfront - North Highway - Harbor Airfield | 26 |
-| 3198-3252 | v0.12.0: player level (derived from progress, so old saves convert automatically) | 6 |
-| 3253-3355 | v0.11.0: online police vs thief | 4 |
-| 3356-4299 | v0.10.0: chase mode (offline) | 38 |
-| 4300-4984 | v0.14.0: Blender-made people (player, pedestrians, online players on foot) | 23 |
-| 4985-5103 | v0.29: clean screen (only the QR code and a small minimap; the rest is in the Menu) | 7 |
-| 5104-5141 | v0.30.1: nothing to collect stands in a road | 4 |
-| 5142-5281 | v0.30.1: quests are offered when you get near them; you choose to take them | 7 |
-| 5282-5649 | v0.31: a futuristic Chit Chat City (neon strips, holograms, flying traffic, glowing streets) | 13 |
-| 5650-6149 | v0.32: social. Friends, invites, crews, gifts, high-fives, dance floor, photos | 31 |
-| 6150-6400 | v0.33.5: track a player (the arrow follows them around the city) | 9 |
-| 6401-6896 | v0.33: Harbor Dome arcade (Connect Four, Reaction Duel, Memory Match) and party quiz | 25 |
-| 6897-7190 | Party Quiz: everyone in the quiz zone gets the same question at the same time | 11 |
-| 7191-8755 | v0.34: achievements (75 of them in four tiers; Gold and Legend are announced to everyone online) | 39 |
-| 8756-11113 | v0.5.0: original synthesized radio and ambient pedestrians | 37 |
-| 11114-11762 | v0.16.0: Skyline District (big downtown), traffic with signals, busier streets | 22 |
-| 11763-11866 | old city and Bay details | 1 |
-| 11867-12276 | traffic | 10 |
-| 12277-12637 | v0.17.0: minimap, full map and camera views (Far / Close / In-car) | 14 |
-| 12638-12895 | camera views | 9 |
-| 12896-13143 | v0.17.0: level-up celebration | 8 |
-| 13144-13263 | v0.18.0: walk-in stadium | 5 |
-| 13264-13425 | v0.18.0: guidance arrows and checkpoints | 6 |
-| 13426-13611 | checkpoints | 9 |
-| 13612-13890 | v0.18.0: Harbor Dome social hub | 2 |
-| 13891-13941 | v0.56.2: Christmas in the Harbor Dome (snow, giant tree, lights, snowmen, presents) | 3 |
-| 13942-14265 | v0.56.5: one grand Christmas tree and luxury furniture | 16 |
-| 14266-14421 | v0.56.3: geodesic frame and warm glow so the Harbor Dome looks like a glass biosphere from outside | 1 |
-| 14422-14670 | v0.56.4: grand entrance, VIP Lounge and a richer plaza for the Harbor Dome | 8 |
-| 14671-14885 | people: sitting pose, bots, bubbles, emotes | 6 |
-| 14886-15004 | seats | 6 |
-| 15005-15161 | game panel | 7 |
-| 15162-15282 | tic-tac-toe | 7 |
-| 15283-15334 | rock paper scissors | 4 |
-| 15335-15417 | online table messages | 2 |
-| 15418-15493 | comedy show | 4 |
-| 15494-16393 | quick chat and emotes | 26 |
-| 16394-16556 | v0.18.1: main chat feed and "looking for players" invites | 10 |
-| 16557-16798 | v0.18.2: nickname and HUD relayout | 12 |
-| 16799-17086 | v0.19.0: Civic Center (bigger starting area: police, hospital, school, hotels, mall, park) | 11 |
-| 17087-17196 | v0.21.0: Harbor Raceway (real circuit, pit lane, inside parking, boosters, spikes) | 4 |
-| 17197-17524 | circuit geometry | 12 |
-| 17525-17622 | race car rental | 5 |
-| 17623-17637 | speed effects | 2 |
-| 17638-17688 | track helpers | 5 |
-| 17689-17925 | events | 11 |
-| 17926-17978 | boosters and spikes | 4 |
-| 17979-18036 | online races | 2 |
-| 18037-18392 | raceway panel, HUD, board | 10 |
-| 18393-18600 | v0.22.0: Call Car | 6 |
-| 18601-19058 | v0.23: RUN toggle and fast travel between districts | 25 |
-| 19059-19132 | v0.24: "Scan to play" QR code (opens the browser version and turns Online on) | 4 |
-| 19133-19569 | v0.24: starter crate (new players) / welcome-back crate (one time for existing saves) | 12 |
-| 19570-20061 | v0.25: quick quests (short pick-ups, paid on the spot, next one starts at once) | 15 |
-| 20062-20212 | v0.24.1: Quests list (nearby quick quests, pick any one) | 8 |
-| 20213-20247 | v0.24.1: your own name tag above your head (or above your car) | 2 |
-| 20248-20562 | v0.33.6: Harbor Food Court (three street stands with crowds, old city) | 14 |
-| 20563-20884 | v0.36: Harbor Commons, a modern park in the empty field by Bay Road | 4 |
-| 20885-21199 | v0.36: the daily puzzle | 17 |
-| 21200-21388 | v0.37 - v0.39: THE BIOSPHERE | 22 |
-| 21389-21761 | building blocks | 23 |
-| 21762-22263 | building | 16 |
-| 22264-22419 | garden planting | 11 |
-| 22420-22827 | the four layouts | 4 |
-| 22828-23098 | animals | 8 |
-| 23099-23230 | animation, spotting and rewards | 6 |
-| 23231-23748 | v0.40: STYLE - hair, faces, builds, clothes, accessories and relics | 8 |
-| 23749-23902 | your look: apply, save, share | 9 |
-| 23903-24330 | stores and the wardrobe | 23 |
-| 24331-24798 | HARBOR GALLERIA: the shopping mall | 14 |
-| 24799-24950 | featured outfits and the Sky Run | 7 |
-| 24951-25047 | v0.41: THE SKY GARDEN | 5 |
-| 25048-25185 | building | 5 |
-| 25186-25366 | plants | 6 |
-| 25367-25486 | interacting | 7 |
-| 25487-25730 | the garden screen | 9 |
-| 25731-25769 | v0.43: HARBOR ALBUM, the free SEASON PASS, HARBOR NIGHT and the CHECK-IN calendar | 2 |
-| 25770-25801 | album | 2 |
-| 25802-25853 | season | 6 |
-| 25854-25861 | Harbor Night | 1 |
-| 25862-25893 | check-in calendar | 1 |
-| 25894-26070 | the panel | 8 |
-| 26071-26285 | v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard") | 15 |
-| 26286-26709 | v0.34: Neon Market (gear for your avatar, pets from level 20) and the hoverboard | 14 |
-| 26710-26951 | v0.34.2: Harbor Live, a plaza of giant screens (leaderboards and city news) | 8 |
-| 26952-27130 | v0.34.3: streamer mode (a clean, viewer-friendly screen for livestreams) | 4 |
-| 27131-27167 | v0.34.5: a parked car drives itself home after 2 minutes | 3 |
-| 27168-27264 | v0.34.7: modern bus shelters with live displays, and city buses in traffic | 3 |
-| 27265-27556 | v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online) | 15 |
-| 27557-27657 | v0.24.1: glowing ring under real players (NPC walkers have none) | 3 |
-| 27658-27981 | v0.24.1: FIND ME! (online hide-and-seek with prize money) | 12 |
-| 27982-28092 | v0.24.2: road map (for moving people off the road) | 8 |
-| 28093-28388 | v0.26: Sunset Beach (east island) and Westside (west of the Civic Center) | 7 |
-| 28389-28583 | v0.27: one connected city, Harbor Loop sky train, day and night | 6 |
-| 28584-29251 | Harbor Loop sky train | 27 |
-| 29252-29612 | Day and night | 11 |
-| 29613-30248 | v0.27 smoke test and screenshots | 2 |
-| 30249-30665 | v0.27: Harbor International Airport (north of the city) | 10 |
-| 30666-31179 | v0.44: people who walk around (Galleria, Biosphere, plazas) | 15 |
-| 31180-31340 | v0.44: directions (signposts at junctions, Directions menu) | 4 |
-| 31341-31437 | the Directions panel and chip | 7 |
-| 31438-31979 | v0.44: Grand Central | 16 |
-| 31980-32271 | v0.44: filling the empty land | 8 |
-| 32272-32306 | v0.45: hover car underglow | 1 |
-| 32307-32471 | v0.46: what is inside the Grand Central shops | 1 |
-| 32472-32503 | v0.47: street stalls downtown | 2 |
-| 32504-32602 | v0.48: places that open as you level up | 6 |
-| 32603-32647 | v0.50: city careers | 5 |
-| 32648-32698 | v0.52: careers as clear job loops | 3 |
-| 32699-32706 | taxi | 1 |
-| 32707-32710 | paramedic | 0 |
-| 32711-32715 | police | 1 |
-| 32716-32721 | firefighter | 1 |
-| 32722-32731 | the step bar | 2 |
-| 32732-32758 | cut scenes | 1 |
-| 32759-32763 | siren | 0 |
-| 32764-32775 | the Careers panel | 3 |
-| 32776-33199 | v0.50: homes | 17 |
-| 33200-33535 | decorating | 7 |
-| 33536-33670 | v0.51: home layout (living room, bedroom, bathroom) | 6 |
-| 33671-34104 | v0.51: Chapters (a guided story across the whole map) | 16 |
-| 34105-34143 | v0.51.1: join and leave messages | 3 |
-| 34144-34408 | v0.51.2: Photo mode (clean screenshots) | 9 |
-| 34409-34707 | v0.51.3: stream joiners | 9 |
-| 34708-34824 | v0.52.1: streamer mode shows only what the stream needs | 4 |
+| 1-605 | Core: constants, setup, input, driving, save/load, HUD (unlabelled) | 4 |
+| 606-678 | v0.34.6: futuristic towers for the old city | 1 |
+| 679-757 | v0.34.4: "100 years from now" skins for walls, roofs and pavements | 5 |
+| 758-818 | v0.34.4: futuristic road surface | 2 |
+| 819-2027 | v0.30: real-looking materials (CC0 photo textures from Poly Haven, see credits.txt) | 57 |
+| 2028-2511 | Online (v0.9.0): Supabase Realtime broadcast, other players shown as ghost cars. | 20 |
+| 2512-2684 | v0.13.0: Marina Heights (Level 5 district: showroom, style shop, paint shop) | 11 |
+| 2685-3200 | public bus (Airport Line): Marina Heights - Waterfront - North Highway - Harbor Airfield | 26 |
+| 3201-3255 | v0.12.0: player level (derived from progress, so old saves convert automatically) | 6 |
+| 3256-3358 | v0.11.0: online police vs thief | 4 |
+| 3359-4302 | v0.10.0: chase mode (offline) | 38 |
+| 4303-4987 | v0.14.0: Blender-made people (player, pedestrians, online players on foot) | 23 |
+| 4988-5106 | v0.29: clean screen (only the QR code and a small minimap; the rest is in the Menu) | 7 |
+| 5107-5144 | v0.30.1: nothing to collect stands in a road | 4 |
+| 5145-5284 | v0.30.1: quests are offered when you get near them; you choose to take them | 7 |
+| 5285-5652 | v0.31: a futuristic Chit Chat City (neon strips, holograms, flying traffic, glowing streets) | 13 |
+| 5653-6152 | v0.32: social. Friends, invites, crews, gifts, high-fives, dance floor, photos | 31 |
+| 6153-6403 | v0.33.5: track a player (the arrow follows them around the city) | 9 |
+| 6404-6899 | v0.33: Harbor Dome arcade (Connect Four, Reaction Duel, Memory Match) and party quiz | 25 |
+| 6900-7193 | Party Quiz: everyone in the quiz zone gets the same question at the same time | 11 |
+| 7194-8766 | v0.34: achievements (75 of them in four tiers; Gold and Legend are announced to everyone online) | 39 |
+| 8767-11157 | v0.5.0: original synthesized radio and ambient pedestrians | 37 |
+| 11158-11806 | v0.16.0: Skyline District (big downtown), traffic with signals, busier streets | 22 |
+| 11807-11910 | old city and Bay details | 1 |
+| 11911-12320 | traffic | 10 |
+| 12321-12681 | v0.17.0: minimap, full map and camera views (Far / Close / In-car) | 14 |
+| 12682-12939 | camera views | 9 |
+| 12940-13187 | v0.17.0: level-up celebration | 8 |
+| 13188-13307 | v0.18.0: walk-in stadium | 5 |
+| 13308-13469 | v0.18.0: guidance arrows and checkpoints | 6 |
+| 13470-13655 | checkpoints | 9 |
+| 13656-13934 | v0.18.0: Harbor Dome social hub | 2 |
+| 13935-13985 | v0.56.2: Christmas in the Harbor Dome (snow, giant tree, lights, snowmen, presents) | 3 |
+| 13986-14309 | v0.56.5: one grand Christmas tree and luxury furniture | 16 |
+| 14310-14465 | v0.56.3: geodesic frame and warm glow so the Harbor Dome looks like a glass biosphere from outside | 1 |
+| 14466-14714 | v0.56.4: grand entrance, VIP Lounge and a richer plaza for the Harbor Dome | 8 |
+| 14715-14929 | people: sitting pose, bots, bubbles, emotes | 6 |
+| 14930-15048 | seats | 6 |
+| 15049-15205 | game panel | 7 |
+| 15206-15326 | tic-tac-toe | 7 |
+| 15327-15378 | rock paper scissors | 4 |
+| 15379-15461 | online table messages | 2 |
+| 15462-15537 | comedy show | 4 |
+| 15538-16437 | quick chat and emotes | 26 |
+| 16438-16600 | v0.18.1: main chat feed and "looking for players" invites | 10 |
+| 16601-16842 | v0.18.2: nickname and HUD relayout | 12 |
+| 16843-17130 | v0.19.0: Civic Center (bigger starting area: police, hospital, school, hotels, mall, park) | 11 |
+| 17131-17240 | v0.21.0: Harbor Raceway (real circuit, pit lane, inside parking, boosters, spikes) | 4 |
+| 17241-17568 | circuit geometry | 12 |
+| 17569-17666 | race car rental | 5 |
+| 17667-17681 | speed effects | 2 |
+| 17682-17732 | track helpers | 5 |
+| 17733-17969 | events | 11 |
+| 17970-18022 | boosters and spikes | 4 |
+| 18023-18080 | online races | 2 |
+| 18081-18436 | raceway panel, HUD, board | 10 |
+| 18437-18644 | v0.22.0: Call Car | 6 |
+| 18645-19102 | v0.23: RUN toggle and fast travel between districts | 25 |
+| 19103-19176 | v0.24: "Scan to play" QR code (opens the browser version and turns Online on) | 4 |
+| 19177-19613 | v0.24: starter crate (new players) / welcome-back crate (one time for existing saves) | 12 |
+| 19614-20105 | v0.25: quick quests (short pick-ups, paid on the spot, next one starts at once) | 15 |
+| 20106-20256 | v0.24.1: Quests list (nearby quick quests, pick any one) | 8 |
+| 20257-20291 | v0.24.1: your own name tag above your head (or above your car) | 2 |
+| 20292-20606 | v0.33.6: Harbor Food Court (three street stands with crowds, old city) | 14 |
+| 20607-20928 | v0.36: Harbor Commons, a modern park in the empty field by Bay Road | 4 |
+| 20929-21243 | v0.36: the daily puzzle | 17 |
+| 21244-21432 | v0.37 - v0.39: THE BIOSPHERE | 22 |
+| 21433-21805 | building blocks | 23 |
+| 21806-22307 | building | 16 |
+| 22308-22463 | garden planting | 11 |
+| 22464-22871 | the four layouts | 4 |
+| 22872-23142 | animals | 8 |
+| 23143-23274 | animation, spotting and rewards | 6 |
+| 23275-23792 | v0.40: STYLE - hair, faces, builds, clothes, accessories and relics | 8 |
+| 23793-23946 | your look: apply, save, share | 9 |
+| 23947-24374 | stores and the wardrobe | 23 |
+| 24375-24842 | HARBOR GALLERIA: the shopping mall | 14 |
+| 24843-24994 | featured outfits and the Sky Run | 7 |
+| 24995-25091 | v0.41: THE SKY GARDEN | 5 |
+| 25092-25229 | building | 5 |
+| 25230-25410 | plants | 6 |
+| 25411-25530 | interacting | 7 |
+| 25531-25774 | the garden screen | 9 |
+| 25775-25813 | v0.43: HARBOR ALBUM, the free SEASON PASS, HARBOR NIGHT and the CHECK-IN calendar | 2 |
+| 25814-25845 | album | 2 |
+| 25846-25897 | season | 6 |
+| 25898-25905 | Harbor Night | 1 |
+| 25906-25937 | check-in calendar | 1 |
+| 25938-26114 | the panel | 8 |
+| 26115-26329 | v0.34: your money on screen, and a global leaderboard (Supabase table "leaderboard") | 15 |
+| 26330-26753 | v0.34: Neon Market (gear for your avatar, pets from level 20) and the hoverboard | 14 |
+| 26754-26995 | v0.34.2: Harbor Live, a plaza of giant screens (leaderboards and city news) | 8 |
+| 26996-27174 | v0.34.3: streamer mode (a clean, viewer-friendly screen for livestreams) | 4 |
+| 27175-27211 | v0.34.5: a parked car drives itself home after 2 minutes | 3 |
+| 27212-27308 | v0.34.7: modern bus shelters with live displays, and city buses in traffic | 3 |
+| 27309-27600 | v0.24.1: treasure hunt (a new chest every 5 minutes, same for everyone online) | 15 |
+| 27601-27701 | v0.24.1: glowing ring under real players (NPC walkers have none) | 3 |
+| 27702-28025 | v0.24.1: FIND ME! (online hide-and-seek with prize money) | 12 |
+| 28026-28136 | v0.24.2: road map (for moving people off the road) | 8 |
+| 28137-28432 | v0.26: Sunset Beach (east island) and Westside (west of the Civic Center) | 7 |
+| 28433-28627 | v0.27: one connected city, Harbor Loop sky train, day and night | 6 |
+| 28628-29295 | Harbor Loop sky train | 27 |
+| 29296-29656 | Day and night | 11 |
+| 29657-30292 | v0.27 smoke test and screenshots | 2 |
+| 30293-30709 | v0.27: Harbor International Airport (north of the city) | 10 |
+| 30710-31223 | v0.44: people who walk around (Galleria, Biosphere, plazas) | 15 |
+| 31224-31384 | v0.44: directions (signposts at junctions, Directions menu) | 4 |
+| 31385-31481 | the Directions panel and chip | 7 |
+| 31482-32023 | v0.44: Grand Central | 16 |
+| 32024-32315 | v0.44: filling the empty land | 8 |
+| 32316-32350 | v0.45: hover car underglow | 1 |
+| 32351-32515 | v0.46: what is inside the Grand Central shops | 1 |
+| 32516-32547 | v0.47: street stalls downtown | 2 |
+| 32548-32646 | v0.48: places that open as you level up | 6 |
+| 32647-32691 | v0.50: city careers | 5 |
+| 32692-32742 | v0.52: careers as clear job loops | 3 |
+| 32743-32750 | taxi | 1 |
+| 32751-32754 | paramedic | 0 |
+| 32755-32759 | police | 1 |
+| 32760-32765 | firefighter | 1 |
+| 32766-32775 | the step bar | 2 |
+| 32776-32802 | cut scenes | 1 |
+| 32803-32807 | siren | 0 |
+| 32808-32819 | the Careers panel | 3 |
+| 32820-33243 | v0.50: homes | 17 |
+| 33244-33579 | decorating | 7 |
+| 33580-33714 | v0.51: home layout (living room, bedroom, bathroom) | 6 |
+| 33715-34148 | v0.51: Chapters (a guided story across the whole map) | 16 |
+| 34149-34187 | v0.51.1: join and leave messages | 3 |
+| 34188-34452 | v0.51.2: Photo mode (clean screenshots) | 9 |
+| 34453-34751 | v0.51.3: stream joiners | 9 |
+| 34752-34868 | v0.52.1: streamer mode shows only what the stream needs | 4 |
 
 ## Function families (name prefixes with 6+ functions)
 
@@ -154,108 +154,108 @@ The prefix usually names the system. Span = first to last function line (familie
 
 | Prefix | What | Funcs | Lines (first-last) |
 |---|---|---|---|
-| `_future_*` | neon / futuristic look | 7 | 607-5638 |
-| `_nearest_*` |  | 9 | 1258-16832 |
-| `_car_*` |  | 7 | 1423-32275 |
-| `_online_*` | Supabase realtime multiplayer | 23 | 2026-16455 |
-| `_shop_*` | Marina Heights shops | 9 | 2639-16081 |
-| `_bus_*` | Airport Line and city buses | 14 | 2683-27242 |
-| `_level_*` | player levels | 7 | 3209-13009 |
-| `_chase_*` | police chase mode | 11 | 3357-3604 |
-| `_quest_*` | quests | 8 | 5188-20184 |
-| `_sky_*` | Harbor Loop sky train, sky look | 30 | 5528-29230 |
-| `_crew_*` | crews | 6 | 5717-6055 |
-| `_style_*` | hair, clothes, wardrobe | 18 | 5773-24319 |
-| `_social_*` | friends, invites | 8 | 5821-6279 |
-| `_soc_*` | social extras | 8 | 5860-6153 |
-| `_c4_*` | Connect Four | 9 | 6494-6610 |
-| `_rx_*` | Reaction Duel | 6 | 6637-6712 |
-| `_quiz_*` | party quiz | 9 | 6960-7157 |
-| `_ach_*` | achievements | 8 | 7378-24314 |
-| `_radio_*` | radio and ambience | 8 | 8760-8924 |
-| `_smoke_*` | smoke tests | 47 | 9172-34771 |
-| `_shot_*` | screenshot modes | 8 | 11096-34243 |
-| `_hub_*` | Harbor Dome hub | 12 | 13670-17063 |
-| `_lux_*` |  | 12 | 14085-14214 |
-| `_ttt_*` | tic-tac-toe | 7 | 15165-15256 |
-| `_chat_*` |  | 10 | 15633-16008 |
-| `_sg_*` | Sky Garden | 28 | 16344-25600 |
-| `_rw_*` | Raceway | 30 | 17212-18140 |
-| `_crate_*` | starter crate | 8 | 19153-19474 |
-| `_quick_*` | quick quests | 11 | 19611-19920 |
-| `_fc_*` | food court and shared 3D part helpers | 13 | 20265-23855 |
-| `_pz_*` | daily puzzle | 10 | 20908-21076 |
-| `_bio_*` | OLD Biosphere (hex hub; the live one is world_biosphere.gd) | 79 | 21262-24766 |
-| `_ga_*` | Galleria mall | 13 | 24367-24878 |
-| `_season_*` | season pass | 6 | 25803-25835 |
-| `_lb_*` | leaderboard | 10 | 26176-26239 |
-| `_ds_*` | digital signs | 6 | 26742-26903 |
-| `_treasure_*` | treasure hunt | 10 | 27283-27542 |
-| `_fm_*` | Find Me | 11 | 27679-27852 |
-| `_ap_*` | Harbor Airport | 7 | 30459-30579 |
-| `_nav_*` | walker nav grids | 9 | 30680-30926 |
-| `_dir_*` | Directions panel | 7 | 31215-31411 |
-| `_gc_*` | Grand Central | 9 | 31467-32308 |
-| `_career_*` | careers and jobs (taxi, medic, police, fire) | 12 | 32628-34625 |
-| `_home_*` | homes | 21 | 32816-33615 |
-| `_ch_*` | chapters | 6 | 33734-33781 |
+| `_future_*` | neon / futuristic look | 7 | 610-5641 |
+| `_nearest_*` |  | 9 | 1261-16876 |
+| `_car_*` |  | 7 | 1426-32319 |
+| `_online_*` | Supabase realtime multiplayer | 23 | 2029-16499 |
+| `_shop_*` | Marina Heights shops | 9 | 2642-16125 |
+| `_bus_*` | Airport Line and city buses | 14 | 2686-27286 |
+| `_level_*` | player levels | 7 | 3212-13053 |
+| `_chase_*` | police chase mode | 11 | 3360-3607 |
+| `_quest_*` | quests | 8 | 5191-20228 |
+| `_sky_*` | Harbor Loop sky train, sky look | 30 | 5531-29274 |
+| `_crew_*` | crews | 6 | 5720-6058 |
+| `_style_*` | hair, clothes, wardrobe | 18 | 5776-24363 |
+| `_social_*` | friends, invites | 8 | 5824-6282 |
+| `_soc_*` | social extras | 8 | 5863-6156 |
+| `_c4_*` | Connect Four | 9 | 6497-6613 |
+| `_rx_*` | Reaction Duel | 6 | 6640-6715 |
+| `_quiz_*` | party quiz | 9 | 6963-7160 |
+| `_ach_*` | achievements | 8 | 7381-24358 |
+| `_radio_*` | radio and ambience | 8 | 8771-8935 |
+| `_smoke_*` | smoke tests | 47 | 9183-34815 |
+| `_shot_*` | screenshot modes | 8 | 11140-34287 |
+| `_hub_*` | Harbor Dome hub | 12 | 13714-17107 |
+| `_lux_*` |  | 12 | 14129-14258 |
+| `_ttt_*` | tic-tac-toe | 7 | 15209-15300 |
+| `_chat_*` |  | 10 | 15677-16052 |
+| `_sg_*` | Sky Garden | 28 | 16388-25644 |
+| `_rw_*` | Raceway | 30 | 17256-18184 |
+| `_crate_*` | starter crate | 8 | 19197-19518 |
+| `_quick_*` | quick quests | 11 | 19655-19964 |
+| `_fc_*` | food court and shared 3D part helpers | 13 | 20309-23899 |
+| `_pz_*` | daily puzzle | 10 | 20952-21120 |
+| `_bio_*` | OLD Biosphere (hex hub; the live one is world_biosphere.gd) | 79 | 21306-24810 |
+| `_ga_*` | Galleria mall | 13 | 24411-24922 |
+| `_season_*` | season pass | 6 | 25847-25879 |
+| `_lb_*` | leaderboard | 10 | 26220-26283 |
+| `_ds_*` | digital signs | 6 | 26786-26947 |
+| `_treasure_*` | treasure hunt | 10 | 27327-27586 |
+| `_fm_*` | Find Me | 11 | 27723-27896 |
+| `_ap_*` | Harbor Airport | 7 | 30503-30623 |
+| `_nav_*` | walker nav grids | 9 | 30724-30970 |
+| `_dir_*` | Directions panel | 7 | 31259-31455 |
+| `_gc_*` | Grand Central | 9 | 31511-32352 |
+| `_career_*` | careers and jobs (taxi, medic, police, fire) | 12 | 32672-34669 |
+| `_home_*` | homes | 21 | 32860-33659 |
+| `_ch_*` | chapters | 6 | 33778-33825 |
 
 ## Landmarks: entry points and builders (the core lives here, spread across sections)
 
-Entry points: `_ready`:294, `_apply_car`:1384, `_collider`:1642, `_level`:3227, `_input`:7692, `_physics_process`:7818, `_refresh_hud`:8187, `_toggle_menu`:8373, `_show_toast`:8451, `_save_progress`:8455, `_load_progress`:8548, `_process`:8937, `_blocked_at`:10133, `_blocker`:10148, `_apply_view`:12691, `_place_lock_of`:32517
+Entry points: `_ready`:296, `_apply_car`:1387, `_collider`:1645, `_level`:3230, `_input`:7695, `_physics_process`:7827, `_refresh_hud`:8198, `_toggle_menu`:8384, `_show_toast`:8462, `_save_progress`:8466, `_load_progress`:8559, `_process`:8948, `_blocked_at`:10149, `_blocker`:10164, `_apply_view`:12735, `_place_lock_of`:32561
 
-World builders (`_build_*`): `_build_world`:1060, `_build_collectibles`:1197, `_build_bay`:1499, `_build_north`:1769, `_build_nm_blocks`:1886, `_build_north_landscape`:1971, `_build_landscape`:2008, `_build_bus`:2689, `_build_marina`:2836, `_build_hat`:2945, `_build_ridge`:3792, `_build_panels`:4061, `_build_player`:4221, `_build_car`:4259, `_build_hud`:4747, `_build_quest_offer`:5158, `_build_future`:5323, `_build_neon`:5337, `_build_holograms`:5443, `_build_sky_traffic`:5510, `_build_social`:6074, `_build_dance_floor`:6253, `_build_arcade`:6443, `_build_arcade_panel`:6792, `_build_quiz`:7014, `_build_ach`:7513, `_build_peds`:8988, `_build_downtown`:11496, `_build_park`:11719, `_build_plaza`:11748, `_build_city_detail`:11764, `_build_traffic`:11868, `_build_minimap`:12424, `_build_view_controls`:12639, `_build_level_fx`:12907, `_build_stadium_walls`:13160, `_build_guidance`:13323, `_build_checkpoints`:13427, `_build_hub`:13674, `_build_hub_bots`:14697, `_build_game_panel`:15006, `_build_chat`:15516, `_build_feed`:16403, `_build_nick_panel`:16596, `_build_civic`:16898, `_build_raceway`:17298, `_build_rw_parking`:17332, `_build_rw_pits`:17377, `_build_rw_track`:17414, `_build_rw_trackside`:17455, `_build_raceway_ui`:18038, `_build_travel`:18647, `_build_qr`:19066, `_build_crate_ui`:19186, `_build_quick_props`:19722, `_build_quest_list`:20071, `_build_food_court`:20388, `_build_commons`:20621, `_build_puzzle_panel`:21045, `_build_biosphere`:21763, `_build_biosphere_legacy`:21767, `_build_style_panel`:23982, `_build_galleria`:24406, `_build_ga_fun`:24833, `_build_sky_garden`:25069, `_build_sg_panel`:25488, `_build_hp_panel`:25895, `_build_lb`:26121, `_build_market`:26310, `_build_gear`:26397, `_build_pet`:26450, `_build_market_panel`:26538, `_build_display`:26775, `_build_streamer`:26969, `_build_treasure_props`:27366, `_build_treasure`:27410, `_build_expansion`:28203, `_build_connect`:28430, `_build_skytrain`:28769, `_build_airport`:30283, `_build_signposts`:31238, `_build_dir_panel`:31342, `_build_grand_central`:31700, `_build_gc_towers`:31868, `_build_fill`:32049, `_build_gardens`:32117, `_build_fan_plaza`:32227, `_build_street_stalls`:32476, `_build_place_signs`:32534, `_build_career_panel`:32765, `_build_homes`:32831, `_build_home_panels`:33201, `_build_chapters_ui`:33873
+World builders (`_build_*`): `_build_world`:1063, `_build_collectibles`:1200, `_build_bay`:1502, `_build_north`:1772, `_build_nm_blocks`:1889, `_build_north_landscape`:1974, `_build_landscape`:2011, `_build_bus`:2692, `_build_marina`:2839, `_build_hat`:2948, `_build_ridge`:3795, `_build_panels`:4064, `_build_player`:4224, `_build_car`:4262, `_build_hud`:4750, `_build_quest_offer`:5161, `_build_future`:5326, `_build_neon`:5340, `_build_holograms`:5446, `_build_sky_traffic`:5513, `_build_social`:6077, `_build_dance_floor`:6256, `_build_arcade`:6446, `_build_arcade_panel`:6795, `_build_quiz`:7017, `_build_ach`:7516, `_build_peds`:8999, `_build_downtown`:11540, `_build_park`:11763, `_build_plaza`:11792, `_build_city_detail`:11808, `_build_traffic`:11912, `_build_minimap`:12468, `_build_view_controls`:12683, `_build_level_fx`:12951, `_build_stadium_walls`:13204, `_build_guidance`:13367, `_build_checkpoints`:13471, `_build_hub`:13718, `_build_hub_bots`:14741, `_build_game_panel`:15050, `_build_chat`:15560, `_build_feed`:16447, `_build_nick_panel`:16640, `_build_civic`:16942, `_build_raceway`:17342, `_build_rw_parking`:17376, `_build_rw_pits`:17421, `_build_rw_track`:17458, `_build_rw_trackside`:17499, `_build_raceway_ui`:18082, `_build_travel`:18691, `_build_qr`:19110, `_build_crate_ui`:19230, `_build_quick_props`:19766, `_build_quest_list`:20115, `_build_food_court`:20432, `_build_commons`:20665, `_build_puzzle_panel`:21089, `_build_biosphere`:21807, `_build_biosphere_legacy`:21811, `_build_style_panel`:24026, `_build_galleria`:24450, `_build_ga_fun`:24877, `_build_sky_garden`:25113, `_build_sg_panel`:25532, `_build_hp_panel`:25939, `_build_lb`:26165, `_build_market`:26354, `_build_gear`:26441, `_build_pet`:26494, `_build_market_panel`:26582, `_build_display`:26819, `_build_streamer`:27013, `_build_treasure_props`:27410, `_build_treasure`:27454, `_build_expansion`:28247, `_build_connect`:28474, `_build_skytrain`:28813, `_build_airport`:30327, `_build_signposts`:31282, `_build_dir_panel`:31386, `_build_grand_central`:31744, `_build_gc_towers`:31912, `_build_fill`:32093, `_build_gardens`:32161, `_build_fan_plaza`:32271, `_build_street_stalls`:32520, `_build_place_signs`:32578, `_build_career_panel`:32809, `_build_homes`:32875, `_build_home_panels`:33245, `_build_chapters_ui`:33917
 
 
 ## Smoke tests in main.gd
 
-- `_smoke_test` line 9172
-- `_smoke_chase` line 9815
-- `_smoke_orole` line 9848
-- `_smoke_levels` line 9877
-- `_smoke_bus` line 9918
-- `_smoke_chase_extras` line 10003
-- `_smoke_marina` line 10031
-- `_smoke_radio_peds` line 10173
-- `_smoke_typed_chat` line 10243
-- `_smoke_chat_touch` line 10262
-- `_smoke_cafe` line 10283
-- `_smoke_boutique` line 10309
-- `_smoke_models` line 10337
-- `_smoke_garage_ridge` line 10361
-- `_smoke_downtown` line 12119
-- `_smoke_views` line 12835
-- `_smoke_level_fx` line 13110
-- `_smoke_stadium_eye` line 13197
-- `_smoke_guidance_checkpoints` line 13536
-- `_smoke_hub` line 15834
-- `_smoke_nick` line 16718
-- `_smoke_sites_reachable` line 16768
-- `_smoke_raceway` line 18174
-- `_smoke_follow_call` line 18495
-- `_smoke_travel` line 18933
-- `_smoke_qr` line 19126
-- `_smoke_crate` line 19426
-- `_smoke_quick` line 19953
-- `_smoke_quests` line 20187
-- `_smoke_chat` line 21117
-- `_smoke_feet` line 21155
-- `_smoke_commons` line 21176
-- `_smoke_biosphere` line 23227
-- `_smoke_style` line 23489
-- `_smoke_car_barriers` line 25606
-- `_smoke_sky_garden` line 25647
-- `_smoke_pass` line 26008
-- `_smoke_treasure` line 27615
-- `_smoke_findme` line 27908
-- `_smoke_v27` line 29614
-- `_smoke_airport` line 30622
-- `_smoke_strollers` line 31064
-- `_smoke_careers_homes` line 33326
-- `_smoke_chapters` line 33959
-- `_smoke_photo` line 34315
-- `_smoke_stream_join` line 34542
-- `_smoke_streamer_clean` line 34771
+- `_smoke_test` line 9183
+- `_smoke_chase` line 9831
+- `_smoke_orole` line 9864
+- `_smoke_levels` line 9893
+- `_smoke_bus` line 9934
+- `_smoke_chase_extras` line 10019
+- `_smoke_marina` line 10047
+- `_smoke_radio_peds` line 10189
+- `_smoke_typed_chat` line 10259
+- `_smoke_chat_touch` line 10278
+- `_smoke_cafe` line 10299
+- `_smoke_boutique` line 10325
+- `_smoke_models` line 10353
+- `_smoke_garage_ridge` line 10377
+- `_smoke_downtown` line 12163
+- `_smoke_views` line 12879
+- `_smoke_level_fx` line 13154
+- `_smoke_stadium_eye` line 13241
+- `_smoke_guidance_checkpoints` line 13580
+- `_smoke_hub` line 15878
+- `_smoke_nick` line 16762
+- `_smoke_sites_reachable` line 16812
+- `_smoke_raceway` line 18218
+- `_smoke_follow_call` line 18539
+- `_smoke_travel` line 18977
+- `_smoke_qr` line 19170
+- `_smoke_crate` line 19470
+- `_smoke_quick` line 19997
+- `_smoke_quests` line 20231
+- `_smoke_chat` line 21161
+- `_smoke_feet` line 21199
+- `_smoke_commons` line 21220
+- `_smoke_biosphere` line 23271
+- `_smoke_style` line 23533
+- `_smoke_car_barriers` line 25650
+- `_smoke_sky_garden` line 25691
+- `_smoke_pass` line 26052
+- `_smoke_treasure` line 27659
+- `_smoke_findme` line 27952
+- `_smoke_v27` line 29658
+- `_smoke_airport` line 30666
+- `_smoke_strollers` line 31108
+- `_smoke_careers_homes` line 33370
+- `_smoke_chapters` line 34003
+- `_smoke_photo` line 34359
+- `_smoke_stream_join` line 34586
+- `_smoke_streamer_clean` line 34815
 
 ## Other scripts
 
@@ -278,6 +278,10 @@ Functions: `_init`:7, `_career_rank`:10, `_career_rank_name`:17, `_career_mult`:
 Sections: 148 state; 200 rewards; 312 3D gift boxes
 
 Functions: `_init`:62, `today`:65, `done_count`:68, `gift_count`:75, `gift_pos`:82, `gift_pay`:94, `total_today`:97, `quest_pos`:105, `progress`:126, `_bits`:141, `new_day`:149, `save_state`:167, `load_state`:183, `pay`:201, `award`:213, `take_gift`:229, `cafe_order`:244, `cafe_check`:251, `check_at`:264, `build_presents`:313, `refresh_presents`:351, `build`:356, `in_dome`:387, `refresh_ui`:390, `draw`:397, `guide`:416, `open`:423, `close`:429, `_process`:433, `selftest`:466
+
+### game/explore.gd (298 lines, 20 funcs)
+
+Functions: `noop`:31, `_init`:34, `can_enter`:37, `enter`:40, `exit`:69, `add_button`:88, `build_ui`:98, `cycle_speed`:126, `update_speed`:130, `aim`:134, `jump`:140, `min_y`:166, `apply_camera`:172, `tick`:178, `look`:199, `hit_button`:204, `press`:211, `release`:229, `drag`:244, `input`:266
 
 ### game/festive.gd (270 lines, 13 funcs)
 

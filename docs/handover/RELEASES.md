@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.62.0 (code 130, 2026-11-25)
+- Explore mode: free camera tour of the city, 4 worlds and sky island (game/explore.gd).
+
 ## 0.61.1 (code 129, 2026-11-25)
 - worlds.gd: shrine reward $100000+5000 XP, wish $5000; paris.gd: relic $10000, daily case 2000/200. build_sky: shrine floor rings, halos (tweened torus), orbiting crystals, sky beam.
 

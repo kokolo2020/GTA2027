@@ -7,8 +7,8 @@ var road_barrier = RoadBarrier.new(self)
 
 const WorldBiosphere := preload("res://world_biosphere.gd")
 var world_bio
-const Paris := preload("res://paris.gd")
-var paris   # v0.59: portal to a real Paris district (paris.gd)
+const Worlds := preload("res://worlds.gd")
+var paris   # v0.60: world portal (worlds.gd): Paris, Tokyo, New York, Bangkok
 ## Chit Chat City: original single-player driving prototype. No external assets or services.
 
 # v0.23: job stops sit on the pavement beside the road (6.5 m from the road centre), not in the lanes.
@@ -327,7 +327,7 @@ func _ready() -> void:
 	_build_commons()
 	if not OS.get_environment("HC_SKIP").contains("biosphere"):
 		_build_biosphere()
-	paris = Paris.new(self)
+	paris = Worlds.new(self)
 	paris.build_hub()
 	if not OS.get_environment("HC_SKIP").contains("galleria"):
 		_build_galleria()
@@ -370,7 +370,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.59.2: tap WORLD PORTAL (bottom right) to visit real Paris.")
+	_show_toast("Chit Chat City 0.60: tap WORLD PORTAL (bottom right) to visit Paris, Tokyo, New York or Bangkok.")
 	booted = true
 	if "--promo" in OS.get_cmdline_user_args():
 		# Developer-only: films the highlight video (see promo.gd). Never goes online.
@@ -4927,7 +4927,7 @@ func _build_hud() -> void:
 	menu_run_button = _button("Run: ON",_menu_stay.bind(_toggle_run))
 	menu_screen_button = _button("Screen: Clean",_menu_stay.bind(_toggle_clean_hud))
 	var pages := [
-		["GO",Color("2f8fb8"),[["Map",_menu_go.bind(_open_map)],["Travel",_menu_go.bind(_open_travel)],["Directions",_menu_go.bind(_open_dir)],["Call car",_menu_go.bind(_menu_call_car)],["Quests",_menu_go.bind(_open_quests)],["Paris portal",_menu_go.bind(paris.go_portal)],["Back to my car",_rescue]]],
+		["GO",Color("2f8fb8"),[["Map",_menu_go.bind(_open_map)],["Travel",_menu_go.bind(_open_travel)],["Directions",_menu_go.bind(_open_dir)],["Call car",_menu_go.bind(_menu_call_car)],["Quests",_menu_go.bind(_open_quests)],["World portal",_menu_go.bind(paris.go_portal)],["Back to my car",_rescue]]],
 		["PLAY",Color("c9612f"),[["World Biosphere Passport",_menu_go.bind(_world_bio_passport)],["Chapters",_open_chapters],["Careers",_open_careers],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
 		["ME",Color("8a5ad0"),[["My Home",_open_homes],["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
 		["FRIENDS",Color("2fa37a"),[["Chat",_menu_go.bind(_toggle_chat)],["Players & friends",_open_social],[menu_online_button]]],
@@ -4974,7 +4974,7 @@ func _build_hud() -> void:
 	cont.add_theme_color_override("font_color",Color("182b38"))
 	cont.add_theme_color_override("font_hover_color",Color("182b38"))
 	foot.add_child(cont)
-	items.add_child(_label("Built with Godot Engine • MIT license · Paris map © OpenStreetMap contributors (ODbL) · credits.txt",12,Color("6f9aa6")))
+	items.add_child(_label("Built with Godot Engine • MIT license · City maps © OpenStreetMap contributors (ODbL) · credits.txt",12,Color("6f9aa6")))
 	_menu_tab(0)
 	_build_panels(root)
 	_build_nick_panel(root)
@@ -7735,7 +7735,7 @@ func _input(event: InputEvent) -> void:
 					touch_buttons.remove_at(ti)
 			for button: Button in touch_buttons:
 				if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
-					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button)) or (quest_panel != null and quest_panel.is_ancestor_of(button)) or (social_panel != null and social_panel.is_ancestor_of(button)) or (ach_panel != null and ach_panel.is_ancestor_of(button))
+					var in_overlay := menu.is_ancestor_of(button) or garage.is_ancestor_of(button) or journal.is_ancestor_of(button) or tune_panel.is_ancestor_of(button) or trial_panel.is_ancestor_of(button) or (map_panel != null and map_panel.is_ancestor_of(button)) or (nick_panel != null and nick_panel.is_ancestor_of(button)) or (rw_panel != null and rw_panel.is_ancestor_of(button)) or (travel_panel != null and travel_panel.is_ancestor_of(button)) or (world_panel != null and world_panel.is_ancestor_of(button)) or (crate_root != null and crate_root.is_ancestor_of(button)) or (quest_panel != null and quest_panel.is_ancestor_of(button)) or (social_panel != null and social_panel.is_ancestor_of(button)) or (ach_panel != null and ach_panel.is_ancestor_of(button))
 					if not paused and in_overlay:
 						continue
 					if paused and not in_overlay:
@@ -8327,6 +8327,8 @@ func _open_panel(panel: Control) -> void:
 		rw_panel.hide()
 	if travel_panel != null:
 		travel_panel.hide()
+	if world_panel != null:
+		world_panel.hide()
 	if quest_panel != null:
 		quest_panel.hide()
 	if social_panel != null:
@@ -8349,6 +8351,8 @@ func _layout_panels() -> void:
 		rw_panel.position = Vector2((view.x-rw_panel.size.x)/2.0,maxf(8.0,(view.y-rw_panel.size.y)/2.0))
 	if travel_panel != null:
 		travel_panel.position = Vector2((view.x-travel_panel.size.x)/2.0,maxf(8.0,(view.y-travel_panel.size.y)/2.0))
+	if world_panel != null:
+		world_panel.position = Vector2((view.x-world_panel.size.x)/2.0,maxf(8.0,(view.y-world_panel.size.y)/2.0))
 	if quest_panel != null:
 		quest_panel.position = Vector2((view.x-quest_panel.size.x)/2.0,maxf(8.0,(view.y-quest_panel.size.y)/2.0))
 	if social_panel != null:
@@ -8386,6 +8390,8 @@ func _toggle_menu() -> void:
 		rw_panel.hide()
 	if travel_panel != null:
 		travel_panel.hide()
+	if world_panel != null:
+		world_panel.hide()
 	if quest_panel != null:
 		quest_panel.hide()
 	if social_panel != null:
@@ -10733,7 +10739,7 @@ func _save_shot(name: String) -> void:
 	get_viewport().get_texture().get_image().save_png(folder.path_join(name+".png"))
 
 func _paris_shots() -> void:
-	# Developer-only: the portal in the Harbor Dome, then Paris from the street, the tower, the cafe, the quay and the air. Never saves.
+	# Developer-only: the world portal in the Harbor Dome, then every world (Paris, Tokyo, New York, Bangkok): arrival, landmark, cafe, viewpoint, aerial, return portal. Never saves.
 	paris.dry = true
 	var hp: Vector3 = paris.hub_pos
 	var hf := (HUB_C-hp).normalized()
@@ -10749,55 +10755,63 @@ func _paris_shots() -> void:
 	camera.look_at(hp)
 	await _save_shot("paris-0-hub-top")
 	paused = false
-	var pr: String = paris.prompt()
-	print("PARIS_PROMPT_AT_PORTAL=",pr)
+	print("PARIS_PROMPT_AT_PORTAL=",paris.prompt())
 	camera.position = hp+hf*30.0+Vector3(0,14,0)
 	camera.look_at(hp+Vector3(0,3,0))
 	await _save_shot("paris-0b-hub-wide")
-	var t0 := Time.get_ticks_msec()
-	await paris.enter()
-	print("PARIS_ENTER_MS=",Time.get_ticks_msec()-t0," pos=",player.position," blocked=",_blocked_at(player.position,0.3)," nodes=",get_tree().get_node_count()," trees=",paris.tree_n," quests=",paris.done_count())
-	for i in 30:
-		await get_tree().physics_frame
-	print("PARIS_PROMPT_AT_RETURN=",paris.prompt(), " on_floor=",player.is_on_floor()," y=",player.position.y)
-	paused = true
-	for ch in get_children():
-		if ch is CanvasLayer:
-			ch.hide()
-	var C: Vector3 = Paris.C
-	camera.position = hp+hf*15.0+Vector3(0,3.5,0)
-	camera.look_at(hp+Vector3(0,3,0))
-	await _save_shot("paris-1-hub-portal")
-	camera.position = C+Vector3(70,6,95)
-	camera.look_at(C+Vector3(0,60,0))
-	await _save_shot("paris-2-tower-from-lawn")
-	camera.position = C+Vector3(12,2,14)
-	camera.look_at(C+Vector3(0,40,0))
-	await _save_shot("paris-3-under-tower")
-	camera.position = C+Vector3(180,30,230)
-	camera.look_at(C+Vector3(0,70,0))
-	await _save_shot("paris-4-tower-far")
-	var cp: Vector3 = paris.cafe_pos
-	camera.position = cp+Vector3(9,2.2,16)
-	camera.look_at(cp+Vector3(0,1.8,0))
-	await _save_shot("paris-5-cafe")
-	camera.position = C+Vector3(160,2,-160)
-	camera.look_at(C+Vector3(215,9,-112))
-	await _save_shot("paris-6-avenue")
-	camera.position = C+Vector3(250,5,-40)
-	camera.look_at(C+Vector3(300,14,-10))
-	await _save_shot("paris-7-buildings")
-	var qp: Vector3 = paris.quay_pos
-	camera.position = qp+Vector3(14,3,20)
-	camera.look_at(qp+Vector3(-25,2,-40))
-	await _save_shot("paris-8-quay")
-	camera.position = C+Vector3(60,340,380)
-	camera.look_at(C+Vector3(160,0,-20))
-	await _save_shot("paris-9-aerial")
-	var rp: Vector3 = paris.ret_pos
-	camera.position = rp+Vector3(10,3,13)
-	camera.look_at(rp+Vector3(0,3,0))
-	await _save_shot("paris-10-return-portal")
+	for wi in paris.list.size():
+		var w = paris.list[wi]
+		var key := String(w.W["save"])
+		var C: Vector3 = w.C
+		var lm: Vector3 = w.lm_pos()
+		var kind := String(w.W["landmark"])
+		var lh := 60.0 if kind == "eiffel" else (30.0 if kind == "prang" else 14.0)
+		var fd := 170.0 if kind == "eiffel" else 75.0
+		paused = false
+		for ch in get_children():
+			if ch is CanvasLayer:
+				ch.show()
+		var t0 := Time.get_ticks_msec()
+		await w.enter()
+		print("WORLD_",key,"_ENTER_MS=",Time.get_ticks_msec()-t0," pos=",player.position," blocked=",_blocked_at(player.position,0.3)," nodes=",get_tree().get_node_count()," trees=",w.tree_n," quests=",w.done_count())
+		for i in 30:
+			await get_tree().physics_frame
+		print("WORLD_",key,"_PROMPT_AT_RETURN=",paris.prompt()," on_floor=",player.is_on_floor()," y=",player.position.y)
+		paused = true
+		for ch in get_children():
+			if ch is CanvasLayer:
+				ch.hide()
+		var rp: Vector3 = w.ret_pos
+		var back := Vector3(rp.x-lm.x,0,rp.z-lm.z).normalized()
+		var side := Vector3(back.z,0,-back.x)
+		camera.position = player.position+back*(-5.0)+Vector3(0,3.0,0)+Vector3(0,0,0)
+		camera.position = player.position+(lm-player.position).normalized()*-6.0+Vector3(0,3.2,0)
+		camera.look_at(lm+Vector3(0,lh*0.6,0))
+		await _save_shot(key+"-1-arrival")
+		camera.position = lm+back*fd+Vector3(0,lh*0.35+4.0,0)+side*20.0
+		camera.look_at(lm+Vector3(0,lh,0))
+		await _save_shot(key+"-2-landmark")
+		camera.position = lm+back*(fd*0.38)+Vector3(0,3.0,0)+side*8.0
+		camera.look_at(lm+Vector3(0,lh*0.8,0))
+		await _save_shot(key+"-3-landmark-close")
+		var cp: Vector3 = w.cafe_pos
+		camera.position = cp+Vector3(9,2.2,16)
+		camera.look_at(cp+Vector3(0,1.8,0))
+		await _save_shot(key+"-4-cafe")
+		var qp: Vector3 = w.quay_pos
+		camera.position = qp+Vector3(14,3,20)
+		camera.look_at(lm+Vector3(0,6,0) if kind != "eiffel" else qp+Vector3(-25,2,-40))
+		await _save_shot(key+"-5-view")
+		camera.position = C+Vector3(60,340,380) if kind == "eiffel" else C+Vector3(0,230,260)
+		camera.look_at(C+Vector3(160,0,-20) if kind == "eiffel" else C)
+		await _save_shot(key+"-6-aerial")
+		camera.position = rp+Vector3(10,3,13)
+		camera.look_at(rp+Vector3(0,3,0))
+		await _save_shot(key+"-7-return-portal")
+		paused = false
+		w.go_home()
+		for i in 20:
+			await get_tree().physics_frame
 	print("PARIS_SHOTS_DONE")
 
 func _people_shots() -> void:
@@ -18552,6 +18566,9 @@ var run_button: Button
 var travel_button: Button
 var portal_button: Button   # v0.59.2: one-tap WORLD PORTAL (to Paris and back)
 var travel_panel: PanelContainer
+var world_panel: PanelContainer      # v0.60: world picker
+var world_buttons: Array = []
+var world_info: Label
 var travel_info: Label
 var travel_buttons: Array = []
 var travel_ready_at := 0.0
@@ -18570,12 +18587,12 @@ func _place_portal_button(view: Vector2) -> void:
 	portal_button.position = Vector2(view.x*0.81,view.y*0.80)
 
 func _portal_pressed() -> void:
-	if paris == null or paris.entering:
+	if paris == null or paris.busy():
 		return
-	if paris.player_in_paris():
+	if paris.player_in_world():
 		paris.go_home()
 	else:
-		paris.enter()
+		_open_worlds()
 
 func _build_travel(root: Control) -> void:
 	run_button = _button("RUN: OFF",_toggle_run)
@@ -18623,6 +18640,26 @@ func _build_travel(root: Control) -> void:
 	var back := _button("Close",_close_travel)
 	r.add_child(back)
 	travel_panel.hide()
+	world_panel = PanelContainer.new()
+	root.add_child(world_panel)
+	world_panel.custom_minimum_size = Vector2(760,0)
+	world_panel.add_theme_stylebox_override("panel",_panel(Color("172a44"),24))
+	var wr := VBoxContainer.new()
+	wr.add_theme_constant_override("separation",10)
+	world_panel.add_child(wr)
+	wr.add_child(_label("WORLD PORTAL",26,Color("8ec5ff")))
+	world_info = _label("Step into a real city. Each world has a landmark, a café and 4 daily quests. Real maps © OpenStreetMap contributors.",17,Color("cbd8de"))
+	world_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	world_info.custom_minimum_size.x = 700
+	wr.add_child(world_info)
+	for i in paris.list.size():
+		var wb := _button("",_world_go.bind(i))
+		wb.custom_minimum_size = Vector2(700,58)
+		wb.add_theme_font_size_override("font_size",20)
+		world_buttons.append(wb)
+		wr.add_child(wb)
+	wr.add_child(_button("Close",_close_worlds))
+	world_panel.hide()
 
 func _toggle_run() -> void:
 	run_on = not run_on
@@ -18647,7 +18684,7 @@ func _hud_v23_tick() -> void:
 	travel_button.visible = not paused and not race_car
 	if portal_button != null and paris != null:
 		portal_button.visible = not paused and not race_car and not driving and seat_id < 0 and not bus_riding and not sky_riding and not hud_clean_applied
-		portal_button.text = "PORTAL HOME" if paris.player_in_paris() else "WORLD PORTAL"
+		portal_button.text = "PORTAL HOME" if paris.player_in_world() else "WORLD PORTAL"
 	if feed_box != null:
 		feed_box.visible = not paused
 	if quests_button != null:
@@ -18699,6 +18736,28 @@ func _open_travel() -> void:
 		_toggle_menu()
 	_refresh_travel()
 	_open_panel(travel_panel)
+
+func _open_worlds() -> void:
+	if not paused:
+		_toggle_menu()
+	_refresh_worlds()
+	_open_panel(world_panel)
+
+func _close_worlds() -> void:
+	if paused:
+		_toggle_menu()
+
+func _refresh_worlds() -> void:
+	for i in world_buttons.size():
+		var d: Dictionary = paris.list[i].W
+		world_buttons[i].text = "%s  ·  %s  ·  %s" % [d["title"],d["sub"],paris.summary(i)]
+
+func _world_go(i: int) -> void:
+	if paris == null or paris.busy():
+		return
+	if paused:
+		_toggle_menu()
+	paris.enter(i)
 
 func _close_travel() -> void:
 	if paused:

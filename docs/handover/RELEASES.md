@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.60.0 (code 127, 2026-11-25)
+- New game/worlds.gd (manager, DEFS for Paris/Tokyo/New York/Bangkok at C x=900/3200/5200/7200, z=700; hub portal + beam; picker API; save/load forwarding). paris.gd is now a data-driven per-world instance (W dict: landmark eiffel/crossing/times/prang, café, quests, save section). New data game/map/{tokyo,newyork,bangkok}_osm.json. main.gd: `paris` var is now a Worlds instance; world_panel picker (_open_worlds/_world_go), _portal_pressed, GO menu "World portal", _paris_shots loops all worlds.
+
 ## 0.59.2 (code 126, 2026-11-25)
 - paris.gd PORTAL_REL now (-126,0,-40) = world (84,0,-8) on the Ridge lawn (the old south-of-dome spot was water); in_paris(). main.gd: portal_button "WORLD PORTAL"/"PORTAL HOME" (_build_travel, _place_portal_button, _portal_pressed, shown in the HUD refresh, hidden on clean screen / Stream Mode).
 

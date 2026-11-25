@@ -3,23 +3,9 @@ extends RefCounted
 # OpenStreetMap streets and building footprints (map/paris_osm.json, (c) OpenStreetMap contributors, ODbL).
 # A glowing portal in the Harbor Dome leads there; a return portal in the Champ de Mars brings you back.
 # The district is built the first time somebody walks through, so start-up stays fast. Talks to main through `g`.
-const C := Vector3(900,0,700)                 # world position of the Eiffel Tower
-const AREA := Rect2(-256.0,-354.0,951.0,719.0) # x, z, width, depth of the downloaded map, metres from the tower
 const S := 0.6                                # Eiffel Tower scale
-const PORTAL_REL := Vector3(-126,0,-40)         # hub portal, on the Ridge lawn at world (84,0,-8), relative to HUB_C (210,0,32)
-const RET := Vector2(95,115)                  # return portal, in the open lawn of the Champ de Mars
-const CAFE := Vector2(65,70)
-const QUAY := Vector2(-68.6,-118.0)
-const DATA := "res://map/paris_osm.json"
 const ALL_PAY := 1500
 const ALL_XP := 150
-const QUESTS := [
-	{"n":"Step through the portal to Paris","pay":300,"xp":30},
-	{"n":"Stand under the Eiffel Tower","pay":300,"xp":30},
-	{"n":"Order at Café de la Tour","pay":300,"xp":30},
-	{"n":"Look at the Seine from the quay","pay":300,"xp":30},
-]
-const FACADES := [Color("dcd2bb"),Color("e3dac6"),Color("d3c6a9"),Color("e8e0cf"),Color("cfc2a4"),Color("d9cbb0")]
 const ROAD_W := {"primary":13.0,"secondary":11.0,"tertiary":9.0,"residential":7.0,"unclassified":7.0,"living_street":6.0,"service":3.5,"pedestrian":6.0,"footway":2.4,"path":2.0,"cycleway":2.0,"track":3.0}
 const VEHICLE := ["primary","secondary","tertiary","residential","unclassified","living_street","service"]
 const MAX_TREES := 520
@@ -52,8 +38,16 @@ class MB extends RefCounted:
 		tri(a,d,e,nm,col,collide)
 
 var g
+var W: Dictionary               # v0.60: the world this instance builds (see worlds.gd DEFS)
+var C: Vector3                  # world position of the landmark / map origin
+var AREA: Rect2                 # x, z, width, depth of the downloaded map, metres from the origin
+var RET: Vector2                # return portal, metres from the origin
+var CAFE: Vector2
+var QUAY: Vector2               # viewpoint for the last quest
+var DATA: String
+var QUESTS: Array
+var facades: Array
 var root: Node3D
-var hub_root: Node3D
 var built := false
 var entering := false
 var hub_pos: Vector3
@@ -73,9 +67,18 @@ var rcells := {}
 var tree_n := 0
 var test_log: Array = []
 
-func _init(game) -> void:
+func _init(game, def: Dictionary, hub: Vector3) -> void:
 	g = game
-	hub_pos = g.HUB_C+PORTAL_REL
+	W = def
+	C = def["C"]
+	AREA = def["area"]
+	RET = def["ret"]
+	CAFE = def["cafe"]
+	QUAY = def["view"]
+	DATA = def["data"]
+	QUESTS = def["quests"]
+	facades = def["facades"]
+	hub_pos = hub
 	ret_pos = C+Vector3(RET.x,0,RET.y)
 	cafe_pos = C+Vector3(CAFE.x,0,CAFE.y)
 	quay_pos = C+Vector3(QUAY.x,0,QUAY.y)
@@ -219,44 +222,6 @@ func label(parent: Node3D, text: String, pos: Vector3, col: Color, size: int) ->
 	parent.add_child(l)
 	return l
 
-func build_hub() -> void:
-	hub_root = Node3D.new()
-	hub_root.name = "ParisPortal"
-	g.add_child(hub_root)
-	make_portal(hub_root,hub_pos,"PARIS","Portal to a real city street · 4 daily quests",Color("8ec5ff"))
-	# v0.59.1: a tall light beam so the portal can be seen from across the city
-	var bm := StandardMaterial3D.new()
-	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bm.albedo_color = Color(0.56,0.77,1.0,0.28)
-	bm.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var cm := CylinderMesh.new()
-	cm.top_radius = 1.2
-	cm.bottom_radius = 2.6
-	cm.height = 140.0
-	cm.radial_segments = 12
-	cm.rings = 1
-	var beam := MeshInstance3D.new()
-	beam.mesh = cm
-	beam.material_override = bm
-	beam.position = hub_pos+Vector3(0,70.0,0)
-	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	hub_root.add_child(beam)
-
-func player_in_paris() -> bool:
-	if g.player == null:
-		return false
-	var pp: Vector3 = g.player.position
-	return in_paris(pp)
-
-func go_portal() -> void:
-	if g.player == null:
-		return
-	var dir: Vector3 = (g.HUB_C-hub_pos).normalized()
-	move_player(hub_pos+dir*7.0+Vector3(0,0.9,0))
-	g._show_toast("The Paris portal is right here. Walk up to it and tap ENTER PORTAL: PARIS.")
-	g._refresh_hud()
-
 # ---------- the district ----------
 func ensure_built() -> void:
 	if built:
@@ -264,7 +229,7 @@ func ensure_built() -> void:
 	built = true
 	var t0 := Time.get_ticks_msec()
 	root = Node3D.new()
-	root.name = "Paris"
+	root.name = String(W["name"])
 	root.position = C
 	g.add_child(root)
 	vmat = StandardMaterial3D.new()
@@ -273,24 +238,27 @@ func ensure_built() -> void:
 	vmat.metallic_specular = 0.2
 	var d: Dictionary = load_data()
 	if d.is_empty():
-		g._show_toast("Paris map data is missing.")
+		g._show_toast("%s map data is missing." % W["name"])
 		return
 	build_ground()
-	build_river(d)
+	if bool(W.get("river",false)):
+		build_river(d)
+	if bool(W.get("water",false)):
+		build_water(d)
 	build_parks(d)
 	build_roads(d)
 	build_buildings(d)
 	build_trees(d)
 	build_lamps(d)
-	build_tower()
+	build_landmark()
 	build_cafe()
 	make_portal(root,Vector3(RET.x,0,RET.y),"BACK TO CHIT CHAT CITY","Portal home",Color("ffcf6b"))
-	print("Paris built in %d ms" % (Time.get_ticks_msec()-t0))
+	print("%s built in %d ms" % [W["name"],Time.get_ticks_msec()-t0])
 
 func build_ground() -> void:
 	var cx := AREA.position.x+AREA.size.x*0.5
 	var cz := AREA.position.y+AREA.size.y*0.5
-	g._hm(root,Vector3(cx,-0.3,cz),Vector3(AREA.size.x+60.0,0.6,AREA.size.y+60.0),Color("b3ad9f"),true)
+	g._hm(root,Vector3(cx,-0.3,cz),Vector3(AREA.size.x+60.0,0.6,AREA.size.y+60.0),W["ground"],true)
 	# Invisible walls round the edge of the map.
 	g._collider(root,Vector3(cx,5,AREA.position.y-14.0),Vector3(AREA.size.x+80.0,12,4))
 	g._collider(root,Vector3(cx,5,AREA.end.y+14.0),Vector3(AREA.size.x+80.0,12,4))
@@ -338,6 +306,28 @@ func build_river(d: Dictionary) -> void:
 		mb.quad(Vector3(a.x,0.12,a.y),Vector3(b.x,0.12,b.y),Vector3(f.x,0.12,f.y),Vector3(e.x,0.12,e.y),Vector3.UP,wcol)
 		var mid := (a+b)*0.5
 		g._hm(root,Vector3(mid.x,0.55,mid.y),Vector3(ln+1.2,1.1,0.9),Color("b9b3a5"),true,-atan2(dv.y,dv.x))
+	finish(mb,root)
+
+func build_water(d: Dictionary) -> void:
+	# Rivers and ponds from the map, cut to the map edge so a huge riverbank outline cannot spill over.
+	var rect := PackedVector2Array([AREA.position,Vector2(AREA.end.x,AREA.position.y),AREA.end,Vector2(AREA.position.x,AREA.end.y)])
+	var mb := MB.new()
+	var k := 0
+	for wt: Dictionary in d["water"]:
+		var poly := to_poly(wt["p"])
+		if poly.size() < 3:
+			continue
+		for piece: PackedVector2Array in Geometry2D.intersect_polygons(poly,rect):
+			if piece.size() < 3:
+				continue
+			var idx := Geometry2D.triangulate_polygon(piece)
+			var y := 0.11+float(k)*0.0003
+			k += 1
+			for t in range(0,idx.size(),3):
+				var a: Vector2 = piece[idx[t]]
+				var b: Vector2 = piece[idx[t+1]]
+				var e: Vector2 = piece[idx[t+2]]
+				mb.tri(Vector3(a.x,y,a.y),Vector3(b.x,y,b.y),Vector3(e.x,y,e.y),Vector3.UP,Color("4f8fa6"))
 	finish(mb,root)
 
 func build_parks(d: Dictionary) -> void:
@@ -478,7 +468,7 @@ func build_buildings(d: Dictionary) -> void:
 		for q in poly:
 			cen += q
 		cen /= float(poly.size())
-		if not in_area(cen.x,cen.y,5.0) or cen.length() < 50.0:
+		if not in_area(cen.x,cen.y,5.0) or cen.length() < float(W["clear"]):
 			continue
 		var ar := poly_area(poly)
 		if absf(ar) < 12.0:
@@ -488,10 +478,10 @@ func build_buildings(d: Dictionary) -> void:
 		var lvs := String(b["lv"]).strip_edges()
 		var hgt := 0.0
 		if hs.is_valid_float() and hs.to_float() > 2.0:
-			hgt = clampf(hs.to_float(),8.0,40.0)
+			hgt = clampf(hs.to_float(),8.0,float(W["hmax"]))
 		else:
-			var lv := lvs.to_int() if lvs.is_valid_int() and lvs.to_int() > 0 else 5+(1 if idx % 3 == 0 else 0)
-			hgt = clampf(float(lv)*3.3+1.0,8.0,32.0)
+			var lv := lvs.to_int() if lvs.is_valid_int() and lvs.to_int() > 0 else int(W["lv"])+(1 if idx % 3 == 0 else 0)
+			hgt = clampf(float(lv)*3.3+1.0,8.0,float(W["hmax"]))
 		var key := Vector2i(floori(cen.x/120.0),floori(cen.y/120.0))
 		if not chunks.has(key):
 			chunks[key] = [MB.new(),MB.new()]
@@ -501,10 +491,10 @@ func build_buildings(d: Dictionary) -> void:
 		if not bcells.has(ck):
 			bcells[ck] = []
 		bcells[ck].append(poly)
-		var fac: Color = FACADES[idx % FACADES.size()].darkened(float(idx % 5)*0.025)
-		var roof := Color("5d6772").darkened(float(idx % 4)*0.04)
+		var fac: Color = (facades[idx % facades.size()] as Color).darkened(float(idx % 5)*0.025)
+		var roof := (W["roof"] as Color).darkened(float(idx % 4)*0.04)
 		var wall_h := hgt
-		var mans := hgt > 14.0
+		var mans := bool(W["mansard"]) and hgt > 14.0
 		if mans:
 			wall_h = hgt-3.2
 		prism(wb,dt,poly,sgn,0.0,wall_h,fac,0,idx)
@@ -559,7 +549,7 @@ func build_trees(d: Dictionary) -> void:
 			var z := lo.y
 			while z < hi.y and spots.size() < MAX_TREES:
 				var p := Vector2(x+rng.randf_range(-4,4),z+rng.randf_range(-4,4))
-				if in_area(p.x,p.y,-4.0) and p.length() > 55.0 and Geometry2D.is_point_in_polygon(p,poly) and not rcells.has(Vector2i(floori(p.x/6.0),floori(p.y/6.0))) and not in_building(p,3.0):
+				if in_area(p.x,p.y,-4.0) and p.length() > float(W["clear"])+5.0 and Geometry2D.is_point_in_polygon(p,poly) and not rcells.has(Vector2i(floori(p.x/6.0),floori(p.y/6.0))) and not in_building(p,3.0):
 					spots.append(p)
 				z += 15.0
 			x += 15.0
@@ -674,6 +664,22 @@ func build_lamps(d: Dictionary) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(mi)
 
+func build_landmark() -> void:
+	match String(W["landmark"]):
+		"eiffel":
+			build_tower()
+		"crossing":
+			build_crossing()
+		"times":
+			build_times()
+		"prang":
+			build_prang()
+	if W.has("statue"):
+		build_statue(W["statue"])
+
+func lm_radius() -> float:
+	return hw(0.0)*S+6.0 if String(W["landmark"]) == "eiffel" else float(W["lm_r"])
+
 func hw(h: float) -> float:
 	return 60.5*exp(-h/92.0)+2.0*(1.0-h/345.0)
 
@@ -733,10 +739,11 @@ func build_tower() -> void:
 
 func build_cafe() -> void:
 	var c := Vector3(CAFE.x,0,CAFE.y)
+	var awn: Array = W["awning"]
 	g._hm(root,c+Vector3(0,1.7,-1.5),Vector3(7.0,3.4,4.0),Color("efe8d8"),true)
-	g._hm(root,c+Vector3(0,3.55,-1.0),Vector3(7.8,0.3,5.6),Color("2d4a3c"))
+	g._hm(root,c+Vector3(0,3.55,-1.0),Vector3(7.8,0.3,5.6),W["cafe_roof"])
 	for k in 7:
-		var col := Color("b5322e") if k % 2 == 0 else Color("f1ead9")
+		var col: Color = awn[0] if k % 2 == 0 else awn[1]
 		var st: MeshInstance3D = g._hm(root,c+Vector3(-3.0+float(k),2.9,1.6),Vector3(1.0,0.1,2.4),col)
 		st.rotation.x = 0.22
 	g._hm(root,c+Vector3(0,0.55,0.6),Vector3(6.4,1.1,0.8),Color("5a3d2b"),true)
@@ -746,25 +753,126 @@ func build_cafe() -> void:
 		g._fc_part(root,g._bcone(0.06,0.06,0.78),tp+Vector3(0,0.39,0),g._material(Color("2f2f33")))
 		for s: float in [-1.0,1.0]:
 			g._hm(root,tp+Vector3(s*0.8,0.45,0),Vector3(0.45,0.9,0.45),Color("4a3a2c"))
-	label(root,"CAFÉ DE LA TOUR",c+Vector3(0,5.6,0.6),Color("ffe9b0"),56)
+	label(root,String(W["cafe_name"]),c+Vector3(0,5.6,0.6),Color("ffe9b0"),56)
+
+func facing(pos: Vector3) -> float:
+	# Y rotation that turns a thin panel's front towards the map origin.
+	return atan2(-pos.x,-pos.z)
+
+func panel(pos: Vector3, size: Vector2, col: Color, txt: String) -> void:
+	var pl: MeshInstance3D = g._fc_part(root,g._bbox(),pos,g._fc_glow(col),Vector3(size.x,size.y,0.6))
+	pl.rotation.y = facing(pos)
+	g._hm(root,Vector3(pos.x,pos.y*0.5-size.y*0.25,pos.z),Vector3(0.7,pos.y-size.y*0.5,0.7),Color("3a3d44"))
+	if txt != "":
+		var lb := label(root,txt,pos+Vector3(pos.x,0,pos.z).normalized()*-0.45,Color("1b1b24"),96)
+		lb.outline_size = 0
+		lb.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		lb.rotation.y = facing(pos)
+		lb.pixel_size = 0.03*size.x/12.0
+		lb.visibility_range_end = 220.0
+
+func build_crossing() -> void:
+	# Shibuya scramble: white bars on four sides and two diagonals, three giant screens round the corners.
+	var bars: Array = []
+	for arm in 4:
+		var ang := float(arm)*PI/2.0
+		var dir := Vector3(cos(ang),0,sin(ang))
+		var side := Vector3(-dir.z,0,dir.x)
+		for k in 9:
+			var pos := dir*14.5+side*((float(k)-4.0)*1.7)
+			bars.append(Transform3D(Basis(side*0.9,Vector3.UP*0.05,dir*5.0),Vector3(pos.x,0.14,pos.z)))
+	for dg in 2:
+		var ang := PI/4.0+float(dg)*PI/2.0
+		var e := Vector3(cos(ang),0,sin(ang))
+		var perp := Vector3(-e.z,0,e.x)
+		for k in 14:
+			var pos := e*((float(k)-6.5)*1.9)
+			bars.append(Transform3D(Basis(e*0.9,Vector3.UP*0.05,perp*5.0),Vector3(pos.x,0.15,pos.z)))
+	mm_boxes(bars,Color("f4f4ee"))
+	panel(Vector3(30,22,-14),Vector2(18,10),Color("ff4fa3"),"SHIBUYA")
+	panel(Vector3(-28,19,18),Vector2(16,9),Color("4fd4ff"),"109")
+	panel(Vector3(-6,25,-32),Vector2(20,11),Color("ffd24f"),"TOKYO")
+	var tl := OmniLight3D.new()
+	tl.light_color = Color("ff9ad0")
+	tl.light_energy = 1.4
+	tl.omni_range = 55.0
+	tl.position = Vector3(0,10,0)
+	root.add_child(tl)
+	label(root,"SHIBUYA CROSSING",Vector3(0,9,0),Color("ffe9f4"),60)
+
+func build_times() -> void:
+	# Times Square: a ring of glowing billboards and the red steps.
+	var cols := [Color("ff3b55"),Color("3b8bff"),Color("ffd23b"),Color("3bffa0"),Color("ff3be0"),Color("3be6ff"),Color("ff8a3b")]
+	for k in cols.size():
+		var ang := float(k)/float(cols.size())*TAU+0.3
+		var r := 24.0+float(k%3)*5.0
+		panel(Vector3(cos(ang)*r,14.0+float((k*5)%4)*4.0,sin(ang)*r),Vector2(10,13) if k%2 == 0 else Vector2(15,8),cols[k],["BROADWAY","SHOWS","LIVE","NYC","TICKETS","OPEN","HOT"][k])
+	for k in 5:
+		g._hm(root,Vector3(0,0.45*float(k+1),-24.0-float(k)*2.6),Vector3(13,0.9*float(k+1),2.6),Color("c8312e"),true)
+	var tl := OmniLight3D.new()
+	tl.light_color = Color("ffb0c0")
+	tl.light_energy = 1.4
+	tl.omni_range = 55.0
+	tl.position = Vector3(0,12,0)
+	root.add_child(tl)
+	label(root,"TIMES SQUARE",Vector3(0,11,0),Color("fff0c8"),64)
+
+func build_prang() -> void:
+	# Wat Arun: a stepped central prang with four small prangs and a spire.
+	var cream: Material = g._material(Color("efe6d0"))
+	g._hm(root,Vector3(0,1.0,0),Vector3(40,2,40),Color("d6c9ac"),true)
+	for t in 5:
+		var sz := 30.0-float(t)*5.5
+		var y := 2.0+float(t)*7.0
+		g._hm(root,Vector3(0,y+3.5,0),Vector3(sz,7.0,sz),Color("fff4dc"),t < 2)
+		g._hm(root,Vector3(0,y+7.0,0),Vector3(sz+1.2,0.7,sz+1.2),Color("5db3a8") if t % 2 == 0 else Color("e58aa0"))
+	g._fc_part(root,g._bcone(0.2,4.2,24.0),Vector3(0,37.0+12.0,0),cream)
+	for sx: float in [-1.0,1.0]:
+		for sz: float in [-1.0,1.0]:
+			var px := sx*15.0
+			var pz := sz*15.0
+			g._hm(root,Vector3(px,2.0+7.0,pz),Vector3(5.5,14.0,5.5),Color("efe6d0"),true)
+			g._fc_part(root,g._bcone(0.1,2.7,9.0),Vector3(px,2.0+14.0+4.5,pz),cream)
+	var tl := OmniLight3D.new()
+	tl.light_color = Color("ffe2b0")
+	tl.light_energy = 1.2
+	tl.omni_range = 60.0
+	tl.position = Vector3(0,30,12)
+	root.add_child(tl)
+	label(root,"WAT ARUN",Vector3(0,16,24),Color("ffe9b0"),64)
+
+func build_statue(sp: Vector2) -> void:
+	# A small golden dog on a plinth (Hachiko-style).
+	var b := Vector3(sp.x,0,sp.y)
+	var gold := Color("c9a46a")
+	g._hm(root,b+Vector3(0,0.5,0),Vector3(3.2,1.0,3.2),Color("8c8f96"),true)
+	g._hm(root,b+Vector3(0,1.9,0),Vector3(2.4,1.2,1.1),gold)
+	g._hm(root,b+Vector3(1.0,2.9,0),Vector3(0.9,0.9,0.9),gold)
+	g._hm(root,b+Vector3(1.0,3.5,0.25),Vector3(0.25,0.4,0.2),gold.darkened(0.2))
+	g._hm(root,b+Vector3(1.0,3.5,-0.25),Vector3(0.25,0.4,0.2),gold.darkened(0.2))
+	g._hm(root,b+Vector3(-1.2,2.0,0),Vector3(0.9,0.25,0.25),gold.darkened(0.1))
+	label(root,"HACHIKO",b+Vector3(0,5.2,0),Color("ffe9b0"),52)
 
 # ---------- play ----------
 func near(p: Vector3, target: Vector3, r: float) -> bool:
 	return Vector2(p.x-target.x,p.z-target.z).length() < r
 
 func in_paris(p: Vector3) -> bool:
+	# (name kept from v0.59) true while p is inside this world's map
 	return built and in_area(p.x-C.x,p.z-C.z,15.0)
+
+func lm_pos() -> Vector3:
+	var l: Vector2 = W.get("lm",Vector2.ZERO)
+	return C+Vector3(l.x,0,l.y)
 
 func prompt() -> String:
 	if g.player == null or g.paused:
 		return ""
 	var p: Vector3 = g.player.position
-	if near(p,hub_pos,4.8):
-		return "ENTER PORTAL: PARIS"
 	if built and near(p,ret_pos,4.8):
 		return "PORTAL HOME"
 	if built and near(p,cafe_pos+Vector3(0,0,3.0),5.0):
-		return "ORDER A CAFÉ"
+		return String(W["order"])
 	return ""
 
 func busy() -> bool:
@@ -777,9 +885,7 @@ func interact() -> bool:
 	if busy():
 		g._show_toast("Get out of your vehicle or seat first.")
 		return true
-	if p == "ENTER PORTAL: PARIS":
-		enter()
-	elif p == "PORTAL HOME":
+	if p == "PORTAL HOME":
 		go_home()
 	else:
 		order()
@@ -797,14 +903,14 @@ func enter() -> void:
 	if entering:
 		return
 	entering = true
-	g._show_toast("Opening the portal to Paris...")
+	g._show_toast("Opening the portal to %s..." % W["name"])
 	ensure_built()
 	await g.get_tree().physics_frame
 	await g.get_tree().physics_frame
-	var to_tower := Vector3(-RET.x,0,-RET.y).normalized()
-	var spot := ret_pos+to_tower*6.0
+	var to_lm := Vector3(-RET.x,0,-RET.y).normalized()
+	var spot := ret_pos+to_lm*6.0
 	for k in 12:
-		var cand := ret_pos+Vector3(to_tower.z,0,-to_tower.x)*float(k)*1.5+to_tower*(6.0+float(k))
+		var cand := ret_pos+Vector3(to_lm.z,0,-to_lm.x)*float(k)*1.5+to_lm*(6.0+float(k))
 		if not g._blocked_at(cand+Vector3(0,0.9,0),0.4):
 			spot = cand
 			break
@@ -812,7 +918,7 @@ func enter() -> void:
 	visits += 1
 	award(0)
 	if not dry:
-		g._show_toast("Bonjour! Welcome to Paris. Quests today: %d/%d. Portal home is behind you." % [done_count(),QUESTS.size()])
+		g._show_toast("%s Quests today: %d/%d. Portal home is behind you." % [W["hello"],done_count(),QUESTS.size()])
 	g._refresh_hud()
 	entering = false
 
@@ -824,7 +930,7 @@ func go_home() -> void:
 
 func order() -> void:
 	award(2)
-	g._show_toast("Un café au lait, s'il vous plaît! Merci.")
+	g._show_toast(String(W["order_msg"]))
 
 func done_count() -> int:
 	var n := 0
@@ -845,8 +951,9 @@ func pay(amount: int, xp: int, text: String) -> void:
 	if not g.legacy_rules:
 		g.bonus_xp += xp
 	if not dry:
-		g._show_toast("PARIS QUEST: %s  +$%d  +%d XP" % [text,amount,xp])
-		g._feed_add("Paris quest: %s (+$%d)" % [text,amount],"")
+		var wn := String(W["name"]).to_upper()
+		g._show_toast("%s QUEST: %s  +$%d  +%d XP" % [wn,text,amount,xp])
+		g._feed_add("%s quest: %s (+$%d)" % [W["name"],text,amount],"")
 		if not ("--smoke-test" in OS.get_cmdline_user_args()):
 			g._play_coin()
 			g._quick_fx(g.player.position+Vector3(0,1,0))
@@ -861,7 +968,7 @@ func award(i: int) -> void:
 	pay(int(q["pay"]),int(q["xp"]),String(q["n"]))
 	if not all_paid and done_count() == QUESTS.size():
 		all_paid = true
-		pay(ALL_PAY,ALL_XP,"ALL PARIS QUESTS DONE")
+		pay(ALL_PAY,ALL_XP,"ALL %s QUESTS DONE" % String(W["name"]).to_upper())
 	if not dry:
 		g._save_progress()
 
@@ -872,7 +979,7 @@ func tick(delta: float) -> void:
 	tick_t = 0.0
 	var p: Vector3 = g.player.position
 	if in_paris(p) and not busy():
-		if near(p,C,hw(0.0)*S+6.0):
+		if near(p,lm_pos(),lm_radius()):
 			award(1)
 		if near(p,quay_pos,16.0):
 			award(3)
@@ -882,13 +989,15 @@ func tick(delta: float) -> void:
 		g._refresh_hud()
 
 func save_state(file: ConfigFile) -> void:
-	file.set_value("paris","day",day)
-	file.set_value("paris","mask",mask)
-	file.set_value("paris","all",all_paid)
-	file.set_value("paris","visits",visits)
+	var sec := String(W["save"])
+	file.set_value(sec,"day",day)
+	file.set_value(sec,"mask",mask)
+	file.set_value(sec,"all",all_paid)
+	file.set_value(sec,"visits",visits)
 
 func load_state(file: ConfigFile) -> void:
-	day = String(file.get_value("paris","day",""))
-	mask = int(file.get_value("paris","mask",0)) & ((1 << QUESTS.size())-1)
-	all_paid = bool(file.get_value("paris","all",false))
-	visits = maxi(0,int(file.get_value("paris","visits",0)))
+	var sec := String(W["save"])
+	day = String(file.get_value(sec,"day",""))
+	mask = int(file.get_value(sec,"mask",0)) & ((1 << QUESTS.size())-1)
+	all_paid = bool(file.get_value(sec,"all",false))
+	visits = maxi(0,int(file.get_value(sec,"visits",0)))

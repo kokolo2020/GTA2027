@@ -224,6 +224,32 @@ func build_hub() -> void:
 	hub_root.name = "ParisPortal"
 	g.add_child(hub_root)
 	make_portal(hub_root,hub_pos,"PARIS","Portal to a real city street · 4 daily quests",Color("8ec5ff"))
+	# v0.59.1: a tall light beam so the portal can be seen from across the city
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bm.albedo_color = Color(0.56,0.77,1.0,0.28)
+	bm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var cm := CylinderMesh.new()
+	cm.top_radius = 1.2
+	cm.bottom_radius = 2.6
+	cm.height = 140.0
+	cm.radial_segments = 12
+	cm.rings = 1
+	var beam := MeshInstance3D.new()
+	beam.mesh = cm
+	beam.material_override = bm
+	beam.position = hub_pos+Vector3(0,70.0,0)
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	hub_root.add_child(beam)
+
+func go_portal() -> void:
+	if g.player == null:
+		return
+	var dir: Vector3 = (g.HUB_C-hub_pos).normalized()
+	move_player(hub_pos+dir*7.0+Vector3(0,0.9,0))
+	g._show_toast("The Paris portal is right here. Walk up to it and tap ENTER PORTAL: PARIS.")
+	g._refresh_hud()
 
 # ---------- the district ----------
 func ensure_built() -> void:

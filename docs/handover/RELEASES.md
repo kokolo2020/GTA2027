@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.59.1 (code 125, 2026-11-25)
+- paris.gd: light beam (140 m CylinderMesh, unshaded alpha) over the hub portal; go_portal() teleports next to it. main.gd: Menu GO list gets "Paris portal" (_menu_go.bind(paris.go_portal)).
+
 ## 0.59.0 (code 124, 2026-11-25)
 - New game/paris.gd (RefCounted, built lazily on first portal entry at C=(900,0,700); hub portal at HUB_C+(0,0,64), return portal at C+(95,0,115)). Data game/map/paris_osm.json (OSM metres from the tower, lat0 48.8583 lon0 2.2945). Chunked building meshes + trimesh collider, window mesh visibility_range_end 170, MultiMesh roads/trees/lamps/tower. 4 quests, state saved via save_state/load_state. main.gd hooks: paris var, interact, action button prompt, save/load, _biosphere_tick, --paris-shots. OSM credit in menu line + credits.txt.
 

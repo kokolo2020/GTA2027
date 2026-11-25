@@ -305,11 +305,11 @@ Functions:
 
 Functions: 
 
-### game/paris.gd (862 lines, 44 funcs)
+### game/paris.gd (888 lines, 45 funcs)
 
-Sections: 83 helpers; 171 portals; 228 the district; 719 play
+Sections: 83 helpers; 171 portals; 254 the district; 745 play
 
-Functions: `_init`:76, `in_area`:84, `poly_area`:87, `to_poly`:94, `mm_boxes`:102, `seg_xf`:119, `beam_xf`:126, `finish`:135, `load_data`:161, `make_portal`:172, `label`:209, `build_hub`:222, `ensure_built`:229, `build_ground`:258, `build_river`:268, `build_parks`:311, `build_roads`:338, `facade_details`:374, `dormers`:401, `prism`:412, `cap`:429, `build_buildings`:437, `in_building`:495, `build_trees`:512, `build_lamps`:597, `hw`:645, `build_tower`:648, `build_cafe`:702, `near`:720, `in_paris`:723, `prompt`:726, `busy`:738, `interact`:741, `move_player`:756, `enter`:764, `go_home`:787, `order`:793, `done_count`:797, `roll_day`:804, `pay`:811, `award`:823, `tick`:836, `save_state`:852, `load_state`:858
+Functions: `_init`:76, `in_area`:84, `poly_area`:87, `to_poly`:94, `mm_boxes`:102, `seg_xf`:119, `beam_xf`:126, `finish`:135, `load_data`:161, `make_portal`:172, `label`:209, `build_hub`:222, `go_portal`:246, `ensure_built`:255, `build_ground`:284, `build_river`:294, `build_parks`:337, `build_roads`:364, `facade_details`:400, `dormers`:427, `prism`:438, `cap`:455, `build_buildings`:463, `in_building`:521, `build_trees`:538, `build_lamps`:623, `hw`:671, `build_tower`:674, `build_cafe`:728, `near`:746, `in_paris`:749, `prompt`:752, `busy`:764, `interact`:767, `move_player`:782, `enter`:790, `go_home`:813, `order`:819, `done_count`:823, `roll_day`:830, `pay`:837, `award`:849, `tick`:862, `save_state`:878, `load_state`:884
 
 ### game/promo.gd (346 lines, 15 funcs)
 

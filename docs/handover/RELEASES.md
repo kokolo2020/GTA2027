@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.65.0 (code 133, 2026-11-26)
+- outbreak.gd: figure() uses person_N.glb (recoloured, posed arms/legs, tweens); block_figure fallback; zombies chase within 13 m (tick_zombies), hp bar + hurt flash, die() respawns at world RET; big countdown label; main.gd test prints DEATH.
+
 ## 0.64.0 (code 132, 2026-11-26)
 - Look pass: main.gd DAY_KEYS midday sun 1.08/warm, ambient 0.4 cool, tonemap exposure 0.98, contrast/saturation 1.12; paris.gd vmat albedo 0.86 + concrete triplanar texture (_real_setup); worlds.gd ground/grass colours darker; outbreak.gd green vignette (vig) grows with time.
 

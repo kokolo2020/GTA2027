@@ -37,3 +37,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.62.0 | | | | Claude-built (Explore mode) |
 | 0.63.0 | | | | Claude-built (outbreak rescue missions) |
 | 0.64.0 | | | | Claude-built (graphics pass, scarier outbreaks) |
+| 0.65.0 | | | | Claude-built (real zombies, health bar, big timer) |

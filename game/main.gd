@@ -373,7 +373,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.64.0: richer light and textured buildings, scarier outbreak missions.")
+	_show_toast("Chit Chat City 0.65.0: real zombies that chase you, a health bar and a big countdown in outbreak missions.")
 	booted = true
 	if "--promo" in OS.get_cmdline_user_args():
 		# Developer-only: films the highlight video (see promo.gd). Never goes online.
@@ -10959,6 +10959,10 @@ func _paris_shots() -> void:
 		ob.left = 0.1
 		ob.tick(0.2)
 		print(tag," TIMEOUT result=",ob.result," home=",not wp.in_paris(player.position))
+		ob.start()
+		ob.hp = -5.0
+		ob.tick_zombies(0.01,player.position)
+		print(tag," DEATH result=",ob.result," active=",ob.active," at_portal=",wp.in_paris(player.position))
 		await get_tree().process_frame
 	print("OB_SEAL_COUNT=",paris.sealed_count()," bonus_paid=",paris.seal_bonus)
 	print("PARIS_SHOTS_DONE")

@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.66.0 (code 134, 2026-11-26)
+- daily.gd (new, g.daily): login streak (check_in 5 s after boot, only when no cmdline args), 3 daily goals of 4 (seal, rescue, quests, earn), overlay panel from Menu > PLAY, save section "daily"; hooks in outbreak.gd rescue/seal; test prints DAILY.
+
 ## 0.65.0 (code 133, 2026-11-26)
 - outbreak.gd: figure() uses person_N.glb (recoloured, posed arms/legs, tweens); block_figure fallback; zombies chase within 13 m (tick_zombies), hp bar + hurt flash, die() respawns at world RET; big countdown label; main.gd test prints DEATH.
 

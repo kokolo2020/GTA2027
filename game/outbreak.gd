@@ -414,6 +414,7 @@ func die() -> void:
 	g._refresh_hud()
 
 func rescue(i: int) -> void:
+	g.daily.bump("rescue")
 	hp = minf(100.0,hp+25.0)
 	surv[i][2] = true
 	(surv[i][0] as Node3D).visible = false
@@ -448,6 +449,7 @@ func press_valve(i: int) -> void:
 	update_hud()
 
 func seal() -> void:
+	g.daily.bump("seal")
 	result = "sealed"
 	cleanup()
 	var today := Time.get_date_string_from_system()

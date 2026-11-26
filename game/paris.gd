@@ -708,10 +708,10 @@ func build_tower() -> void:
 		var w1 := hw(h1)
 		for sx: float in [-1.0,1.0]:
 			for sz: float in [-1.0,1.0]:
-				xf.append(beam_xf(Vector3(sx*w0,h0,sz*w0)*S,Vector3(sx*w1,h1,sz*w1)*S,1.3*S))
+				xf.append(beam_xf(Vector3(sx*w0,h0,sz*w0)*S,Vector3(sx*w1,h1,sz*w1)*S,2.1*S))
 				var i0 := maxf(w0-3.2*(1.0-h0/330.0),0.3)
 				var i1 := maxf(w1-3.2*(1.0-h1/330.0),0.3)
-				xf.append(beam_xf(Vector3(sx*i0,h0,sz*i0)*S,Vector3(sx*i1,h1,sz*i1)*S,0.9*S))
+				xf.append(beam_xf(Vector3(sx*i0,h0,sz*i0)*S,Vector3(sx*i1,h1,sz*i1)*S,1.5*S))
 		for face in 4:
 			var pa0: Vector3
 			var pb0: Vector3
@@ -729,10 +729,10 @@ func build_tower() -> void:
 				pb0 = Vector3(fx*w0,h0,w0)
 				pa1 = Vector3(fx*w1,h1,-w1)
 				pb1 = Vector3(fx*w1,h1,w1)
-			xf.append(beam_xf(pa0*S,pb1*S,0.55*S))
-			xf.append(beam_xf(pb0*S,pa1*S,0.55*S))
-			xf.append(beam_xf(pa1*S,pb1*S,0.7*S))
-	mm_boxes(xf,Color("6d5b49"))
+			xf.append(beam_xf(pa0*S,pb1*S,1.0*S))
+			xf.append(beam_xf(pb0*S,pa1*S,1.0*S))
+			xf.append(beam_xf(pa1*S,pb1*S,1.2*S))
+	mm_boxes(xf,Color("4b3f35"))
 	for pl: Array in [[57.0,2.6],[115.0,2.0],[276.0,1.6]]:
 		var h: float = pl[0]
 		var w := hw(h)*S*2.0+7.0*S

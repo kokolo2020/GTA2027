@@ -9,6 +9,8 @@ const WorldBiosphere := preload("res://world_biosphere.gd")
 var world_bio
 const Worlds := preload("res://worlds.gd")
 const Explore := preload("res://explore.gd")
+const Daily := preload("res://daily.gd")
+var daily   # v0.66: daily goals and login streak (daily.gd)
 var explore   # v0.62: free camera Explore mode (explore.gd)
 var paris   # v0.60: world portal (worlds.gd): Paris, Tokyo, New York, Bangkok
 ## Chit Chat City: original single-player driving prototype. No external assets or services.
@@ -331,6 +333,7 @@ func _ready() -> void:
 		_build_biosphere()
 	paris = Worlds.new(self)
 	explore = Explore.new(self)
+	daily = Daily.new(self)
 	paris.build_hub()
 	if not OS.get_environment("HC_SKIP").contains("galleria"):
 		_build_galleria()
@@ -373,8 +376,10 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.65.0: real zombies that chase you, a health bar and a big countdown in outbreak missions.")
+	_show_toast("Chit Chat City 0.66.0: daily login streak and daily goals (Menu > PLAY > Daily goals).")
 	booted = true
+	if OS.get_cmdline_user_args().is_empty():
+		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
 	if "--promo" in OS.get_cmdline_user_args():
 		# Developer-only: films the highlight video (see promo.gd). Never goes online.
 		var pr = load("res://promo.gd").new(self)
@@ -1085,8 +1090,8 @@ func _build_world() -> void:
 	# v0.58 photo look: a film-style tone curve (bright areas roll off softly instead of clipping),
 	# natural colour and a little contrast; the sun does the work, not the grading.
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.98
-	env.tonemap_white = 1.6
+	env.tonemap_exposure = 0.92
+	env.tonemap_white = 2.4
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 1.12
 	env.adjustment_contrast = 1.12
@@ -1095,8 +1100,8 @@ func _build_world() -> void:
 	env.fog_light_color = HAZE
 	env.fog_sky_affect = 0.0
 	env.fog_depth_curve = 1.6
-	env.fog_depth_begin = 90.0
-	env.fog_depth_end = 330.0
+	env.fog_depth_begin = 170.0
+	env.fog_depth_end = 620.0
 	world_env.environment = env
 	world_env_res = env
 	add_child(world_env)
@@ -4931,7 +4936,7 @@ func _build_hud() -> void:
 	menu_screen_button = _button("Screen: Clean",_menu_stay.bind(_toggle_clean_hud))
 	var pages := [
 		["GO",Color("2f8fb8"),[["Map",_menu_go.bind(_open_map)],["Travel",_menu_go.bind(_open_travel)],["Directions",_menu_go.bind(_open_dir)],["Call car",_menu_go.bind(_menu_call_car)],["Quests",_menu_go.bind(_open_quests)],["World portal",_menu_go.bind(paris.go_portal)],["Explore mode",_menu_go.bind(explore.enter)],["Back to my car",_rescue]]],
-		["PLAY",Color("c9612f"),[["World Biosphere Passport",_menu_go.bind(_world_bio_passport)],["Chapters",_open_chapters],["Careers",_open_careers],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach]]],
+		["PLAY",Color("c9612f"),[["World Biosphere Passport",_menu_go.bind(_world_bio_passport)],["Chapters",_open_chapters],["Careers",_open_careers],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach],["Daily goals",_menu_go.bind(daily.open)]]],
 		["ME",Color("8a5ad0"),[["My Home",_open_homes],["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
 		["FRIENDS",Color("2fa37a"),[["Chat",_menu_go.bind(_toggle_chat)],["Players & friends",_open_social],[menu_online_button]]],
 		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[time_button],[weather_button]]],
@@ -7828,6 +7833,7 @@ func _physics_process(delta: float) -> void:
 	if not booted or paused:
 		return
 	clock += delta
+	daily.tick(delta)
 	_treasure_tick(delta)
 	_fm_tick(delta)
 	_update_peds(delta)
@@ -8522,6 +8528,8 @@ func _save_progress() -> void:
 		paris.save_state(file)
 	if dq != null:
 		dq.save_state(file)
+	if daily != null:
+		daily.save_state(file)
 	file.set_value("progress","bio_pass_day",bio_pass_day)
 	file.set_value("progress","pz_streak",pz_streak)
 	file.set_value("progress","pz_total",pz_total)
@@ -8583,6 +8591,8 @@ func _load_progress() -> void:
 			paris.load_state(file)
 		if dq != null:
 			dq.load_state(file)
+		if daily != null:
+			daily.load_state(file)
 		ch_idx = clampi(int(file.get_value("chapters","idx",0)),0,CHAPTERS.size())
 		ch_step = maxi(0,int(file.get_value("chapters","step",0)))
 		# v0.56.2: Chapter 1 gained two intro steps (Dome gate, Ridge Pass); older saves skip past them.
@@ -9216,6 +9226,11 @@ func _smoke_test() -> void:
 	var original_times := best_times.duplicate()
 	var original_best := best_kmh
 	claimed_mask = (1 << MISSIONS.size())-1
+	# v0.66: the checks assume a fresh town, even if the dev save on this Mac is far along (restored at the end).
+	owned_mask = 1
+	ridge_mask = 0
+	bay_mask = 0
+	north_mask = 0
 	var save_existed := FileAccess.file_exists(SAVE_PATH)
 	var save_bytes := FileAccess.get_file_as_bytes(SAVE_PATH) if save_existed else PackedByteArray()
 	exploring = false
@@ -9294,7 +9309,7 @@ func _smoke_test() -> void:
 	var saved_civic := civic_mask
 	civic_mask = (1 << CIVIC.size())-1
 	_refresh_hud()
-	assert(objective.text.begins_with("Ridge Gate"),"Collection end state failed: "+objective.text)
+	assert(objective.text.begins_with("Ridge Gate"),"Collection end state failed: "+objective.text+" legacy=%s owned=%d ridge=%d bay=%d north=%d ro=%s" % [legacy_rules,owned_mask,ridge_mask,bay_mask,north_mask,_ridge_open()])
 	civic_mask = saved_civic
 	exploring = false
 	next_job_pending = false
@@ -10964,6 +10979,29 @@ func _paris_shots() -> void:
 		ob.tick_zombies(0.01,player.position)
 		print(tag," DEATH result=",ob.result," active=",ob.active," at_portal=",wp.in_paris(player.position))
 		await get_tree().process_frame
+	daily.test_day = "2026-12-01"
+	daily.last_login = ""
+	daily.streak = 0
+	daily.check_in()
+	var d1: int = daily.streak
+	daily.test_day = "2026-12-02"
+	daily.check_in()
+	var d2: int = daily.streak
+	var cash_d0 := cash
+	for id in daily.ids.duplicate():
+		daily.bump(id,int(daily.POOL[id]["need"]))
+	print("DAILY streak=",d1,",",d2," goals=",daily.ids.size()," all_paid=",daily.all_paid," cash_gain=",cash-cash_d0)
+	daily.open()
+	daily.close()
+	daily.test_day = ""
+	daily.day = ""
+	daily.last_login = ""
+	daily.streak = 0
+	daily.best = 0
+	daily.ids = []
+	daily.prog = {}
+	daily.paid = {}
+	daily.all_paid = false
 	print("OB_SEAL_COUNT=",paris.sealed_count()," bonus_paid=",paris.seal_bonus)
 	print("PARIS_SHOTS_DONE")
 
@@ -12825,7 +12863,7 @@ func _apply_view() -> void:
 		world_env_res.fog_enabled = true
 		world_env_res.fog_mode = Environment.FOG_MODE_DEPTH
 		world_env_res.fog_light_color = haze_now
-		world_env_res.fog_depth_begin = (60.0 if close_up else (75.0 if follow_view else 120.0))*(1.0-0.75*rain_amt)
+		world_env_res.fog_depth_begin = (110.0 if close_up else (130.0 if follow_view else 220.0))*(1.0-0.75*rain_amt)
 		world_env_res.fog_depth_end = lerpf(camera.far-4.0,minf(camera.far-4.0,170.0),rain_amt)
 		world_env_res.fog_density = 1.0
 	if cockpit != null:

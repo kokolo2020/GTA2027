@@ -309,15 +309,15 @@ Functions:
 
 Functions: 
 
-### game/outbreak.gd (313 lines, 22 funcs)
+### game/outbreak.gd (325 lines, 22 funcs)
 
-Functions: `_init`:34, `build_post`:38, `refresh_post`:48, `prompt`:52, `owns`:64, `interact`:67, `spot`:78, `figure`:91, `mist`:107, `start`:124, `build_hud`:174, `order_text`:189, `update_hud`:195, `tick`:201, `rescue`:224, `press_valve`:233, `seal`:257, `timeout`:278, `abort`:285, `cleanup`:293, `save_state`:306, `load_state`:310
+Functions: `_init`:34, `build_post`:38, `refresh_post`:48, `prompt`:52, `owns`:64, `interact`:67, `spot`:78, `figure`:91, `mist`:107, `start`:124, `build_hud`:176, `order_text`:197, `update_hud`:203, `tick`:209, `rescue`:235, `press_valve`:244, `seal`:268, `timeout`:289, `abort`:296, `cleanup`:304, `save_state`:318, `load_state`:322
 
-### game/paris.gd (1125 lines, 60 funcs)
+### game/paris.gd (1127 lines, 60 funcs)
 
-Sections: 96 helpers; 184 portals; 235 the district; 944 play
+Sections: 96 helpers; 184 portals; 235 the district; 946 play
 
-Functions: `_init`:78, `in_area`:97, `poly_area`:100, `to_poly`:107, `mm_boxes`:115, `seg_xf`:132, `beam_xf`:139, `finish`:148, `load_data`:174, `make_portal`:185, `label`:222, `ensure_built`:236, `build_ground`:270, `build_river`:280, `build_water`:323, `build_parks`:345, `build_roads`:372, `facade_details`:408, `dormers`:435, `prism`:446, `cap`:463, `build_buildings`:471, `in_building`:529, `build_trees`:546, `build_lamps`:631, `build_landmark`:679, `lm_radius`:692, `hw`:695, `build_tower`:698, `build_cafe`:752, `clue_world`:770, `build_mystery`:774, `update_clues`:795, `clue_text`:799, `found_clue`:802, `clue_count`:817, `submit_case`:824, `facing`:846, `panel`:850, `build_crossing`:862, `build_times`:891, `build_prang`:908, `build_statue`:932, `near`:945, `in_paris`:948, `lm_pos`:952, `prompt`:956, `busy`:971, `interact`:974, `move_player`:995, `enter`:1003, `go_home`:1026, `order`:1033, `done_count`:1037, `roll_day`:1044, `pay`:1055, `award`:1068, `tick`:1081, `save_state`:1102, `load_state`:1114
+Functions: `_init`:78, `in_area`:97, `poly_area`:100, `to_poly`:107, `mm_boxes`:115, `seg_xf`:132, `beam_xf`:139, `finish`:148, `load_data`:174, `make_portal`:185, `label`:222, `ensure_built`:236, `build_ground`:272, `build_river`:282, `build_water`:325, `build_parks`:347, `build_roads`:374, `facade_details`:410, `dormers`:437, `prism`:448, `cap`:465, `build_buildings`:473, `in_building`:531, `build_trees`:548, `build_lamps`:633, `build_landmark`:681, `lm_radius`:694, `hw`:697, `build_tower`:700, `build_cafe`:754, `clue_world`:772, `build_mystery`:776, `update_clues`:797, `clue_text`:801, `found_clue`:804, `clue_count`:819, `submit_case`:826, `facing`:848, `panel`:852, `build_crossing`:864, `build_times`:893, `build_prang`:910, `build_statue`:934, `near`:947, `in_paris`:950, `lm_pos`:954, `prompt`:958, `busy`:973, `interact`:976, `move_player`:997, `enter`:1005, `go_home`:1028, `order`:1035, `done_count`:1039, `roll_day`:1046, `pay`:1057, `award`:1070, `tick`:1083, `save_state`:1104, `load_state`:1116
 
 ### game/promo.gd (346 lines, 15 funcs)
 

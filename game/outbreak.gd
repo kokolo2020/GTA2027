@@ -171,6 +171,8 @@ func start() -> void:
 		g._show_toast("OUTBREAK! Find 3 survivors in %d minutes. Each knows one step of the valve order." % int(TIME/60.0))
 		g._play_coin()
 
+var vig: ColorRect
+
 func build_hud() -> void:
 	layer = CanvasLayer.new()
 	layer.layer = 60
@@ -185,6 +187,12 @@ func build_hud() -> void:
 	hud.add_theme_color_override("font_outline_color",Color("0b2a0b"))
 	hud.add_theme_constant_override("outline_size",8)
 	layer.add_child(hud)
+	vig = ColorRect.new()
+	vig.color = Color(0.1,0.7,0.1,0.0)
+	vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vig.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(vig)
+	layer.move_child(vig,0)
 
 func order_text() -> String:
 	var parts := PackedStringArray()
@@ -211,6 +219,9 @@ func tick(delta: float) -> void:
 		timeout()
 		return
 	var grow := 1.0-left/TIME
+	if vig != null:
+		var pulse := 0.5+0.5*sin(t_acc*(2.0+6.0*grow))
+		vig.color.a = 0.04+0.22*grow+(0.10*pulse*grow if left < 80.0 else 0.0)
 	for m in mists:
 		var s := lerpf(3.0,7.0,grow)
 		(m[0] as MeshInstance3D).scale = Vector3(s,s*0.6,s)
@@ -299,6 +310,7 @@ func cleanup() -> void:
 		layer.queue_free()
 	layer = null
 	hud = null
+	vig = null
 	surv.clear()
 	valves.clear()
 	mists.clear()

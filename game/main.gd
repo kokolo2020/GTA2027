@@ -373,7 +373,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.63.0: zombie outbreak rescue missions. Find the OUTBREAK POST in each world.")
+	_show_toast("Chit Chat City 0.64.0: richer light and textured buildings, scarier outbreak missions.")
 	booted = true
 	if "--promo" in OS.get_cmdline_user_args():
 		# Developer-only: films the highlight video (see promo.gd). Never goes online.
@@ -540,7 +540,7 @@ func _ready() -> void:
 const HAZE := Color("c6e1ea")
 # v0.24: big flat surfaces (roads, grass, pavements) get a subtle world-space texture.
 const SURF_ASPHALT := ["354653","4a5560","394552","33383e"]
-const SURF_GRASS := ["91ab82","6f945c","78a06b","6aa35a","7fae68","74b062","5f984f","9cc085"]
+const SURF_GRASS := ["6aa35a","91ab82","6f945c","78a06b","6aa35a","7fae68","74b062","5f984f","9cc085"]
 const SURF_PAVE := ["8f8d86","9c9a92","b9b6ad","a9a69e","8f8c85","e8d5ad","a19c90","9d9a92","8f9396"]
 var surf_mats := {}
 var surf_tex := {}
@@ -1085,11 +1085,11 @@ func _build_world() -> void:
 	# v0.58 photo look: a film-style tone curve (bright areas roll off softly instead of clipping),
 	# natural colour and a little contrast; the sun does the work, not the grading.
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 1.06
+	env.tonemap_exposure = 0.98
 	env.tonemap_white = 1.6
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.04
-	env.adjustment_contrast = 1.06
+	env.adjustment_saturation = 1.12
+	env.adjustment_contrast = 1.12
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_DEPTH
 	env.fog_light_color = HAZE
@@ -29363,8 +29363,8 @@ const DAY_KEYS := [
 	[4.9,"060b1d","1b2645","0c1220","56679a",0.5,"a9bcff",0.24,"141c33",1.0,1.0],
 	[5.7,"1d2c5a","e08b6a","2a2a3a","8a7f9a",0.48,"ffb07a",0.3,"9c7f86",0.3,1.0],
 	[6.6,"3b6db8","f5c39a","5d7f7a","c0c8d8",0.52,"ffd2a0",0.8,"d9c7b5",0.0,0.3],
-	[8.0,"3d7cc9","c6e1ea","6d8f86","b3c9ea",0.44,"ffe9c6",1.32,"c6e1ea",0.0,0.0],
-	[16.8,"3d7cc9","c6e1ea","6d8f86","b3c9ea",0.44,"ffe9c6",1.32,"c6e1ea",0.0,0.0],
+	[8.0,"3d7cc9","c6e1ea","6d8f86","9db5dc",0.4,"ffe0b0",1.08,"c6e1ea",0.0,0.0],
+	[16.8,"3d7cc9","c6e1ea","6d8f86","9db5dc",0.4,"ffe0b0",1.08,"c6e1ea",0.0,0.0],
 	[18.0,"3a62a8","f2b27a","6d7f80","d8c0b0",0.52,"ffb066",0.85,"e8b590",0.0,0.25],
 	[18.8,"283c78","ff8a55","3a3a48","a88a98",0.48,"ff7a40",0.45,"c88070",0.15,0.9],
 	[19.6,"141d42","6a4a78","1a1d2c","6a6a9a",0.48,"9fb0ff",0.22,"3a3558",0.6,1.0],

@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.64.0 (code 132, 2026-11-26)
+- Look pass: main.gd DAY_KEYS midday sun 1.08/warm, ambient 0.4 cool, tonemap exposure 0.98, contrast/saturation 1.12; paris.gd vmat albedo 0.86 + concrete triplanar texture (_real_setup); worlds.gd ground/grass colours darker; outbreak.gd green vignette (vig) grows with time.
+
 ## 0.63.0 (code 131, 2026-11-26)
 - outbreak.gd (new): per-world rescue mission (ob in paris.gd; post at RET+(-5,0), 3 survivors near clues, 3 valves, 240 s, wrong order -20 s). worlds.gd: sealed_count, check_seal_bonus ($50000), seal_bonus saved in "sky". paris.gd: prompt/interact/tick/save hooks. Smoke test banner check made robust (hides lvl_root first).
 

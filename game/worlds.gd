@@ -14,7 +14,7 @@ const DEFS := [
 		"ret":Vector2(95,115),"cafe":Vector2(65,70),"view":Vector2(-68.6,-118.0),
 		"landmark":"eiffel","lm_r":0.0,"clear":50.0,"hmax":40.0,"lv":5,"mansard":true,"river":true,"water":true,
 		"facades":[Color("dcd2bb"),Color("e3dac6"),Color("d3c6a9"),Color("e8e0cf"),Color("cfc2a4"),Color("d9cbb0")],
-		"roof":Color("5d6772"),"ground":Color("b3ad9f"),
+		"roof":Color("5d6772"),"ground":Color("8f8a7d"),
 		"cafe_name":"CAFÉ DE LA TOUR","cafe_roof":Color("2d4a3c"),"awning":[Color("b5322e"),Color("f1ead9")],
 		"order":"ORDER A CAFÉ","order_msg":"Un café au lait, s'il vous plaît! Merci.",
 		"clues":[Vector2(74,42),Vector2(-80,29),Vector2(15,-84)],"code":"431","relic":"Tower Key","riddles":["How many legs does the Iron Lady stand on?","How many levels can visitors climb, from the ground to the top?","You order un café au lait. Un means how many?"],
@@ -33,7 +33,7 @@ const DEFS := [
 		"landmark":"crossing","lm_r":20.0,"clear":30.0,"hmax":60.0,"lv":6,"mansard":false,"river":false,"water":false,
 		"statue":Vector2(-20,18),
 		"facades":[Color("c9ccd1"),Color("b9bec6"),Color("d6d2c8"),Color("a9b3bf"),Color("cfc8bb"),Color("bfc6cf")],
-		"roof":Color("7b828c"),"ground":Color("8d9096"),
+		"roof":Color("7b828c"),"ground":Color("70737a"),
 		"cafe_name":"SHIBUYA CAFÉ","cafe_roof":Color("3b3f5c"),"awning":[Color("e8456b"),Color("f6efe2")],
 		"order":"ORDER MATCHA","order_msg":"Matcha latte, onegaishimasu! Arigato!",
 		"clues":[Vector2(43,74),Vector2(-85,0),Vector2(29,-80)],"code":"493","relic":"Hachiko Bell","riddles":["The scramble crosses the road on this many sides (not counting diagonals).","Hachiko waited for his owner for this many years.","Giant screens glow above the crossing: how many are there?"],
@@ -51,7 +51,7 @@ const DEFS := [
 		"ret":Vector2(27,22),"cafe":Vector2(-22,39),"view":Vector2(19,108),
 		"landmark":"times","lm_r":22.0,"clear":28.0,"hmax":80.0,"lv":8,"mansard":false,"river":false,"water":false,
 		"facades":[Color("b98b72"),Color("a67862"),Color("c4a58c"),Color("9a8a80"),Color("b0a090"),Color("a8806a")],
-		"roof":Color("5a5d63"),"ground":Color("7d7f84"),
+		"roof":Color("5a5d63"),"ground":Color("63656a"),
 		"cafe_name":"BROADWAY DINER","cafe_roof":Color("7a2a2a"),"awning":[Color("2b5fa8"),Color("f4efe4")],
 		"order":"ORDER COFFEE","order_msg":"One large coffee, coming right up!",
 		"clues":[Vector2(74,42),Vector2(-80,-29),Vector2(0,-85)],"code":"523","relic":"Broadway Star","riddles":["Count the red steps in Times Square.","Seventh Avenue crosses Broadway: this many streets meet here.","N-Y-C: how many letters?"],
@@ -69,7 +69,7 @@ const DEFS := [
 		"ret":Vector2(42,15),"cafe":Vector2(8,-44),"view":Vector2(110,0),
 		"landmark":"prang","lm_r":24.0,"clear":32.0,"hmax":30.0,"lv":3,"mansard":false,"river":false,"water":false,
 		"facades":[Color("e0d2b4"),Color("d6c4a0"),Color("e8dcc2"),Color("cdbb97"),Color("dccdae"),Color("d2c3a4")],
-		"roof":Color("a4574a"),"ground":Color("a9a08c"),
+		"roof":Color("a4574a"),"ground":Color("867e6d"),
 		"cafe_name":"CAFÉ ARUN","cafe_roof":Color("6b4a2e"),"awning":[Color("2e8f7a"),Color("f3ead6")],
 		"order":"ORDER THAI TEA","order_msg":"Cha yen, khrap! Sawasdee!",
 		"clues":[Vector2(74,42),Vector2(-84,15),Vector2(0,-85)],"code":"541","relic":"Arun Lotus","riddles":["The central prang rises in this many stepped tiers.","Small prangs stand round the big one: how many?","One spire crowns the main prang. One means how many?"],
@@ -122,7 +122,7 @@ func build_sky() -> void:
 	sky_root.name = "MysticSky"
 	sky_root.position = SKY
 	g.add_child(sky_root)
-	var grass := Color("8fd08a")
+	var grass := Color("6aa35a")
 	for yaw: float in [0.0,PI/4.0]:
 		g._hm(sky_root,Vector3(0,-1.0,0),Vector3(52,2.0,52),grass if yaw == 0.0 else grass.darkened(0.03),true,yaw)
 	g._fc_part(sky_root,g._bcone(26.0,1.5,46.0),Vector3(0,-25.0,0),g._material(Color("6d6a78")))

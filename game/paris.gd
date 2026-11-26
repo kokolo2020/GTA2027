@@ -244,6 +244,8 @@ func ensure_built() -> void:
 	g.add_child(root)
 	vmat = StandardMaterial3D.new()
 	vmat.vertex_color_use_as_albedo = true
+	vmat.albedo_color = Color(0.86,0.86,0.86)
+	g._real_setup(vmat,"concrete",Color(0.95,0.95,0.95),0.22)
 	vmat.roughness = 0.92
 	vmat.metallic_specular = 0.2
 	var d: Dictionary = load_data()
@@ -401,9 +403,9 @@ func build_roads(d: Dictionary) -> void:
 				for ox in range(-rad,rad+1):
 					for oz in range(-rad,rad+1):
 						rcells[Vector2i(cx+ox,cz+oz)] = true
-	mm_boxes(side,Color("c8c1b0"))
+	mm_boxes(side,Color("a39d8e"))
 	mm_boxes(asp,Color("47474c"))
-	mm_boxes(pav,Color("cfc5ab"))
+	mm_boxes(pav,Color("a69d85"))
 
 func facade_details(dt: MB, a: Vector2, dv: Vector2, ln: float, nm: Vector3, h: float, sd: int) -> void:
 	var u := Vector3(dv.x,0,dv.y)/ln

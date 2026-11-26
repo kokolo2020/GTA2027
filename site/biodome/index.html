@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Asia Biodome</title>
+<style>
+html,body{margin:0;height:100%;background:#0b1511;overflow:hidden;touch-action:none;font-family:system-ui,sans-serif}
+#unity-canvas{width:100%;height:100%;display:block;background:#0b1511}
+#load{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#dff0e2;background:#0b1511}
+#load h1{font-size:28px;margin:0 0 6px}#load p{margin:0 0 18px;opacity:.7}
+#track{width:min(70vw,360px);height:8px;background:#1d2e26;border-radius:4px;overflow:hidden}#fill{height:100%;width:0;background:#7ec98f}
+</style></head><body>
+<canvas id="unity-canvas" tabindex="-1"></canvas>
+<div id="load"><h1>Asia Biodome</h1><p>Loading the rainforest…</p><div id="track"><div id="fill"></div></div></div>
+<script src="Build/AsiaBiodome-web.loader.js"></script>
+<script>
+createUnityInstance(document.querySelector("#unity-canvas"),{
+ dataUrl:"Build/AsiaBiodome-web.data",frameworkUrl:"Build/AsiaBiodome-web.framework.js",codeUrl:"Build/AsiaBiodome-web.wasm",
+ streamingAssetsUrl:"StreamingAssets",companyName:"Chit Chat City",productName:"Asia Biodome",productVersion:"1.0",
+ devicePixelRatio:Math.min(window.devicePixelRatio||1,/Mobi|Android|iPhone|iPad/.test(navigator.userAgent)?1.25:1.5)
+},function(p){document.getElementById("fill").style.width=(p*100)+"%"}).then(function(){document.getElementById("load").style.display="none"}).catch(function(e){document.getElementById("load").innerHTML="<p>Could not start: "+e+"</p>"});
+</script></body></html>

@@ -11,6 +11,7 @@ const VEHICLE := ["primary","secondary","tertiary","residential","unclassified",
 const MAX_TREES := 520
 const MAX_LAMPS := 220
 const Outbreak := preload("res://outbreak.gd")
+const Tracker := preload("res://tracker.gd")
 
 # One mesh under construction: flat-shaded triangles with vertex colours.
 class MB extends RefCounted:
@@ -74,6 +75,7 @@ var case_day := ""
 var clue_nodes: Array = []
 var board_pos: Vector3
 var ob                          # v0.63: outbreak rescue mission (outbreak.gd)
+var trk                         # v0.68: quest tracker and pointer (tracker.gd)
 
 func _init(game, def: Dictionary, hub: Vector3) -> void:
 	g = game
@@ -92,6 +94,7 @@ func _init(game, def: Dictionary, hub: Vector3) -> void:
 	quay_pos = C+Vector3(QUAY.x,0,QUAY.y)
 	board_pos = ret_pos+Vector3(5,0,0)
 	ob = Outbreak.new(self)
+	trk = Tracker.new(self)
 
 # ---------- helpers ----------
 func in_area(x: float, z: float, m := 0.0) -> bool:
@@ -1082,6 +1085,7 @@ func award(i: int) -> void:
 
 func tick(delta: float) -> void:
 	ob.tick(delta)
+	trk.tick(delta)
 	tick_t += delta
 	if tick_t < 0.25 or g.player == null:
 		return

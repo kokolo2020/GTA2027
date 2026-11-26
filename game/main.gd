@@ -376,7 +376,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.67.0: Infected Paris. Brutes, runners, burning wrecks and a safe zone in outbreak missions.")
+	_show_toast("Chit Chat City 0.68.0: Quest tracker. Tap QUESTS to see each quest and follow the arrow and light beam.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -414,6 +414,9 @@ func _ready() -> void:
 		get_tree().quit()
 	elif "--paris-shots" in OS.get_cmdline_user_args():
 		await _paris_shots()
+		get_tree().quit()
+	elif "--tracker-shots" in OS.get_cmdline_user_args():
+		await _tracker_shots()
 		get_tree().quit()
 	elif "--infected-shots" in OS.get_cmdline_user_args():
 		await _infected_shots()
@@ -10777,6 +10780,40 @@ func _save_shot(name: String) -> void:
 		folder = ProjectSettings.globalize_path("user://screenshots")
 	DirAccess.make_dir_recursive_absolute(folder)
 	get_viewport().get_texture().get_image().save_png(folder.path_join(name+".png"))
+
+func _tracker_shots() -> void:
+	# Developer-only (v0.68): the quest tracker with the normal HUD visible, in the world HC_WORLD (default 0). Never saves.
+	paris.dry = true
+	var wi := int(OS.get_environment("HC_WORLD")) if OS.get_environment("HC_WORLD") != "" else 0
+	var wp = paris.list[wi]
+	if crate_open:
+		crate_done = true
+		crate_open = false
+		if crate_root != null:
+			crate_root.hide()
+	paused = false
+	await wp.enter()
+	for i in 40:
+		await get_tree().physics_frame
+		await get_tree().process_frame
+	await _save_shot("trk-1-arrival")
+	wp.award(1)
+	for i in 40:
+		await get_tree().process_frame
+	await _save_shot("trk-2-after-quest")
+	wp.trk.sel = 2
+	wp.trk.manual = true
+	wp.trk.acc = 99.0
+	for i in 40:
+		await get_tree().process_frame
+	await _save_shot("trk-3-picked")
+	wp.ob.sealed = false
+	wp.ob.start()
+	for i in 60:
+		await get_tree().process_frame
+	await _save_shot("trk-4-outbreak")
+	print("TRACKER items=",wp.trk.items.size()," sel=",wp.trk.sel," layer_visible=",wp.trk.layer != null and wp.trk.layer.visible)
+	wp.ob.abort("")
 
 func _infected_shots() -> void:
 	# Developer-only (v0.67): the infected zone in the chosen world (HC_WORLD index, default 0). Never saves.

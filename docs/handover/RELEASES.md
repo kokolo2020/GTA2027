@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.68.0 (code 136, 2026-11-26)
+Quest tracker (game/tracker.gd): QUESTS panel, arrow and beam in Paris, Tokyo, New York, Bangkok.
+
 ## 0.67.0 (code 135, 2026-11-26)
 - Infected zones in outbreak missions: game/infected.gd (brute/runner zombie kinds, wrecks, barricades, safe zone, dead palette via g.infect_amt in _daynight_apply). Dev check: --infected-shots (HC_WORLD index). Biodome Asia Godot rebuild is shelved in docs/shelved/asia-godot-rebuild (not in game).
 

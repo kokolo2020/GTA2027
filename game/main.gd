@@ -373,7 +373,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.62.0: Explore mode. Menu > GO > Explore mode.")
+	_show_toast("Chit Chat City 0.63.0: zombie outbreak rescue missions. Find the OUTBREAK POST in each world.")
 	booted = true
 	if "--promo" in OS.get_cmdline_user_args():
 		# Developer-only: films the highlight video (see promo.gd). Never goes online.
@@ -10900,6 +10900,67 @@ func _paris_shots() -> void:
 		if (ch is CanvasLayer or ch is Control) and ch.visible:
 			hud_after += 1
 	print("EXPLORE_OFF=",not explore.on," cam_lock=",cam_lock," player_visible=",player.visible," hud ",hud_before,"->",hud_after)
+	# v0.63: Outbreak mission test, every world
+	paused = false
+	for wi in paris.list.size():
+		var wp = paris.list[wi]
+		var ob = wp.ob
+		ob.sealed = false
+		ob.day = ""
+		await wp.enter()
+		await get_tree().process_frame
+		var cash0 := cash
+		ob.start()
+		await get_tree().process_frame
+		await get_tree().physics_frame
+		var tag := "OB[%d]" % wi
+		print(tag," START active=",ob.active," order=",ob.order," surv=",ob.surv.size()," valves=",ob.valves.size())
+		var spots_ok := true
+		for sv in ob.surv:
+			var spv: Vector3 = sv[1]
+			if wp.in_building(Vector2(spv.x-wp.C.x,spv.z-wp.C.z),0.5) or _blocked_at(spv+Vector3(0,0.9,0),0.3):
+				spots_ok = false
+		for vv in ob.valves:
+			var vpv: Vector3 = vv[1]
+			if wp.in_building(Vector2(vpv.x-wp.C.x,vpv.z-wp.C.z),0.5):
+				spots_ok = false
+		print(tag," SPOTS_CLEAR=",spots_ok)
+		if wi > 0:
+			cam_lock = true
+			paused = true
+			for ch in get_children():
+				if ch is CanvasLayer and ch != ob.layer:
+					ch.hide()
+			var sp0: Vector3 = ob.surv[0][1]
+			camera.position = sp0+Vector3(7,4,10)
+			camera.look_at(sp0+Vector3(0,1.2,0))
+			await _save_shot("outbreak-w%d-survivor" % wi)
+			var vp0: Vector3 = ob.valves[1][1]
+			camera.position = vp0+Vector3(8,4,10)
+			camera.look_at(vp0+Vector3(0,1.2,0))
+			await _save_shot("outbreak-w%d-valves" % wi)
+			paused = false
+			for ch in get_children():
+				if ch is CanvasLayer:
+					ch.show()
+			cam_lock = false
+		ob.press_valve(0)
+		for i in 3:
+			player.position = ob.surv[i][1]+Vector3(0,0.9,0)
+			ob.tick(0.3)
+		var wrong: int = (int(ob.order[0])+1) % 3
+		var left0: float = ob.left
+		ob.press_valve(wrong)
+		print(tag," RESCUED=",ob.known," WRONG progress=",ob.progress," penalty=",left0-ob.left)
+		for k in 3:
+			ob.press_valve(int(ob.order[k]))
+		print(tag," SEALED=",ob.sealed," result=",ob.result," cash_gain=",cash-cash0," props_freed=",ob.props == null)
+		ob.start()
+		ob.left = 0.1
+		ob.tick(0.2)
+		print(tag," TIMEOUT result=",ob.result," home=",not wp.in_paris(player.position))
+		await get_tree().process_frame
+	print("OB_SEAL_COUNT=",paris.sealed_count()," bonus_paid=",paris.seal_bonus)
 	print("PARIS_SHOTS_DONE")
 
 func _people_shots() -> void:

@@ -35,3 +35,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.61.0 | | | | Claude-built (mystery cases, relics, mystic sky island) |
 | 0.61.1 | | | | Claude-built (big shrine rewards, grander shrine) |
 | 0.62.0 | | | | Claude-built (Explore mode) |
+| 0.63.0 | | | | Claude-built (outbreak rescue missions) |

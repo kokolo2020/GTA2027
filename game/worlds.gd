@@ -374,19 +374,41 @@ func tick(delta: float) -> void:
 		last_hub = nh
 		g._refresh_hud()
 
+var seal_bonus := false
+
+func sealed_count() -> int:
+	var n := 0
+	for x in list:
+		if x.ob.sealed:
+			n += 1
+	return n
+
+func check_seal_bonus() -> void:
+	if seal_bonus or sealed_count() < list.size():
+		return
+	seal_bonus = true
+	g.cash += 50000
+	if not g.legacy_rules:
+		g.bonus_xp += 2500
+	g._show_toast("ALL 4 OUTBREAKS SEALED! Bonus +$50,000 and 2,500 XP.")
+	g._feed_add("All four cities sealed. Chit Chat City is safe!","")
+	g._save_progress()
+
 func save_state(file: ConfigFile) -> void:
 	for w in list:
 		w.save_state(file)
 	file.set_value("sky","shrine",shrine_done)
 	file.set_value("sky","day",shrine_day)
+	file.set_value("sky","seal_bonus",seal_bonus)
 
 func load_state(file: ConfigFile) -> void:
 	for w in list:
 		w.load_state(file)
 	shrine_done = bool(file.get_value("sky","shrine",false))
 	shrine_day = String(file.get_value("sky","day",""))
+	seal_bonus = bool(file.get_value("sky","seal_bonus",false))
 
 func summary(i: int) -> String:
 	var w = list[i]
 	w.roll_day()
-	return "%d/%d quests · %s" % [w.done_count(),w.QUESTS.size(),"relic ✓" if w.relic else "clues %d/3" % w.clue_count()]
+	return "%d/%d quests · %s" % [w.done_count(),w.QUESTS.size(),"relic ✓" if w.relic else "clues %d/3" % w.clue_count()]+(" · sealed ✓" if w.ob.sealed else "")

@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.63.0 (code 131, 2026-11-26)
+- outbreak.gd (new): per-world rescue mission (ob in paris.gd; post at RET+(-5,0), 3 survivors near clues, 3 valves, 240 s, wrong order -20 s). worlds.gd: sealed_count, check_seal_bonus ($50000), seal_bonus saved in "sky". paris.gd: prompt/interact/tick/save hooks. Smoke test banner check made robust (hides lvl_root first).
+
 ## 0.62.0 (code 130, 2026-11-25)
 - Explore mode: free camera tour of the city, 4 worlds and sky island (game/explore.gd).
 

@@ -10,6 +10,7 @@ const ROAD_W := {"primary":13.0,"secondary":11.0,"tertiary":9.0,"residential":7.
 const VEHICLE := ["primary","secondary","tertiary","residential","unclassified","living_street","service"]
 const MAX_TREES := 520
 const MAX_LAMPS := 220
+const Outbreak := preload("res://outbreak.gd")
 
 # One mesh under construction: flat-shaded triangles with vertex colours.
 class MB extends RefCounted:
@@ -72,6 +73,7 @@ var relic := false              # solved the case at least once = relic kept for
 var case_day := ""
 var clue_nodes: Array = []
 var board_pos: Vector3
+var ob                          # v0.63: outbreak rescue mission (outbreak.gd)
 
 func _init(game, def: Dictionary, hub: Vector3) -> void:
 	g = game
@@ -89,6 +91,7 @@ func _init(game, def: Dictionary, hub: Vector3) -> void:
 	cafe_pos = C+Vector3(CAFE.x,0,CAFE.y)
 	quay_pos = C+Vector3(QUAY.x,0,QUAY.y)
 	board_pos = ret_pos+Vector3(5,0,0)
+	ob = Outbreak.new(self)
 
 # ---------- helpers ----------
 func in_area(x: float, z: float, m := 0.0) -> bool:
@@ -261,6 +264,7 @@ func ensure_built() -> void:
 	build_cafe()
 	make_portal(root,Vector3(RET.x,0,RET.y),"BACK TO CHIT CHAT CITY","Portal home",Color("ffcf6b"))
 	build_mystery()
+	ob.build_post()
 	print("%s built in %d ms" % [W["name"],Time.get_ticks_msec()-t0])
 
 func build_ground() -> void:
@@ -953,6 +957,9 @@ func prompt() -> String:
 	if g.player == null or g.paused:
 		return ""
 	var p: Vector3 = g.player.position
+	var op: String = ob.prompt(p)
+	if op != "":
+		return op
 	if built and near(p,ret_pos,4.8):
 		return "PORTAL HOME"
 	if built and near(p,board_pos,3.8):
@@ -971,7 +978,9 @@ func interact() -> bool:
 	if busy():
 		g._show_toast("Get out of your vehicle or seat first.")
 		return true
-	if p == "PORTAL HOME":
+	if ob.owns(p):
+		ob.interact(p)
+	elif p == "PORTAL HOME":
 		go_home()
 	elif p == "SOLVE THE CASE":
 		roll_day()
@@ -1015,6 +1024,7 @@ func enter() -> void:
 	entering = false
 
 func go_home() -> void:
+	ob.abort("Rescue cancelled.")
 	var dir: Vector3 = (g.HUB_C-hub_pos).normalized()
 	move_player(hub_pos+dir*6.5+Vector3(0,0.9,0))
 	g._show_toast("Back in Chit Chat City.")
@@ -1069,6 +1079,7 @@ func award(i: int) -> void:
 		g._save_progress()
 
 func tick(delta: float) -> void:
+	ob.tick(delta)
 	tick_t += delta
 	if tick_t < 0.25 or g.player == null:
 		return
@@ -1098,6 +1109,7 @@ func save_state(file: ConfigFile) -> void:
 	file.set_value(sec,"clues",clue_mask)
 	file.set_value(sec,"relic",relic)
 	file.set_value(sec,"case_day",case_day)
+	ob.save_state(file,sec)
 
 func load_state(file: ConfigFile) -> void:
 	var sec := String(W["save"])
@@ -1109,4 +1121,5 @@ func load_state(file: ConfigFile) -> void:
 	clue_mask = int(file.get_value(sec,"clues",0)) & 7
 	relic = bool(file.get_value(sec,"relic",false))
 	case_day = String(file.get_value(sec,"case_day",""))
+	ob.load_state(file,sec)
 	update_clues()

@@ -2,6 +2,7 @@ extends RefCounted
 # v0.63: Outbreak rescue mission, one per world (owned by paris.gd as `ob`).
 # Start at the OUTBREAK POST beside the portal. Find 3 survivors (each tells you one step of the valve order),
 # then turn the 3 colour valves in that order before the infection spreads. Cartoon zombies stand around; they never chase.
+const Infected := preload("res://infected.gd")
 const TIME := 240.0
 const PENALTY := 20.0
 const DAY_PAY := 4000
@@ -11,6 +12,7 @@ const COLS := [Color("ff4a4a"),Color("4aa0ff"),Color("4aff7a")]
 const NAMES := ["RED","BLUE","GREEN"]
 const ORD := ["first","second","third"]
 
+var inf                    # v0.67 infected dressing and zombie kinds (infected.gd)
 var w                      # the Paris world instance
 var g                      # main
 var active := false
@@ -40,6 +42,7 @@ var t_acc := 0.0
 func _init(world) -> void:
 	w = world
 	g = world.g
+	inf = Infected.new(self)
 
 func build_post() -> void:
 	var rp: Vector2 = w.RET
@@ -251,6 +254,8 @@ func start() -> void:
 		g._fc_part(props,g._bsph(0.38),Vector3(vs.x,1.65,vs.y),g._fc_glow(COLS[i]))
 		var lb: Label3D = w.label(props,"%s VALVE  OFF" % NAMES[i],Vector3(vs.x,2.5,vs.y),COLS[i],38)
 		valves.append([null,w.C+Vector3(vs.x,0,vs.y),lb])
+	inf.reset()
+	inf.dress(props)
 	build_hud()
 	update_hud()
 	if not w.dry:
@@ -359,6 +364,7 @@ func tick(delta: float) -> void:
 	for m in mists:
 		var s := lerpf(3.0,7.0,grow)
 		(m[0] as MeshInstance3D).scale = Vector3(s,s*0.6,s)
+	inf.tick(delta)
 	tick_zombies(delta,p)
 	if not active:
 		return
@@ -371,6 +377,8 @@ func tick(delta: float) -> void:
 func tick_zombies(delta: float, p: Vector3) -> void:
 	var lp := Vector2(p.x-w.C.x,p.z-w.C.z)
 	var bitten := false
+	var dps := 0.0
+	var safe: bool = lp.distance_to(inf.post_local()) < float(inf.SAFE_R)
 	for z in zomb:
 		var zn: Node3D = z[0]
 		if not is_instance_valid(zn):
@@ -378,21 +386,23 @@ func tick_zombies(delta: float, p: Vector3) -> void:
 		var zp := Vector2(zn.position.x,zn.position.z)
 		var d := zp.distance_to(lp)
 		var home: Vector2 = z[1]
-		var target := lp if d < 13.0 else home
+		var spec: Array = inf.SPEC[String(z[2]) if z.size() > 2 else "walker"]
+		var target := lp if d < float(spec[1]) and not safe else home
 		var dir := target-zp
 		if dir.length() > 0.8:
-			var step := dir.normalized()*minf(2.3*delta,dir.length())
+			var step := dir.normalized()*minf(float(spec[0])*delta,dir.length())
 			zn.position.x += step.x
 			zn.position.z += step.y
 			zn.rotation.y = lerp_angle(zn.rotation.y,atan2(dir.x,dir.y),minf(1.0,6.0*delta))
-		if d < 1.5:
+		if d < float(spec[2]) and not safe:
 			bitten = true
+			dps = maxf(dps,float(spec[3]))
 	if bitten and not w.dry:
-		hp -= 22.0*delta
+		hp -= dps*delta
 		if hurt != null:
 			hurt.color.a = 0.35
 	elif hp > 0.0 and hp < 100.0:
-		hp = minf(100.0,hp+3.0*delta)
+		hp = minf(100.0,hp+(14.0 if safe else 3.0)*delta)
 	if hurt != null and not bitten:
 		hurt.color.a = maxf(0.0,hurt.color.a-1.2*delta)
 	if hp_fill != null:
@@ -504,6 +514,7 @@ func cleanup() -> void:
 	surv.clear()
 	valves.clear()
 	mists.clear()
+	inf.clear()
 
 func save_state(file: ConfigFile, sec: String) -> void:
 	file.set_value(sec,"sealed",sealed)

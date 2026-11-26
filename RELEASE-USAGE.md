@@ -39,3 +39,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.64.0 | | | | Claude-built (graphics pass, scarier outbreaks) |
 | 0.65.0 | | | | Claude-built (real zombies, health bar, big timer) |
 | 0.66.0 | | | | Claude-built (daily streak and goals) |
+| 0.67.0 | | | | Claude-built (infected zones) |

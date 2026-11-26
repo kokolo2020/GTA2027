@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.67.0 (code 135, 2026-11-26)
+- Infected zones in outbreak missions: game/infected.gd (brute/runner zombie kinds, wrecks, barricades, safe zone, dead palette via g.infect_amt in _daynight_apply). Dev check: --infected-shots (HC_WORLD index). Biodome Asia Godot rebuild is shelved in docs/shelved/asia-godot-rebuild (not in game).
+
 ## 0.66.0 (code 134, 2026-11-26)
 - daily.gd (new, g.daily): login streak (check_in 5 s after boot, only when no cmdline args), 3 daily goals of 4 (seal, rescue, quests, earn), overlay panel from Menu > PLAY, save section "daily"; hooks in outbreak.gd rescue/seal; test prints DAILY.
 

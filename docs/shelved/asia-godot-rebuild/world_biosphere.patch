@@ -1,0 +1,176 @@
+diff --git a/game/world_biosphere.gd b/game/world_biosphere.gd
+index c9143ea..2562c70 100644
+--- a/game/world_biosphere.gd
++++ b/game/world_biosphere.gd
+@@ -8,7 +8,7 @@ const ENTRY := C+Vector3(0,0,181)
+ const OCEAN := C+Vector3(-225,0,0)
+ const NAMES := ["Africa","Asia","South America","Antarctica","Europe","North America","Oceania"]
+ const COLORS := [Color("e9b75e"),Color("7fbc9c"),Color("4cbf94"),Color("9be6ff"),Color("b2cc7a"),Color("d29562"),Color("64d7d0")]
+-const GROUNDS := [Color("b4923c"),Color("508166"),Color("32694a"),Color("dae9f2"),Color("8eaa70"),Color("738b66"),Color("b87a52")]
++const GROUNDS := [Color("b4923c"),Color("3f5a38"),Color("32694a"),Color("dae9f2"),Color("8eaa70"),Color("738b66"),Color("b87a52")]
+ const DOMES := [{"name":"AFRICA"},{"name":"ASIA"},{"name":"SOUTH AMERICA"},{"name":"ANTARCTICA"},{"name":"EUROPE"},{"name":"NORTH AMERICA"},{"name":"OCEANIA"}]
+ const SPECIES := [
+ 	{"dome":3,"name":"Emperor Penguin","fact":"The biggest penguin: up to 1.2 m tall. Dads keep the egg warm on their feet.","kind":"penguin","n":6,"zone":"in","hab":"Penguin Bay"},
+@@ -71,6 +71,8 @@ const RANK_AT := [0,3,8,12]
+ const RARES := ["White Lion","Golden Monkey","Emperor Penguin Chick","White Stag","Spirit Bison","Golden Wombat"]
+ const RARE_DOMES := [0,2,3,4,5,6]
+ const RARE_SPECIES := [17,28,0,4,39,44]
++const AsiaDome := preload("res://asia_dome.gd")
++var asia = AsiaDome.new(self)
+ var g
+ var root: Node3D
+ var interiors: Array = []
+@@ -270,7 +272,9 @@ func flush() -> void:
+    item["checked_bounds"] = scenery_aabb(item)
+  batches.clear()
+ 
+-func disc(parent: Node3D,c: Vector3,r: float,th: float,col: Color,solid := false) -> void:
++var joint_deck := false
++
++func disc(parent: Node3D,c: Vector3,r: float,th: float,col: Color,solid := false,register := true) -> void:
+  var mesh = g._bcone(r,r,th)
+  var old_structure = animal_structure
+  if solid:
+@@ -279,7 +283,7 @@ func disc(parent: Node3D,c: Vector3,r: float,th: float,col: Color,solid := false
+  animal_structure = old_structure
+  if solid:
+   g._bio_cyl_col_on(parent,c,r,th)
+-  if c.y>0.5 and not animal_structure:
++  if register and c.y>0.5 and not animal_structure:
+    register_deck(parent,c+Vector3(0,th*0.5,0),r)
+ 
+ func entrance_ramp(centre: Vector3,outward: Vector3,radius: float,width: float,col: Color,low := -0.05,high := 0.09,approach := 1.5,parent: Node3D = null) -> void:
+@@ -719,6 +723,8 @@ func landscape(i: int,parent: Node3D) -> void:
+    tree(parent,p,rng.randf_range(4,8),[Color("859c46"),Color("76a95e"),Color("247253"),Color.WHITE,Color("80a95c"),Color("b97242"),Color("428f68")][i],1 if i==1 else (2 if i==0 else 0))
+  if reserve(i):
+   reserve_build(i,parent)
++  if i==1:
++   asia.build_forest(parent)
+  match (-1 if reserve(i) else i):
+   1:
+    for k in 5:
+@@ -1718,7 +1724,7 @@ func smoke() -> void:
+    walk_route("ground trail "+NAMES[i]+mode,ground_route(i),speed)
+    walk_route("connected visitor stage "+NAMES[i]+mode,visitor_stage_route(i),speed)
+    for surface in walk_surfaces:
+-    if surface.kind!="raised":
++    if surface.kind!="raised" or surface.get("joint",false):
+      continue
+     if surface.has("radius"):
+      var rim = []
+@@ -3394,7 +3400,7 @@ func register_deck(parent: Node3D,c: Vector3,radius: float) -> void:
+  var poly = []
+  for k in 32:
+   poly.append(c+Vector3(cos(k*TAU/32)*radius,0,sin(k*TAU/32)*radius))
+- walk_surfaces.append({"dome":i,"a":c,"b":c,"width":radius*2,"kind":"raised","poly":poly,"radius":radius})
++ walk_surfaces.append({"dome":i,"a":c,"b":c,"width":radius*2,"kind":"raised","poly":poly,"radius":radius,"joint":joint_deck})
+ 
+ func project_segment(p: Vector3,a: Vector3,b: Vector3) -> Vector3:
+  var d = Vector2(b.x-a.x,b.z-a.z)
+@@ -4022,7 +4028,7 @@ const AFRICA_ZONES := {
+  19:[11.0,-4.0,4.2,"MEERKAT MOUNDS",Color("d6b56f")]}
+ const THEMES := {
+  0:{"tint":Color("b3a548"),"deck":Color("b8975f"),"grass":[Color("d9b650"),Color("c9a23f"),Color("a8a53f"),Color("e2c767"),Color("8fa046")],"flower":[Color("e0504a"),Color("9b6bd1"),Color("fff6d8"),Color("f08a3c")],"tree":2,"mound":[Color("b7855a"),Color("6f8f3f")],"boulder":Color("9a8468"),"creek":Color("dcc38a"),"water":Color("5bbfd0"),"landmark":"baobab","scrub":Color("6f8f3f"),"sign":"SAVANNA RESERVE","ice":false},
+- 1:{"tint":Color("9ac26e"),"deck":Color("c2a46a"),"grass":[Color("6fae5a"),Color("8cc16a"),Color("4f9663"),Color("a8cf7b"),Color("3f8a5a")],"flower":[Color("f7a8c4"),Color("fff0f5"),Color("f4d35e"),Color("e86a92")],"tree":1,"mound":[Color("8d9a86"),Color("5f8f58")],"boulder":Color("8a9a93"),"creek":Color("c9d4b0"),"water":Color("6fc3b6"),"landmark":"pagoda","scrub":Color("4f8a52"),"sign":"BAMBOO VALLEY RESERVE","ice":false},
++ 1:{"tint":Color("6c9650"),"deck":Color("c2a46a"),"grass":[Color("6fae5a"),Color("8cc16a"),Color("4f9663"),Color("a8cf7b"),Color("3f8a5a")],"flower":[Color("f7a8c4"),Color("fff0f5"),Color("f4d35e"),Color("e86a92")],"tree":1,"mound":[Color("8d9a86"),Color("5f8f58")],"boulder":Color("8a9a93"),"creek":Color("c9d4b0"),"water":Color("6fc3b6"),"landmark":"pagoda","scrub":Color("4f8a52"),"sign":"BAMBOO VALLEY RESERVE","ice":false},
+  2:{"tint":Color("5fa86a"),"deck":Color("a98a58"),"grass":[Color("2f8a4a"),Color("3ea05a"),Color("1f6f43"),Color("58b86b"),Color("2a7d4a")],"flower":[Color("e8453c"),Color("f6a623"),Color("f2d94e"),Color("c24bd6")],"tree":0,"mound":[Color("6a5a3a"),Color("2f8a4a")],"boulder":Color("6b7a62"),"creek":Color("8c7a55"),"water":Color("4fb8b0"),"landmark":"kapok","scrub":Color("1f6f43"),"sign":"RAINFOREST RESERVE","ice":false},
+  3:{"tint":Color("dce9f0"),"deck":Color("d3e6ee"),"grass":[Color("bfe3f2"),Color("d7f0fa"),Color("a6d4e8"),Color("e8f8ff"),Color("9cc9de")],"flower":[],"tree":-1,"mound":[Color("eef8ff"),Color("d4ecf6")],"boulder":Color("9fb9c8"),"creek":Color("bfe0ee"),"water":Color("2e809c"),"landmark":"iceberg","scrub":Color("c5e0ec"),"sign":"POLAR COAST RESERVE","ice":true},
+  4:{"tint":Color("a7c773"),"deck":Color("b59a68"),"grass":[Color("7fa84a"),Color("96bb58"),Color("6c9a3e"),Color("a8c96a"),Color("8ab04f")],"flower":[Color("fff6d8"),Color("f4d35e"),Color("b784e0"),Color("e86a6a")],"tree":0,"mound":[Color("d9b95c"),Color("b99440")],"boulder":Color("8d8f8a"),"creek":Color("a9c6b0"),"water":Color("5aa6d6"),"landmark":"windmill","scrub":Color("5f8f3f"),"sign":"WOODLAND RESERVE","ice":false},
+@@ -4032,7 +4038,7 @@ const THEMES := {
+ # every dome has its own boardwalk: deck size, west/east arm waypoints, width, pier end, and gate style
+ const PATHS := {
+  0:{"deck":6.5,"w":[[-5.5,2.0],[-14.0,7.0],[-22.0,15.0]],"e":[[5.5,2.0],[14.0,4.0],[22.0,0.0],[27.0,-8.0]],"width":3.4,"pier_end":2.8,"gate":""},
+- 1:{"deck":5.5,"w":[[-5.5,2.0],[-11.0,8.0],[-16.0,3.0],[-22.0,9.0],[-25.0,17.0]],"e":[[5.5,2.0],[11.0,-3.0],[17.0,3.0],[23.0,-3.0],[27.0,6.0],[24.0,15.0]],"width":2.8,"pier_end":3.4,"gate":""},
++ 1:{"deck":5.5,"w":[[-5.5,2.0],[-11.0,8.0],[-16.0,3.0],[-22.0,9.0],[-25.0,17.0]],"e":[[5.5,2.0],[11.0,-3.0],[17.0,3.0],[23.0,-3.0],[27.0,6.0],[24.0,15.0]],"width":2.8,"pier_end":3.4,"gate":"torii","loop":[[26.0,22.0,2.9],[20.0,29.0,3.7],[10.0,33.0,4.6],[0.0,34.5,5.3],[-10.0,33.0,4.6],[-20.0,29.0,3.7],[-26.0,22.0,2.9]]},
+  2:{"deck":6.5,"w":[[-5.5,2.0],[-12.0,4.0],[-18.0,-1.0],[-24.0,-8.0],[-27.0,-17.0]],"e":[[5.5,2.0],[12.0,8.0],[18.0,18.0],[10.0,27.0]],"width":3.8,"pier_end":3.0,"gate":""},
+  3:{"deck":6.5,"w":[[-5.5,2.0],[-14.0,2.0],[-23.0,2.0]],"e":[[5.5,2.0],[14.0,2.0],[23.0,2.0],[28.0,12.0]],"width":4.4,"pier_end":4.0,"gate":""},
+  4:{"deck":6.0,"w":[[-5.5,2.0],[-12.0,8.0],[-14.0,16.0],[-9.0,24.0]],"e":[[5.5,2.0],[12.0,6.0],[18.0,2.0],[24.0,-6.0],[20.0,-14.0]],"width":3.0,"pier_end":2.4,"gate":""},
+@@ -4077,6 +4083,9 @@ func reserve_station(i: int,step: int) -> Vector3:
+  return local_point(i,spots[step%3].x,spots[step%3].y,AFRICA_Y)
+ 
+ func reserve_tree(parent: Node3D,i: int,p: Vector3,h: float) -> void:
++ if i==1:
++  asia.add_tree(p,h,1+int(absf(p.x*13.0+p.z*7.0))%97)
++  return
+  var style = int(THEMES[i].tree)
+  if style==-1:
+   shape(parent,g._blow(1.0),p+Vector3(0,h*0.45,0),Vector3(1.5,h*0.9,1.3),Color("b5d6e9"))
+@@ -4108,7 +4117,14 @@ func reserve_build(i: int,parent: Node3D) -> void:
+    beam(parent,local_point(i,q[0],q[1],0.1),qb-Vector3(0,0.25,0),0.35,Color("d9cfae"))
+    prev = Vector2(q[0],q[1])
+   var last = arm[arm.size()-1]
+-  disc(parent,local_point(i,last[0],last[1],AFRICA_Y-0.15),3.2,0.3,deck_col,true)
++  if PATHS[i].has("loop"):
++   joint_deck = true
++   disc(parent,local_point(i,last[0],last[1],AFRICA_Y-0.15),3.2,0.3,deck_col,true)
++   joint_deck = false
++  else:
++   disc(parent,local_point(i,last[0],last[1],AFRICA_Y-0.15),3.2,0.3,deck_col,true)
++ if PATHS[i].has("loop"):
++  reserve_loop(i,parent)
+  for z in [-26.0,-21.0,-16.0,-11.0]:
+   var zy = africa_ramp_y(z)
+   for sx in [-2.2,2.2]:
+@@ -4180,6 +4196,24 @@ func reserve_build(i: int,parent: Node3D) -> void:
+    africa_blob(parent,c,r,th.tint,200+slot_index)
+    reserve_zone_props(parent,i,-1,slot_index,c,r,away,side,back)
+ 
++func reserve_loop(i: int,parent: Node3D) -> void:
++ # A closed canopy walk: the east arm continues round the back of the dome, climbs to a lookout and comes back to the west arm.
++ var pw: float = PATHS[i].width
++ var deck_col: Color = THEMES[i].deck
++ var e: Array = PATHS[i].e
++ var w: Array = PATHS[i].w
++ var prev = local_point(i,e[e.size()-1][0],e[e.size()-1][1],AFRICA_Y)
++ for q in PATHS[i].loop:
++  var qb = local_point(i,q[0],q[1],q[2])
++  walkway(parent,prev,qb,pw)
++  beam(parent,local_point(i,q[0],q[1],0.1),qb-Vector3(0,0.25,0),0.35,Color("d9cfae"))
++  prev = qb
++ var wl = w[w.size()-1]
++ var wb = local_point(i,wl[0],wl[1],AFRICA_Y)
++ walkway(parent,prev,wb,pw)
++ var top = PATHS[i].loop[3]
++ text(parent,"CANOPY LOOKOUT",local_point(i,top[0],top[1],top[2]+3.0),Color("fff2bd"),40,60)
++
+ func path_clear(i: int,p: Vector3,margin: float) -> bool:
+  var forward = (dome_c(i)-C).normalized()
+  var right = Vector3(forward.z,0,-forward.x)
+@@ -4232,7 +4266,7 @@ func africa_zone_props(parent: Node3D,si: int,c: Vector3,r: float,away: Vector3,
+ func reserve_wow(i: int,parent: Node3D) -> void:
+  # landmark at the back, a winding stream from the lagoon to the far waterhole, glowing lanterns on the arms
+  var th = THEMES[i]
+- var bc = local_point(i,0,31.0)
++ var bc = local_point(i,0,27.0 if i==1 else 31.0)
+  match String(th.landmark):
+   "baobab":
+    shape(parent,g._bcone(2.6,3.4,13.0),bc+Vector3(0,6.5,0),Vector3.ONE,Color("8f7658"))
+@@ -4289,6 +4323,13 @@ func africa_path_segs(i: int) -> Array:
+   for q in arm:
+    segs.append([prev,Vector2(q[0],q[1])])
+    prev = Vector2(q[0],q[1])
++ if PATHS[i].has("loop"):
++  var lp = Vector2(PATHS[i].e[PATHS[i].e.size()-1][0],PATHS[i].e[PATHS[i].e.size()-1][1])
++  for q in PATHS[i].loop:
++   segs.append([lp,Vector2(q[0],q[1])])
++   lp = Vector2(q[0],q[1])
++  var wl = PATHS[i].w[PATHS[i].w.size()-1]
++  segs.append([lp,Vector2(wl[0],wl[1])])
+  return segs
+ 
+ func africa_path_dist(x: float,z: float,i: int) -> float:
+@@ -4419,7 +4460,13 @@ func africa_shots() -> void:
+   [pre+"-r-ramp-zebra",local_point(d,0,-18,africa_ramp_y(-18.0)+1.7),local_point(d,-12,-17,1.0)],
+   [pre+"-r-junction",local_point(d,7,-36,6.0),local_point(d,0,-30,0.2)],
+   [pre+"-r-junction2",local_point(d,-6,-27,5.0),local_point(d,0,-33,0.2)],
+-  [pre+"-r-east-end",local_point(d,27,-8,AFRICA_Y+1.7),local_point(d,12,-18,1.0)]]
++  [pre+"-r-east-end",local_point(d,27,-8,AFRICA_Y+1.7),local_point(d,12,-18,1.0)],
++  [pre+"-r-loop-high",local_point(d,0,-6,22.0),local_point(d,0,28,2.0)],
++  [pre+"-r-loop-east",local_point(d,24,17,AFRICA_Y+1.7),local_point(d,0,34.5,5.3)],
++  [pre+"-r-lookout",local_point(d,12,31,4.6+1.7),local_point(d,-8,32,5.0)],
++  [pre+"-r-ground",local_point(d,-6,-12,1.3),local_point(d,-6,-7,0.2)],
++  [pre+"-r-ground2",local_point(d,14,6,1.0),local_point(d,10,10,0.2)],
++  [pre+"-r-gate",local_point(d,0,-30,africa_ramp_y(-30.0)+1.7),local_point(d,0,-12,AFRICA_Y+1.0)]]
+  for sh in shots:
+   g.camera.global_position = sh[1]
+   g.camera.look_at(sh[2])

@@ -376,7 +376,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.66.0: daily login streak and daily goals (Menu > PLAY > Daily goals).")
+	_show_toast("Chit Chat City 0.67.0: Infected Paris. Brutes, runners, burning wrecks and a safe zone in outbreak missions.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -414,6 +414,9 @@ func _ready() -> void:
 		get_tree().quit()
 	elif "--paris-shots" in OS.get_cmdline_user_args():
 		await _paris_shots()
+		get_tree().quit()
+	elif "--infected-shots" in OS.get_cmdline_user_args():
+		await _infected_shots()
 		get_tree().quit()
 	elif "--world-bio-shots" in OS.get_cmdline_user_args():
 		await world_bio.screenshots()
@@ -10775,6 +10778,57 @@ func _save_shot(name: String) -> void:
 	DirAccess.make_dir_recursive_absolute(folder)
 	get_viewport().get_texture().get_image().save_png(folder.path_join(name+".png"))
 
+func _infected_shots() -> void:
+	# Developer-only (v0.67): the infected zone in the chosen world (HC_WORLD index, default 0). Never saves.
+	paris.dry = true
+	var wi := int(OS.get_environment("HC_WORLD")) if OS.get_environment("HC_WORLD") != "" else 0
+	var wp = paris.list[wi]
+	await wp.enter()
+	for i in 30:
+		await get_tree().physics_frame
+	var ob = wp.ob
+	ob.sealed = false
+	ob.start()
+	for i in 20:
+		await get_tree().process_frame
+	# let the red sky fade in
+	for i in 12:
+		ob.inf.tick(0.5)
+		await get_tree().process_frame
+	cam_lock = true
+	paused = true
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.hide()
+	var pp: Vector3 = ob.post_pos
+	camera.position = pp+Vector3(-4,3.2,-9)
+	camera.look_at(pp+Vector3(-14,1.5,0))
+	await _save_shot("inf-1-post")
+	var sp0: Vector3 = ob.surv[0][1]
+	camera.position = sp0+Vector3(7,4,10)
+	camera.look_at(sp0+Vector3(0,1.2,0))
+	await _save_shot("inf-2-survivor")
+	var vp0: Vector3 = ob.valves[1][1]
+	camera.position = vp0+Vector3(9,4.5,11)
+	camera.look_at(vp0+Vector3(-4,1.2,0))
+	await _save_shot("inf-3-valves-brute")
+	if ob.inf.fires.size() > 0:
+		var fp: Vector3 = (ob.inf.fires[0][0] as Node3D).global_position
+		camera.position = fp+Vector3(6,2.5,7)
+		camera.look_at(fp)
+		await _save_shot("inf-4-fire")
+	camera.position = pp+Vector3(0,60,0.01)
+	camera.look_at(pp)
+	await _save_shot("inf-5-top")
+	ob.left = ob.TIME*0.5
+	ob.inf.tick(0.1)
+	var pz: Vector3 = ob.zomb[ob.zomb.size()-1][0].global_position
+	camera.position = pz+Vector3(5,3,8)
+	camera.look_at(pz+Vector3(0,1.2,0))
+	await _save_shot("inf-6-runner")
+	print("INFECTED zombies=",ob.zomb.size()," fires=",ob.inf.fires.size()," surge=",ob.inf.surge)
+	ob.abort("")
+
 func _paris_shots() -> void:
 	# Developer-only: the world portal in the Harbor Dome, then every world (Paris, Tokyo, New York, Bangkok): arrival, landmark, cafe, viewpoint, aerial, return portal. Never saves.
 	paris.dry = true
@@ -12866,6 +12920,9 @@ func _apply_view() -> void:
 		world_env_res.fog_depth_begin = (110.0 if close_up else (130.0 if follow_view else 220.0))*(1.0-0.75*rain_amt)
 		world_env_res.fog_depth_end = lerpf(camera.far-4.0,minf(camera.far-4.0,170.0),rain_amt)
 		world_env_res.fog_density = 1.0
+		if infect_amt > 0.0:
+			world_env_res.fog_depth_begin *= 1.0-0.6*infect_amt
+			world_env_res.fog_depth_end = minf(world_env_res.fog_depth_end,lerpf(world_env_res.fog_depth_end,230.0,infect_amt))
 	if cockpit != null:
 		cockpit.visible = in_car_view
 	if car_model != null:
@@ -29640,6 +29697,8 @@ func _daynight_tick(delta: float) -> void:
 	day_tick_t = 0.0
 	_daynight_apply(false)
 
+var infect_amt := 0.0
+
 func _daynight_apply(force: bool) -> void:
 	var h := _game_hour()
 	if not force and absf(h-day_last_hour) < 0.004:
@@ -29666,6 +29725,15 @@ func _daynight_apply(force: bool) -> void:
 		amb = amb.lerp(Color("9aa6b4").lerp(amb,night_amt),rain_amt*0.7)
 		le *= 1.0-0.55*rain_amt
 		lc = lc.lerp(Color("dfe6ee"),rain_amt*0.6)
+	if infect_amt > 0.0:
+		# v0.67 infected zone: the sky turns sick red-brown, the light dims and the haze goes ashen.
+		top = top.lerp(Color("3a1c1a"),infect_amt*0.8)
+		hor = hor.lerp(Color("a5502f"),infect_amt*0.75)
+		fog = fog.lerp(Color("7a3d2a"),infect_amt*0.8)
+		amb = amb.lerp(Color("b27a68"),infect_amt*0.75)
+		amb_e *= 1.0+0.9*infect_amt
+		le *= 1.0-0.25*infect_amt
+		lc = lc.lerp(Color("ff9a6a"),infect_amt*0.6)
 	# Sun goes east to west between sunrise and sunset; the moon takes over at night.
 	var day := h >= SUNRISE_H and h <= SUNSET_H
 	var f := clampf((h-SUNRISE_H)/(SUNSET_H-SUNRISE_H),0.0,1.0)
@@ -29686,6 +29754,8 @@ func _daynight_apply(force: bool) -> void:
 		world_env_res.ambient_light_energy = amb_e
 		world_env_res.fog_light_color = fog
 		world_env_res.background_color = hor
+		world_env_res.adjustment_saturation = 1.12-0.3*infect_amt
+		world_env_res.adjustment_contrast = 1.12+0.14*infect_amt
 	haze_now = fog
 	if sky_shader_mat != null:
 		sky_shader_mat.set_shader_parameter("top_col",top)
@@ -29801,8 +29871,10 @@ func _smoke_v27() -> void:
 	car.velocity = Vector3.ZERO
 	car_speed = 0.0
 	safe_hist.clear()
-	for f in 20:
+	for f in 160:
 		await get_tree().physics_frame
+		if f >= 20 and not safe_hist.is_empty():
+			break
 	assert(not safe_hist.is_empty(),"Safe spots are recorded while driving")
 	var safe0: Vector3 = safe_hist[0][0]
 	print("SEA_TOW_FROM ",safe0)

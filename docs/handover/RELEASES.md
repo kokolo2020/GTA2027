@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.69.0 (code 137, 2026-11-27)
+Pets rebuilt (main.gd _build_pet): baby flying Mini Dragon (hovers, flapping wings), Robo Pup, Hover Cat, Star Fox; tails and wings animate (_pet_anim). Dev flag --pet-shots.
+
 ## 0.68.0 (code 136, 2026-11-26)
 Quest tracker (game/tracker.gd): QUESTS panel, arrow and beam in Paris, Tokyo, New York, Bangkok.
 

@@ -376,7 +376,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.68.0: Quest tracker. Tap QUESTS to see each quest and follow the arrow and light beam.")
+	_show_toast("Chit Chat City 0.69.0: New pets. A baby flying Mini Dragon, Robo Pup, Hover Cat and Star Fox, all rebuilt.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -414,6 +414,9 @@ func _ready() -> void:
 		get_tree().quit()
 	elif "--paris-shots" in OS.get_cmdline_user_args():
 		await _paris_shots()
+		get_tree().quit()
+	elif "--pet-shots" in OS.get_cmdline_user_args():
+		await _pet_shots()
 		get_tree().quit()
 	elif "--tracker-shots" in OS.get_cmdline_user_args():
 		await _tracker_shots()
@@ -10780,6 +10783,41 @@ func _save_shot(name: String) -> void:
 		folder = ProjectSettings.globalize_path("user://screenshots")
 	DirAccess.make_dir_recursive_absolute(folder)
 	get_viewport().get_texture().get_image().save_png(folder.path_join(name+".png"))
+
+func _pet_shots() -> void:
+	# Developer-only (v0.69): every pet close up, on the pet shop square. Never saves.
+	paris.dry = true
+	if crate_open:
+		crate_done = true
+		crate_open = false
+		if crate_root != null:
+			crate_root.hide()
+	paused = true
+	cam_lock = true
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.hide()
+	for i in 20:
+		await get_tree().process_frame
+	var base := Vector3(16.0,0.12,-3.0)
+	for k in range(1,PETS.size()):
+		var pn := Node3D.new()
+		pn.position = base
+		pn.rotation.y = 0.5
+		add_child(pn)
+		_build_pet(pn,k)
+		if k == 3:
+			pn.position.y += 0.75
+		for step in 2:
+			clock += 0.3
+			if pn.has_meta("anim"):
+				_pet_anim(pn,1.0)
+			camera.position = base+(Vector3(1.0,2.0,-3.0) if step == 0 else Vector3(3.2,1.9,-0.8))
+			camera.look_at(base+Vector3(0,0.6+(0.75 if k == 3 else 0.0),0))
+			for i in 6:
+				await get_tree().process_frame
+			await _save_shot("pet-%d-%d" % [k,step])
+		pn.queue_free()
 
 func _tracker_shots() -> void:
 	# Developer-only (v0.68): the quest tracker with the normal HUD visible, in the world HC_WORLD (default 0). Never saves.
@@ -26621,6 +26659,8 @@ func _build_market() -> void:
 		var pn := Node3D.new()
 		pn.position = spot+Vector3(0,0.3,0)
 		pn.rotation.y = PI/2.0
+		if k == 3:
+			pn.position.y += 0.7
 		root.add_child(pn)
 		_build_pet(pn,k)
 	_cull_person(root,110.0)
@@ -26687,48 +26727,179 @@ func _gear_piece(holder: Node3D, idx: int) -> void:
 				_fc_part(holder,_fc_cone(0.0,0.03,0.09),Vector3(sin(a)*0.11,0.78,cos(a)*0.11),_fc_glow(Color("ffd23f")))
 				_fc_part(holder,_fc_sphere(0.018),Vector3(sin(a)*0.118,0.7,cos(a)*0.118),_fc_glow([Color("ff3b5c"),Color("4fe3ff"),Color("6fe39b")][k % 3]))
 
-# Pets stand on the ground at the node, facing -Z.
+# Pets stand on the ground at the node, facing -Z. (v0.69: shaded, bigger, with eyes, tails and flapping wings.)
+func _pet_m(col: Color, rough := 0.55, metal := 0.0, emit := 0.0) -> StandardMaterial3D:
+	var key := "pet%s%.2f%.2f%.2f" % [col.to_html(false),rough,metal,emit]
+	if not fc_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = col
+		m.roughness = rough
+		m.metallic = metal
+		if emit > 0.0:
+			m.emission_enabled = true
+			m.emission = col
+			m.emission_energy_multiplier = emit
+		fc_mats[key] = m
+	return fc_mats[key]
+
+func _pet_eyes(node: Node3D, y: float, z: float, gap: float, r: float, iris: Color) -> void:
+	for sx in [-1.0,1.0]:
+		_fc_part(node,_fc_sphere(r),Vector3(sx*gap,y,z),_pet_m(Color("ffffff"),0.2))
+		_fc_part(node,_fc_sphere(r*0.62),Vector3(sx*gap*1.03,y-r*0.05,z-r*0.5),_pet_m(iris,0.3))
+		_fc_part(node,_fc_sphere(r*0.3),Vector3(sx*gap*1.03,y-r*0.05,z-r*0.9),_pet_m(Color("14101c"),0.2))
+		_fc_part(node,_fc_sphere(r*0.16),Vector3(sx*gap*0.9,y+r*0.3,z-r*0.85),_pet_m(Color("ffffff"),0.1,0.0,1.0))
+
 func _build_pet(node: Node3D, idx: int) -> void:
 	for c in node.get_children():
 		c.queue_free()
+	if node.has_meta("anim"):
+		node.remove_meta("anim")
+	var anim := {}
 	match idx:
 		1:
-			_fc_part(node,_fc_capsule(0.14,0.5),Vector3(0,0.32,0),_fc_pearl()).rotation.x = PI/2.0
-			_fc_part(node,_fc_sphere(0.13),Vector3(0,0.48,-0.24),_fc_pearl())
-			_fc_part(node,BoxMesh.new(),Vector3(0,0.5,-0.36),_fc_glow(Color("4fe3ff")),Vector3(0.16,0.04,0.02))
+			# Robo Pup: pearl body, visor face, wagging antenna tail, chrome legs with glowing joints.
+			var pearl := _fc_pearl()
+			var cy := Color("4fe3ff")
+			_fc_part(node,_fc_capsule(0.17,0.58),Vector3(0,0.34,0.02),pearl).rotation.x = PI/2.0
+			_fc_part(node,_fc_sphere(0.12),Vector3(0,0.3,-0.2),_pet_m(Color("9ee9ff"),0.3,0.2,0.4),Vector3(1.1,0.8,0.5))
+			_fc_part(node,_fc_torus(0.14,0.19),Vector3(0,0.46,-0.2),_fc_glow(cy)).rotation.x = PI/2.0
+			_fc_part(node,_fc_sphere(0.17),Vector3(0,0.58,-0.3),pearl)
+			_fc_part(node,_fc_sphere(0.15),Vector3(0,0.58,-0.36),_pet_m(Color("10243a"),0.1,0.6),Vector3(1.0,0.62,0.7))
 			for sx in [-1.0,1.0]:
-				_fc_part(node,BoxMesh.new(),Vector3(sx*0.07,0.62,-0.22),_fc_chrome(),Vector3(0.05,0.12,0.04))
-				for sz in [-0.14,0.14]:
-					_fc_part(node,_fc_cone(0.035,0.03,0.2),Vector3(sx*0.08,0.1,sz),_fc_chrome())
-			_fc_part(node,_fc_cone(0.015,0.03,0.22),Vector3(0,0.42,0.3),_fc_glow(Color("4fe3ff"))).rotation.x = -0.8
+				_fc_part(node,_fc_sphere(0.05),Vector3(sx*0.065,0.6,-0.47),_fc_glow(cy),Vector3(1,1.2,0.5))
+				var ear := _fc_part(node,_fc_cone(0.02,0.06,0.2),Vector3(sx*0.14,0.78,-0.26),pearl)
+				ear.rotation.z = -sx*0.4
+				_fc_part(node,_fc_sphere(0.03),Vector3(sx*0.19,0.88,-0.26),_fc_glow(cy))
+				for sz in [-0.15,0.17]:
+					_fc_part(node,_fc_capsule(0.045,0.26),Vector3(sx*0.1,0.14,sz),_fc_chrome())
+					_fc_part(node,_fc_sphere(0.06),Vector3(sx*0.1,0.03,sz-0.02),pearl,Vector3(1,0.6,1.3))
+					_fc_part(node,_fc_torus(0.03,0.055),Vector3(sx*0.1,0.2,sz),_fc_glow(cy)).rotation.x = PI/2.0
+			_fc_part(node,_pet_nose(),Vector3(0,0.55,-0.5),_pet_m(Color("ff5fd2"),0.3,0.0,1.0))
+			var tp := Node3D.new()
+			tp.position = Vector3(0,0.42,0.3)
+			node.add_child(tp)
+			_fc_part(tp,_fc_cone(0.012,0.03,0.3),Vector3(0,0.12,0.06),_fc_chrome()).rotation.x = -0.6
+			_fc_part(tp,_fc_sphere(0.045),Vector3(0,0.26,0.14),_fc_glow(cy))
+			anim["tail"] = tp
 		2:
-			_fc_part(node,_fc_sphere(0.18),Vector3(0,0.42,0),_fc_pearl(),Vector3(1,0.85,1.3))
-			_fc_part(node,_fc_sphere(0.13),Vector3(0,0.58,-0.2),_fc_pearl())
+			# Hover Cat: floating pearl cat on a glowing ring, big violet eyes, whiskers, swishing tail.
+			var pearl := _fc_pearl()
+			var vi := Color("c254ff")
+			_fc_part(node,_fc_sphere(0.2),Vector3(0,0.4,0.04),pearl,Vector3(1,0.9,1.3))
+			_fc_part(node,_fc_sphere(0.14),Vector3(0,0.38,-0.12),_pet_m(Color("ffe6fb"),0.4),Vector3(0.9,0.8,0.8))
+			_fc_part(node,_fc_sphere(0.17),Vector3(0,0.62,-0.2),pearl)
 			for sx in [-1.0,1.0]:
-				_fc_part(node,_fc_cone(0.0,0.05,0.1),Vector3(sx*0.07,0.72,-0.2),_fc_pearl())
-				_fc_part(node,_fc_sphere(0.022),Vector3(sx*0.05,0.6,-0.32),_fc_glow(Color("c254ff")))
-			_fc_part(node,_fc_torus(0.14,0.19),Vector3(0,0.18,0),_fc_glow(Color("c254ff")))
+				var e := _fc_part(node,_fc_cone(0.0,0.07,0.15),Vector3(sx*0.1,0.8,-0.18),pearl)
+				e.rotation.z = -sx*0.25
+				_fc_part(node,_fc_cone(0.0,0.04,0.09),Vector3(sx*0.1,0.79,-0.22),_fc_glow(Color("ff9be8")))
+				_fc_part(node,_fc_sphere(0.055),Vector3(sx*0.07,0.64,-0.34),_fc_glow(vi),Vector3(0.8,1.1,0.5))
+				_fc_part(node,_fc_sphere(0.02),Vector3(sx*0.07,0.65,-0.375),_pet_m(Color("ffffff"),0.1,0.0,1.0))
+				for k in 2:
+					var w := _fc_part(node,BoxMesh.new(),Vector3(sx*0.2,0.57+float(k)*0.025,-0.3),_fc_chrome(),Vector3(0.18,0.008,0.008))
+					w.rotation.y = sx*(0.2-float(k)*0.25)
+				_fc_part(node,_fc_sphere(0.07),Vector3(sx*0.1,0.27,-0.14),pearl)
+				_fc_part(node,_fc_sphere(0.075),Vector3(sx*0.11,0.26,0.2),pearl)
+			_fc_part(node,_fc_sphere(0.025),Vector3(0,0.58,-0.37),_fc_glow(Color("ff5fd2")))
+			var tp := Node3D.new()
+			tp.position = Vector3(0,0.4,0.28)
+			node.add_child(tp)
+			for k in 5:
+				var f := float(k)
+				_fc_part(tp,_fc_sphere(0.065-f*0.007),Vector3(0,0.05+f*0.07+f*f*0.012,0.08+f*0.07),pearl if k < 4 else _fc_glow(vi))
+			anim["tail"] = tp
+			_fc_part(node,_fc_torus(0.16,0.23),Vector3(0,0.12,0),_fc_glow(vi))
+			_fc_part(node,_fc_torus(0.07,0.12),Vector3(0,0.09,0),_fc_ghost(vi),Vector3(1,0.6,1))
 		3:
-			_fc_part(node,_fc_sphere(0.2),Vector3(0,0.38,0),_fc_glow(Color("3fbf6a")),Vector3(1,0.9,1.4))
-			_fc_part(node,_fc_sphere(0.14),Vector3(0,0.6,-0.28),_fc_glow(Color("4fd17a")))
-			_fc_part(node,_fc_cone(0.0,0.03,0.12),Vector3(0.05,0.75,-0.25),_fc_glow(Color("ffd23f")))
-			_fc_part(node,_fc_cone(0.0,0.03,0.12),Vector3(-0.05,0.75,-0.25),_fc_glow(Color("ffd23f")))
+			# Baby Mini Dragon: big head, huge shiny eyes, tiny round body, tucked feet, big flapping wings. It flies (hover set in _market_tick).
+			var g := Color("3fbf6a")
+			var gd := Color("2a9150")
+			var orange := Color("ff8a1c")
+			var cream := Color("ffe9a8")
+			var body := Node3D.new()
+			body.position = Vector3(0,0.1,0)
+			body.rotation.x = 0.18
+			node.add_child(body)
+			_fc_part(body,_fc_sphere(0.19),Vector3(0,0.4,0.06),_pet_m(g,0.45,0.05),Vector3(1,1,1.15))
+			_fc_part(body,_fc_sphere(0.15),Vector3(0,0.35,-0.05),_pet_m(cream,0.5),Vector3(0.85,0.9,1.0))
+			_fc_part(body,_fc_sphere(0.25),Vector3(0,0.68,-0.2),_pet_m(g,0.4,0.05))
+			_fc_part(body,_fc_sphere(0.1),Vector3(0,0.6,-0.4),_pet_m(Color("55d880"),0.4),Vector3(1.1,0.8,0.9))
+			_fc_part(body,_fc_sphere(0.012),Vector3(-0.035,0.62,-0.49),_pet_m(Color("1a3a28"),0.3))
+			_fc_part(body,_fc_sphere(0.012),Vector3(0.035,0.62,-0.49),_pet_m(Color("1a3a28"),0.3))
+			_fc_part(body,_fc_sphere(0.012),Vector3(0.0,0.57,-0.485),_pet_m(Color("1a3a28"),0.3),Vector3(3.0,0.5,0.5))
 			for sx in [-1.0,1.0]:
-				var wing := _fc_part(node,_fc_sphere(0.25),Vector3(sx*0.25,0.55,0.02),_fc_ghost(Color("ff8a1c")),Vector3(1.2,0.12,0.7))
-				wing.rotation.z = sx*0.45
-			_fc_part(node,_fc_cone(0.02,0.07,0.35),Vector3(0,0.32,0.32),_fc_glow(Color("3fbf6a"))).rotation.x = 1.2
-			_fc_part(node,_fc_sphere(0.05),Vector3(0,0.56,-0.42),_fc_glow(Color("ff3b5c")))
+				_fc_part(body,_fc_sphere(0.04),Vector3(sx*0.17,0.6,-0.32),_pet_m(Color("ff9db0"),0.6),Vector3(1,0.6,0.5))
+				var hn := _fc_part(body,_fc_cone(0.0,0.04,0.14),Vector3(sx*0.1,0.93,-0.2),_pet_m(cream,0.3,0.1))
+				hn.rotation.x = 0.4
+				hn.rotation.z = -sx*0.3
+				var fin := _fc_part(body,_fc_cone(0.0,0.03,0.12),Vector3(sx*0.24,0.72,-0.2),_pet_m(orange,0.5))
+				fin.rotation.z = -sx*1.2
+				var wp := Node3D.new()
+				wp.position = Vector3(sx*0.12,0.5,0.1)
+				body.add_child(wp)
+				_fc_part(wp,_fc_sphere(0.34),Vector3(sx*0.34,0.04,0.04),_pet_m(orange,0.55,0.0,0.25),Vector3(1.3,0.07,0.85))
+				_fc_part(wp,_fc_sphere(0.22),Vector3(sx*0.2,0.08,-0.08),_pet_m(Color("ffb347"),0.55,0.0,0.3),Vector3(1.0,0.07,0.6))
+				for k in 3:
+					var bone := _fc_part(wp,_fc_cone(0.01,0.02,0.46),Vector3(sx*0.25,0.085,-0.16+float(k)*0.15),_pet_m(gd,0.5))
+					bone.rotation.z = PI/2.0
+					bone.rotation.y = sx*(0.3-float(k)*0.3)
+				_fc_part(wp,_fc_sphere(0.045),Vector3(0,0.06,0),_pet_m(gd,0.5))
+				anim["w"+("l" if sx < 0.0 else "r")] = wp
+				for sz in [-0.08,0.2]:
+					_fc_part(body,_fc_capsule(0.05,0.15),Vector3(sx*0.1,0.22,sz),_pet_m(g,0.5)).rotation.x = 0.4
+					_fc_part(body,_fc_sphere(0.055),Vector3(sx*0.1,0.15,sz-0.03),_pet_m(gd,0.5),Vector3(1,0.7,1.3))
+			_pet_eyes(body,0.72,-0.38,0.1,0.075,Color("ffb21c"))
+			for k in 5:
+				var f := float(k)
+				_fc_part(body,_fc_cone(0.0,0.03-f*0.002,0.09),Vector3(0,0.55+0.1*sin(f*0.4)-f*0.01,-0.0+f*0.08),_pet_m(orange,0.5))
+			var tp := Node3D.new()
+			tp.position = Vector3(0,0.36,0.22)
+			body.add_child(tp)
+			for k in 4:
+				var f := float(k)
+				_fc_part(tp,_fc_sphere(0.085-f*0.018),Vector3(0,0.0-f*0.01,0.06+f*0.09),_pet_m(g,0.45))
+			_fc_part(tp,_fc_cone(0.0,0.055,0.13),Vector3(0,-0.02,0.5),_pet_m(orange,0.4,0.0,0.3)).rotation.x = PI/2.0
+			anim["tail"] = tp
 		4:
-			_fc_part(node,_fc_capsule(0.13,0.48),Vector3(0,0.32,0),_fc_glow(Color("ff8a1c"))).rotation.x = PI/2.0
-			_fc_part(node,_fc_sphere(0.13),Vector3(0,0.46,-0.24),_fc_glow(Color("ff9a3c")))
-			_fc_part(node,_fc_cone(0.0,0.05,0.14),Vector3(0,0.42,-0.38),_fc_pearl()).rotation.x = -PI/2.0
+			# Star Fox: orange fox with white chest and tail tip, tall dark-tipped ears, golden star on the forehead.
+			var o := Color("ff8a1c")
+			var w := Color("fff4e0")
+			var dk := Color("3a2418")
+			_fc_part(node,_fc_capsule(0.15,0.52),Vector3(0,0.34,0.02),_pet_m(o,0.6)).rotation.x = PI/2.0
+			_fc_part(node,_fc_sphere(0.13),Vector3(0,0.34,-0.18),_pet_m(w,0.7),Vector3(0.9,0.9,0.8))
+			_fc_part(node,_fc_sphere(0.15),Vector3(0,0.55,-0.27),_pet_m(o,0.6),Vector3(1.15,0.95,1.0))
+			_fc_part(node,_fc_cone(0.0,0.1,0.22),Vector3(0,0.5,-0.42),_pet_m(w,0.7)).rotation.x = -PI/2.0
+			_fc_part(node,_fc_sphere(0.03),Vector3(0,0.51,-0.54),_pet_m(dk,0.2,0.3))
 			for sx in [-1.0,1.0]:
-				_fc_part(node,_fc_cone(0.0,0.05,0.14),Vector3(sx*0.07,0.62,-0.22),_fc_glow(Color("ff8a1c")))
-				for sz in [-0.13,0.13]:
-					_fc_part(node,_fc_cone(0.03,0.025,0.2),Vector3(sx*0.07,0.1,sz),_fc_glow(Color("ff8a1c")))
-			var tail := _fc_part(node,_fc_capsule(0.08,0.4),Vector3(0,0.4,0.36),_fc_ghost(Color("ffe36b")))
-			tail.rotation.x = 0.9
-			_fc_part(node,_fc_sphere(0.05),Vector3(0,0.55,0.5),_fc_glow(Color("ffffff")))
+				_fc_part(node,_fc_cone(0.0,0.075,0.24),Vector3(sx*0.1,0.76,-0.24),_pet_m(o,0.6)).rotation.z = -sx*0.2
+				_fc_part(node,_fc_cone(0.0,0.045,0.14),Vector3(sx*0.105,0.82,-0.24),_pet_m(dk,0.6)).rotation.z = -sx*0.2
+				for sz in [-0.14,0.15]:
+					_fc_part(node,_fc_capsule(0.04,0.24),Vector3(sx*0.09,0.13,sz),_pet_m(o,0.6))
+					_fc_part(node,_fc_sphere(0.05),Vector3(sx*0.09,0.03,sz-0.02),_pet_m(dk,0.6),Vector3(1,0.6,1.3))
+			_pet_eyes(node,0.6,-0.37,0.065,0.04,Color("3fa9ff"))
+			_fc_part(node,_fc_sphere(0.04),Vector3(0,0.7,-0.34),_fc_glow(Color("ffd23f")),Vector3(1,1,0.4))
+			_fc_part(node,_fc_cone(0.0,0.02,0.07),Vector3(0,0.76,-0.34),_fc_glow(Color("ffd23f")))
+			var tp := Node3D.new()
+			tp.position = Vector3(0,0.38,0.3)
+			node.add_child(tp)
+			_fc_part(tp,_fc_sphere(0.14),Vector3(0,0.12,0.18),_pet_m(o,0.7),Vector3(0.9,0.9,1.9)).rotation.x = -0.5
+			_fc_part(tp,_fc_sphere(0.1),Vector3(0,0.3,0.4),_pet_m(w,0.7),Vector3(0.9,0.9,1.2))
+			anim["tail"] = tp
+	if not anim.is_empty():
+		node.set_meta("anim",anim)
+
+func _pet_nose() -> SphereMesh:
+	return _fc_sphere(0.035)
+
+func _pet_anim(node: Node3D, moving: float) -> void:
+	var a: Dictionary = node.get_meta("anim")
+	var wl = a.get("wl")
+	if wl != null:
+		var fl := sin(clock*(12.0 if moving > 0.3 else 9.0))*0.7
+		(wl as Node3D).rotation.z = -(0.2+fl)
+		(a["wr"] as Node3D).rotation.z = 0.2+fl
+	var tl = a.get("tail")
+	if tl != null:
+		(tl as Node3D).rotation.y = sin(clock*(7.0 if moving > 0.3 else 3.0))*0.4
 
 func _market_apply() -> void:
 	# Wear the gear and bring the pet (rebuilt only when they change).
@@ -26773,8 +26944,10 @@ func _market_tick(delta: float) -> void:
 			pet_node.position = pet_node.position.lerp(want,minf(1.0,delta*(3.0+far*0.3)))
 		if far > 0.15:
 			pet_node.rotation.y = lerp_angle(pet_node.rotation.y,atan2(-d.x,-d.y),minf(1.0,delta*8.0))
-		pet_node.position.y = want.y+absf(sin(clock*9.0))*0.08*clampf(far,0.0,1.0)+(sin(clock*2.0)*0.05 if pet_on == 2 or pet_on == 3 else 0.0)+(0.25 if pet_on == 3 else 0.0)
+		pet_node.position.y = want.y+absf(sin(clock*9.0))*0.08*clampf(far,0.0,1.0)+(sin(clock*2.0)*0.05 if pet_on == 2 else 0.0)+(0.75+sin(clock*2.6)*0.08 if pet_on == 3 else 0.0)+(0.2 if pet_on == 2 else 0.0)
 		pet_node.visible = not eye_view
+		if pet_node.has_meta("anim"):
+			_pet_anim(pet_node,far)
 
 func _build_market_panel(root: Control) -> void:
 	market_panel = PanelContainer.new()

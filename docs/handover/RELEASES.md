@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.70.0 (code 138, 2026-11-27)
+Sky view (View button: walk_view 4 / view_mode 3): high bay camera, far 3200, fog 700+. game/horizon.gd adds sea, mountains, boats only in Sky view. _sky_grade lifts photo grass to green in Sky view. Sunset DAY_KEYS made purple-blue. Dev flag --sky-shots.
+
 ## 0.69.0 (code 137, 2026-11-27)
 Pets rebuilt (main.gd _build_pet): baby flying Mini Dragon (hovers, flapping wings), Robo Pup, Hover Cat, Star Fox; tails and wings animate (_pet_anim). Dev flag --pet-shots.
 

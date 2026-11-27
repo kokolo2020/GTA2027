@@ -331,6 +331,7 @@ func _ready() -> void:
 	_build_commons()
 	if not OS.get_environment("HC_SKIP").contains("biosphere"):
 		_build_biosphere()
+	horizon = Horizon.new(self)
 	paris = Worlds.new(self)
 	explore = Explore.new(self)
 	daily = Daily.new(self)
@@ -376,7 +377,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.69.0: New pets. A baby flying Mini Dragon, Robo Pup, Hover Cat and Star Fox, all rebuilt.")
+	_show_toast("Chit Chat City 0.70.0: Sky view. Tap View until it says Sky to see the whole bay city from above.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -414,6 +415,9 @@ func _ready() -> void:
 		get_tree().quit()
 	elif "--paris-shots" in OS.get_cmdline_user_args():
 		await _paris_shots()
+		get_tree().quit()
+	elif "--sky-shots" in OS.get_cmdline_user_args():
+		await _sky_shots()
 		get_tree().quit()
 	elif "--pet-shots" in OS.get_cmdline_user_args():
 		await _pet_shots()
@@ -7941,6 +7945,8 @@ func _physics_process(delta: float) -> void:
 	_sky_tick(delta)
 	_ap_tick(delta)
 	_sea_tick(delta)
+	if horizon != null:
+		horizon.tick(delta)
 	if player.position.y < -5 or (car.position.y < -5 and not car_gone):
 		_rescue()
 	if driving:
@@ -7967,7 +7973,7 @@ func _physics_process(delta: float) -> void:
 		find_nodes[index].position.y = 1.7+sin(clock*2+index)*0.25
 	marker.position = _destination()+Vector3(0,0.25+sin(clock*2)*0.12,0)
 	marker.rotation.y += delta*0.4
-	if (view_mode == 2 and driving) != in_car_view or (walk_view == 3 and not driving) != eye_view or (walk_view == 0 and not driving) != follow_view or (car_model != null and car_model.visible == in_car_view and not cs_interior):
+	if (view_mode == 2 and driving) != in_car_view or (walk_view == 3 and not driving) != eye_view or ((view_mode == 3) if driving else (walk_view == 4)) != sky_cam or (walk_view == 0 and not driving) != follow_view or (car_model != null and car_model.visible == in_car_view and not cs_interior):
 		_apply_view()
 	_follow_camera(delta*(5.0+absf(car_speed)*0.15))
 	_minimap_tick()
@@ -7994,6 +8000,12 @@ func _follow_camera(weight: float) -> void:
 		return
 	if sky_riding and not sky_trains.is_empty():
 		_sky_camera(weight)
+		return
+	if sky_cam and seat_id < 0:
+		# Sky view: high and behind, looking down on the city and the bay around you.
+		var st: Vector3 = car.position if driving else player.position
+		camera.position = camera.position.lerp(st+Vector3(0,190.0,250.0),minf(weight,1.0))
+		camera.look_at(st+Vector3(0,0,-40.0))
 		return
 	if view_mode == 2 and driving:
 		# Driver's eye, left seat, looking slightly down over the bonnet.
@@ -10784,6 +10796,35 @@ func _save_shot(name: String) -> void:
 	DirAccess.make_dir_recursive_absolute(folder)
 	get_viewport().get_texture().get_image().save_png(folder.path_join(name+".png"))
 
+func _sky_shots() -> void:
+	# Developer-only (v0.70): the Sky view from several places at dusk. Never saves.
+	paris.dry = true
+	if crate_open:
+		crate_done = true
+		crate_open = false
+		if crate_root != null:
+			crate_root.hide()
+	paused = false
+	driving = false
+	player.show()
+	walk_view = 4
+	_apply_view()
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.hide()
+	var hr := float(OS.get_environment("HC_HOUR")) if OS.get_environment("HC_HOUR") != "" else 18.6
+	day_hour_override = hr
+	_daynight_apply(true)
+	var spots := [["sky-1-centre",Vector3(0,0.9,60)],["sky-2-north",Vector3(0,0.9,-260)],["sky-3-east",Vector3(300,0.9,100)],["sky-4-west",Vector3(-300,0.9,40)]]
+	for sp in spots:
+		player.position = sp[1]
+		_apply_view()
+		_follow_camera(1.0)
+		for i in 50:
+			await get_tree().physics_frame
+			_follow_camera(1.0)
+		await _save_shot(String(sp[0]))
+
 func _pet_shots() -> void:
 	# Developer-only (v0.69): every pet close up, on the pet shop square. Never saves.
 	paris.dry = true
@@ -12556,7 +12597,7 @@ const MAP_SIZE := 1860.0
 const MAP_PATH := "res://map/world_map.png"
 const MINI_SIZE := 190.0
 const MINI_SPAN := 150.0
-const VIEW_NAMES := ["Far","Close","In-car"]
+const VIEW_NAMES := ["Far","Close","In-car","Sky"]
 const MAP_LABELS := [["OLD CITY",Vector2(0,0)],["RIDGE",Vector2(105,12)],["BAY ROAD",Vector2(-126,22)],["NORTH HIGHWAY",Vector2(0,-130)],["MAPLE SUBURBS",Vector2(0,-228)],["AIRFIELD",Vector2(62,-380)],["MIDTOWN",Vector2(-60,-410)],["SUMMIT PASS",Vector2(170,-290)],["SKYLINE DISTRICT",Vector2(-400,-262)],["MARINA HEIGHTS",Vector2(0,175)],["HARBOR DOME",Vector2(210,32)],["HARBOR COMMONS",Vector2(-93,-36)],["WORLD BIOSPHERE",Vector2(BIO_C.x,BIO_C.z)],["GALLERIA",Vector2(-330,-600)],["SKY GARDEN",Vector2(-402,-636)],["CIVIC CENTER",Vector2(-150,60)],["HARBOR RACEWAY",Vector2(420,-230)],["SUNSET BEACH",Vector2(440,200)],["WESTSIDE",Vector2(-355,150)],["GRAND CENTRAL",Vector2(-380,-340)]]
 const MINIMAP_SHADER := """
 shader_type canvas_item;
@@ -12676,7 +12717,11 @@ var in_car_view := false
 var eye_view := false
 var look_pitch := 0.0
 # v0.22: on foot the camera has its own views; Follow (behind the shoulder) is the default.
-const WALK_VIEWS := ["Follow","Far","Close","Eye"]
+const WALK_VIEWS := ["Follow","Far","Close","Eye","Sky"]
+const Horizon := preload("res://horizon.gd")
+var horizon
+var sky_graded := false
+var sky_cam := false   # v0.70: the Sky view, a high bay-wide camera that sees the whole city
 const FOLLOW_DIST := 4.6
 var walk_view := 0
 var follow_view := false
@@ -12954,6 +12999,21 @@ func _build_view_controls(root: Control) -> void:
 	_cull_person(cockpit,1000.0)
 	cockpit.hide()
 
+func _sky_grade(on: bool) -> void:
+	# From high up the photo grass averages to brown, so the Sky view lifts it toward green (and puts it back after).
+	sky_graded = on
+	for key in surf_mats:
+		var m: Material = surf_mats[key]
+		if m is StandardMaterial3D and String(key) in SURF_GRASS:
+			var sm := m as StandardMaterial3D
+			if on:
+				if not sm.has_meta("og"):
+					sm.set_meta("og",sm.albedo_color)
+				var og: Color = sm.get_meta("og")
+				sm.albedo_color = Color(og.r*0.72,minf(og.g*1.18,1.4),og.b*0.62)
+			elif sm.has_meta("og"):
+				sm.albedo_color = sm.get_meta("og")
+
 func _cycle_view() -> void:
 	# Driving and walking remember their own view: the button changes the one you are using now.
 	if driving:
@@ -12967,6 +13027,9 @@ func _cycle_view() -> void:
 func _apply_view() -> void:
 	in_car_view = view_mode == 2 and driving
 	eye_view = walk_view == 3 and not driving
+	sky_cam = (view_mode == 3) if driving else (walk_view == 4)
+	if sky_cam != sky_graded:
+		_sky_grade(sky_cam)
 	var was_follow := follow_view
 	follow_view = walk_view == 0 and not driving
 	if follow_view and not was_follow:
@@ -12978,8 +13041,8 @@ func _apply_view() -> void:
 	var close_up := in_car_view or eye_view
 	if view_button != null:
 		view_button.text = "View: %s" % (VIEW_NAMES[view_mode] if driving else WALK_VIEWS[walk_view])
-	camera.fov = 72.0 if close_up else (64.0 if follow_view else 55.0)
-	camera.far = 150.0 if close_up else (200.0 if follow_view else 340.0)
+	camera.fov = 72.0 if close_up else (64.0 if follow_view else (60.0 if sky_cam else 55.0))
+	camera.far = 150.0 if close_up else (200.0 if follow_view else (3200.0 if sky_cam else 340.0))
 	camera.near = 0.05
 	if not player_person.is_empty():
 		(player_person["root"] as Node3D).visible = not eye_view
@@ -12992,7 +13055,7 @@ func _apply_view() -> void:
 		world_env_res.fog_enabled = true
 		world_env_res.fog_mode = Environment.FOG_MODE_DEPTH
 		world_env_res.fog_light_color = haze_now
-		world_env_res.fog_depth_begin = (110.0 if close_up else (130.0 if follow_view else 220.0))*(1.0-0.75*rain_amt)
+		world_env_res.fog_depth_begin = (110.0 if close_up else (130.0 if follow_view else (700.0 if sky_cam else 220.0)))*(1.0-0.75*rain_amt)
 		world_env_res.fog_depth_end = lerpf(camera.far-4.0,minf(camera.far-4.0,170.0),rain_amt)
 		world_env_res.fog_density = 1.0
 		if infect_amt > 0.0:
@@ -13162,7 +13225,9 @@ func _smoke_views() -> void:
 	assert(Vector2(car.velocity.x,car.velocity.z).dot(Vector2(-car.global_basis.z.x,-car.global_basis.z.z)) < -0.3,"Reverse really moves backwards")
 	stick = Vector2.ZERO
 	_cycle_view()
-	assert(view_mode == 0 and not in_car_view and not cockpit.visible and (car_model == null or car_model.visible),"Back to the far view")
+	assert(view_mode == 3 and sky_cam and not in_car_view and not cockpit.visible and camera.far > 1000.0,"v0.70: after In-car comes the Sky view")
+	_cycle_view()
+	assert(view_mode == 0 and not sky_cam and not in_car_view and not cockpit.visible and camera.far < 400.0 and (car_model == null or car_model.visible),"Back to the far view")
 	driving = was[0]
 	car.position = was[1]
 	car.rotation = was[2]
@@ -13500,6 +13565,8 @@ func _smoke_stadium_eye() -> void:
 	var yaw := player.rotation.y
 	_look(Vector2(100,-500))
 	assert(player.rotation.y < yaw and look_pitch > 0.9 and look_pitch <= 0.95,"Drag turns and looks up (clamped)")
+	_cycle_view()
+	assert(not eye_view and sky_cam and walk_view == 4,"v0.70: after Eye comes the Sky view")
 	_cycle_view()
 	assert(not eye_view and follow_view and (player_person["root"] as Node3D).visible,"Back to the follow view")
 	look_pitch = 0.0
@@ -18776,8 +18843,8 @@ func _smoke_follow_call() -> void:
 	driving = false
 	player.show()
 	player.get_child(0).disabled = false
-	# Walking has its own views; Follow comes after Eye and is the default.
-	walk_view = 3
+	# Walking has its own views; Follow comes after Sky (which comes after Eye) and is the default.
+	walk_view = 4
 	_cycle_view()
 	assert(follow_view and walk_view == 0 and view_button.text == "View: Follow","Follow view on foot")
 	player.position = Vector3(4.6,0.9,5.2)
@@ -29674,9 +29741,9 @@ const DAY_KEYS := [
 	[6.6,"3b6db8","f5c39a","5d7f7a","c0c8d8",0.52,"ffd2a0",0.8,"d9c7b5",0.0,0.3],
 	[8.0,"3d7cc9","c6e1ea","6d8f86","9db5dc",0.4,"ffe0b0",1.08,"c6e1ea",0.0,0.0],
 	[16.8,"3d7cc9","c6e1ea","6d8f86","9db5dc",0.4,"ffe0b0",1.08,"c6e1ea",0.0,0.0],
-	[18.0,"3a62a8","f2b27a","6d7f80","d8c0b0",0.52,"ffb066",0.85,"e8b590",0.0,0.25],
-	[18.8,"283c78","ff8a55","3a3a48","a88a98",0.48,"ff7a40",0.45,"c88070",0.15,0.9],
-	[19.6,"141d42","6a4a78","1a1d2c","6a6a9a",0.48,"9fb0ff",0.22,"3a3558",0.6,1.0],
+	[18.0,"3a5aa8","f6b07c","6d7f90","c8b8c8",0.52,"ffb066",0.85,"e0a890",0.0,0.25],
+	[18.8,"2c2f78","ff7f6a","3a3a58","8a84c4",0.58,"ff9a5a",0.55,"a4708c",0.15,0.9],
+	[19.6,"141d42","6a4a88","1a1d2c","6a6a9a",0.48,"9fb0ff",0.22,"3a3558",0.6,1.0],
 	[21.0,"060b1d","1b2645","0c1220","56679a",0.5,"a9bcff",0.24,"141c33",1.0,1.0],
 	[24.0,"060b1d","1b2645","0c1220","56679a",0.5,"a9bcff",0.24,"141c33",1.0,1.0],
 ]

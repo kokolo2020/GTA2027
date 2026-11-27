@@ -42,3 +42,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.67.0 | | | | Claude-built (infected zones) |
 | 0.68.0 | | | | Claude-built (quest tracker) |
 | 0.69.0 | | | | Claude-built (new pets) |
+| 0.70.0 | | | | Claude-built (sky view) |

@@ -377,7 +377,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.70.0: Sky view. Tap View until it says Sky to see the whole bay city from above.")
+	_show_toast("Chit Chat City 0.71.0: the island south of downtown is now a Fruit Garden. Try the Sky view to see it.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -2958,6 +2958,8 @@ func _build_marina() -> void:
 	_scatter("res://models/lamp.glb",lamps_b,1.0,1.0,PI)
 	for i in MARINA.size():
 		marina_nodes.append(_north_token(MARINA[i]["pos"],MARINA[i]["name"]))
+	# v0.71: the island around the shops is a fruit garden (garden.gd).
+	garden = Garden.new(self)
 
 # Avatar and shop UI.
 func _set_hat(index: int) -> void:
@@ -10815,7 +10817,7 @@ func _sky_shots() -> void:
 	var hr := float(OS.get_environment("HC_HOUR")) if OS.get_environment("HC_HOUR") != "" else 18.6
 	day_hour_override = hr
 	_daynight_apply(true)
-	var spots := [["sky-1-centre",Vector3(0,0.9,60)],["sky-2-north",Vector3(0,0.9,-260)],["sky-3-east",Vector3(300,0.9,100)],["sky-4-west",Vector3(-300,0.9,40)]]
+	var spots := [["sky-5-garden",Vector3(0,0.9,-20)],["sky-6-garden-close",Vector3(0,0.9,200)],["sky-1-centre",Vector3(0,0.9,60)],["sky-2-north",Vector3(0,0.9,-260)],["sky-3-east",Vector3(300,0.9,100)],["sky-4-west",Vector3(-300,0.9,40)]]
 	for sp in spots:
 		player.position = sp[1]
 		_apply_view()
@@ -12719,6 +12721,8 @@ var look_pitch := 0.0
 # v0.22: on foot the camera has its own views; Follow (behind the shoulder) is the default.
 const WALK_VIEWS := ["Follow","Far","Close","Eye","Sky"]
 const Horizon := preload("res://horizon.gd")
+const Garden := preload("res://garden.gd")
+var garden
 var horizon
 var sky_graded := false
 var sky_cam := false   # v0.70: the Sky view, a high bay-wide camera that sees the whole city

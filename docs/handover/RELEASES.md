@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.71.0 (code 139, 2026-11-27)
+Fruit Garden: game/garden.gd (new, MultiMesh orchards, no collision) covers the Marina Heights island with 13 fruit blocks, paths, crates, signs; the three shops, fountain, yacht club, boardwalk and lighthouse are kept. Built at the end of _build_marina. Dev: --sky-shots now includes garden spots.
+
 ## 0.70.0 (code 138, 2026-11-27)
 Sky view (View button: walk_view 4 / view_mode 3): high bay camera, far 3200, fog 700+. game/horizon.gd adds sea, mountains, boats only in Sky view. _sky_grade lifts photo grass to green in Sky view. Sunset DAY_KEYS made purple-blue. Dev flag --sky-shots.
 

@@ -23,15 +23,22 @@ const BLAST_R := 16.0        # every infected this close to you is cured by the 
 const MINION := [3.3,60.0,1.2,6.0]   # the boss's small minions: speed, notice range, bite reach, damage per second (weak)
 const MINION_MAX := 10
 const MINION_WAVE := 4
-const BOSS_NAMES := {"paris":"THE IRON GHOUL","tokyo":"THE NEON ONI","newyork":"THE TIMES TITAN","bangkok":"THE RIVER GIANT"}
+const BossModels := preload("res://boss_models.gd")
+const BOSS_NAMES := {"paris":"THE EMBER DRAGON","tokyo":"THE NEON SERPENT","newyork":"THE STONE TITAN","bangkok":"THE RIVER KRAKEN"}
+# v0.77: each boss is a different creature with its own attacks. atk: the attacks it cycles through
+#   slam = a red ring under you; meteor = fireballs around you; breath = a cone of fire from its mouth; line = a row of blasts
+#   from it through you; coil = a ring round you (stand in the middle); zigzag = a weaving trail of blasts; stomp = a ring
+#   round it; rockfall = rocks over the whole lair; quake = two rings round it; cross = a plus round you;
+#   tentacles = a ring of tentacles round you; wave = a wall of water sweeping across.
+const ATK_NAMES := {"meteor":"METEOR RAIN","breath":"FIRE BREATH","line":"VENOM STRIKE","coil":"CONSTRICT","zigzag":"VENOM SPIT","stomp":"ROCK STOMP","rockfall":"ROCKFALL","quake":"EARTHQUAKE","cross":"RIVER CROSS","tentacles":"TENTACLE GRAB","wave":"TIDAL WAVE"}
 # v0.76: every city's boss is its own monster: look, size, health, speed, signature attack, minions and music pitch.
 #   sig: the second attack. meteor = five fireballs around you; line = a row of blasts from the boss straight through you;
 #   stomp = everything near the boss explodes (run away from it); cross = a plus-shaped pattern centred on you.
 const BOSSES := {
-	"paris":{"body":"3a1010","skin":"6a8a50","glow":"ff3a1a","fire":"ff7a1f","scale":4.2,"hp":12000.0,"pace":1.0,"sig":"meteor","sig_name":"METEOR RAIN","minion":"a01818","wave":4,"pitch":1.0,"deco":"horns"},
-	"tokyo":{"body":"2a0f4a","skin":"ff5ad0","glow":"3af0ff","fire":"ff4ae0","scale":3.7,"hp":10000.0,"pace":1.6,"sig":"line","sig_name":"NEON RAIL","minion":"d020c0","wave":4,"pitch":1.1,"deco":"oni"},
-	"newyork":{"body":"1c1c26","skin":"c9a23a","glow":"ffd23a","fire":"ffe27a","scale":5.0,"hp":15000.0,"pace":0.65,"sig":"stomp","sig_name":"TITAN STOMP","minion":"b08a1a","wave":3,"pitch":0.9,"deco":"crown"},
-	"bangkok":{"body":"0f3a3a","skin":"3ad0a0","glow":"3affc0","fire":"3ad0ff","scale":4.4,"hp":12000.0,"pace":1.0,"sig":"cross","sig_name":"RIVER CROSS","minion":"1a9a80","wave":6,"pitch":1.0,"deco":"fins"},
+	"paris":{"body":"3a1010","skin":"6a8a50","glow":"ff3a1a","fire":"ff7a1f","scale":3.6,"hp":12000.0,"pace":1.0,"sig":"meteor","sig_name":"METEOR RAIN","minion":"a01818","wave":4,"pitch":1.0,"deco":"horns","model":"dragon","hover":0.55,"atk":["breath","meteor","slam","breath"],"anim":1.0},
+	"tokyo":{"body":"2a0f4a","skin":"ff5ad0","glow":"3af0ff","fire":"ff4ae0","scale":3.9,"hp":10000.0,"pace":1.6,"sig":"line","sig_name":"VENOM STRIKE","minion":"d020c0","wave":4,"pitch":1.1,"deco":"oni","model":"serpent","hover":0.0,"atk":["line","coil","zigzag","line"],"anim":1.5},
+	"newyork":{"body":"1c1c26","skin":"c9a23a","glow":"ffd23a","fire":"ffe27a","scale":4.6,"hp":15000.0,"pace":0.65,"sig":"stomp","sig_name":"ROCK STOMP","minion":"b08a1a","wave":3,"pitch":0.9,"deco":"crown","model":"golem","hover":0.0,"atk":["slam","stomp","rockfall","quake"],"anim":0.7},
+	"bangkok":{"body":"0f3a3a","skin":"3ad0a0","glow":"3affc0","fire":"3ad0ff","scale":4.0,"hp":12000.0,"pace":0.75,"sig":"cross","sig_name":"RIVER CROSS","minion":"1a9a80","wave":6,"pitch":1.0,"deco":"fins","model":"kraken","hover":0.0,"atk":["cross","tentacles","wave"],"anim":1.0},
 }
 const WIN_PAY := 100000      # every player in the fight, the first win in each city each day
 const WIN_AGAIN := 10000     # later wins in the same city on the same day
@@ -98,7 +105,10 @@ var cast_len := 0.0
 var cast_hold := -1.0        # tests only: freeze the cast at this moment
 var orb: MeshInstance3D
 var b_minion := 6.0          # seconds until the boss throws out its next wave of minions
-var b_kind := 0              # which attack is coming: 0 ground slam (one big ring on you), 1 meteor rain (five small rings)
+var b_kind := 0              # (v0.77: unused) which attack is coming
+var b_atk := 0               # v0.77: index into this boss's attack list
+var b_pat := "slam"          # v0.77: the attack that is on now
+var models                   # v0.77: boss_models.gd
 var b_mets: Array = []       # meteor rain: [ring, fireball, Vector3 local target]
 var flash: ColorRect
 var title_lbl: Label
@@ -376,10 +386,18 @@ func make_sleeper() -> void:
 	var a := arena()
 	var bd := boss()
 	var bs: float = bd["scale"]
-	sleeper = o.figure(props,Vector3(a.x,-1.17*bs,a.y),Color(String(bd["body"])),Color(String(bd["skin"])),true)
+	sleeper = creature(String(bd["model"]),Vector3(a.x,-float(BossModels.SINK[String(bd["model"])])*bs,a.y))
 	sleeper.scale = Vector3(bs,bs,bs)
 	sleeper.rotation.y = atan2(w.RET.x-a.x,w.RET.y-a.y)
-	boss_dress(sleeper)
+
+func creature(kind: String, pos: Vector3) -> Node3D:
+	# v0.77: the boss's own shape (boss_models.gd).
+	if models == null:
+		models = BossModels.new(g)
+	var n: Node3D = models.build(kind)
+	n.position = pos
+	props.add_child(n)
+	return n
 
 func boss_dress(n: Node3D) -> void:
 	# Burning eyes and a glowing chest for all of them; the rest is each boss's own.
@@ -1335,7 +1353,7 @@ func boss_start(start_hp: float, elapsed: float) -> void:
 	var bd := boss()
 	var bs: float = bd["scale"]
 	var bglow := Color(String(bd["glow"]))
-	b_node = o.figure(props,Vector3(a.x,-1.17*bs,a.y),Color(String(bd["body"])),Color(String(bd["skin"])),true)
+	b_node = creature(String(bd["model"]),Vector3(a.x,-float(BossModels.SINK[String(bd["model"])])*bs,a.y))
 	b_node.scale = Vector3(bs,bs,bs)
 	b_node.rotation.y = atan2(w.RET.x-a.x,w.RET.y-a.y)
 	b_rise = 0.0 if elapsed < 1.0 else 9.0
@@ -1351,8 +1369,7 @@ func boss_start(start_hp: float, elapsed: float) -> void:
 		b_fire.append(fl)
 	show_title(boss_name(),"HAS AWAKENED")
 	music_play()
-	boss_dress(b_node)
-	var lb: Label3D = w.label(b_node,boss_name(),Vector3(0,2.6,0),bglow.lightened(0.2),30)
+	var lb: Label3D = w.label(b_node,boss_name(),Vector3(0,3.4,0),bglow.lightened(0.2),30)
 	lb.visibility_range_end = 400.0
 	b_light = OmniLight3D.new()
 	b_light.light_color = bglow
@@ -1372,6 +1389,8 @@ func boss_start(start_hp: float, elapsed: float) -> void:
 	props.add_child(b_ring)
 	b_mets.clear()
 	b_kind = 0
+	b_atk = 0
+	b_pat = "slam"
 	for k in 9:
 		var mr := MeshInstance3D.new()
 		mr.mesh = g._fc_torus(2.3,2.7)
@@ -1426,7 +1445,7 @@ func boss_tick(delta: float, p: Vector3) -> void:
 	b_rise += delta
 	if is_instance_valid(b_node) and b_rise < 2.4:
 		# Climbing out of the ground: the earth shakes, it does not walk yet.
-		b_node.position.y = lerpf(-1.17*float(boss()["scale"]),0.0,ease(b_rise/2.4,0.5))
+		b_node.position.y = lerpf(-float(BossModels.SINK[String(boss()["model"])])*float(boss()["scale"]),float(boss()["hover"])*float(boss()["scale"]),ease(b_rise/2.4,0.5))
 		shake = maxf(shake,0.5)
 	elif is_instance_valid(b_node):
 		var k := b_t*(0.5 if enraged else 0.32)*float(boss()["pace"])
@@ -1434,7 +1453,9 @@ func boss_tick(delta: float, p: Vector3) -> void:
 		var mv := np-Vector2(b_node.position.x,b_node.position.z)
 		b_node.position.x = np.x
 		b_node.position.z = np.y
-		b_node.position.y = 0.25*absf(sin(b_t*2.2))
+		var rest := float(boss()["hover"])*float(boss()["scale"])
+		b_node.position.y = rest+(0.5*sin(b_t*1.7) if rest > 0.1 else 0.0)
+		models.animate(b_node,b_t,float(boss()["anim"])*(1.4 if enraged else 1.0))
 		if mv.length() > 0.001:
 			b_node.rotation.y = lerp_angle(b_node.rotation.y,atan2(mv.x,mv.y),minf(1.0,3.0*delta))
 		if is_instance_valid(b_light):
@@ -1448,14 +1469,16 @@ func boss_tick(delta: float, p: Vector3) -> void:
 	if not b_slam_live and b_slam <= 0.0 and b_rise >= 2.4:
 		b_slam_live = true
 		b_slam_at = Vector3(p.x-w.C.x,0.12,p.z-w.C.z)
-		if b_kind == 0:
+		var atk_list: Array = boss()["atk"]
+		b_pat = String(atk_list[b_atk % atk_list.size()])
+		if b_pat == "slam":
 			b_slam = 1.6
 			b_ring.position = b_slam_at
 			b_ring.visible = true
 		else:
-			# The signature attack: a different pattern of blasts for every boss.
+			# v0.77: each boss has its own list of attacks, each a different pattern of blasts.
 			b_slam = 1.7
-			var sig := String(boss()["sig"])
+			var sig := b_pat
 			var bpos := Vector3(b_node.position.x,0.12,b_node.position.z) if is_instance_valid(b_node) else b_slam_at
 			var to_me := b_slam_at-bpos
 			to_me.y = 0.0
@@ -1466,16 +1489,39 @@ func boss_tick(delta: float, p: Vector3) -> void:
 				var used := true
 				match sig:
 					"line":
-						# Neon rail: nine blasts in a straight row from the boss through you. Step sideways.
+						# a straight row of blasts from the boss through you. Step sideways.
 						at = b_slam_at+dir*(float(k)-4.0)*4.6
 					"stomp":
-						# Titan stomp: a ring of blasts all round the boss, and one under it. Get away from it.
+						# a ring of blasts all round the boss, and one under it. Get away from it.
 						at = bpos if k == 0 else bpos+Vector3(cos(float(k)*TAU/8.0),0,sin(float(k)*TAU/8.0))*7.5
 					"cross":
-						# River cross: a plus centred on you. The corners are safe.
+						# a plus centred on you. The corners are safe.
 						at = b_slam_at+([Vector3.ZERO,dir,-dir,side,-side,dir*2.0,-dir*2.0,side*2.0,-side*2.0][k] as Vector3)*4.8
+					"breath":
+						# a cone of fire from the mouth: three rows, three across. The sides are safe.
+						at = bpos+dir.rotated(Vector3.UP,(float(k % 3)-1.0)*0.38)*(7.0+5.5*float(k/3))
+					"coil":
+						# a ring of blasts round you. The middle is safe: stand still.
+						used = k < 8
+						at = b_slam_at+Vector3(cos(float(k)*TAU/8.0),0,sin(float(k)*TAU/8.0))*6.5
+					"zigzag":
+						# a weaving trail of blasts from the boss to you.
+						at = bpos+dir*clampf(to_me.length(),10.0,30.0)*float(k+1)/9.0+side*(5.0 if k % 2 == 0 else -5.0)
+					"rockfall":
+						# rocks over the whole lair, and two close to you.
+						var ac := Vector3(arena().x,0.12,arena().y)
+						at = b_slam_at+Vector3(randf_range(-4.0,4.0),0,randf_range(-4.0,4.0)) if k < 2 else ac+Vector3(randf_range(-1.0,1.0),0,randf_range(-1.0,1.0))*maxf(arena_clear*0.85,6.0)
+					"quake":
+						# two rings round the boss, with gaps to stand in.
+						at = bpos+Vector3(cos(float(k)*TAU/4.0+0.4),0,sin(float(k)*TAU/4.0+0.4))*5.5 if k < 4 else bpos+Vector3(cos(float(k-4)*TAU/5.0),0,sin(float(k-4)*TAU/5.0))*11.5
+					"tentacles":
+						# one under you and a ring of eight round you at nine steps: move into a gap.
+						at = b_slam_at if k == 0 else b_slam_at+Vector3(cos(float(k-1)*TAU/8.0+0.39),0,sin(float(k-1)*TAU/8.0+0.39))*9.0
+					"wave":
+						# a wall of water in front of the boss, across its path. Run round the end.
+						at = bpos+dir*11.0+side*(float(k)-4.0)*4.4
 					_:
-						# Meteor rain: one on you, four scattered round you.
+						# meteor rain: one on you, four scattered round you.
 						used = k < 5
 						at = b_slam_at+(Vector3.ZERO if k == 0 else Vector3(randf_range(-9.0,9.0),0,randf_range(-9.0,9.0)))
 				b_mets[k][2] = at if used else Vector3(0,-500,0)
@@ -1483,15 +1529,15 @@ func boss_tick(delta: float, p: Vector3) -> void:
 				(b_mets[k][0] as MeshInstance3D).visible = used
 				(b_mets[k][1] as MeshInstance3D).visible = used
 			if not w.dry:
-				show_title(String(boss()["sig_name"]),"")
+				show_title(String(ATK_NAMES.get(b_pat,"ATTACK")),"")
 				title_t = 1.2
-	elif b_slam_live and b_kind == 1:
+	elif b_slam_live and b_pat != "slam":
 		for m in b_mets:
 			var tp: Vector3 = m[2]
 			(m[1] as MeshInstance3D).position = tp+Vector3(4.0,24.0,0)*clampf(b_slam/1.7,0.0,1.0)+Vector3(0,0.9,0)
 		if b_slam <= 0.0:
 			b_slam_live = false
-			b_kind = 0
+			b_atk += 1
 			b_slam = 3.0 if enraged else 4.6
 			shake = 0.7
 			thud()
@@ -1511,7 +1557,7 @@ func boss_tick(delta: float, p: Vector3) -> void:
 		b_ring.scale = Vector3(s,1.0,s)
 		if b_slam <= 0.0:
 			b_slam_live = false
-			b_kind = 1
+			b_atk += 1
 			b_slam = 3.0 if enraged else 4.6
 			b_ring.visible = false
 			shake = 0.6

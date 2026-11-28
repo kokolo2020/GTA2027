@@ -8,6 +8,10 @@ var road_barrier = RoadBarrier.new(self)
 const WorldBiosphere := preload("res://world_biosphere.gd")
 var world_bio
 const Worlds := preload("res://worlds.gd")
+const Ultimate := preload("res://ultimate.gd")
+const LegendAura := preload("res://legend_aura.gd")
+var legend_aura   # v0.77: golden glow for level 40 (legend_aura.gd)
+var ultimate   # v0.77: THE WORLD EATER, the Ultimate boss at the Harbor Dome (ultimate.gd)
 const Explore := preload("res://explore.gd")
 const Daily := preload("res://daily.gd")
 var daily   # v0.66: daily goals and login streak (daily.gd)
@@ -333,6 +337,8 @@ func _ready() -> void:
 		_build_biosphere()
 	horizon = Horizon.new(self)
 	paris = Worlds.new(self)
+	ultimate = Ultimate.new(self)
+	legend_aura = LegendAura.new(self)
 	explore = Explore.new(self)
 	daily = Daily.new(self)
 	paris.build_hub()
@@ -365,7 +371,7 @@ func _ready() -> void:
 	_refresh_checkpoints()
 	road_barrier.build()
 	var dev_mode := "--world-bio-check" in OS.get_cmdline_user_args() or "--world-bio-shots" in OS.get_cmdline_user_args() or "--dome-shots" in OS.get_cmdline_user_args() or "--africa-shots" in OS.get_cmdline_user_args()
-	for flag in ["--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--outfit-shots","--car-shots","--shop-shots","--chat-shots","--dome-shots","--cafe-shots"]:
+	for flag in ["--legend-shots","--boss-shots","--smoke-test","--nav-check","--home-check","--shots","--people-shots","--skyline-shots","--view-shots","--levelup-shots","--stadium-shots","--bake-map","--guide-shots","--hub-shots","--nick-shots","--civic-shots","--race-shots","--follow-shots","--v23-shots","--crate-shots","--daily-shots","--expand-shots","--city-shots","--sky-check","--road-check","--roads-dump","--barrier-shots","--style-shots","--outfit-shots","--car-shots","--shop-shots","--chat-shots","--dome-shots","--cafe-shots"]:
 		if flag in OS.get_cmdline_user_args():
 			dev_mode = true
 	if not dev_mode:
@@ -377,7 +383,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("BONKERS CITY: BOSS NIGHT! 0.76.0: four different bosses, a victory party with $100,000 and a level for every player, and JOIN THE FIGHT NOW calls.")
+	_show_toast("BONKERS CITY: BOSS NIGHT! 0.77.0: a dragon, a giant snake, a rock giant and a kraken, then THE WORLD EATER (11+ players). Level 40 now glows.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -415,6 +421,12 @@ func _ready() -> void:
 		get_tree().quit()
 	elif "--paris-shots" in OS.get_cmdline_user_args():
 		await _paris_shots()
+		get_tree().quit()
+	elif "--boss-shots" in OS.get_cmdline_user_args():
+		await _boss_shots()
+		get_tree().quit()
+	elif "--legend-shots" in OS.get_cmdline_user_args():
+		await _legend_shots()
 		get_tree().quit()
 	elif "--sky-shots" in OS.get_cmdline_user_args():
 		await _sky_shots()
@@ -2215,7 +2227,10 @@ func _online_handle(text: String) -> void:
 				_social_msg(inner_s)
 		elif outer is Dictionary and String(outer.get("event","")) == "bz":
 			var inner_b = outer.get("payload",{})
-			if inner_b is Dictionary and paris != null:
+			if inner_b is Dictionary and int((inner_b as Dictionary).get("u",0)) == 1 and ultimate != null:
+				if String((inner_b as Dictionary).get("i","")) != String(online_id):
+					ultimate.net(inner_b)
+			elif inner_b is Dictionary and paris != null:
 				paris.net_msg(inner_b)
 		elif outer is Dictionary and (String(outer.get("event","")) == "lfp" or String(outer.get("event","")) == "lfa"):
 			var inner = outer.get("payload",{})
@@ -7768,6 +7783,10 @@ func _input(event: InputEvent) -> void:
 			_cycle_view()
 		elif event.keycode == KEY_E and not paused:
 			_interact()
+		elif event.keycode == KEY_F and not paused and ultimate != null and ultimate.on:
+			ultimate.fire()
+		elif event.keycode == KEY_G and not paused and ultimate != null and ultimate.on:
+			ultimate.blast()
 		elif event.keycode == KEY_F and not paused and paris != null and paris.current() != null:
 			paris.current().cu.fire()
 		elif event.keycode == KEY_G and not paused and paris != null and paris.current() != null:
@@ -10971,6 +10990,134 @@ func _infected_shots() -> void:
 	await _save_shot("inf-6-runner")
 	print("INFECTED zombies=",ob.zomb.size()," fires=",ob.inf.fires.size()," surge=",ob.inf.surge)
 	ob.abort("")
+
+func _legend_shots() -> void:
+	# Developer-only (v0.77): the level 40 glow, before and after. Never saves.
+	paris.dry = true
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.hide()
+	cam_lock = true
+	player.global_position += Vector3(0,0,6.0)   # out from behind the tables
+	var base: Vector3 = player.global_position
+	var fails := 0
+	var views := [["front",Vector3(0.3,0.15,1.0)],["side",Vector3(1.0,0.35,0.2)],["high",Vector3(0.2,0.9,0.7)]]
+	for state in ["off","on"]:
+		legend_aura.force = state == "on"
+		legend_aura.check_t = 0.0
+		for i in 40:
+			await get_tree().process_frame
+		if state == "off" and not legend_aura.is_max() and legend_aura.root != null and legend_aura.root.visible:
+			fails += 1
+		if state == "on" and (legend_aura.root == null or not legend_aura.root.visible):
+			fails += 1
+		for v: Array in views:
+			camera.position = base+(v[1] as Vector3).normalized()*3.0+Vector3(0,0.6,0)
+			camera.look_at(base+Vector3(0,0.0,0))
+			for i in 3:
+				await get_tree().process_frame
+			await _save_shot("legend-%s-%s" % [state,String(v[0])])
+		legend_aura.force = false
+		if state == "off":
+			continue
+	print("LEGEND_SHOTS_DONE fails=",fails)
+
+func _boss_shots() -> void:
+	# Developer-only (v0.77): the four boss creatures and THE WORLD EATER up in the sky, then the Ultimate fight at the Harbor Dome. Never saves.
+	paris.dry = true
+	var fails := 0
+	var save_existed := FileAccess.file_exists(SAVE_PATH)
+	var save_bytes := FileAccess.get_file_as_bytes(SAVE_PATH) if save_existed else PackedByteArray()
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.hide()
+	var bm = preload("res://boss_models.gd").new(self)
+	var specs := [["dragon",3.6,1.3],["serpent",3.9,1.4],["golem",4.6,1.3],["kraken",4.0,1.3],["ultimate",3.6,2.9]]
+	var at := HUB_C+Vector3(0,320,0)
+	cam_lock = true
+	for sp: Array in specs:
+		var n: Node3D = bm.build(String(sp[0]))
+		n.scale = Vector3.ONE*float(sp[1])
+		n.position = at
+		add_child(n)
+		bm.animate(n,0.7,1.0)
+		var dist := float(sp[1])*(9.0 if String(sp[0]) == "ultimate" else 6.5)
+		var hh := float(sp[1])*float(sp[2])
+		camera.position = at+Vector3(0.55,0.28,1.0).normalized()*dist+Vector3(0,hh*0.5,0)
+		camera.look_at(at+Vector3(0,hh,0))
+		for i in 4:
+			await get_tree().process_frame
+		await _save_shot("boss-"+String(sp[0]))
+		camera.position = at+Vector3(-1.0,0.15,-0.4).normalized()*dist+Vector3(0,hh*0.5,0)
+		camera.look_at(at+Vector3(0,hh,0))
+		await _save_shot("boss-"+String(sp[0])+"-side")
+		n.queue_free()
+	cam_lock = false
+	for ch in get_children():
+		if ch is CanvasLayer:
+			ch.show()
+	# the Ultimate fight
+	var u = ultimate
+	player.position = HUB_C+Vector3(30,0.9,40)
+	for i in 20:
+		await get_tree().physics_frame
+	u.force_players = 11
+	u.summon(false)
+	for i in 30:
+		await get_tree().physics_frame
+	print("ULT summoned invaded=",u.invaded," node=",u.node != null," on=",u.on)
+	if not u.invaded or u.node == null:
+		fails += 1
+	u.engage(u.UHP,0.0,false)
+	var h0: float = u.hp
+	u.cd = 0.0
+	u.fire()
+	print("ULT shot with 11 players: -",h0-u.hp)
+	if absf((h0-u.hp)-80.0) > 0.01:
+		fails += 1
+	u.force_players = 3
+	h0 = u.hp
+	u.cd = 0.0
+	u.fire()
+	print("ULT shot with 3 players: -",h0-u.hp)
+	if absf((h0-u.hp)-4.0) > 0.01:
+		fails += 1
+	u.force_players = 11
+	var seen := {}
+	for k in 40:
+		u.wait = 0.0
+		for j in 4:
+			u.fight_tick(0.1,player.position)
+			if u.slam_live:
+				seen[u.pat] = true
+		u.slam = 0.0
+		u.fight_tick(0.1,player.position)
+	print("ULT attacks seen=",seen.keys())
+	if seen.size() < 5:
+		fails += 1
+	u.wait = 0.0
+	u.php = 100.0
+	u.fight_tick(0.1,player.position)
+	cam_lock = true
+	camera.position = player.position+Vector3(0,7,16)
+	camera.look_at(u.node.position)
+	await _save_shot("boss-ultimate-fight")
+	cam_lock = false
+	u.slam = 0.0
+	u.fight_tick(0.1,player.position)
+	var c0 := cash
+	u.hp = 50.0
+	u.hit(100.0,false)
+	print("ULT win: won_day=",u.won_day," on=",u.on," invaded=",u.invaded," pay=",cash-c0)
+	if u.won_day == "" or u.on or u.invaded or cash-c0 != 250000:
+		fails += 1
+	if save_existed:
+		var restored := FileAccess.open(SAVE_PATH,FileAccess.WRITE)
+		restored.store_buffer(save_bytes)
+		restored.close()
+	elif FileAccess.file_exists(SAVE_PATH):
+		DirAccess.remove_absolute(SAVE_PATH)
+	print("BOSS_SHOTS_DONE fails=",fails)
 
 func _paris_shots() -> void:
 	# Developer-only: the world portal in the Harbor Dome, then every world (Paris, Tokyo, New York, Bangkok): arrival, landmark, cafe, viewpoint, aerial, return portal. Never saves.
@@ -23501,6 +23648,10 @@ func _bio_stuck_check(delta: float) -> void:
 func _biosphere_tick(delta: float) -> void:
 	if paris != null:
 		paris.tick(delta)
+	if ultimate != null:
+		ultimate.tick(delta)
+	if legend_aura != null:
+		legend_aura.tick(delta)
 	if gq != null:
 		gq.tick(delta)
 	if world_bio != null:
@@ -26584,8 +26735,15 @@ func _lb_level(row: Dictionary) -> int:
 			lv = maxi(lv,i+1)
 	return lv
 
+func _lb_test_run() -> bool:
+	# Test and screenshot runs must never post to the live leaderboard (a test row named "Tester" topped it).
+	for a in OS.get_cmdline_user_args():
+		if a == "--smoke-test" or a.ends_with("-shots") or a.ends_with("-check"):
+			return true
+	return false
+
 func _lb_tick(delta: float) -> void:
-	if "--smoke-test" in OS.get_cmdline_user_args() or lb_put == null:
+	if lb_put == null or _lb_test_run():
 		return
 	lb_put_t -= delta
 	if lb_put_t <= 0.0:
@@ -26594,7 +26752,7 @@ func _lb_tick(delta: float) -> void:
 
 func _lb_upload() -> void:
 	# Players with a nickname post their scores (one row each, updated in place).
-	if lb_put == null or player_uid == "" or online_name == "" or not _online_load_config():
+	if lb_put == null or _lb_test_run() or player_uid == "" or online_name == "" or not _online_load_config():
 		return
 	if lb_put.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED or lb_state == 0:
 		return

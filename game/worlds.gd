@@ -815,6 +815,8 @@ func save_state(file: ConfigFile) -> void:
 	file.set_value("sky","day",shrine_day)
 	file.set_value("sky","seal_bonus",seal_bonus)
 	file.set_value("sky","role",role)
+	if g.ultimate != null:
+		g.ultimate.save_state(file)
 
 func load_state(file: ConfigFile) -> void:
 	for w in list:
@@ -823,6 +825,8 @@ func load_state(file: ConfigFile) -> void:
 	shrine_day = String(file.get_value("sky","day",""))
 	seal_bonus = bool(file.get_value("sky","seal_bonus",false))
 	role = clampi(int(file.get_value("sky","role",0)),0,ROLES.size()-1)
+	if g.ultimate != null:
+		g.ultimate.load_state(file)
 
 func summary(i: int) -> String:
 	var w = list[i]

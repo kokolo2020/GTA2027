@@ -87,7 +87,7 @@ func shots() -> void:
 			cb.wake()
 			cb.b_rise = 5.0
 			cb.b_slam = 0.0
-			cb.b_kind = 1
+			cb.b_atk = 1
 			await frames(14)
 			g.cam_lock = true
 			var bp2: Vector3 = wb.C+cb.b_node.position
@@ -274,6 +274,7 @@ func checks() -> void:
 		await w.enter()
 		await g.get_tree().physics_frame
 		cu.day = ""
+		g.paris.role = 0   # the test must not depend on the role saved in the real game
 		cu.boss_won = false
 		cu.boss_day = ""
 		cu.tick(0.1)
@@ -359,7 +360,7 @@ func checks() -> void:
 		for k in 120:
 			cu.boss_tick(0.25,g.player.position)
 			if cu.b_slam_live:
-				kinds[cu.b_kind] = true
+				kinds[cu.b_pat] = true
 		var minions := 0
 		var weakest := 99.0
 		for zz in cu.roam:
@@ -369,7 +370,7 @@ func checks() -> void:
 		if minions < 4 or minions > cu.MINION_MAX or float(cu.MINION[3]) >= float(cu.o.inf.SPEC["runner"][3]):
 			fails += 1
 		print(tag," boss attack types seen=",kinds.size())
-		if kinds.size() != 2:
+		if kinds.size() < 3:
 			fails += 1
 		print(tag," boss ticks: roars=",cu.b_roars," temp_runners=",cu.roam.size()," hp=",cu.hp)
 		cu.hp = -1.0

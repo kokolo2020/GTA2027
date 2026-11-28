@@ -44,3 +44,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.69.0 | | | | Claude-built (new pets) |
 | 0.70.0 | | | | Claude-built (sky view) |
 | 0.71.0 | | | | Claude-built (fruit garden) |
+| 0.72.0 | | | | Claude-built (cure gun, bosses, Portal Terrace, fruit quests, leaderboard fix) |

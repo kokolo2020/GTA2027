@@ -22,8 +22,11 @@ const POOL := {
 	"rescue":{"text":"Rescue 3 survivors","need":3,"pay":2500},
 	"quests":{"text":"Finish 3 daily quests","need":3,"pay":3000},
 	"earn":{"text":"Earn $10,000","need":10000,"pay":3000},
+	"cure":{"text":"Cure 8 infected with the cure gun","need":8,"pay":3000},
+	"fruit":{"text":"Pick 10 fruit in the Fruit Garden","need":10,"pay":2500},
+	"boss":{"text":"Beat a city boss (3 players)","need":1,"pay":8000},
 }
-const ORDER := ["seal","rescue","quests","earn"]
+const ORDER := ["seal","cure","rescue","fruit","quests","boss","earn"]
 const ALL_PAY := 10000
 const ALL_XP := 500
 
@@ -42,11 +45,11 @@ func day_num(d: String) -> int:
 
 func roll(d: String) -> void:
 	day = d
-	var skip := day_num(d) % ORDER.size()
+	# v0.72: three goals a day, rotating through the pool.
+	var first := day_num(d) % ORDER.size()
 	ids = []
-	for i in ORDER.size():
-		if i != skip:
-			ids.append(ORDER[i])
+	for i in 3:
+		ids.append(ORDER[(first+i*2) % ORDER.size()])
 	prog = {}
 	paid = {}
 	all_paid = false

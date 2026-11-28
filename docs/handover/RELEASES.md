@@ -1,5 +1,16 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.72.0 (code 140, 2026-11-28)
+Koko's asks: leaderboard not updating, 10-20 fruit quests, more rescue quests + a cure gun, a call to action so anyone can join a portal city, a 3-player boss per city (10x power), portals moved to their own place on the Ridge edge with walk-through gates.
+- Leaderboard: Supabase table has `check (level between 1 and 20)`; levels go to 40 since v0.4x, so every upsert of a Lv 21+ player failed. `_lb_me()` now clamps; `_lb_level(row)` derives the shown level from xp. No database change needed.
+- `game/garden_quests.gd` (`g.gq`): 16-quest chain + daily harvest; pickups from `spot_in()` (open ground via `garden._ok`); HUD chip + arrow; save section `garden_q`.
+- `game/cure.gd` (`w.cu`, one per world): roaming infected, `fire()` (FIRE button registered in `touch_buttons`, key F), trapped people, daily quests (`quest_items()` feeds tracker.gd), boss (`wake`, `boss_tick`, `hit_boss`, `boss_end`), own health bar, lair found by `arena()` (needs a 9 m clear circle). Online event `bz` (`a`: start, st, hit, win, call) handled by `worlds.net_msg`; JOIN = `worlds.join_call` via `_accept_invite` (`invite.boss`).
+- `worlds.gd`: Portal Terrace at HUB_C+(-114,0,-76) = (96,0,-44); `gates`, `gate_tick()` (armed flag so you do not bounce back), `near_hub()` now false (no OPEN WORLD PORTAL prompt), `players_in()`, `live_line()`.
+- main.gd: peers are kept up to x 10200 / y 400 (was 950 / 60, which dropped everyone in a portal city).
+- tracker.gd: finished rows fold away; rows and toggle registered in `touch_buttons` (they never got finger taps before).
+- Dev flag `-- --v72-check` (`game/v72_check.gd`): self-test, prints `V72_CHECK OK`; `HC_V72=shots` renders v72-*.png; restores the save itself.
+- Open: Fold5 check; a real 3-device boss fight; boss position is local per client (paces a fixed path from elapsed time), health is shared.
+
 ## 0.71.0 (code 139, 2026-11-27)
 Fruit Garden: game/garden.gd (new, MultiMesh orchards, no collision) covers the Marina Heights island with 13 fruit blocks, paths, crates, signs; the three shops, fountain, yacht club, boardwalk and lighthouse are kept. Built at the end of _build_marina. Dev: --sky-shots now includes garden spots.
 

@@ -6,7 +6,7 @@
 create table if not exists public.leaderboard (
   uid        text primary key check (char_length(uid) between 6 and 40),
   name       text not null check (char_length(name) between 1 and 16),
-  level      int  not null default 1 check (level between 1 and 20),
+  level      int  not null default 1 check (level between 1 and 40),
   xp         bigint not null default 0 check (xp between 0 and 1000000000),
   cash       bigint not null default 0 check (cash between 0 and 1000000000),
   ach        int  not null default 0 check (ach between 0 and 500),
@@ -31,3 +31,8 @@ begin new.updated_at = now(); return new; end $$;
 drop trigger if exists leaderboard_touch on public.leaderboard;
 create trigger leaderboard_touch before update on public.leaderboard
   for each row execute function public.leaderboard_touch();
+
+-- v0.72: levels now go to 40. The game sends the level capped at 20 and works the real one out from xp,
+-- so the old table keeps working. To store real levels, run this once (optional):
+-- alter table public.leaderboard drop constraint if exists leaderboard_level_check;
+-- alter table public.leaderboard add constraint leaderboard_level_check check (level between 1 and 40);

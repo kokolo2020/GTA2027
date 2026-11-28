@@ -12,6 +12,7 @@ const MAX_TREES := 520
 const MAX_LAMPS := 220
 const Outbreak := preload("res://outbreak.gd")
 const Tracker := preload("res://tracker.gd")
+const Cure := preload("res://cure.gd")
 
 # One mesh under construction: flat-shaded triangles with vertex colours.
 class MB extends RefCounted:
@@ -76,6 +77,7 @@ var clue_nodes: Array = []
 var board_pos: Vector3
 var ob                          # v0.63: outbreak rescue mission (outbreak.gd)
 var trk                         # v0.68: quest tracker and pointer (tracker.gd)
+var cu                          # v0.72: cure gun, rescue quests and the city boss (cure.gd)
 
 func _init(game, def: Dictionary, hub: Vector3) -> void:
 	g = game
@@ -94,6 +96,7 @@ func _init(game, def: Dictionary, hub: Vector3) -> void:
 	quay_pos = C+Vector3(QUAY.x,0,QUAY.y)
 	board_pos = ret_pos+Vector3(5,0,0)
 	ob = Outbreak.new(self)
+	cu = Cure.new(self)
 	trk = Tracker.new(self)
 
 # ---------- helpers ----------
@@ -965,6 +968,9 @@ func prompt() -> String:
 	var op: String = ob.prompt(p)
 	if op != "":
 		return op
+	var cp: String = cu.prompt(p)
+	if cp != "":
+		return cp
 	if built and near(p,ret_pos,4.8):
 		return "PORTAL HOME"
 	if built and near(p,board_pos,3.8):
@@ -985,6 +991,8 @@ func interact() -> bool:
 		return true
 	if ob.owns(p):
 		ob.interact(p)
+	elif cu.owns(p):
+		cu.interact(p)
 	elif p == "PORTAL HOME":
 		go_home()
 	elif p == "SOLVE THE CASE":
@@ -1030,8 +1038,8 @@ func enter() -> void:
 
 func go_home() -> void:
 	ob.abort("Rescue cancelled.")
-	var dir: Vector3 = (g.HUB_C-hub_pos).normalized()
-	move_player(hub_pos+dir*6.5+Vector3(0,0.9,0))
+	g.paris.armed = false
+	move_player(hub_pos+Vector3(0,0.9,7.0))
 	g._show_toast("Back in Chit Chat City.")
 	g._refresh_hud()
 
@@ -1085,6 +1093,7 @@ func award(i: int) -> void:
 
 func tick(delta: float) -> void:
 	ob.tick(delta)
+	cu.tick(delta)
 	trk.tick(delta)
 	tick_t += delta
 	if tick_t < 0.25 or g.player == null:
@@ -1116,6 +1125,7 @@ func save_state(file: ConfigFile) -> void:
 	file.set_value(sec,"relic",relic)
 	file.set_value(sec,"case_day",case_day)
 	ob.save_state(file,sec)
+	cu.save_state(file,sec)
 
 func load_state(file: ConfigFile) -> void:
 	var sec := String(W["save"])
@@ -1128,4 +1138,5 @@ func load_state(file: ConfigFile) -> void:
 	relic = bool(file.get_value(sec,"relic",false))
 	case_day = String(file.get_value(sec,"case_day",""))
 	ob.load_state(file,sec)
+	cu.load_state(file,sec)
 	update_clues()

@@ -377,7 +377,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.71.0: the island south of downtown is now a Fruit Garden. Try the Sky view to see it.")
+	_show_toast("Chit Chat City 0.72.0: cure gun and a BOSS in every portal city (bring 3 players), a Portal Terrace on the Ridge, and Fruit Garden quests.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -424,6 +424,9 @@ func _ready() -> void:
 		get_tree().quit()
 	elif "--tracker-shots" in OS.get_cmdline_user_args():
 		await _tracker_shots()
+		get_tree().quit()
+	elif "--v72-check" in OS.get_cmdline_user_args():
+		await preload("res://v72_check.gd").new(self).run()
 		get_tree().quit()
 	elif "--infected-shots" in OS.get_cmdline_user_args():
 		await _infected_shots()
@@ -2210,6 +2213,10 @@ func _online_handle(text: String) -> void:
 			var inner_s = outer.get("payload",{})
 			if inner_s is Dictionary:
 				_social_msg(inner_s)
+		elif outer is Dictionary and String(outer.get("event","")) == "bz":
+			var inner_b = outer.get("payload",{})
+			if inner_b is Dictionary and paris != null:
+				paris.net_msg(inner_b)
 		elif outer is Dictionary and (String(outer.get("event","")) == "lfp" or String(outer.get("event","")) == "lfa"):
 			var inner = outer.get("payload",{})
 			if inner is Dictionary:
@@ -2243,7 +2250,8 @@ func _online_peer_update(p: Dictionary) -> void:
 		return
 	var pos := Vector3(float(p.get("x",0.0)),float(p.get("y",0.0)),float(p.get("z",0.0)))
 	# v0.33: the city reaches about 790 m from the centre now (airport, Westside, Sunset Beach).
-	if absf(pos.x) > 950.0 or absf(pos.z) > 950.0 or absf(pos.y) > 60.0:
+	# v0.72: the portal cities (x up to about 7,600) and the sky island (y 260) count too, so players see each other there.
+	if absf(pos.x) > 10200.0 or absf(pos.z) > 1500.0 or pos.y < -60.0 or pos.y > 400.0:
 		return
 	if not online_peers.has(id):
 		if online_peers.size() >= ONLINE_MAX_PEERS:
@@ -2960,6 +2968,7 @@ func _build_marina() -> void:
 		marina_nodes.append(_north_token(MARINA[i]["pos"],MARINA[i]["name"]))
 	# v0.71: the island around the shops is a fruit garden (garden.gd).
 	garden = Garden.new(self)
+	gq = preload("res://garden_quests.gd").new(self)
 
 # Avatar and shop UI.
 func _set_hat(index: int) -> void:
@@ -7754,6 +7763,8 @@ func _input(event: InputEvent) -> void:
 			_cycle_view()
 		elif event.keycode == KEY_E and not paused:
 			_interact()
+		elif event.keycode == KEY_F and not paused and paris != null and paris.current() != null:
+			paris.current().cu.fire()
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			# Godot mouse emulation handles only the first finger; dispatch touch UI explicitly.
@@ -8551,6 +8562,8 @@ func _save_progress() -> void:
 		paris.save_state(file)
 	if dq != null:
 		dq.save_state(file)
+	if gq != null:
+		gq.save_state(file)
 	if daily != null:
 		daily.save_state(file)
 	file.set_value("progress","bio_pass_day",bio_pass_day)
@@ -8614,6 +8627,8 @@ func _load_progress() -> void:
 			paris.load_state(file)
 		if dq != null:
 			dq.load_state(file)
+		if gq != null:
+			gq.load_state(file)
 		if daily != null:
 			daily.load_state(file)
 		ch_idx = clampi(int(file.get_value("chapters","idx",0)),0,CHAPTERS.size())
@@ -12723,6 +12738,7 @@ const WALK_VIEWS := ["Follow","Far","Close","Eye","Sky"]
 const Horizon := preload("res://horizon.gd")
 const Garden := preload("res://garden.gd")
 var garden
+var gq                      # v0.72: Fruit Garden quests (garden_quests.gd)
 var horizon
 var sky_graded := false
 var sky_cam := false   # v0.70: the Sky view, a high bay-wide camera that sees the whole city
@@ -16786,7 +16802,7 @@ func _feed_render() -> void:
 		lab.add_theme_stylebox_override("normal",_panel(Color(0.06,0.13,0.18,0.72),10))
 		row.add_child(lab)
 		if item["from"] != "":
-			var accept := _button("JOIN" if (item.get("invite",{}) as Dictionary).has("race") else "ACCEPT",_accept_invite.bind(String(item["from"])))
+			var accept := _button("JOIN" if ((item.get("invite",{}) as Dictionary).has("race") or (item.get("invite",{}) as Dictionary).has("boss")) else "ACCEPT",_accept_invite.bind(String(item["from"])))
 			accept.custom_minimum_size = Vector2(120,40)
 			accept.add_theme_font_size_override("font_size",18)
 			accept.add_theme_stylebox_override("normal",_panel(Color("f0bd62"),12))
@@ -16870,6 +16886,9 @@ func _accept_invite(from: String) -> void:
 			feed.remove_at(i)
 	_feed_render()
 	if invite.is_empty():
+		return
+	if invite.has("boss"):
+		paris.join_call(int(invite["boss"]))
 		return
 	if invite.has("soc"):
 		_social_accept(from,invite)
@@ -19048,7 +19067,7 @@ func _build_travel(root: Control) -> void:
 	wr.add_theme_constant_override("separation",10)
 	world_panel.add_child(wr)
 	wr.add_child(_label("WORLD PORTAL",26,Color("8ec5ff")))
-	world_info = _label("Step into a real city. Each world has 4 daily quests and a mystery case: find 3 clues, crack the code at the case board, win a relic. 4 relics open the mystic sky island. Maps © OpenStreetMap contributors.",17,Color("cbd8de"))
+	world_info = _label("Step into a real city (or walk through its gate at the Portal Terrace on the Ridge). Each has daily quests, a mystery case, infected to cure with the cure gun, people to rescue and a BOSS that needs 3 players. 4 relics open the mystic sky island. Maps © OpenStreetMap contributors.",17,Color("cbd8de"))
 	world_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	world_info.custom_minimum_size.x = 700
 	wr.add_child(world_info)
@@ -23472,6 +23491,8 @@ func _bio_stuck_check(delta: float) -> void:
 func _biosphere_tick(delta: float) -> void:
 	if paris != null:
 		paris.tick(delta)
+	if gq != null:
+		gq.tick(delta)
 	if world_bio != null:
 		if place_open[1] and not paused:
 			_bio_gate_tick(delta)
@@ -26536,7 +26557,19 @@ func _lb_url(path: String) -> String:
 	return String(online_config.get("url","")).trim_suffix("/")+"/rest/v1/"+path
 
 func _lb_me() -> Dictionary:
-	return {"uid":player_uid,"name":_online_clean_name(_my_name()),"level":_level(),"xp":_xp(),"cash":maxi(cash,0),"ach":ach_got.size(),"kind":kindness}
+	# v0.72: the table only accepts levels 1-20, so a level above 20 made every update fail (scores froze).
+	# The level is sent capped; the real one is worked out from XP (see _lb_level).
+	return {"uid":player_uid,"name":_online_clean_name(_my_name()),"level":clampi(_level(),1,20),"xp":clampi(_xp(),0,1000000000),"cash":clampi(cash,0,1000000000),"ach":clampi(ach_got.size(),0,500),"kind":clampi(kindness,0,1000000)}
+
+func _lb_level(row: Dictionary) -> int:
+	var lv := int(row.get("level",1))
+	if lv < 20:
+		return lv
+	var xp := int(row.get("xp",0))
+	for i in LEVEL_XP.size():
+		if xp >= int(LEVEL_XP[i]):
+			lv = maxi(lv,i+1)
+	return lv
 
 func _lb_tick(delta: float) -> void:
 	if "--smoke-test" in OS.get_cmdline_user_args() or lb_put == null:
@@ -26578,7 +26611,7 @@ func _lb_got(_result: int, code: int, _headers: PackedStringArray, body: PackedB
 func _lb_value(row: Dictionary) -> String:
 	match lb_tab:
 		0:
-			return "Lv %d" % int(row.get("level",1))
+			return "Lv %d" % _lb_level(row)
 		1:
 			return _money(int(row.get("cash",0)))
 		2:
@@ -27374,7 +27407,7 @@ func _ds_render_board() -> void:
 		var v := ""
 		match ds_tab:
 			0:
-				v = "Lv %d" % int(r.get("level",1))
+				v = "Lv %d" % _lb_level(r)
 			1:
 				v = _money(int(r.get("cash",0)))
 			2:
@@ -27394,6 +27427,8 @@ func _ds_render_news() -> void:
 	var tleft := float(TREASURE_CYCLE)-fmod(_treasure_now(),float(TREASURE_CYCLE))
 	lines.append("◆ Next treasure hunt in %d:%02d" % [int(tleft)/60,int(tleft) % 60])
 	var qs := _quiz_slot()
+	if paris != null and paris.live_line() != "":
+		lines.append("⚔ "+paris.live_line())
 	lines.append("◆ Party Quiz: %s" % ("on now in the Dome!" if not bool(qs["results"]) else "next round soon"))
 	var rows := _ds_sorted(1)
 	if not rows.is_empty():

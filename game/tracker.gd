@@ -36,6 +36,7 @@ func build() -> void:
 	toggle.add_theme_font_size_override("font_size",17)
 	toggle.pressed.connect(func(): set_open(not open))
 	layer.add_child(toggle)
+	g.touch_buttons.append(toggle)
 	panel = PanelContainer.new()
 	panel.position = Vector2(12,214)
 	var sb := StyleBoxFlat.new()
@@ -133,6 +134,9 @@ func collect() -> void:
 			op = ob.valves[int(ob.order[ob.progress])][1]
 			on = "Turn the valves in order (%d/3)" % ob.progress
 	items.append({"n":on,"pos":op,"done":ob.day == today and not ob.active})
+	# v0.72: cure gun, rescue and boss quests (cure.gd)
+	if not ob.active:
+		items.append_array(w.cu.quest_items(p))
 	items.append({"n":"Go home through the portal","pos":w.ret_pos,"done":false})
 
 func pick_default() -> void:
@@ -159,17 +163,20 @@ func rebuild_rows() -> void:
 	title.text = "%s  %d/%d" % [String(w.W["name"]).to_upper(),done,total]
 	for i in items.size():
 		var it: Dictionary = items[i]
+		# v0.72: the list is longer now, so finished quests fold away (the title keeps the count) and it stays clear of the joystick.
+		if bool(it["done"]) and i != sel:
+			continue
 		var b := Button.new()
 		b.flat = true
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_font_size_override("font_size",16)
+		b.add_theme_font_size_override("font_size",15)
 		var mark := "✓" if bool(it["done"]) else ("🔒" if bool(it.get("locked",false)) else "○")
 		var d := Vector2(g.player.position.x-(it["pos"] as Vector3).x,g.player.position.z-(it["pos"] as Vector3).z).length()
 		b.text = "%s %s%s  %dm" % ["▶" if i == sel else "  ",mark+" ",it["n"],int(d)]
 		var col := Color("8fe39a") if bool(it["done"]) else (Color("ffe28a") if i == sel else Color("e8eef5"))
 		for k in ["font_color","font_hover_color","font_pressed_color","font_focus_color"]:
 			b.add_theme_color_override(k,col)
-		b.custom_minimum_size = Vector2(0,28)
+		b.custom_minimum_size = Vector2(0,25)
 		var idx := i
 		b.pressed.connect(func():
 			sel = idx
@@ -177,6 +184,7 @@ func rebuild_rows() -> void:
 			rebuild_rows())
 		rows_box.add_child(b)
 		buttons.append(b)
+		g.touch_buttons.append(b)
 
 func tick(delta: float) -> void:
 	if g.player == null:
@@ -203,8 +211,9 @@ func tick(delta: float) -> void:
 		var vs: Vector2 = g.get_viewport().get_visible_rect().size
 		place(vs)
 		var ob = w.ob
-		arrow.position.y = 290.0 if ob.active else 200.0
-		info.position.y = 315.0 if ob.active else 225.0
+		var low: bool = ob.active or w.cu.b_on
+		arrow.position.y = 290.0 if low else 200.0
+		info.position.y = 315.0 if low else 225.0
 	if sel < 0 or sel >= items.size():
 		return
 	var it: Dictionary = items[sel]

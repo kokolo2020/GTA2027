@@ -3,7 +3,9 @@ extends RefCounted
 # (Paris, Tokyo, New York, Bangkok), each built lazily from OpenStreetMap data (c) OpenStreetMap contributors, ODbL.
 # Each world is one paris.gd instance driven by a definition below. Talks to main through `g`.
 const Paris := preload("res://paris.gd")
-const HUB_REL := Vector3(-126,0,-40)      # hub portal on the Ridge lawn, relative to HUB_C
+const HUB_REL := Vector3(-114,0,-76)      # v0.72: the Portal Terrace on the north edge of the Ridge, relative to HUB_C
+const GATE_R := 14.0                      # five walk-through gates stand on an arc this far from the terrace centre
+const SKY_COL := Color("c7a8ff")
 const HUB_COL := Color("8ec5ff")
 const AREA := Rect2(-330.0,-330.0,660.0,660.0)
 
@@ -89,6 +91,10 @@ var hub_pos: Vector3
 var hub_root: Node3D
 var dry := false : set = _set_dry
 var last_hub := false
+var gates: Array = []        # [Vector3 world pos, world index (list.size() = the sky island)]
+var armed := true            # a gate only fires after you have stepped away from all of them
+var gate_note := 0.0
+var calls := {}              # world index -> [time, caller name, boss awake]
 # v0.61: the mystic sky island, unlocked by one relic from each of the four cities
 const SKY := Vector3(9600,260,700)
 const SKY_NEED := 4
@@ -252,6 +258,7 @@ func _init(game) -> void:
 	hub_pos = g.HUB_C+HUB_REL
 	for d: Dictionary in DEFS:
 		list.append(Paris.new(g,d,hub_pos))
+		list[list.size()-1].cu.idx = list.size()-1
 
 func _set_dry(v: bool) -> void:
 	dry = v
@@ -263,8 +270,30 @@ func build_hub() -> void:
 	hub_root.name = "WorldPortal"
 	g.add_child(hub_root)
 	var p = list[0]
-	p.make_portal(hub_root,hub_pos,"WORLD PORTAL","Paris · Tokyo · New York · Bangkok",HUB_COL)
-	# a tall light beam so the portal can be seen from across the city
+	# v0.72: the Portal Terrace. A stone circle with five gates; walking through one takes you there at once.
+	g._fc_part(hub_root,g._bcone(19.0,19.0,0.1),hub_pos+Vector3(0,0.03,0),g._material(Color("2b2f45")))
+	g._fc_part(hub_root,g._bcone(17.6,17.6,0.1),hub_pos+Vector3(0,0.05,0),g._material(Color("3a3f58")))
+	g._fc_part(hub_root,g._fc_torus(18.4,18.8),hub_pos+Vector3(0,0.12,0),g._fc_glow(HUB_COL))
+	g._fc_part(hub_root,g._fc_torus(5.6,5.8),hub_pos+Vector3(0,0.12,0),g._fc_glow(Color("ffd98a")))
+	g._hm(hub_root,Vector3(hub_pos.x,0.04,hub_pos.z+25.0),Vector3(5.0,0.08,16.0),Color("3a3f58"))
+	g._fc_part(hub_root,g._bcone(1.2,1.6,1.0),hub_pos+Vector3(0,0.5,0),g._material(Color("cfc9e6")))
+	g._fc_part(hub_root,g._bsph(0.9),hub_pos+Vector3(0,2.0,0),g._fc_glow(Color("f4ecff")))
+	g._collider(hub_root,hub_pos+Vector3(0,1.0,0),Vector3(2.4,2.0,2.4))
+	p.label(hub_root,"PORTAL TERRACE",hub_pos+Vector3(0,12.5,0),Color("e9f3ff"),96).visibility_range_end = 400.0
+	p.label(hub_root,"Walk through a gate to travel",hub_pos+Vector3(0,4.2,0),Color.WHITE,40)
+	var n := list.size()+1
+	for k in n:
+		var ang := deg_to_rad(200.0+140.0*float(k)/float(n-1))
+		var gp := hub_pos+Vector3(cos(ang),0,sin(ang))*GATE_R
+		var gate: Node3D
+		if k < list.size():
+			var d: Dictionary = list[k].W
+			gate = p.make_portal(hub_root,gp,String(d["title"]),String(d["sub"]),d["col"])
+		else:
+			gate = p.make_portal(hub_root,gp,"MYSTIC SKY","4 relics open it",SKY_COL)
+		gate.rotation.y = atan2(hub_pos.x-gp.x,hub_pos.z-gp.z)
+		gates.append([gp,k])
+	# a tall light beam so the terrace can be seen from across the city
 	var bm := StandardMaterial3D.new()
 	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -298,10 +327,111 @@ func player_in_world() -> bool:
 	return current() != null
 
 func near_hub() -> bool:
-	if g.player == null or g.paused:
-		return false
-	var pp: Vector3 = g.player.position
-	return Vector2(pp.x-hub_pos.x,pp.z-hub_pos.z).length() < 6.0
+	# v0.72: no button at the terrace any more; the gates work by walking through them.
+	return false
+
+func gate_tick(delta: float) -> void:
+	if g.player == null or g.paused or gates.is_empty():
+		return
+	gate_note = maxf(0.0,gate_note-delta)
+	var pp: Vector3 = (g.car if g.driving else g.player).position
+	if absf(pp.x-hub_pos.x) > 30.0 or absf(pp.z-hub_pos.z) > 30.0 or pp.y > 4.0:
+		armed = true
+		return
+	var best := 1e9
+	var gi := -1
+	for gt in gates:
+		var d := Vector2(pp.x-(gt[0] as Vector3).x,pp.z-(gt[0] as Vector3).z).length()
+		if d < best:
+			best = d
+			gi = int(gt[1])
+	if best > 5.0:
+		armed = true
+		return
+	if not armed or best > 2.3 or busy():
+		return
+	if list[0].busy():
+		if gate_note <= 0.0:
+			gate_note = 4.0
+			g._show_toast("Get out of your vehicle and walk through the gate.")
+		return
+	armed = false
+	if gi >= list.size():
+		enter_sky()
+	else:
+		enter(gi)
+
+# ---------- v0.72: calls for help and the boss channel ----------
+func players_in(i: int) -> int:
+	var n := 0
+	var now := Time.get_ticks_msec()/1000.0
+	var a: Rect2 = list[i].AREA.grow(15.0)
+	var c: Vector3 = list[i].C
+	for id in g.online_peers:
+		var peer: Dictionary = g.online_peers[id]
+		var t: Vector3 = peer.get("target",Vector3.ZERO)
+		if now-float(peer.get("seen",0.0)) < 8.0 and a.has_point(Vector2(t.x-c.x,t.z-c.z)):
+			n += 1
+	return n
+
+func net_msg(p: Dictionary) -> void:
+	var from := String(p.get("i",""))
+	if from == "" or from == String(g.online_id) or from.length() > 24:
+		return
+	var wi := int(p.get("w",-1))
+	if wi < 0 or wi >= list.size():
+		return
+	var a := String(p.get("a",""))
+	var nm: String = g._online_clean_name(String(p.get("n","Player")))
+	var w = list[wi]
+	var here: bool = g.player != null and w.in_paris(g.player.position)
+	if a == "call" or a == "start":
+		var boss := a == "start" or int(p.get("b",0)) == 1
+		calls[wi] = [Time.get_ticks_msec()/1000.0,nm,boss]
+		if here:
+			return
+		var text := "%s is fighting %s in %s! It needs %d players." % [nm,w.cu.boss_name(),w.W["name"],w.cu.BOSS_NEED] if boss else "%s calls all players to %s: cure the infected together!" % [nm,w.W["name"]]
+		for item in g.feed:
+			if item["from"] == from:
+				item["until"] = float(g.clock)+float(g.INVITE_TIME)
+				item["invite"] = {"boss":wi}
+				return
+		g._feed_add(text,from,{"boss":wi})
+		if boss:
+			g._show_toast("BOSS FIGHT in %s! Tap JOIN to jump in." % String(w.W["name"]).to_upper())
+		return
+	if a == "win":
+		calls.erase(wi)
+		if not here:
+			g._feed_add("%s defeated in %s!" % [w.cu.boss_name(),w.W["name"]],"")
+	if a == "st" and not here:
+		calls[wi] = [Time.get_ticks_msec()/1000.0,nm,true]
+	w.cu.net(p)
+
+func join_call(i: int) -> void:
+	# JOIN on a call for help: straight into that city, next to the boss lair.
+	if i < 0 or i >= list.size() or busy() or g.player == null:
+		return
+	var w = list[i]
+	if w.busy():
+		g._show_toast("Get out of your vehicle or seat first, then tap JOIN again.")
+		return
+	if not w.in_paris(g.player.position):
+		var cur = current()
+		if cur != null:
+			cur.ob.abort("Rescue cancelled.")
+		await w.enter()
+	w.cu.goto_arena()
+	g._show_toast("You joined the fight in %s! Tap FIRE to shoot the cure gun." % w.W["name"])
+	g._refresh_hud()
+
+func live_line() -> String:
+	# For the Harbor Live news screen and the world picker.
+	var now := Time.get_ticks_msec()/1000.0
+	for wi in calls:
+		if now-float(calls[wi][0]) < 45.0 and bool(calls[wi][2]):
+			return "BOSS FIGHT in %s: go to the Portal Terrace!" % String(list[int(wi)].W["name"]).to_upper()
+	return ""
 
 func prompt() -> String:
 	var sp := sky_prompt()
@@ -356,13 +486,15 @@ func go_portal() -> void:
 	if g.player == null:
 		return
 	var dir: Vector3 = (g.HUB_C-hub_pos).normalized()
-	list[0].move_player(hub_pos+dir*7.0+Vector3(0,0.9,0))
-	g._show_toast("The world portal is right here. Walk up to it and tap OPEN WORLD PORTAL.")
+	armed = false
+	list[0].move_player(hub_pos+Vector3(0,0.9,7.0))
+	g._show_toast("The Portal Terrace. Walk through a gate: Paris, Tokyo, New York, Bangkok or the Mystic Sky.")
 	g._refresh_hud()
 
 func tick(delta: float) -> void:
 	for w in list:
 		w.tick(delta)
+	gate_tick(delta)
 	if sky_built and g.player != null and absf(g.player.position.x-SKY.x) < 80.0 and absf(g.player.position.z-SKY.z) < 80.0 and g.player.position.y < SKY.y-30.0:
 		list[0].move_player(SKY+Vector3(0,0.9,16))
 	var spr := sky_prompt()
@@ -411,4 +543,12 @@ func load_state(file: ConfigFile) -> void:
 func summary(i: int) -> String:
 	var w = list[i]
 	w.roll_day()
-	return "%d/%d quests · %s" % [w.done_count(),w.QUESTS.size(),"relic ✓" if w.relic else "clues %d/3" % w.clue_count()]+(" · sealed ✓" if w.ob.sealed else "")
+	var extra := ""
+	var np := players_in(i)
+	if np > 0:
+		extra += " · %d player%s here" % [np,"" if np == 1 else "s"]
+	if calls.has(i) and Time.get_ticks_msec()/1000.0-float(calls[i][0]) < 45.0 and bool(calls[i][2]):
+		extra += " · BOSS FIGHT NOW"
+	elif w.cu.boss_won:
+		extra += " · boss ✓"
+	return "%d/%d quests · %s" % [w.done_count(),w.QUESTS.size(),"relic ✓" if w.relic else "clues %d/3" % w.clue_count()]+(" · sealed ✓" if w.ob.sealed else "")+extra

@@ -72,6 +72,11 @@ var b_fire: Array = []       # the wall of flames round the lair while it is awa
 var b_bolt := 4.0            # seconds to the next lightning
 var b_enraged := false
 # v0.73.1: casting. 1 = cure bolt (one arm thrust forward), 2 = blast (both arms up, then slammed down)
+var shield_t := 0.0          # v0.75 tank: seconds of shield left (damage cut by 80%)
+var bubble: MeshInstance3D
+const SHIELD_TIME := 7.0
+const HEAL_R := 22.0
+const HEAL_AMT := 60.0
 var cast_kind := 0
 var cast_t := 0.0
 var cast_len := 0.0
@@ -452,11 +457,18 @@ func fire() -> void:
 		beam(from,from+fwd.normalized()*GUN_RANGE)
 	zap()
 
+func role() -> int:
+	return int(g.paris.role) if g.paris != null else 0
+
+func mhp() -> float:
+	# The tank has double health.
+	return 200.0 if role() == 1 else 100.0
+
 func add_charge(v: float) -> void:
 	var was := charge
 	charge = minf(100.0,charge+v)
 	if was < 100.0 and charge >= 100.0 and not w.dry:
-		g._show_toast("CURE BLAST READY! Tap BLAST (or G): a huge hit on the boss, and it cures everyone around you.")
+		g._show_toast(["CURE BLAST READY! Tap BLAST (or G): a huge hit on the boss, and it cures everyone around you.","SHIELD SLAM READY! Tap SHIELD (or G): 7 seconds of shield, and everything around you is knocked out.","HEAL WAVE READY! Tap HEAL (or G): heals you and every player near you."][role()])
 		g._play_coin()
 
 func blast() -> void:
@@ -469,6 +481,24 @@ func blast() -> void:
 	var lp := local(p)
 	var list := targets()
 	var n := 0
+	var rl := role()
+	if rl == 2:
+		# HEAL WAVE: you are healed to full, every player near you gets health, the infected close by are cured.
+		hp = mhp()
+		send({"a":"heal","x":snappedf(lp.x,0.1),"z":snappedf(lp.y,0.1)})
+		for i in range(list.size()-1,-1,-1):
+			var hz: Node3D = list[i][0]
+			if is_instance_valid(hz) and Vector2(hz.position.x,hz.position.z).distance_to(lp) < BLAST_R*0.6:
+				cure(list,i)
+				n += 1
+		if b_on and is_instance_valid(b_node) and local(w.C+b_node.position).distance_to(lp) < BOSS_RANGE:
+			hit_boss(BLAST*0.3*power(),true)
+		heal_fx(p)
+		if not w.dry:
+			g._show_toast("HEAL WAVE! You are at full health and players within %d m are healed.%s" % [int(HEAL_R)," %d cured." % n if n > 0 else ""])
+		return
+	if rl == 1:
+		shield_t = SHIELD_TIME
 	for i in range(list.size()-1,-1,-1):
 		var zn: Node3D = list[i][0]
 		if is_instance_valid(zn) and Vector2(zn.position.x,zn.position.z).distance_to(lp) < BLAST_R:
@@ -479,12 +509,14 @@ func blast() -> void:
 		hit = true
 		beam(p+Vector3(0,0.6,0),w.C+b_node.position+Vector3(0,4.0,0))
 		blast_fx(w.C+b_node.position+Vector3(0,0.2,0),9.0)
-		hit_boss(BLAST*power(),true)
+		hit_boss(BLAST*(0.6 if rl == 1 else 1.0)*power(),true)
 	blast_fx(p+Vector3(0,-0.7,0),BLAST_R)
 	shake = maxf(shake,0.8)
 	thud()
 	if not w.dry:
-		if hit:
+		if rl == 1:
+			g._show_toast("SHIELD SLAM! Shield up for %d seconds.%s%s" % [int(SHIELD_TIME)," -%d on %s." % [int(BLAST*0.6*power()),boss_name()] if hit else ""," %d cured." % n if n > 0 else ""])
+		elif hit:
 			g._show_toast("CURE BLAST! -%d on %s%s" % [int(BLAST*power()),boss_name()," and %d cured" % n if n > 0 else ""])
 		else:
 			g._show_toast("CURE BLAST! %d cured." % n if n > 0 else "CURE BLAST! Nobody was in range.")
@@ -556,6 +588,28 @@ func cast_pose(person: Dictionary, delta: float) -> void:
 		orb.position = Vector3(0,lerpf(1.55,-0.6,down),lerpf(-0.1,-0.9,down))
 		var s2 := lerpf(0.5,1.7,up)*lerpf(1.0,0.4,down)
 		orb.scale = Vector3(s2,s2,s2)
+
+func heal_fx(at: Vector3) -> void:
+	if w.dry:
+		return
+	var ring := MeshInstance3D.new()
+	ring.mesh = g._fc_torus(0.8,1.0)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0.5,1.0,0.6,0.9)
+	ring.material_override = m
+	g.add_child(ring)
+	ring.global_position = at+Vector3(0,-0.7,0)
+	var col: MeshInstance3D = g._fc_part(g,g._bcone(1.2,1.2,6.0),Vector3.ZERO,m)
+	col.global_position = at+Vector3(0,2.0,0)
+	var tw: Tween = g.create_tween()
+	tw.tween_property(ring,"scale",Vector3(HEAL_R,1.0,HEAL_R),0.7).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(col,"position:y",col.position.y+5.0,0.7)
+	tw.parallel().tween_property(m,"albedo_color:a",0.0,0.7)
+	tw.tween_callback(ring.queue_free)
+	tw.tween_callback(col.queue_free)
+	g._play_coin()
 
 func blast_fx(at: Vector3, radius: float) -> void:
 	if w.dry:
@@ -840,6 +894,17 @@ func tick(delta: float) -> void:
 		return
 	cd = maxf(0.0,cd-delta)
 	clk += delta
+	shield_t = maxf(0.0,shield_t-delta)
+	if shield_t > 0.0 and (bubble == null or not is_instance_valid(bubble)):
+		var bmat := StandardMaterial3D.new()
+		bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		bmat.albedo_color = Color(0.45,0.75,1.0,0.28)
+		bmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		bubble = g._fc_part(g.player,g._bsph(1.5),Vector3(0,0.2,0),bmat)
+		bubble.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if bubble != null and is_instance_valid(bubble):
+		bubble.visible = shield_t > 0.0
 	music_step(4)
 	warn_t = maxf(0.0,warn_t-delta)
 	if o.active:
@@ -896,16 +961,17 @@ func move_zombies(delta: float, p: Vector3) -> void:
 			dps = maxf(dps,float(spec[3]))
 	if bitten and not w.dry:
 		damage(dps*delta)
-	elif hp > 0.0 and hp < 100.0:
-		hp = minf(100.0,hp+(14.0 if safe else 3.0)*delta)
+	elif hp > 0.0 and hp < mhp():
+		hp = minf(mhp(),hp+(14.0 if safe else 3.0)*delta)
 
 func damage(amount: float) -> void:
-	hp -= amount
+	hp -= amount*(0.2 if shield_t > 0.0 else 1.0)
 	if hurt != null:
 		hurt.color.a = 0.35
 
 func die() -> void:
-	hp = 100.0
+	hp = mhp()
+	shield_t = 0.0
 	var rp: Vector2 = w.RET
 	w.move_player(w.C+Vector3(rp.x-2.5,0.9,rp.y+3.5))
 	if not w.dry:
@@ -1010,6 +1076,14 @@ func net(p: Dictionary) -> void:
 		hit_boss(clampf(float(p.get("d",0.0)),0.0,BLAST*POWER),false)
 	elif a == "win" and b_on:
 		boss_end(true)
+	elif a == "heal" and g.player != null:
+		# A healer's wave: it reaches you if you stand close enough to them.
+		var hc := Vector2(float(p.get("x",1e9)),float(p.get("z",1e9)))
+		if hc.distance_to(local(g.player.position)) < HEAL_R and hp < mhp():
+			hp = minf(mhp(),hp+HEAL_AMT)
+			heal_fx(g.player.position)
+			if not w.dry:
+				g._show_toast("%s healed you! +%d health" % [g._online_clean_name(String(p.get("n","A healer"))),int(HEAL_AMT)])
 
 func boss_start(start_hp: float, elapsed: float) -> void:
 	if b_on or props == null:
@@ -1449,7 +1523,8 @@ func hud(p: Vector3) -> void:
 	blast_btn.size = Vector2(170,56)
 	blast_btn.visible = not w.busy()
 	var ready := charge >= 100.0
-	blast_btn.text = "⚡ BLAST!" if ready else "BLAST %d%%" % int(charge)
+	var bname := String(g.paris.ROLES[role()]["btn"])
+	blast_btn.text = "⚡ %s!" % bname if ready else "%s %d%%" % [bname,int(charge)]
 	var bc := (Color("ffb020") if int(clk*4.0) % 2 == 0 else Color("ff6a2a")) if ready else Color("213d4f").lerp(Color("7a4a1c"),charge/100.0)
 	blast_btn.add_theme_stylebox_override("normal",g._panel(bc,18))
 	blast_btn.add_theme_stylebox_override("hover",g._panel(bc,18))
@@ -1460,11 +1535,11 @@ func hud(p: Vector3) -> void:
 	toast.position = Vector2(vs.x*0.5-450.0,vs.y-150.0)
 	leave_btn.position = Vector2(16,16)
 	leave_btn.size = Vector2(120,46)
-	hp_bg.visible = not o.active and (hp < 99.5 or b_on)
+	hp_bg.visible = not o.active and (hp < mhp()-0.5 or b_on)
 	hp_bg.position = Vector2(vs.x*0.5-170.0,vs.y-96.0)
-	var f := clampf(hp/100.0,0.0,1.0)
+	var f := clampf(hp/mhp(),0.0,1.0)
 	hp_fill.size.x = 332.0*f
-	hp_fill.color = Color("43d65a") if f > 0.5 else (Color("e8c23a") if f > 0.25 else Color("e5392e"))
+	hp_fill.color = Color("5ab0ff") if shield_t > 0.0 else (Color("43d65a") if f > 0.5 else (Color("e8c23a") if f > 0.25 else Color("e5392e")))
 	boss_bg.visible = b_on
 	boss_lbl.visible = b_on
 	power_lbl.visible = b_on

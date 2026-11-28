@@ -95,6 +95,13 @@ var last_hub := false
 var gates: Array = []        # [Vector3 world pos, world index (list.size() = the sky island)]
 var armed := true            # a gate only fires after you have stepped away from all of them
 var gate_note := 0.0
+# v0.75: roles. Chosen at the three role stones on the Portal Summit; the role changes your special attack and health.
+const ROLES := [
+	{"n":"MAGE","sub":"Damage  ·  CURE BLAST: a huge hit on the boss","col":Color("7fe8ff"),"at":Vector3(0,0,-6.0),"btn":"BLAST"},
+	{"n":"TANK","sub":"Guardian  ·  double health  ·  SHIELD SLAM","col":Color("ffb03a"),"at":Vector3(-9.0,0,5.0),"btn":"SHIELD"},
+	{"n":"HEALER","sub":"Medic  ·  HEAL WAVE heals you and your team","col":Color("8dffb0"),"at":Vector3(9.0,0,5.0),"btn":"HEAL"},
+]
+var role := 0
 var calls := {}              # world index -> [time, caller name, boss awake]
 # v0.61: the mystic sky island, unlocked by one relic from each of the four cities
 const SKY := Vector3(9600,260,700)
@@ -409,6 +416,17 @@ func build_hub() -> void:
 	g._collider(hub_root,hub_pos+Vector3(0,1.0,0),Vector3(2.4,2.0,2.4))
 	p.label(hub_root,"PORTAL SUMMIT",hub_pos+Vector3(0,13.5,0),Color("e9f3ff"),96).visibility_range_end = 400.0
 	p.label(hub_root,"Walk through a gate to travel",hub_pos+Vector3(0,4.6,0),Color.WHITE,40)
+	# v0.75: three role stones. Stand at one and tap to become that role.
+	for ri in ROLES.size():
+		var rd: Dictionary = ROLES[ri]
+		var rp: Vector3 = hub_pos+(rd["at"] as Vector3)
+		var rs: MeshInstance3D = g._fc_part(hub_root,boulder,rp+Vector3(0,0.55,0),rock_d,Vector3(1.3,0.8,1.3))
+		rs.rotation.y = float(ri)*1.3
+		var rc: MeshInstance3D = g._fc_part(hub_root,g._bcone(0.02,0.42,1.7),rp+Vector3(0,2.0,0),g._fc_glow(rd["col"]))
+		rc.rotation.z = 0.12
+		g._fc_part(hub_root,g._fc_torus(1.7,1.85),rp+Vector3(0,0.1,0),g._fc_glow(rd["col"]))
+		p.label(hub_root,String(rd["n"]),rp+Vector3(0,3.9,0),(rd["col"] as Color).lightened(0.3),56)
+		p.label(hub_root,String(rd["sub"]),rp+Vector3(0,3.2,0),Color.WHITE,26)
 	var n := list.size()+1
 	for k in n:
 		var ang := deg_to_rad(190.0+160.0*float(k)/float(n-1))
@@ -467,6 +485,33 @@ func player_in_world() -> bool:
 	if g.player != null and sky_built and in_sky(g.player.position):
 		return true
 	return current() != null
+
+func role_near() -> int:
+	# Which role stone you are standing at (-1 = none).
+	if g.player == null or g.paused or absf(g.player.position.y-hub_pos.y) > 3.0:
+		return -1
+	var pp: Vector3 = g.player.position
+	for ri in ROLES.size():
+		var rp: Vector3 = hub_pos+(ROLES[ri]["at"] as Vector3)
+		if Vector2(pp.x-rp.x,pp.z-rp.z).length() < 3.2:
+			return ri
+	return -1
+
+func role_prompt() -> String:
+	var ri := role_near()
+	if ri < 0:
+		return ""
+	return "YOU ARE THE %s" % ROLES[ri]["n"] if ri == role else "BECOME THE %s" % ROLES[ri]["n"]
+
+func set_role(ri: int) -> void:
+	role = clampi(ri,0,ROLES.size()-1)
+	for w in list:
+		w.cu.hp = minf(w.cu.hp,w.cu.mhp())
+	if not dry:
+		g._show_toast("You are the %s now. %s." % [ROLES[role]["n"],ROLES[role]["sub"]])
+		g._play_coin()
+		g._save_progress()
+	g._refresh_hud()
 
 func near_hub() -> bool:
 	# v0.72: no button at the terrace any more; the gates work by walking through them.
@@ -590,7 +635,7 @@ func prompt() -> String:
 			return s
 	if near_hub():
 		return "OPEN WORLD PORTAL"
-	return ""
+	return role_prompt()
 
 func interact() -> bool:
 	var sp := sky_prompt()
@@ -605,6 +650,9 @@ func interact() -> bool:
 			g._show_toast("Get out of your vehicle or seat first.")
 		else:
 			g._open_worlds()
+		return true
+	if role_near() >= 0:
+		set_role(role_near())
 		return true
 	return false
 
@@ -648,7 +696,7 @@ func tick(delta: float) -> void:
 	if spr != last_sky:
 		last_sky = spr
 		g._refresh_hud()
-	var nh := near_hub()
+	var nh := role_near() >= 0
 	if nh != last_hub:
 		last_hub = nh
 		g._refresh_hud()
@@ -679,6 +727,7 @@ func save_state(file: ConfigFile) -> void:
 	file.set_value("sky","shrine",shrine_done)
 	file.set_value("sky","day",shrine_day)
 	file.set_value("sky","seal_bonus",seal_bonus)
+	file.set_value("sky","role",role)
 
 func load_state(file: ConfigFile) -> void:
 	for w in list:
@@ -686,6 +735,7 @@ func load_state(file: ConfigFile) -> void:
 	shrine_done = bool(file.get_value("sky","shrine",false))
 	shrine_day = String(file.get_value("sky","day",""))
 	seal_bonus = bool(file.get_value("sky","seal_bonus",false))
+	role = clampi(int(file.get_value("sky","role",0)),0,ROLES.size()-1)
 
 func summary(i: int) -> String:
 	var w = list[i]

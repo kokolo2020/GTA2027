@@ -76,6 +76,14 @@ func shots() -> void:
 	ws.go_portal()
 	await frames(50)
 	await g._save_shot("v72-1-terrace")
+	if OS.get_environment("HC_ONLY") == "summit":
+		g.cam_lock = true
+		g.camera.position = ws.hub_pos+Vector3(0,9,22)
+		g.camera.look_at(ws.hub_pos+Vector3(0,1.5,-2))
+		await frames(6)
+		await g._save_shot("v75-roles")
+		g.cam_lock = false
+		return
 	g.cam_lock = true
 	g.camera.position = ws.hub_pos+Vector3(26,16,40)
 	g.camera.look_at(ws.hub_pos+Vector3(0,1,-2))
@@ -344,6 +352,49 @@ func checks() -> void:
 		print(tag," left city: props_freed=",cu.props == null," sky=",g.infect_amt)
 		if cu.props != null:
 			fails += 1
+	# roles: the stones on the summit set the role; tank has double health and a shield, healer heals
+	ws.go_portal()
+	await g.get_tree().physics_frame
+	var role_ok := true
+	for ri in 3:
+		g.player.position = ws.hub_pos+(ws.ROLES[ri]["at"] as Vector3)+Vector3(0.5,0.9,0)
+		var rp: String = ws.prompt()
+		ws.interact()
+		if ws.role != ri or not rp.contains(String(ws.ROLES[ri]["n"])):
+			role_ok = false
+		print("ROLE stone ",ri," prompt=",rp," role=",ws.role)
+	var w0 = ws.list[0]
+	await w0.enter()
+	await g.get_tree().physics_frame
+	w0.cu.tick(0.1)
+	ws.role = 1
+	w0.cu.hp = 200.0
+	w0.cu.charge = 100.0
+	w0.cu.blast()
+	w0.dry = false
+	w0.cu.damage(50.0)
+	var tank_hp: float = w0.cu.hp
+	ws.role = 2
+	w0.cu.hp = 20.0
+	w0.cu.charge = 100.0
+	w0.dry = true
+	w0.cu.blast()
+	var heal_self: float = w0.cu.hp
+	w0.cu.hp = 10.0
+	var lp0: Vector2 = w0.cu.local(g.player.position)
+	w0.cu.net({"a":"heal","x":lp0.x+5.0,"z":lp0.y,"n":"Medic"})
+	var healed: float = w0.cu.hp
+	w0.cu.hp = 10.0
+	w0.cu.net({"a":"heal","x":lp0.x+80.0,"z":lp0.y,"n":"Medic"})
+	var far: float = w0.cu.hp
+	ws.role = 0
+	w0.cu.hp = 100.0
+	w0.cu.shield_t = 0.0
+	print("ROLE tank mhp=200 after 50 dmg with shield=",tank_hp," healer self=",heal_self," healed by wave=",healed," out of range=",far)
+	if not role_ok or tank_hp != 190.0 or heal_self != 100.0 or healed != 70.0 or far != 10.0:
+		fails += 1
+	w0.go_home()
+	await g.get_tree().physics_frame
 	# boss music: the whole loop renders, is loud enough and does not clip
 	var cm = ws.list[0].cu
 	g.remove_meta("boss_music") if g.has_meta("boss_music") else null

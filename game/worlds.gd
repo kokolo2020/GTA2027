@@ -567,6 +567,11 @@ func join_call(i: int) -> void:
 	g._show_toast("You joined the fight in %s! Tap FIRE to shoot the cure gun." % w.W["name"])
 	g._refresh_hud()
 
+func cast_pose(person: Dictionary, delta: float) -> void:
+	var w = current()
+	if w != null:
+		w.cu.cast_pose(person,delta)
+
 func live_line() -> String:
 	# For the Harbor Live news screen and the world picker.
 	var now := Time.get_ticks_msec()/1000.0

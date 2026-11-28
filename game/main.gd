@@ -377,7 +377,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.73.0: CURE BLAST special attack, bosses on open ground with boss music, lightning and a second attack (meteor rain), and a simple boss screen.")
+	_show_toast("Chit Chat City 0.73.1: your character now casts its spells (arm thrust for the cure bolt, both arms raised and slammed down for the BLAST). Bosses have minions, music and two attacks.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -7946,6 +7946,9 @@ func _physics_process(delta: float) -> void:
 			_pose_person(player_person,0.0,0.0)
 		else:
 			_pose_person(player_person,player_phase,player_walk*(1.35 if run_on else 1.0))
+		if paris != null:
+			# v0.73.1: spell-casting arms on top of the walk when you fire the cure gun or the blast.
+			paris.cast_pose(player_person,delta)
 		if follow_view:
 			# The camera slowly swings in behind you as you walk (not when you walk back towards it,
 			# and not right after you dragged to look around).

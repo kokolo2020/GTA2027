@@ -71,6 +71,12 @@ var b_rise := 0.0            # seconds since it started climbing out of the grou
 var b_fire: Array = []       # the wall of flames round the lair while it is awake
 var b_bolt := 4.0            # seconds to the next lightning
 var b_enraged := false
+# v0.73.1: casting. 1 = cure bolt (one arm thrust forward), 2 = blast (both arms up, then slammed down)
+var cast_kind := 0
+var cast_t := 0.0
+var cast_len := 0.0
+var cast_hold := -1.0        # tests only: freeze the cast at this moment
+var orb: MeshInstance3D
 var b_minion := 6.0          # seconds until the boss throws out its next wave of minions
 var b_kind := 0              # which attack is coming: 0 ground slam (one big ring on you), 1 meteor rain (five small rings)
 var b_mets: Array = []       # meteor rain: [ring, fireball, Vector3 local target]
@@ -409,6 +415,7 @@ func fire() -> void:
 	var p: Vector3 = g.player.position
 	var lp := local(p)
 	var list := targets()
+	cast(1)
 	var best := -1
 	var bd := GUN_RANGE
 	for i in list.size():
@@ -420,6 +427,16 @@ func fire() -> void:
 			bd = d
 			best = i
 	var from := p+Vector3(0,0.6,0)
+	# Turn to face what you shoot, and send the bolt from the casting hand.
+	var aim := Vector3.ZERO
+	if best >= 0:
+		aim = w.C+(list[best][0] as Node3D).position-p
+	elif b_on and is_instance_valid(b_node) and local(w.C+b_node.position).distance_to(lp) < BOSS_RANGE:
+		aim = w.C+b_node.position-p
+	aim.y = 0.0
+	if aim.length() > 0.2:
+		g.player.rotation.y = atan2(-aim.x,-aim.z)
+		from = p+Vector3(0,0.45,0)+aim.normalized()*0.75
 	if best >= 0:
 		var zn2: Node3D = list[best][0]
 		beam(from,w.C+zn2.position+Vector3(0,1.2*zn2.scale.y,0))
@@ -447,6 +464,7 @@ func blast() -> void:
 	if g.player == null or g.paused or charge < 100.0 or not w.in_paris(g.player.position) or w.busy():
 		return
 	charge = 0.0
+	cast(2)
 	var p: Vector3 = g.player.position
 	var lp := local(p)
 	var list := targets()
@@ -470,6 +488,74 @@ func blast() -> void:
 			g._show_toast("CURE BLAST! -%d on %s%s" % [int(BLAST*power()),boss_name()," and %d cured" % n if n > 0 else ""])
 		else:
 			g._show_toast("CURE BLAST! %d cured." % n if n > 0 else "CURE BLAST! Nobody was in range.")
+
+func cast(kind: int) -> void:
+	cast_kind = kind
+	cast_t = 0.0
+	cast_len = 0.42 if kind == 1 else 1.0
+
+func cast_pose(person: Dictionary, delta: float) -> void:
+	# Laid over the walk every frame: the arms cast the spell, a ball of light sits in the hands.
+	if cast_kind == 0 or person.is_empty() or not person.has("limbs"):
+		if orb != null and is_instance_valid(orb):
+			orb.visible = false
+		return
+	cast_t += delta
+	var u := (cast_hold if cast_hold >= 0.0 else cast_t)/cast_len
+	if u >= 1.0:
+		cast_kind = 0
+		if orb != null and is_instance_valid(orb):
+			orb.visible = false
+		return
+	var limbs: Dictionary = person["limbs"]
+	var al: Node3D = limbs.get("ArmL")
+	var ar: Node3D = limbs.get("ArmR")
+	var fl: Node3D = limbs.get("ForeArmL")
+	var fr: Node3D = limbs.get("ForeArmR")
+	var hd: Node3D = limbs.get("Head")
+	if orb == null or not is_instance_valid(orb):
+		orb = g._fc_part(g.player,g._bsph(0.22),Vector3.ZERO,g._fc_glow(Color("7dffe8")))
+		orb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	orb.visible = true
+	# Which way is "forward" for this body's arms? (People models face one way, the player's the other.)
+	var fs := 1.0
+	if ar != null and ar.get_parent() is Node3D:
+		var fwd: Vector3 = -g.player.global_transform.basis.z
+		fs = 1.0 if (ar.get_parent() as Node3D).global_transform.basis.z.dot(fwd) > 0.0 else -1.0
+	if cast_kind == 1:
+		# Cure bolt: the right arm punches straight out, the left hand steadies it, then both relax.
+		var k := clampf(minf(u/0.18,(1.0-u)/0.4),0.0,1.0)
+		if ar != null:
+			ar.rotation.x = lerpf(ar.rotation.x,-1.5*fs,k)
+			ar.rotation.z = lerpf(ar.rotation.z,0.0,k)
+		if fr != null:
+			fr.rotation.x = lerpf(fr.rotation.x,-0.05*fs,k)
+		if al != null:
+			al.rotation.x = lerpf(al.rotation.x,-1.05*fs,k)
+		if fl != null:
+			fl.rotation.x = lerpf(fl.rotation.x,-0.75*fs,k)
+		orb.position = Vector3(0.0,0.42,-0.7-0.2*k)
+		var s1 := 0.45+0.5*k
+		orb.scale = Vector3(s1,s1,s1)
+	else:
+		# Blast: both arms sweep up over the head while the light grows, then slam down to the ground.
+		var up := clampf(u/0.3,0.0,1.0)
+		var down := clampf((u-0.5)/0.2,0.0,1.0)
+		var out := clampf((1.0-u)/0.2,0.0,1.0)
+		var ax := lerpf(-3.0,-0.9,down)*fs
+		for arm: Node3D in [al,ar]:
+			if arm != null:
+				var side := signf(arm.position.x) if absf(arm.position.x) > 0.001 else 1.0
+				arm.rotation.x = lerpf(arm.rotation.x,ax,up*out)
+				arm.rotation.z = lerpf(arm.rotation.z,side*lerpf(0.45,0.1,down),up*out)
+		for fa: Node3D in [fl,fr]:
+			if fa != null:
+				fa.rotation.x = lerpf(fa.rotation.x,lerpf(-0.35,0.0,down)*fs,up*out)
+		if hd != null:
+			hd.rotation.x = lerpf(hd.rotation.x,lerpf(-0.45,0.3,down)*fs,up*out)
+		orb.position = Vector3(0,lerpf(1.55,-0.6,down),lerpf(-0.1,-0.9,down))
+		var s2 := lerpf(0.5,1.7,up)*lerpf(1.0,0.4,down)
+		orb.scale = Vector3(s2,s2,s2)
 
 func blast_fx(at: Vector3, radius: float) -> void:
 	if w.dry:

@@ -110,6 +110,18 @@ func shots() -> void:
 	cu.fire()
 	await frames(4)
 	await g._save_shot("v72-5-shot")
+	for cp in [[1,0.2,"cast-bolt"],[2,0.28,"cast-blast-up"],[2,0.72,"cast-blast-down"]]:
+		cu.cast(int(cp[0]))
+		cu.cast_hold = float(cp[1])*cu.cast_len
+		await frames(8)
+		g.cam_lock = true
+		g.camera.position = g.player.position+g.player.global_transform.basis.x*3.4+g.player.global_transform.basis.z*1.2+Vector3(0,0.7,0)
+		g.camera.look_at(g.player.position+Vector3(0,0.3,0))
+		await frames(4)
+		await g._save_shot("v72-5-"+String(cp[2]))
+		g.cam_lock = false
+	cu.cast_hold = -1.0
+	cu.cast_kind = 0
 	w.dry = true
 	g.player.position = cu.arena_pos()+Vector3(0,0.9,16)
 	await frames(30)

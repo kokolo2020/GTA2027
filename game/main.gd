@@ -390,7 +390,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("BONKERS CITY: BOSS NIGHT! 0.77.1: all new boss models made in Blender, and Menu > Cash log shows where your money came from.")
+	_show_toast("BONKERS CITY: BOSS NIGHT! 0.77.2: your character now moves when casting spells, and no hoverboard in boss fights.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -7967,7 +7967,7 @@ func _physics_process(delta: float) -> void:
 		var walking := Vector2(player.velocity.x,player.velocity.z).length() > 0.4
 		player_walk = move_toward(player_walk,1.0 if walking else 0.0,delta*6.0)
 		player_phase += delta*(12.5 if run_on else 9.0)*player_walk
-		if board_on:
+		if board_on and not _board_blocked():
 			# Riding the hoverboard: stand still on the deck instead of running.
 			_pose_person(player_person,0.0,0.0)
 		else:
@@ -19197,8 +19197,18 @@ var travel_info: Label
 var travel_buttons: Array = []
 var travel_ready_at := 0.0
 
+func _board_blocked() -> bool:
+	# v0.77.2: no hoverboard in a boss fight (the fight is on foot).
+	if ultimate != null and ultimate.on:
+		return true
+	if paris != null:
+		var bw = paris.current()
+		if bw != null and bw.cu != null and bw.cu.b_on:
+			return true
+	return false
+
 func _walk_speed() -> float:
-	if board_on and not driving:
+	if board_on and not driving and not _board_blocked():
 		return BOARD_SPEED
 	var base_speed := RUN_SPEED if run_on else WALK_SPEED
 	return base_speed*(cafe.speed_mult() if cafe != null else 1.0)
@@ -27405,6 +27415,9 @@ var board_button: Button
 func _toggle_board() -> void:
 	if driving:
 		return
+	if _board_blocked():
+		_show_toast("No hoverboard in a boss fight. Fight on foot!")
+		return
 	board_on = not board_on
 	_show_toast("Hoverboard on. Zoom!" if board_on else "Hoverboard off.")
 	_save_progress()
@@ -27422,7 +27435,7 @@ func _board_tick(delta: float) -> void:
 		_fc_part(board_node,BoxMesh.new(),Vector3(0,0.04,0),_fc_glow(Color("4fe3ff")),Vector3(0.08,0.02,1.2))
 		for sz in [-0.45,0.45]:
 			_fc_part(board_node,_fc_cone(0.16,0.1,0.06),Vector3(0,-0.07,sz),_fc_glow(Color("ff5fd2")))
-	var riding := board_on and not driving and not eye_view and seat_id < 0
+	var riding := board_on and not driving and not eye_view and seat_id < 0 and not _board_blocked()
 	board_node.visible = riding
 	if not player_person.is_empty() and hat_holder != null:
 		hat_holder.position.y = _hat_y(-0.52 if riding else -0.7)
@@ -27441,7 +27454,7 @@ func _board_tick(delta: float) -> void:
 		board_button.add_theme_font_size_override("font_size",19)
 		action_button.get_parent().add_child(board_button)
 	if board_button != null:
-		board_button.visible = not driving and not paused and not race_car and not bus_riding and not sky_riding and seat_id < 0
+		board_button.visible = not driving and not paused and not race_car and not bus_riding and not sky_riding and seat_id < 0 and not _board_blocked()
 		board_button.add_theme_stylebox_override("normal",_panel(Color("c254ff") if board_on else Color("213d4f"),18))
 		board_button.text = "BOARD ✓" if board_on else "BOARD"
 		board_button.position = action_button.position+Vector2(-board_button.size.x-14.0,action_button.size.y-board_button.size.y)

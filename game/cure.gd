@@ -100,6 +100,7 @@ var party_next := 0.0
 var party_at := Vector3.ZERO
 var home_t := 0.0            # after a lost fight: seconds until everyone is sent home
 var cast_kind := 0
+var cast_lean_on := false    # v0.77.2: the body lean/hop of a cast is on and must be reset afterwards
 var cast_t := 0.0
 var cast_len := 0.0
 var cast_hold := -1.0        # tests only: freeze the cast at this moment
@@ -596,13 +597,14 @@ func blast() -> void:
 func cast(kind: int) -> void:
 	cast_kind = kind
 	cast_t = 0.0
-	cast_len = 0.42 if kind == 1 else (4.5 if kind == 3 else 1.0)
+	cast_len = 0.6 if kind == 1 else (4.5 if kind == 3 else 1.3)
 
 func cast_pose(person: Dictionary, delta: float) -> void:
 	# Laid over the walk every frame: the arms cast the spell, a ball of light sits in the hands.
 	if cast_kind == 0 or person.is_empty() or not person.has("limbs"):
 		if orb != null and is_instance_valid(orb):
 			orb.visible = false
+		_cast_body(person,0.0,0.0,0.0)
 		return
 	cast_t += delta
 	var u := (cast_hold if cast_hold >= 0.0 else cast_t)/cast_len
@@ -610,6 +612,7 @@ func cast_pose(person: Dictionary, delta: float) -> void:
 		cast_kind = 0
 		if orb != null and is_instance_valid(orb):
 			orb.visible = false
+		_cast_body(person,0.0,0.0,0.0)
 		return
 	var limbs: Dictionary = person["limbs"]
 	var al: Node3D = limbs.get("ArmL")
@@ -641,6 +644,7 @@ func cast_pose(person: Dictionary, delta: float) -> void:
 				fa2.rotation.x = lerpf(fa2.rotation.x,-0.2*fs,wgt)
 		if hd != null:
 			hd.rotation.x = lerpf(hd.rotation.x,-0.3*fs,wgt)
+		_cast_body(person,-0.12*wgt,absf(sin(cast_t*7.0))*0.28*wgt,fs)
 	elif cast_kind == 1:
 		# Cure bolt: the right arm punches straight out, the left hand steadies it, then both relax.
 		var k := clampf(minf(u/0.18,(1.0-u)/0.4),0.0,1.0)
@@ -654,8 +658,10 @@ func cast_pose(person: Dictionary, delta: float) -> void:
 		if fl != null:
 			fl.rotation.x = lerpf(fl.rotation.x,-0.75*fs,k)
 		orb.position = Vector3(0.0,0.42,-0.7-0.2*k)
-		var s1 := 0.45+0.5*k
+		var s1 := 0.6+0.9*k
 		orb.scale = Vector3(s1,s1,s1)
+		# the whole body throws itself into the shot: a lunge forward, a little hop
+		_cast_body(person,0.32*k,0.12*sin(clampf(u/0.5,0.0,1.0)*PI),fs)
 	else:
 		# Blast: both arms sweep up over the head while the light grows, then slam down to the ground.
 		var up := clampf(u/0.3,0.0,1.0)
@@ -673,8 +679,29 @@ func cast_pose(person: Dictionary, delta: float) -> void:
 		if hd != null:
 			hd.rotation.x = lerpf(hd.rotation.x,lerpf(-0.45,0.3,down)*fs,up*out)
 		orb.position = Vector3(0,lerpf(1.55,-0.6,down),lerpf(-0.1,-0.9,down))
-		var s2 := lerpf(0.5,1.7,up)*lerpf(1.0,0.4,down)
+		var s2 := lerpf(0.6,2.2,up)*lerpf(1.0,0.4,down)
 		orb.scale = Vector3(s2,s2,s2)
+		# crouch, leap up with the arms, then slam down leaning into it
+		var crouch := -0.18*clampf(u/0.12,0.0,1.0)*clampf((0.3-u)/0.18,0.0,1.0)
+		var leap := 0.55*sin(clampf((u-0.12)/0.5,0.0,1.0)*PI)
+		var lean_b := lerpf(-0.22*clampf(u/0.3,0.0,1.0),0.5,down)*out
+		_cast_body(person,lean_b,crouch+leap,fs)
+
+func _cast_body(person: Dictionary, lean: float, hop: float, fs: float) -> void:
+	# v0.77.2: whole-body motion for a cast: lean (+ = forward) and hop (metres up). Reset when the cast ends.
+	if person.is_empty() or not person.has("root"):
+		return
+	var rn := person["root"] as Node3D
+	if rn == null:
+		return
+	if lean == 0.0 and hop == 0.0:
+		if cast_lean_on:
+			rn.rotation.x = 0.0
+			cast_lean_on = false
+		return
+	rn.rotation.x = lean*fs
+	rn.position.y += hop
+	cast_lean_on = true
 
 func heal_fx(at: Vector3) -> void:
 	if w.dry:

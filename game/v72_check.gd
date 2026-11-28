@@ -223,6 +223,13 @@ func checks() -> void:
 	g.cash = cash_before
 	g.cash_log = log_before
 	g.cash_log_test = false
+	# v0.77.2: no hoverboard in a boss fight
+	if g._board_blocked():
+		fails += 1
+	g.ultimate.on = true
+	if not g._board_blocked():
+		fails += 1
+	g.ultimate.on = false
 	# 1. leaderboard: levels above 20 are sent capped and shown from XP
 	var me: Dictionary = g._lb_me()
 	var l1: int = g._lb_level({"level":20,"xp":12550})

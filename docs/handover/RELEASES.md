@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.77.2 (code 150, 2026-11-28)
+Koko: "make the character do some movement when casting a spell" and "in boss fight no hoverboard". `cure.gd`: new `_cast_body()` adds whole-body motion to the three casts (bolt lunge, blast crouch-leap-slam, cheer hops), bigger orb, longer `cast_len`. `main.gd`: `_board_blocked()` (ultimate on, or a boss fight active) stops `_walk_speed` board speed, `_toggle_board` (toast), `_board_tick`, the board pose and the BOARD button. `v72_check.gd` tests `_board_blocked()`. Renders reviewed: blast up (leap, arms raised) and down (slam).
+
 ## 0.77.1 (code 149, 2026-11-28)
 Koko: "use blender to refine the boss fight design" and "how did the account get over 1.7m". New `blender-src/make_bosses.py` (22 parts -> `game/models/boss_*.glb`: dragon body/head/jaw/wings/tail, serpent head/segments/coil, golem torso/head/arms/leg, kraken head/tentacle, ultimate shell/neck), `boss_models.gd` loads them with `glb()` and falls back to the old shape-built versions if a part is missing (`has_glb`). `main.gd`: `cash` has a setter that logs every payout by `file:function` (via `get_stack()`, so the web build says "other") into `cash_log` (saved in [progress]); Menu > Cash log (`_show_cash_log`). Test runs never log. Run `run-boss-models.command` (Blender then Godot --import) after editing the Blender script. Not checked on the Fold5 or with 11 real players.
 

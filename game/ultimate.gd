@@ -39,6 +39,10 @@ var slam_live := false
 var phase := 0
 var charge := 0.0
 var cd := 0.0
+var dot_t := 0.0           # v0.78: a Warlock's poison
+var dot_dps := 0.0
+var dot_acc := 0.0
+var pet_cd := 2.0
 var php := 100.0
 var won_day := ""
 var sync := 0.0
@@ -294,8 +298,21 @@ func fight_tick(delta: float, p: Vector3) -> void:
 				(m[0] as MeshInstance3D).scale = Vector3(r*s,1.0,r*s)
 		if slam <= 0.0:
 			resolve(p)
-	if hp < UHP*0.99 and php < 100.0:
+	# v0.78: only a Healer heals in a boss fight. A Warlock's poison burns, a pet (Mage, Warlock, Hunter) bites.
+	if hp < UHP*0.99 and php < 100.0 and rl() == 2:
 		php = minf(100.0,php+4.0*delta)
+	if dot_t > 0.0:
+		dot_t -= delta
+		dot_acc += dot_dps*delta
+		if dot_acc >= 8.0:
+			hit(dot_acc,true)
+			dot_acc = 0.0
+	if [0,4,5].has(rl()) and g.pet_on > 0 and g.pet_node != null and is_instance_valid(g.pet_node):
+		pet_cd -= delta
+		if pet_cd <= 0.0:
+			pet_cd = 1.5 if rl() == 5 else 2.5
+			hit(20.0*(3.0 if rl() == 5 else 1.0),true)
+			g._quick_fx(node.position+Vector3(randf_range(-4.0,4.0),randf_range(-3.0,3.0),randf_range(-4.0,4.0)))
 	sync += delta
 	if sync > 2.0:
 		sync = 0.0
@@ -364,7 +381,7 @@ func resolve(p: Vector3) -> void:
 		if Vector2(at.x-p.x,at.z-p.z).length() < float(m[3]):
 			burned = maxf(burned,45.0 if float(m[3]) > 5.0 else 26.0)
 	if burned > 0.0:
-		php -= burned
+		php -= burned*(0.5 if rl() == 1 else 1.0)
 		if hurt != null:
 			hurt.color.a = 0.4
 
@@ -383,6 +400,9 @@ func retreat() -> void:
 		title_lbl.text = "TIME'S UP!"
 
 # ---------- fighting back ----------
+func rl() -> int:
+	return int(g.paris.role) if g.paris != null else 0
+
 func fire() -> void:
 	if g.player == null or g.paused or cd > 0.0 or not on or node == null:
 		return
@@ -391,7 +411,10 @@ func fire() -> void:
 	if Vector2(p.x-node.position.x,p.z-node.position.z).length() > RANGE:
 		g._show_toast("Too far. Get closer to THE WORLD EATER.")
 		return
-	hit(SHOT*power(),true)
+	hit(SHOT*power()*(2.0 if rl() == 3 else 1.0),true)
+	if rl() == 4:
+		dot_t = 4.0
+		dot_dps = SHOT*power()*1.2
 	charge = minf(100.0,charge+5.0)
 	g._quick_fx(node.position+Vector3(randf_range(-4.0,4.0),randf_range(-3.0,3.0),randf_range(-4.0,4.0)))
 
@@ -399,7 +422,11 @@ func blast() -> void:
 	if g.player == null or g.paused or not on or node == null or charge < 100.0:
 		return
 	charge = 0.0
-	hit(BLAST*power(),true)
+	if rl() == 2:
+		php = 100.0
+		g._show_toast("HEAL WAVE! You are at full health.")
+		return
+	hit(BLAST*power()*(2.0 if rl() == 3 else 1.0),true)
 	shake = 0.6
 	g._quick_fx(node.position)
 	g._show_toast("BLAST! -%d on THE WORLD EATER" % int(BLAST*power()))

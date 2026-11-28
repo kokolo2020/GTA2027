@@ -127,6 +127,12 @@ const MUS_LEN := 204800      # 8 bars at 150 bpm
 var b_on := false
 var b_hp := 0.0
 var b_t := 0.0               # seconds since the boss woke
+var b_ph := 0.0              # v0.78: the boss's walk phase (runs slower while frozen by a Mage)
+var b_frost := 0.0
+var dot_t := 0.0             # v0.78: a Warlock's poison: seconds left, damage per second and the unsent damage
+var dot_dps := 0.0
+var dot_acc := 0.0
+var rp_node: Node3D          # v0.78: the free fighting pet of a Mage, Warlock or Hunter
 var b_node: Node3D
 var b_ring: MeshInstance3D
 var b_light: OmniLight3D
@@ -345,8 +351,28 @@ func build_lair() -> void:
 		var ln := rng.randf_range(lr*0.35,lr*0.9)
 		var crack: MeshInstance3D = g._fc_part(props,g._bbox(),c+Vector3(cos(ang)*ln*0.55,0.11,sin(ang)*ln*0.55),g._fc_glow(Color("ff5a1a") if k % 2 == 0 else Color("ffb03a")),Vector3(ln,0.03,rng.randf_range(0.12,0.3)))
 		crack.rotation.y = -ang
+	# v0.78: a themed landscape: tall trees (Blender models) and rocks round the ring, a tinted outer ground.
+	var outer := StandardMaterial3D.new()
+	outer.albedo_color = Color(Color(String(boss()["body"])).darkened(0.3),0.5)
+	outer.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	outer.roughness = 1.0
+	g._fc_part(props,g._bcone(lr+8.0,lr+8.0,0.03),c+Vector3(0,0.04,0),outer)
+	if models == null:
+		models = BossModels.new(g)
+	var tk: String = {"dragon":"ember","serpent":"sakura","golem":"crystal","kraken":"mangrove"}.get(String(boss()["model"]),"ember")
+	var treed := 0
+	for k in 14:
+		var ang3 := float(k)*TAU/14.0+rng.randf_range(-0.12,0.12)
+		var rr := lr+rng.randf_range(1.5,5.5)
+		var tn: Node3D = models.glb(props,"lair_tree_"+tk,c+Vector3(cos(ang3)*rr,0,sin(ang3)*rr),Vector3.ONE*rng.randf_range(0.85,1.35),Vector3(0,rng.randf_range(0.0,TAU),0))
+		if tn != null:
+			treed += 1
+	for k in 12:
+		var ang4 := float(k)*TAU/12.0+rng.randf_range(-0.2,0.2)
+		var rr2 := (lr+rng.randf_range(-0.5,5.0)) if k % 3 != 0 else lr*rng.randf_range(0.45,0.75)
+		models.glb(props,"lair_rock",c+Vector3(cos(ang4)*rr2,0,sin(ang4)*rr2),Vector3.ONE*(rng.randf_range(0.7,1.6) if k % 3 != 0 else 0.45),Vector3(0,rng.randf_range(0.0,TAU),0))
 	var black: StandardMaterial3D = g._material(Color("120c0e"))
-	for k in 10:
+	for k in (10 if treed == 0 else 0):
 		var ang2 := float(k)*TAU/10.0+0.2
 		var out := Vector3(cos(ang2),0,sin(ang2))
 		var h := rng.randf_range(5.0,8.5)
@@ -522,7 +548,8 @@ func fire() -> void:
 		add_charge(CHARGE_HIT)
 	elif b_on and is_instance_valid(b_node) and local(w.C+b_node.position).distance_to(lp) < BOSS_RANGE:
 		beam(from,w.C+b_node.position+Vector3(0,4.0,0))
-		hit_boss(SHOT*power(),true)
+		hit_boss(SHOT*power()*dmg_mult(),true)
+		role_hit(SHOT*power())
 		add_charge(CHARGE_HIT)
 	else:
 		var fwd: Vector3 = -g.camera.global_transform.basis.z
@@ -533,6 +560,12 @@ func fire() -> void:
 func role() -> int:
 	return int(g.paris.role) if g.paris != null else 0
 
+# v0.78 roles: 0 MAGE (frost, pet), 1 TANK, 2 HEALER, 3 DPS (double damage), 4 WARLOCK (poison, pet), 5 HUNTER (strong pet).
+const PET_ROLES := [0,4,5]
+
+func dmg_mult() -> float:
+	return 2.0 if role() == 3 else 1.0
+
 func mhp() -> float:
 	# The tank has double health.
 	return 200.0 if role() == 1 else 100.0
@@ -541,7 +574,7 @@ func add_charge(v: float) -> void:
 	var was := charge
 	charge = minf(100.0,charge+v)
 	if was < 100.0 and charge >= 100.0 and not w.dry:
-		g._show_toast(["CURE BLAST READY! Tap BLAST (or G): a huge hit on the boss, and it cures everyone around you.","SHIELD SLAM READY! Tap SHIELD (or G): 7 seconds of shield, and everything around you is knocked out.","HEAL WAVE READY! Tap HEAL (or G): heals you and every player near you."][role()])
+		g._show_toast(["CURE BLAST READY! Tap BLAST (or G): a huge hit on the boss, and it cures everyone around you.","SHIELD SLAM READY! Tap SHIELD (or G): 7 seconds of shield, and everything around you is knocked out.","HEAL WAVE READY! Tap HEAL (or G): heals you and every player near you.","DPS BLAST READY! Tap BLAST (or G): a huge hit, doubled.","CURSE READY! Tap CURSE (or G): a huge hit and a poison that keeps burning the boss.","HUNTER BLAST READY! Tap BLAST (or G): a huge hit on the boss."][role()])
 		g._play_coin()
 
 func blast() -> void:
@@ -582,7 +615,8 @@ func blast() -> void:
 		hit = true
 		beam(p+Vector3(0,0.6,0),w.C+b_node.position+Vector3(0,4.0,0))
 		blast_fx(w.C+b_node.position+Vector3(0,0.2,0),9.0)
-		hit_boss(BLAST*(0.6 if rl == 1 else 1.0)*power(),true)
+		hit_boss(BLAST*(0.6 if rl == 1 else 1.0)*power()*dmg_mult(),true)
+		role_hit(BLAST*power()*2.0)
 	blast_fx(p+Vector3(0,-0.7,0),BLAST_R)
 	shake = maxf(shake,0.8)
 	thud()
@@ -1229,7 +1263,11 @@ func move_zombies(delta: float, p: Vector3) -> void:
 	if bitten and not w.dry:
 		damage(dps*delta)
 	elif hp > 0.0 and hp < mhp():
-		hp = minf(mhp(),hp+(14.0 if safe else 3.0)*delta)
+		# v0.78: in a boss fight nothing heals you except a Healer.
+		if not b_on:
+			hp = minf(mhp(),hp+(14.0 if safe else 3.0)*delta)
+		elif role() == 2:
+			hp = minf(mhp(),hp+4.0*delta)
 
 func damage(amount: float) -> void:
 	hp -= amount*(0.2 if shield_t > 0.0 else 1.0)
@@ -1386,6 +1424,9 @@ func boss_start(start_hp: float, elapsed: float) -> void:
 	b_rise = 0.0 if elapsed < 1.0 else 9.0
 	b_bolt = 0.4
 	b_minion = 6.0
+	b_ph = b_t
+	b_frost = 0.0
+	dot_t = 0.0
 	b_enraged = false
 	# A wall of flames closes the ring.
 	b_fire.clear()
@@ -1433,16 +1474,26 @@ func boss_start(start_hp: float, elapsed: float) -> void:
 		g._show_toast("%s IS AWAKE! It needs %d players: with %d, every shot hits %dx harder. Stay out of the red rings!" % [boss_name(),BOSS_NEED,BOSS_NEED,int(POWER)])
 
 # v0.77.3: your pet fights too. It dashes at the nearest minion and removes it, and with none left it nips at the boss.
-const PET_BOSS_DMG := 20.0
+const PET_BOSS_DMG := 30.0
 var pet_cd := 1.0
+var pet_told := false
 
 func pet_fight(delta: float) -> void:
-	if g.pet_on <= 0 or g.pet_node == null or not is_instance_valid(g.pet_node):
+	# Only a Mage, Warlock or Hunter has a fighting pet (their own market pet, or a free one in the fight).
+	if not PET_ROLES.has(role()):
+		return
+	var pn: Node3D = null
+	if g.pet_on > 0 and g.pet_node != null and is_instance_valid(g.pet_node):
+		pn = g.pet_node
+	else:
+		pn = role_pet(delta)
+	if pn == null:
 		return
 	pet_cd -= delta
 	if pet_cd > 0.0:
 		return
-	var pw: Vector3 = g.pet_node.global_position
+	var hunter := role() == 5
+	var pw: Vector3 = pn.global_position
 	var pl: Vector2 = local(pw)
 	var best := -1
 	var bd := 18.0
@@ -1455,10 +1506,10 @@ func pet_fight(delta: float) -> void:
 			bd = dd
 			best = i
 	var cols := [Color("ffffff"),Color("7ad7ff"),Color("ff5fd2"),Color("ff9a1f"),Color("ffe27a")]
-	var pcol: Color = cols[clampi(g.pet_on,0,cols.size()-1)]
+	var pcol: Color = cols[clampi(g.pet_on,0,cols.size()-1)] if g.pet_on > 0 else (g.paris.ROLES[role()]["col"] as Color)
 	var from: Vector3 = pw-w.C
 	if best >= 0:
-		pet_cd = 1.4
+		pet_cd = 0.8 if hunter else 1.4
 		var zn: Node3D = roam[best][0]
 		var at: Vector3 = zn.position+Vector3(0,0.8,0)
 		_pet_bolt(from+Vector3(0,0.5,0),at,pcol)
@@ -1470,17 +1521,65 @@ func pet_fight(delta: float) -> void:
 			g._quick_fx(w.C+at)
 		return
 	if is_instance_valid(b_node) and b_rise >= 2.4 and Vector2(b_node.position.x,b_node.position.z).distance_to(pl) < 45.0:
-		pet_cd = 2.2
+		pet_cd = 1.2 if hunter else 2.2
 		var at2: Vector3 = b_node.position+Vector3(0,float(boss()["scale"])*0.6,0)
-		_pet_bolt(from+Vector3(0,0.5,0),at2,pcol)
+		var pd := PET_BOSS_DMG*(3.0 if hunter else 1.0)
+		_pet_bolt(from+Vector3(0,0.5,0),at2,pcol,pd)
 		_pet_lunge(at2-from)
-		hit_boss(PET_BOSS_DMG,true)
+		hit_boss(pd,true)
+		if not pet_told and not w.dry:
+			pet_told = true
+			g._show_toast("Your pet attacks the boss!")
 
-func _pet_bolt(a: Vector3, b: Vector3, col: Color) -> void:
-	var orb: MeshInstance3D = g._fc_part(props,g._fc_sphere(0.2),a,g._fc_glow(col))
+# v0.78: a Mage's shots freeze the boss for a moment, a Warlock's shots poison it.
+func role_hit(dmg: float) -> void:
+	var rl := role()
+	if rl == 0:
+		b_frost = 3.0
+	elif rl == 4:
+		dot_dps = maxf(dot_dps*0.5,dmg*1.2)
+		dot_t = 4.0
+
+func role_pet(delta: float) -> Node3D:
+	if w.dry or g.player == null:
+		return null
+	if rp_node == null or not is_instance_valid(rp_node):
+		rp_node = Node3D.new()
+		g.add_child(rp_node)
+		rp_node.position = g.player.position+Vector3(1,-0.8,1)
+		g._build_pet(rp_node,{0:4,4:3,5:1}[role()])
+	var want: Vector3 = g.player.position+g.player.global_basis*Vector3(1.0,0,1.3)+g.pet_lunge
+	want.y = g.player.position.y-0.8+(0.75+sin(g.clock*2.6)*0.08 if role() == 4 else 0.0)
+	var d := Vector2(want.x-rp_node.position.x,want.z-rp_node.position.z)
+	rp_node.position = rp_node.position.lerp(want,minf(1.0,delta*6.0))
+	if d.length() > 0.15:
+		rp_node.rotation.y = lerp_angle(rp_node.rotation.y,atan2(-d.x,-d.y),minf(1.0,delta*8.0))
+	if rp_node.has_meta("anim"):
+		g._pet_anim(rp_node,d.length())
+	return rp_node
+
+func _pet_bolt(a: Vector3, b: Vector3, col: Color, dmg := 0.0) -> void:
+	# A big glowing shot from the pet, a flash where it lands and, for the boss, the damage floating up.
+	var orb: MeshInstance3D = g._fc_part(props,g._fc_sphere(0.4),a,g._fc_glow(col))
 	var tw: Tween = orb.create_tween()
-	tw.tween_property(orb,"position",b,0.18)
+	tw.tween_property(orb,"position",b,0.2)
 	tw.tween_callback(orb.queue_free)
+	var fl: MeshInstance3D = g._fc_part(props,g._fc_sphere(0.5),a,g._fc_glow(Color.WHITE))
+	var tf: Tween = fl.create_tween()
+	tf.tween_property(fl,"scale",Vector3(2.0,2.0,2.0),0.15)
+	tf.tween_callback(fl.queue_free)
+	var hit_fx: MeshInstance3D = g._fc_part(props,g._fc_sphere(0.6),b,g._fc_glow(col))
+	hit_fx.scale = Vector3(0.1,0.1,0.1)
+	var th: Tween = hit_fx.create_tween()
+	th.tween_interval(0.2)
+	th.tween_property(hit_fx,"scale",Vector3(2.6,2.6,2.6),0.25)
+	th.tween_callback(hit_fx.queue_free)
+	if dmg > 0.0 and not w.dry:
+		var lb: Label3D = w.label(props,"-%d" % int(dmg),b+Vector3(0,1.5,0),col.lightened(0.3),44)
+		var tl: Tween = lb.create_tween()
+		tl.tween_interval(0.2)
+		tl.tween_property(lb,"position",lb.position+Vector3(0,2.5,0),0.9)
+		tl.tween_callback(lb.queue_free)
 
 func _pet_lunge(dir: Vector3) -> void:
 	var d := Vector3(dir.x,0,dir.z)
@@ -1505,6 +1604,14 @@ func hit_boss(dmg: float, mine: bool) -> void:
 
 func boss_tick(delta: float, p: Vector3) -> void:
 	b_t += delta
+	b_ph += delta*(0.4 if b_frost > 0.0 else 1.0)
+	b_frost = maxf(0.0,b_frost-delta)
+	if dot_t > 0.0:
+		dot_t -= delta
+		dot_acc += dot_dps*delta
+		if dot_acc >= 8.0:
+			hit_boss(dot_acc,true)
+			dot_acc = 0.0
 	if b_t > BOSS_TIME:
 		boss_end(false)
 		return
@@ -1533,7 +1640,7 @@ func boss_tick(delta: float, p: Vector3) -> void:
 		b_node.position.y = lerpf(-float(BossModels.SINK[String(boss()["model"])])*float(boss()["scale"]),float(boss()["hover"])*float(boss()["scale"]),ease(b_rise/2.4,0.5))
 		shake = maxf(shake,0.5)
 	elif is_instance_valid(b_node):
-		var k := b_t*(0.5 if enraged else 0.32)*float(boss()["pace"])
+		var k := b_ph*(0.5 if enraged else 0.32)*float(boss()["pace"])
 		var np := Vector2(a.x+cos(k)*arena_r,a.y+sin(k*1.31)*arena_r)
 		var mv := np-Vector2(b_node.position.x,b_node.position.z)
 		b_node.position.x = np.x
@@ -1691,6 +1798,11 @@ func boss_end(won: bool, quiet := false) -> void:
 		return
 	b_on = false
 	b_slam_live = false
+	dot_t = 0.0
+	b_frost = 0.0
+	if rp_node != null and is_instance_valid(rp_node):
+		rp_node.queue_free()
+	rp_node = null
 	music_stop()
 	for fl in b_fire:
 		if is_instance_valid(fl):

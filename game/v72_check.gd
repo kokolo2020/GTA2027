@@ -76,6 +76,14 @@ func shots() -> void:
 	ws.go_portal()
 	await frames(50)
 	await g._save_shot("v72-1-terrace")
+	# v0.78: the role screen
+	var dry0: bool = g.paris.dry
+	g.paris.dry = false
+	g.paris.ask_role(func(): pass)
+	await frames(6)
+	await g._save_shot("v78-role-picker")
+	g.paris.pick_cancel()
+	g.paris.dry = dry0
 	if OS.get_environment("HC_ONLY") == "bosses":
 		for wi2 in ws.list.size():
 			var wb = ws.list[wi2]
@@ -418,6 +426,51 @@ func checks() -> void:
 		g.pet_node.queue_free()
 		g.pet_on = was_pet[0]
 		g.pet_node = was_pet[1]
+		# v0.78: a pet next to the player fights through the normal boss_tick (the real game path), not only when called directly.
+		var wp2 := [g.pet_on,g.pet_node]
+		g.pet_on = 3
+		g.pet_node = Node3D.new()
+		g.add_child(g.pet_node)
+		g.pet_node.position = g.player.position+Vector3(1,0,1)
+		var hp_a: float = cu.b_hp
+		var mn_a := 0
+		for zz in cu.roam:
+			if String(zz[2]) == "minion":
+				mn_a += 1
+		cu.pet_cd = 0.0
+		for k in 60:
+			cu.boss_tick(0.25,g.player.position)
+		var mn_b := 0
+		for zz in cu.roam:
+			if String(zz[2]) == "minion":
+				mn_b += 1
+		print(tag," PET via boss_tick: boss hp ",hp_a,"->",cu.b_hp," minions ",mn_a,"->",mn_b," pet_cd=",cu.pet_cd)
+		if cu.b_hp >= hp_a:
+			fails += 1
+		g.pet_node.queue_free()
+		g.pet_on = wp2[0]
+		g.pet_node = wp2[1]
+		# v0.78: roles. DPS does double damage, only a Healer heals in a boss fight, the picker opens (and in a test just goes on).
+		var r78_rl0: int = g.paris.role
+		g.paris.role = 3
+		var r78_d3: float = cu.dmg_mult()
+		g.paris.role = 2
+		var r78_d2: float = cu.dmg_mult()
+		var r78_got := [false]
+		g.paris.ask_role(func(): r78_got[0] = true)
+		var r78_regen := []
+		for r78_rr in [0,1,2,3,4,5]:
+			g.paris.role = r78_rr
+			cu.hp = 40.0
+			cu.tick(1.0)
+			r78_regen.append(snappedf(cu.hp-40.0,0.1))
+		g.paris.role = r78_rl0
+		cu.hp = cu.mhp()
+		print(tag," ROLES n=",g.paris.ROLES.size()," dps x",r78_d3," healer x",r78_d2," picker=",r78_got[0]," r78_regen by role=",r78_regen)
+		if g.paris.ROLES.size() != 6 or r78_d3 != 2.0 or r78_d2 != 1.0 or not r78_got[0]:
+			fails += 1
+		if cu.b_on and (r78_regen[0] != 0.0 or r78_regen[1] != 0.0 or r78_regen[3] != 0.0 or r78_regen[4] != 0.0 or r78_regen[5] != 0.0 or r78_regen[2] <= 0.0):
+			fails += 1
 		print(tag," minions out=",minions," bite=",cu.MINION[3]," vs walker ",cu.o.inf.SPEC["walker"][3])
 		if minions < 4 or minions > cu.MINION_MAX or float(cu.MINION[3]) >= float(cu.o.inf.SPEC["runner"][3]):
 			fails += 1

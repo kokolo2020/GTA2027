@@ -345,32 +345,128 @@ SHELL2 = M("UlShell2", "2c2140", 0.4)
 VIOLET = M("UlViolet", "7a3aff", 0.3, 3.0)
 CORE = M("UlCore", "efe2ff", 0.3, 2.4)
 
+ASKIN = M("UlAlienSkin", "7f9c92", 0.45)
+ASKIN2 = M("UlAlienSkin2", "566f69", 0.5)
+AEYE = M("UlAlienEye", "05060a", 0.08)
+AGLOW = M("UlAlienGlow", "5dffb0", 0.3, 3.2)
+
 def ultimate_shell():
-    blob((0, 2.9, 0), 1.25, SHELL, sub=3)
-    limb((0, 0.1, 0), (0, 2.5, 0), 0.05, 0.9, SHELL, verts=14)
-    for k in range(10):
-        a = k * math.tau / 10
-        blob((math.cos(a) * 1.1, 2.9 + 0.35 * math.sin(k * 1.3), math.sin(a) * 1.1 - 0.05), 0.4, SHELL2, (1.0, 0.8, 0.5), sub=2, jit=0.06, seed=k, flat=True)
-    for k in range(3):
-        ring((0, 2.9, 0), 1.26, 0.025, VIOLET, rx=math.pi / 2, rz=k * math.pi / 3)
-    # the giant eye with eyelids
-    blob((0, 2.95, 1.0), 0.55, CORE, (1.0, 1.0, 0.45), sub=3)
-    blob((0, 2.95, 1.18), 0.26, M("UlPupil", "0a0710", 0.4), (0.6, 1.5, 0.5), sub=2)
-    ring((0, 2.95, 1.1), 0.56, 0.04, VIOLET, rx=math.pi / 2)
-    blob((0, 3.48, 0.98), 0.5, SHELL, (1.3, 0.35, 0.6), sub=2)
-    blob((0, 2.42, 0.98), 0.5, SHELL, (1.3, 0.3, 0.6), sub=2)
-    # crown of spikes
-    for k in range(9):
-        a = k * math.tau / 9
-        h = 0.9 + 0.3 * (k % 3)
-        limb((math.cos(a) * 0.9, 4.0, math.sin(a) * 0.9), (math.cos(a) * (0.9 + 0.35 * math.cos(a) * 0.0) + math.sin(a) * 0.0 + math.cos(a) * 0.25, 4.0 + h, math.sin(a) * 0.9 + math.sin(a) * 0.25), 0.2, 0.0, SHELL, verts=6)
-        blob((math.cos(a) * 1.15, 4.0 + h, math.sin(a) * 1.15), 0.07, VIOLET, sub=1)
+    # v0.78: THE WORLD EATER is a giant alien overlord: tall skull, huge black almond eyes, ribbed body, glowing heart.
+    blob((0, 3.7, -0.15), 1.1, ASKIN, (1.0, 1.4, 1.05), sub=3)                 # tall cranium
+    blob((0, 3.0, 0.45), 0.62, ASKIN, (0.75, 0.95, 0.75), sub=3)               # narrow cheeks and chin
+    blob((0, 2.55, 0.5), 0.3, ASKIN2, (0.9, 0.8, 0.8), sub=2)
+    for sx in (-1, 1):
+        blob((sx * 0.55, 3.2, 0.78), 0.44, AEYE, (1.05, 0.5, 0.32), sub=3)     # the almond eyes
+        blob((sx * 0.86, 3.08, 0.66), 0.27, AEYE, (1.0, 0.45, 0.35), sub=2)    # slanting down and out
+        blob((sx * 0.5, 3.22, 0.97), 0.075, AGLOW, sub=1)                       # a green glint in each eye
+        blob((sx * 0.1, 2.88, 0.97), 0.03, AEYE, sub=1)                         # nose slits
+        blob((sx * 0.52, 3.52, 0.62), 0.28, ASKIN2, (1.2, 0.3, 0.5), sub=2)    # heavy brow
+    slab((0.34, 0.03, 0.04), (0, 2.62, 0.92), AEYE)                            # a thin mouth
+    for k in range(5):                                                          # ridges over the skull
+        blob((0, 4.55 - 0.18 * k, -0.45 - 0.05 * k), 0.16, ASKIN2, (1.4, 0.5, 0.9), sub=1)
+    limb((0, 2.4, 0.15), (0, 1.9, 0.0), 0.2, 0.32, ASKIN2, verts=10)          # the neck
+    blob((0, 1.35, 0), 0.85, ASKIN, (0.95, 1.15, 0.7), sub=3)                  # chest
+    for k in range(5):                                                          # ribs
+        ring((0, 1.75 - 0.2 * k, 0.0), 0.7 - 0.05 * k, 0.045, ASKIN2, rx=math.pi / 2, segs=24, rsegs=6)
+    blob((0, 1.35, 0.45), 0.3, AGLOW, (1.0, 1.0, 0.6), sub=2)                   # the glowing heart
+    ring((0, 1.35, 0.5), 0.34, 0.035, VIOLET, rx=math.pi / 2)
+    limb((0, 0.1, 0), (0, 0.85, 0), 0.04, 0.55, ASKIN2, verts=12)              # tapers to a point below
+    for sx in (-1, 1):                                                          # shoulder pads where the four arms start
+        blob((sx * 0.95, 1.9, 0.0), 0.32, ASKIN2, (1.0, 0.8, 1.0), sub=2)
     export("boss_ultimate_shell")
+
+def ultimate_claw():
+    blob((0, 0, 0), 0.26, ASKIN2, (1.0, 0.8, 1.1), sub=2)
+    for k, ang in enumerate((-0.55, 0.0, 0.55)):
+        x1, z1 = math.sin(ang) * 0.35, 0.2 + math.cos(ang) * 0.45
+        x2, z2 = math.sin(ang) * 0.6, 0.55 + math.cos(ang) * 0.6
+        limb((math.sin(ang) * 0.1, 0.0, 0.1), (x1, 0.04, z1), 0.07, 0.05, ASKIN, verts=6)
+        limb((x1, 0.04, z1), (x2, -0.08, z2), 0.05, 0.0, AGLOW, verts=6)
+    limb((0.0, 0.05, 0.1), (0.0, 0.2, -0.3), 0.05, 0.0, ASKIN, verts=6)
+    export("boss_ultimate_claw")
 
 def ultimate_neck():
     blob((0, 0, 0), 0.3, SHELL, sub=2)
     ring((0, 0, 0), 0.3, 0.03, VIOLET, rx=math.pi / 2)
     export("boss_ultimate_neck")
+
+# ---------------- v0.78: the boss lairs: tall themed trees and rocks ----------------
+LT = {
+    "ember": (M("LtEmberTr", "2b1b18", 0.9), M("LtEmberLf", "e8541a", 0.6, 0.7), M("LtEmberGl", "ffd23a", 0.3, 2.0), 13.0),
+    "sakura": (M("LtSakuraTr", "3b2a4a", 0.8), M("LtSakuraLf", "ff8ad8", 0.6, 0.9), M("LtSakuraGl", "ffffff", 0.3, 2.0), 12.0),
+    "crystal": (M("LtCrystalTr", "4a4a54", 0.8), M("LtCrystalLf", "e8b030", 0.3, 0.8), M("LtCrystalGl", "fff1b0", 0.3, 3.0), 14.5),
+    "mangrove": (M("LtMangTr", "17433f", 0.8), M("LtMangLf", "23b890", 0.6, 0.5), M("LtMangGl", "b8fff0", 0.3, 3.0), 15.0),
+}
+
+def lair_tree(kind, name, seed):
+    TR, LF, GL, H = LT[kind]
+    rng = random.Random(seed)
+    pts = [(0.0, 0.0, 0.0)]
+    x = z = 0.0
+    lean = (rng.uniform(-0.35, 0.35), rng.uniform(-0.35, 0.35))
+    for i in range(1, 6):
+        x += rng.uniform(-0.5, 0.5) + lean[0]
+        z += rng.uniform(-0.5, 0.5) + lean[1]
+        pts.append((x, H * i / 5.0, z))
+    for i in range(5):
+        r0 = 0.8 * (1 - i / 5.0) + 0.16
+        r1 = 0.8 * (1 - (i + 1) / 5.0) + 0.16
+        limb(pts[i], pts[i + 1], r0, r1, TR, verts=9)
+    for k in range(6):                                  # root flare
+        a = k * math.tau / 6 + rng.uniform(-0.2, 0.2)
+        limb((0, 1.0, 0), (math.cos(a) * 1.9, 0.0, math.sin(a) * 1.9), 0.38, 0.08, TR, verts=6)
+    def foliage(end, k):
+        ex, ey, ez = end
+        if kind == "ember":
+            blob((ex, ey + 0.4, ez), rng.uniform(0.9, 1.4), LF, (1.0, 0.8, 1.0), sub=2, jit=0.28, seed=seed + k, flat=True)
+            for j in range(3):
+                blob((ex + rng.uniform(-0.8, 0.8), ey - rng.uniform(0.2, 1.0), ez + rng.uniform(-0.8, 0.8)), 0.14, GL, sub=1)
+        elif kind == "sakura":
+            for j in range(3):
+                blob((ex + rng.uniform(-0.9, 0.9), ey + rng.uniform(0.0, 0.8), ez + rng.uniform(-0.9, 0.9)), rng.uniform(1.0, 1.6), LF, (1.0, 0.75, 1.0), sub=2, jit=0.1, seed=seed + k * 3 + j)
+            for j in range(3):
+                blob((ex + rng.uniform(-1.4, 1.4), ey + rng.uniform(-0.6, 1.2), ez + rng.uniform(-1.4, 1.4)), 0.12, GL, sub=1)
+        elif kind == "crystal":
+            for j in range(4):
+                a = j * math.tau / 4 + rng.uniform(-0.3, 0.3)
+                limb((ex, ey, ez), (ex + math.cos(a) * 0.7, ey + rng.uniform(1.8, 3.2), ez + math.sin(a) * 0.7), 0.3, 0.0, LF, verts=5, flat=True)
+            blob((ex, ey, ez), 0.22, GL, sub=1)
+        else:
+            for j in range(6):
+                a = j * math.tau / 6 + rng.uniform(-0.2, 0.2)
+                limb((ex, ey, ez), (ex + math.cos(a) * 2.8, ey - rng.uniform(0.2, 1.4), ez + math.sin(a) * 2.8), 0.22, 0.02, LF, verts=5)
+            blob((ex, ey, ez), 0.32, GL, sub=1)
+    for k in range(6):                                  # branches, shorter towards the top
+        t = 0.32 + 0.11 * k
+        f = t * 5.0
+        i = min(int(f), 4)
+        u = f - i
+        a0, a1 = pts[i], pts[i + 1]
+        st = tuple(a0[c] + (a1[c] - a0[c]) * u for c in range(3))
+        a = k * 2.4 + rng.uniform(-0.3, 0.3)
+        L = rng.uniform(2.6, 4.2) * (1.2 - 0.75 * t)
+        en = (st[0] + math.cos(a) * L, st[1] + rng.uniform(1.0, 2.2), st[2] + math.sin(a) * L)
+        limb(st, en, 0.26 * (1 - t) + 0.07, 0.05, TR, verts=6)
+        foliage(en, k)
+    foliage((pts[-1][0], pts[-1][1] + 0.6, pts[-1][2]), 9)
+    if kind == "mangrove":                              # arching aerial roots
+        for k in range(4):
+            a = k * math.tau / 4 + 0.4
+            mid = (math.cos(a) * 1.6, 2.4, math.sin(a) * 1.6)
+            limb((0, 3.4, 0), mid, 0.2, 0.14, TR, verts=6)
+            limb(mid, (math.cos(a) * 3.0, 0.0, math.sin(a) * 3.0), 0.14, 0.06, TR, verts=6)
+    export(name)
+
+ROCKC = M("LtRock", "241c1e", 0.9)
+ROCKV = M("LtRockVein", "ff5a1a", 0.4, 2.6)
+
+def lair_rock():
+    blob((0, 0.7, 0), 1.2, ROCKC, (1.1, 0.8, 0.9), sub=2, jit=0.3, seed=4, flat=True)
+    blob((1.2, 0.5, 0.5), 0.8, ROCKC, (1.0, 0.8, 1.0), sub=2, jit=0.3, seed=5, flat=True)
+    blob((-0.9, 0.4, -0.7), 0.7, ROCKC, (1.0, 0.7, 1.0), sub=2, jit=0.3, seed=6, flat=True)
+    slab((0.9, 0.05, 0.08), (0.1, 1.2, 0.95), ROCKV, rot=(0.0, 0.0, 0.4))
+    slab((0.6, 0.05, 0.08), (1.3, 0.8, 1.0), ROCKV, rot=(0.0, 0.0, -0.5))
+    export("boss_lair_rock")
 
 JOBS = [
     ("dragon_body", dragon_body), ("dragon_head", dragon_head), ("dragon_jaw", dragon_jaw),
@@ -383,7 +479,10 @@ JOBS = [
     ("golem_leg", golem_leg),
     ("kraken_head", kraken_head), ("kraken_tentacle", kraken_tentacle), ("kraken_tentA", lambda: kraken_tent(False, "boss_kraken_tentA")),
     ("kraken_tentB", lambda: kraken_tent(True, "boss_kraken_tentB")),
-    ("ultimate_shell", ultimate_shell), ("ultimate_neck", ultimate_neck),
+    ("ultimate_shell", ultimate_shell), ("ultimate_neck", ultimate_neck), ("ultimate_claw", ultimate_claw),
+    ("lair_tree_ember", lambda: lair_tree("ember", "boss_lair_tree_ember", 3)), ("lair_tree_sakura", lambda: lair_tree("sakura", "boss_lair_tree_sakura", 5)),
+    ("lair_tree_crystal", lambda: lair_tree("crystal", "boss_lair_tree_crystal", 7)), ("lair_tree_mangrove", lambda: lair_tree("mangrove", "boss_lair_tree_mangrove", 9)),
+    ("lair_rock", lair_rock),
 ]
 ok = 0
 for name, fn in JOBS:

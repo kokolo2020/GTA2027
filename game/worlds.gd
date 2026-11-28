@@ -97,10 +97,14 @@ var armed := true            # a gate only fires after you have stepped away fro
 var gate_note := 0.0
 # v0.75: roles. Chosen at the three role stones on the Portal Summit; the role changes your special attack and health.
 const ROLES := [
-	{"n":"MAGE","sub":"Damage  ·  CURE BLAST: a huge hit on the boss","col":Color("7fe8ff"),"at":Vector3(0,0,-6.0),"btn":"BLAST"},
+	{"n":"MAGE","sub":"Frost slows the boss  ·  a pet fights for you  ·  CURE BLAST","col":Color("7fe8ff"),"at":Vector3(0,0,-6.0),"btn":"BLAST"},
 	{"n":"TANK","sub":"Guardian  ·  double health  ·  SHIELD SLAM","col":Color("ffb03a"),"at":Vector3(-9.0,0,5.0),"btn":"SHIELD"},
-	{"n":"HEALER","sub":"Medic  ·  HEAL WAVE heals you and your team","col":Color("8dffb0"),"at":Vector3(9.0,0,5.0),"btn":"HEAL"},
+	{"n":"HEALER","sub":"Medic  ·  the only one who can heal  ·  HEAL WAVE","col":Color("8dffb0"),"at":Vector3(9.0,0,5.0),"btn":"HEAL"},
+	{"n":"DPS","sub":"Double damage  ·  CURE BLAST","col":Color("ff6a5a"),"at":Vector3(0,0,0),"btn":"BLAST"},
+	{"n":"WARLOCK","sub":"Poison burns the boss over time  ·  a pet fights for you  ·  CURSE","col":Color("b98bff"),"at":Vector3(0,0,0),"btn":"CURSE"},
+	{"n":"HUNTER","sub":"Your pet hits much harder  ·  CURE BLAST","col":Color("a8e04a"),"at":Vector3(0,0,0),"btn":"BLAST"},
 ]
+const STONE_ROLES := 3   # only the first three have a stone on the Portal Summit; all six are chosen on the way through a gate
 var role := 0
 # v0.75.1: the call to action. While a boss fight is on anywhere, every player who is not in that city gets a big
 # banner with a JOIN button. It is driven by the fight's heartbeat (sent every 2 s), not by one single message.
@@ -428,7 +432,7 @@ func build_hub() -> void:
 	p.label(hub_root,"PORTAL SUMMIT",hub_pos+Vector3(0,13.5,0),Color("e9f3ff"),96).visibility_range_end = 400.0
 	p.label(hub_root,"Walk through a gate to travel",hub_pos+Vector3(0,4.6,0),Color.WHITE,40)
 	# v0.75: three role stones. Stand at one and tap to become that role.
-	for ri in ROLES.size():
+	for ri in STONE_ROLES:
 		var rd: Dictionary = ROLES[ri]
 		var rp: Vector3 = hub_pos+(rd["at"] as Vector3)
 		var rs: MeshInstance3D = g._fc_part(hub_root,boulder,rp+Vector3(0,0.55,0),rock_d,Vector3(1.3,0.8,1.3))
@@ -502,7 +506,7 @@ func role_near() -> int:
 	if g.player == null or g.paused or absf(g.player.position.y-hub_pos.y) > 3.0:
 		return -1
 	var pp: Vector3 = g.player.position
-	for ri in ROLES.size():
+	for ri in STONE_ROLES:
 		var rp: Vector3 = hub_pos+(ROLES[ri]["at"] as Vector3)
 		if Vector2(pp.x-rp.x,pp.z-rp.z).length() < 3.2:
 			return ri
@@ -527,6 +531,80 @@ func set_role(ri: int) -> void:
 func near_hub() -> bool:
 	# v0.72: no button at the terrace any more; the gates work by walking through them.
 	return false
+
+# v0.78: going through a portal (or tapping JOIN) opens a role screen: Healer, Tank, DPS, Mage, Warlock or Hunter.
+var pick_layer: CanvasLayer
+var pick_then := Callable()
+var pick_btns: Array = []
+
+func ask_role(then: Callable) -> void:
+	if dry or g.player == null:
+		then.call()
+		return
+	if pick_layer == null:
+		pick_build()
+	pick_then = then
+	for ri in pick_btns.size():
+		var b: Button = pick_btns[ri]
+		b.text = "%s%s\n%s" % ["✓ " if ri == role else "",ROLES[ri]["n"],ROLES[ri]["sub"]]
+	pick_layer.visible = true
+
+func pick_build() -> void:
+	pick_layer = CanvasLayer.new()
+	pick_layer.layer = 90
+	pick_layer.visible = false
+	g.add_child(pick_layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0,0,0,0.62)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pick_layer.add_child(dim)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pick_layer.add_child(cc)
+	var box := PanelContainer.new()
+	box.add_theme_stylebox_override("panel",g._panel(Color(0.07,0.1,0.16,0.97),22))
+	cc.add_child(box)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation",12)
+	box.add_child(col)
+	var title: Label = g._label("CHOOSE YOUR ROLE",34,Color("ffe9b0"))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(title)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation",12)
+	grid.add_theme_constant_override("v_separation",12)
+	col.add_child(grid)
+	pick_btns.clear()
+	for ri in ROLES.size():
+		var idx := ri
+		var b: Button = g._button("",func(): pick_choose(idx))
+		b.custom_minimum_size = Vector2(250,118)
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.add_theme_font_size_override("font_size",19)
+		var c: Color = ROLES[ri]["col"]
+		b.add_theme_stylebox_override("normal",g._panel(c.darkened(0.62),16))
+		b.add_theme_stylebox_override("hover",g._panel(c.darkened(0.38),16))
+		b.add_theme_color_override("font_color",c.lightened(0.55))
+		grid.add_child(b)
+		pick_btns.append(b)
+	var cancel: Button = g._button("STAY HERE",func(): pick_cancel())
+	cancel.custom_minimum_size = Vector2(0,52)
+	col.add_child(cancel)
+
+func pick_choose(ri: int) -> void:
+	if pick_layer != null:
+		pick_layer.visible = false
+	set_role(ri)
+	var t := pick_then
+	pick_then = Callable()
+	if t.is_valid():
+		t.call()
+
+func pick_cancel() -> void:
+	if pick_layer != null:
+		pick_layer.visible = false
+	pick_then = Callable()
 
 func gate_tick(delta: float) -> void:
 	if g.player == null or g.paused or gates.is_empty():
@@ -557,7 +635,7 @@ func gate_tick(delta: float) -> void:
 	if gi >= list.size():
 		enter_sky()
 	else:
-		enter(gi)
+		ask_role(func(): enter(gi))
 
 # ---------- v0.72: calls for help and the boss channel ----------
 func players_in(i: int) -> int:
@@ -637,7 +715,8 @@ func banner_build() -> void:
 
 func banner_go() -> void:
 	if banner_wi >= 0:
-		join_call(banner_wi)
+		var wi := banner_wi
+		ask_role(func(): join_call(wi))
 
 func banner_dismiss() -> void:
 	if banner_wi >= 0:

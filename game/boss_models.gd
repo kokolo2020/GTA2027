@@ -362,17 +362,20 @@ func ultimate(root: Node3D) -> void:
 		var ca := float(k)*TAU/9.0
 		cone(root,Vector3(cos(ca)*0.9,4.0,sin(ca)*0.9),0.0,0.17,0.9+0.3*float(k % 3),shell,Vector3(sin(ca)*0.35,0,-cos(ca)*0.35))
 		ball(root,Vector3(cos(ca)*1.15,4.55+0.3*float(k % 3),sin(ca)*1.15),0.06,violet)
+	var arm_y := 1.9 if fancy else 2.9   # v0.78: the alien's arms start at its shoulders
 	var arms := [["dragon",Vector3(1.0,0,1.0)],["serpent",Vector3(-1.0,0,1.0)],["golem",Vector3(1.0,0,-1.0)],["kraken",Vector3(-1.0,0,-1.0)]]
 	for ai in arms.size():
 		var e: Array = arms[ai]
 		var dir: Vector3 = (e[1] as Vector3).normalized()
-		var arm := pivot(root,Vector3(0,2.9,0),Vector3(0,atan2(dir.x,dir.z),0))
+		var arm := pivot(root,Vector3(0,arm_y,0),Vector3(0,atan2(dir.x,dir.z),0))
 		for k in 4:
 			var ns: Node3D = glb(arm,"ultimate_neck",Vector3(0,0.1*float(k),1.4+0.5*float(k)),Vector3.ONE*(1.0-0.1*float(k)))
 			if ns == null:
 				ns = ball(arm,Vector3(0,0.1*float(k),1.4+0.5*float(k)),0.3-0.03*float(k),shell)
 			anim(root,ns,"py",0.1,1.5,float(k)*0.7+float(ai))
 		var tip := Vector3(0,0.45,3.6)
+		if fancy and glb(arm,"ultimate_claw",tip,Vector3.ONE*2.2) != null:
+			continue
 		match String(e[0]):
 			"dragon" when glb(arm,"dragon_head",tip,Vector3.ONE*1.5) != null:
 				pass

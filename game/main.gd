@@ -390,7 +390,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("BONKERS CITY: BOSS NIGHT! 0.77.3: your pet now fights in boss fights. It zaps minions and nips at the boss.")
+	_show_toast("BONKERS CITY: BOSS NIGHT! 0.78.0: pick a role (Healer, Tank, DPS, Mage, Warlock, Hunter) at every portal, only Healers heal in a boss fight, pets fight, the World Eater is an alien, and the boss arenas have tall new trees.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)

@@ -1432,6 +1432,64 @@ func boss_start(start_hp: float, elapsed: float) -> void:
 	if not w.dry:
 		g._show_toast("%s IS AWAKE! It needs %d players: with %d, every shot hits %dx harder. Stay out of the red rings!" % [boss_name(),BOSS_NEED,BOSS_NEED,int(POWER)])
 
+# v0.77.3: your pet fights too. It dashes at the nearest minion and removes it, and with none left it nips at the boss.
+const PET_BOSS_DMG := 20.0
+var pet_cd := 1.0
+
+func pet_fight(delta: float) -> void:
+	if g.pet_on <= 0 or g.pet_node == null or not is_instance_valid(g.pet_node):
+		return
+	pet_cd -= delta
+	if pet_cd > 0.0:
+		return
+	var pw: Vector3 = g.pet_node.global_position
+	var pl: Vector2 = local(pw)
+	var best := -1
+	var bd := 18.0
+	for i in roam.size():
+		var z: Array = roam[i]
+		if String(z[2]) != "minion" or not is_instance_valid(z[0]):
+			continue
+		var dd := Vector2(z[0].position.x,z[0].position.z).distance_to(pl)
+		if dd < bd:
+			bd = dd
+			best = i
+	var cols := [Color("ffffff"),Color("7ad7ff"),Color("ff5fd2"),Color("ff9a1f"),Color("ffe27a")]
+	var pcol: Color = cols[clampi(g.pet_on,0,cols.size()-1)]
+	var from: Vector3 = pw-w.C
+	if best >= 0:
+		pet_cd = 1.4
+		var zn: Node3D = roam[best][0]
+		var at: Vector3 = zn.position+Vector3(0,0.8,0)
+		_pet_bolt(from+Vector3(0,0.5,0),at,pcol)
+		_pet_lunge(at-from)
+		roam.remove_at(best)
+		zn.queue_free()
+		add_charge(CHARGE_CURE*0.5)
+		if not w.dry:
+			g._quick_fx(w.C+at)
+		return
+	if is_instance_valid(b_node) and b_rise >= 2.4 and Vector2(b_node.position.x,b_node.position.z).distance_to(pl) < 45.0:
+		pet_cd = 2.2
+		var at2: Vector3 = b_node.position+Vector3(0,float(boss()["scale"])*0.6,0)
+		_pet_bolt(from+Vector3(0,0.5,0),at2,pcol)
+		_pet_lunge(at2-from)
+		hit_boss(PET_BOSS_DMG,true)
+
+func _pet_bolt(a: Vector3, b: Vector3, col: Color) -> void:
+	var orb: MeshInstance3D = g._fc_part(props,g._fc_sphere(0.2),a,g._fc_glow(col))
+	var tw: Tween = orb.create_tween()
+	tw.tween_property(orb,"position",b,0.18)
+	tw.tween_callback(orb.queue_free)
+
+func _pet_lunge(dir: Vector3) -> void:
+	var d := Vector3(dir.x,0,dir.z)
+	if d.length() > 2.0:
+		d = d.normalized()*2.0
+	var tw: Tween = g.create_tween()
+	tw.tween_property(g,"pet_lunge",d,0.1)
+	tw.tween_property(g,"pet_lunge",Vector3.ZERO,0.25)
+
 func hit_boss(dmg: float, mine: bool) -> void:
 	if not b_on or dmg <= 0.0:
 		return
@@ -1608,6 +1666,7 @@ func boss_tick(delta: float, p: Vector3) -> void:
 			add_zombie(bl+Vector2(cos(ma),sin(ma))*3.5,"minion",true)
 		if have < MINION_MAX and not w.dry:
 			g._show_toast("%s releases its minions! One shot each: they charge your BLAST." % boss_name())
+	pet_fight(delta)
 	# Roars at 75, 50 and 25 percent: runners rush in.
 	var stage := 3-int(ceil(clampf(b_hp/bhp(),0.0,1.0)*4.0-0.001))
 	if stage > b_roars and b_roars < 3:

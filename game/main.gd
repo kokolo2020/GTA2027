@@ -390,7 +390,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("BONKERS CITY: BOSS NIGHT! 0.77.2: your character now moves when casting spells, and no hoverboard in boss fights.")
+	_show_toast("BONKERS CITY: BOSS NIGHT! 0.77.3: your pet now fights in boss fights. It zaps minions and nips at the boss.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -26912,6 +26912,7 @@ var pet_own := 1
 var pet_on := 0
 var gear_holder: Node3D
 var pet_node: Node3D
+var pet_lunge := Vector3.ZERO   # v0.77.3: a pet dashing at a minion in a boss fight
 var pet_shown := -1
 var gear_shown := -1
 var market_panel: PanelContainer
@@ -27271,6 +27272,7 @@ func _market_tick(delta: float) -> void:
 		var body: Node3D = car if driving else player
 		var want := body.position+body.global_basis*Vector3(1.0,0,1.3)
 		want.y = body.position.y-(0.4 if driving else 0.8)+(0.35 if driving else 0.0)
+		want += pet_lunge
 		var d := Vector2(want.x-pet_node.position.x,want.z-pet_node.position.z)
 		var far := d.length()
 		if far > 30.0:

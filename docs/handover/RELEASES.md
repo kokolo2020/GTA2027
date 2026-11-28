@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.77.3 (code 151, 2026-11-28)
+Koko: "having a pet should also let the pet attack or remove from the fight scene". `cure.gd`: `pet_fight()` (called from `boss_tick`): your own pet (any of the four) dashes at the nearest minion within 18 m every 1.4 s and removes it (half a blast charge, no cash), and with none left nips the boss for 20 every 2.2 s (`PET_BOSS_DMG`). `main.gd`: `pet_lunge` offset in `_market_tick`. `v72_check.gd` tests both. Other players' pets do not fight.
+
 ## 0.77.2 (code 150, 2026-11-28)
 Koko: "make the character do some movement when casting a spell" and "in boss fight no hoverboard". `cure.gd`: new `_cast_body()` adds whole-body motion to the three casts (bolt lunge, blast crouch-leap-slam, cheer hops), bigger orb, longer `cast_len`. `main.gd`: `_board_blocked()` (ultimate on, or a boss fight active) stops `_walk_speed` board speed, `_toggle_board` (toast), `_board_tick`, the board pose and the BOARD button. `v72_check.gd` tests `_board_blocked()`. Renders reviewed: blast up (leap, arms raised) and down (slam).
 

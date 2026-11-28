@@ -55,3 +55,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.77.0 | | | | Claude-built (dragon, serpent, rock giant, kraken bosses; THE WORLD EATER Ultimate boss; level 40 glow) |
 | 0.77.1 | | | | Claude-built (Blender boss models, Cash log) |
 | 0.77.2 | | | | Claude-built (cast-spell body motion, no hoverboard in boss fights) |
+| 0.77.3 | | | | Claude-built (pets fight in boss fights) |

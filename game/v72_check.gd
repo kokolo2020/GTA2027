@@ -388,6 +388,36 @@ func checks() -> void:
 		for zz in cu.roam:
 			if String(zz[2]) == "minion":
 				minions += 1
+		# v0.77.3: your pet removes minions and nips at the boss.
+		var was_pet := [g.pet_on,g.pet_node]
+		g.pet_on = 1
+		g.pet_node = Node3D.new()
+		g.add_child(g.pet_node)
+		var first_min: Node3D = null
+		for zz in cu.roam:
+			if String(zz[2]) == "minion":
+				first_min = zz[0]
+				break
+		g.pet_node.position = cu.w.C+first_min.position
+		cu.pet_cd = 0.0
+		cu.pet_fight(0.0)
+		var minions2 := 0
+		for zz in cu.roam:
+			if String(zz[2]) == "minion":
+				minions2 += 1
+		var hp0: float = cu.b_hp
+		for zz in cu.roam.duplicate():
+			if String(zz[2]) == "minion":
+				cu.roam.erase(zz)
+				zz[0].queue_free()
+		cu.pet_cd = 0.0
+		cu.pet_fight(0.0)
+		print(tag," PET minions ",minions,"->",minions2," boss hp ",hp0,"->",cu.b_hp)
+		if minions2 != minions-1 or cu.b_hp >= hp0:
+			fails += 1
+		g.pet_node.queue_free()
+		g.pet_on = was_pet[0]
+		g.pet_node = was_pet[1]
 		print(tag," minions out=",minions," bite=",cu.MINION[3]," vs walker ",cu.o.inf.SPEC["walker"][3])
 		if minions < 4 or minions > cu.MINION_MAX or float(cu.MINION[3]) >= float(cu.o.inf.SPEC["runner"][3]):
 			fails += 1

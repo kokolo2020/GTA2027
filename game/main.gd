@@ -377,7 +377,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.72.0: cure gun and a BOSS in every portal city (bring 3 players), a Portal Terrace on the Ridge, and Fruit Garden quests.")
+	_show_toast("Chit Chat City 0.72.1: the portals moved up to the Portal Summit, a magic rock beside the Summit Lookout. Walk through a gate to travel.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -3833,7 +3833,12 @@ func _build_ridge() -> void:
 	_slab(Vector3(117.7,2.51,0),Vector3(24,0.6,20),14.0,Color("93866f"))
 	for z in [-10.25,10.25]:
 		_slab(Vector3(117.5,3.38,z),Vector3(24,1.2,0.5),14.0,rock)
-		_box(self,Vector3(142.3,6.3,z),Vector3(26,1.2,0.5),rock,true)
+		if z < 0.0:
+			# v0.72.1: a gap in the north rail, where the rock bridge leads to the Portal Summit.
+			_box(self,Vector3(133.55,6.3,z),Vector3(8.5,1.2,0.5),rock,true)
+			_box(self,Vector3(151.05,6.3,z),Vector3(8.5,1.2,0.5),rock,true)
+		else:
+			_box(self,Vector3(142.3,6.3,z),Vector3(26,1.2,0.5),rock,true)
 	_slab(Vector3(142.3,5.4,0),Vector3(26,0.6,20),0,grass)
 	_box(self,Vector3(155.6,6.3,0),Vector3(0.5,1.2,20.5),rock,true)
 	# Locked gate: a solid barrier until the player owns a Ridge Rover.
@@ -19067,7 +19072,7 @@ func _build_travel(root: Control) -> void:
 	wr.add_theme_constant_override("separation",10)
 	world_panel.add_child(wr)
 	wr.add_child(_label("WORLD PORTAL",26,Color("8ec5ff")))
-	world_info = _label("Step into a real city (or walk through its gate at the Portal Terrace on the Ridge). Each has daily quests, a mystery case, infected to cure with the cure gun, people to rescue and a BOSS that needs 3 players. 4 relics open the mystic sky island. Maps © OpenStreetMap contributors.",17,Color("cbd8de"))
+	world_info = _label("Step into a real city (or walk through its gate at the Portal Summit, beside the Summit Lookout on the Ridge). Each has daily quests, a mystery case, infected to cure with the cure gun, people to rescue and a BOSS that needs 3 players. 4 relics open the mystic sky island. Maps © OpenStreetMap contributors.",17,Color("cbd8de"))
 	world_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	world_info.custom_minimum_size.x = 700
 	wr.add_child(world_info)
@@ -26525,10 +26530,13 @@ func _build_lb(root: Control) -> void:
 	col.add_child(close)
 	lb_panel.hide()
 	lb_get = HTTPRequest.new()
+	# v0.72.1: in the browser version the browser has already unpacked the reply; unpacking it again failed and the board came back empty.
+	lb_get.accept_gzip = not OS.has_feature("web")
 	lb_get.timeout = 12.0
 	add_child(lb_get)
 	lb_get.request_completed.connect(_lb_got)
 	lb_put = HTTPRequest.new()
+	lb_put.accept_gzip = not OS.has_feature("web")
 	lb_put.timeout = 12.0
 	add_child(lb_put)
 
@@ -26597,8 +26605,10 @@ func _lb_fetch() -> void:
 		lb_get.cancel_request()
 	lb_get.request(_lb_url("leaderboard?select=uid,name,level,xp,cash,ach,kind&order=%s&limit=30" % String(LB_TABS[lb_tab][1])),_lb_headers())
 
-func _lb_got(_result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	if code == 200:
+func _lb_got(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS:
+		lb_state = 2
+	elif code == 200:
 		var data = JSON.parse_string(body.get_string_from_utf8())
 		lb_rows = data if data is Array else []
 		lb_state = 1
@@ -27362,6 +27372,7 @@ func _build_display() -> void:
 	_collider(root,c+Vector3(-5.6,4.5,0),Vector3(1.2,9.0,14.4))
 	_cull_person(root,160.0)
 	ds_get = HTTPRequest.new()
+	ds_get.accept_gzip = not OS.has_feature("web")
 	ds_get.timeout = 12.0
 	add_child(ds_get)
 	ds_get.request_completed.connect(_ds_got)

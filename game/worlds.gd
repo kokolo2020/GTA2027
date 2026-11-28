@@ -3,8 +3,9 @@ extends RefCounted
 # (Paris, Tokyo, New York, Bangkok), each built lazily from OpenStreetMap data (c) OpenStreetMap contributors, ODbL.
 # Each world is one paris.gd instance driven by a definition below. Talks to main through `g`.
 const Paris := preload("res://paris.gd")
-const HUB_REL := Vector3(-114,0,-76)      # v0.72: the Portal Terrace on the north edge of the Ridge, relative to HUB_C
-const GATE_R := 14.0                      # five walk-through gates stand on an arc this far from the terrace centre
+const HUB_REL := Vector3(-67.7,5.7,-62)   # v0.72.1: the Portal Summit, a rock mesa joined to the Summit Lookout (relative to HUB_C)
+const GATE_R := 12.6
+const MESA_R := 18.5                      # radius of the rock mesa the gates stand on                      # five walk-through gates stand on an arc this far from the terrace centre
 const SKY_COL := Color("c7a8ff")
 const HUB_COL := Color("8ec5ff")
 const AREA := Rect2(-330.0,-330.0,660.0,660.0)
@@ -270,20 +271,147 @@ func build_hub() -> void:
 	hub_root.name = "WorldPortal"
 	g.add_child(hub_root)
 	var p = list[0]
-	# v0.72: the Portal Terrace. A stone circle with five gates; walking through one takes you there at once.
-	g._fc_part(hub_root,g._bcone(19.0,19.0,0.1),hub_pos+Vector3(0,0.03,0),g._material(Color("2b2f45")))
-	g._fc_part(hub_root,g._bcone(17.6,17.6,0.1),hub_pos+Vector3(0,0.05,0),g._material(Color("3a3f58")))
-	g._fc_part(hub_root,g._fc_torus(18.4,18.8),hub_pos+Vector3(0,0.12,0),g._fc_glow(HUB_COL))
-	g._fc_part(hub_root,g._fc_torus(5.6,5.8),hub_pos+Vector3(0,0.12,0),g._fc_glow(Color("ffd98a")))
-	g._hm(hub_root,Vector3(hub_pos.x,0.04,hub_pos.z+25.0),Vector3(5.0,0.08,16.0),Color("3a3f58"))
-	g._fc_part(hub_root,g._bcone(1.2,1.6,1.0),hub_pos+Vector3(0,0.5,0),g._material(Color("cfc9e6")))
-	g._fc_part(hub_root,g._bsph(0.9),hub_pos+Vector3(0,2.0,0),g._fc_glow(Color("f4ecff")))
+	# v0.72.1: the Portal Summit. A rock mesa beside the Summit Lookout (same height, joined by a rock bridge),
+	# with five gates in a ring of standing stones, crystals, floating rocks and rune circles.
+	var rock := StandardMaterial3D.new()
+	rock.albedo_color = Color(0.56,0.52,0.47)
+	g._real_setup(rock,"concrete",Color(0.66,0.61,0.55),0.1)
+	rock.roughness = 0.95
+	var rock_d := StandardMaterial3D.new()
+	rock_d.albedo_color = Color(0.4,0.37,0.36)
+	g._real_setup(rock_d,"concrete",Color(0.46,0.43,0.42),0.14)
+	rock_d.roughness = 0.95
+	var moss := StandardMaterial3D.new()
+	moss.albedo_color = Color(0.36,0.48,0.3)
+	moss.roughness = 1.0
+	var boulder := SphereMesh.new()
+	boulder.radius = 1.0
+	boulder.height = 2.0
+	boulder.radial_segments = 7
+	boulder.rings = 4
+	var top := hub_pos.y
+	var base := Vector3(hub_pos.x,0,hub_pos.z)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7210
+	# The mesa: solid from the ground to the top, sixteen-sided, and a rock bridge to the lookout.
+	var mesa_m := CylinderMesh.new()
+	mesa_m.top_radius = MESA_R
+	mesa_m.bottom_radius = MESA_R+1.6
+	mesa_m.height = top
+	mesa_m.radial_segments = 18
+	mesa_m.rings = 1
+	var mesa: MeshInstance3D = g._fc_part(hub_root,mesa_m,base+Vector3(0,top*0.5,0),rock)
+	var mesa_body := StaticBody3D.new()
+	var mesa_cs := CollisionShape3D.new()
+	var mesa_sh := CylinderShape3D.new()
+	mesa_sh.radius = MESA_R
+	mesa_sh.height = top
+	mesa_cs.shape = mesa_sh
+	mesa_body.add_child(mesa_cs)
+	mesa.add_child(mesa_body)
+	var bridge: MeshInstance3D = g._hm(hub_root,Vector3(hub_pos.x,top*0.5,-11.6),Vector3(9.0,top,3.2),Color.WHITE,true)
+	bridge.material_override = rock
+	g._fc_part(hub_root,g._bcone(MESA_R-0.9,MESA_R-0.9,0.08),hub_pos+Vector3(0,0.02,0),rock_d)
+	# Boulders heaped round the foot and along the rim, so it reads as a crag, not a box.
+	for k in 46:
+		var a := float(k)*TAU/46.0+rng.randf_range(-0.05,0.05)
+		var rr := rng.randf_range(MESA_R+0.6,MESA_R+4.0)
+		var sc := Vector3(rng.randf_range(2.2,4.6),rng.randf_range(1.6,4.2),rng.randf_range(2.2,4.6))
+		var bp := base+Vector3(cos(a)*rr,rng.randf_range(0.3,top*0.75),sin(a)*rr)
+		if bp.z > -13.0 and absf(bp.x-hub_pos.x) < 16.0:
+			bp.y = minf(bp.y,1.2)
+			if bp.z > -10.0:
+				continue
+		var b: MeshInstance3D = g._fc_part(hub_root,boulder,bp,rock if k % 3 != 0 else rock_d,sc)
+		b.rotation = Vector3(rng.randf()*TAU,rng.randf()*TAU,rng.randf()*TAU)
+	for k in 26:
+		var a2 := float(k)*TAU/26.0+0.12
+		if sin(a2) > 0.55 and absf(cos(a2)) < 0.5:
+			continue
+		var bp2 := hub_pos+Vector3(cos(a2)*(MESA_R-0.4),0.2,sin(a2)*(MESA_R-0.4))
+		var s2 := rng.randf_range(0.8,1.7)
+		var b2: MeshInstance3D = g._fc_part(hub_root,boulder,bp2,rock_d if k % 2 == 0 else rock,Vector3(s2*1.3,s2,s2*1.2))
+		b2.rotation.y = rng.randf()*TAU
+		if k % 3 == 0:
+			g._fc_part(hub_root,boulder,bp2+Vector3(0,s2*0.75,0),moss,Vector3(s2*0.9,0.25,s2*0.8))
+	# Crystal clusters on the rim.
+	var crys := [Color("b48cff"),Color("7fe8ff"),Color("ff9ae0")]
+	for k in 9:
+		var a3 := deg_to_rad(165.0+210.0*float(k)/8.0)+0.19
+		var cp := hub_pos+Vector3(cos(a3)*(MESA_R-1.6),0,sin(a3)*(MESA_R-1.6))
+		for m in 3:
+			var h := rng.randf_range(1.4,3.4)
+			var c: MeshInstance3D = g._fc_part(hub_root,g._bcone(0.02,0.32,h),cp+Vector3(rng.randf_range(-0.6,0.6),h*0.45,rng.randf_range(-0.6,0.6)),g._fc_glow(crys[(k+m) % 3]))
+			c.rotation = Vector3(rng.randf_range(-0.35,0.35),0,rng.randf_range(-0.35,0.35))
+	# Rune circles on the floor: two rings turning against each other.
+	g._fc_part(hub_root,g._fc_torus(MESA_R-2.2,MESA_R-2.0),hub_pos+Vector3(0,0.1,0),g._fc_glow(HUB_COL))
+	for r in 2:
+		var ring := Node3D.new()
+		ring.position = hub_pos+Vector3(0,0.1,0)
+		hub_root.add_child(ring)
+		var rad := 5.6+3.6*float(r)
+		g._fc_part(ring,g._fc_torus(rad,rad+0.14),Vector3.ZERO,g._fc_glow(Color("ffd98a") if r == 0 else SKY_COL))
+		for m in 12:
+			var a4 := float(m)*TAU/12.0
+			var mark: MeshInstance3D = g._fc_part(ring,g._bbox(),Vector3(cos(a4)*(rad+0.6),0,sin(a4)*(rad+0.6)),g._fc_glow(Color("fff1c0") if r == 0 else Color("d9c2ff")),Vector3(0.9,0.04,0.16))
+			mark.rotation.y = -a4+(0.6 if m % 2 == 0 else -0.6)
+		var rtw: Tween = g.create_tween()
+		rtw.set_loops()
+		rtw.tween_property(ring,"rotation:y",TAU if r == 0 else -TAU,40.0+20.0*float(r)).from(0.0)
+	# Rocks floating round the summit, each with a shard of crystal.
+	var orbit := Node3D.new()
+	orbit.position = hub_pos+Vector3(0,9.0,0)
+	hub_root.add_child(orbit)
+	for k in 8:
+		var a5 := float(k)*TAU/8.0
+		var fp := Vector3(cos(a5)*(MESA_R+4.0),sin(a5*2.0)*2.5,sin(a5)*(MESA_R+4.0))
+		var fs := rng.randf_range(1.0,2.0)
+		var fr: MeshInstance3D = g._fc_part(orbit,boulder,fp,rock_d,Vector3(fs*1.3,fs*0.8,fs))
+		fr.rotation.y = a5
+		g._fc_part(orbit,g._bcone(0.02,0.22,1.3),fp+Vector3(0,fs*0.8+0.5,0),g._fc_glow(crys[k % 3]))
+	var otw: Tween = g.create_tween()
+	otw.set_loops()
+	otw.tween_property(orbit,"rotation:y",TAU,90.0).from(0.0)
+	# Motes of light drifting up.
+	var motes := CPUParticles3D.new()
+	motes.position = hub_pos+Vector3(0,0.3,0)
+	motes.amount = 26
+	motes.lifetime = 6.0
+	motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	motes.emission_box_extents = Vector3(14,0.2,14)
+	motes.direction = Vector3(0,1,0)
+	motes.spread = 12.0
+	motes.gravity = Vector3.ZERO
+	motes.initial_velocity_min = 0.6
+	motes.initial_velocity_max = 1.4
+	var mm := SphereMesh.new()
+	mm.radius = 0.07
+	mm.height = 0.14
+	mm.radial_segments = 4
+	mm.rings = 2
+	mm.material = g._fc_glow(Color("e6d4ff"))
+	motes.mesh = mm
+	motes.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	motes.visibility_range_end = 120.0
+	hub_root.add_child(motes)
+	var glow := OmniLight3D.new()
+	glow.light_color = SKY_COL
+	glow.light_energy = 1.3
+	glow.omni_range = 24.0
+	glow.shadow_enabled = false
+	glow.position = hub_pos+Vector3(0,4.0,0)
+	hub_root.add_child(glow)
+	# The altar in the middle.
+	var altar: MeshInstance3D = g._fc_part(hub_root,boulder,hub_pos+Vector3(0,0.5,0),rock_d,Vector3(1.8,1.0,1.8))
+	altar.rotation.y = 0.6
+	g._fc_part(hub_root,g._bsph(0.9),hub_pos+Vector3(0,2.3,0),g._fc_glow(Color("f4ecff")))
+	g._fc_part(hub_root,g._fc_torus(1.3,1.42),hub_pos+Vector3(0,2.3,0),g._fc_glow(SKY_COL)).rotation.x = 0.5
 	g._collider(hub_root,hub_pos+Vector3(0,1.0,0),Vector3(2.4,2.0,2.4))
-	p.label(hub_root,"PORTAL TERRACE",hub_pos+Vector3(0,12.5,0),Color("e9f3ff"),96).visibility_range_end = 400.0
-	p.label(hub_root,"Walk through a gate to travel",hub_pos+Vector3(0,4.2,0),Color.WHITE,40)
+	p.label(hub_root,"PORTAL SUMMIT",hub_pos+Vector3(0,13.5,0),Color("e9f3ff"),96).visibility_range_end = 400.0
+	p.label(hub_root,"Walk through a gate to travel",hub_pos+Vector3(0,4.6,0),Color.WHITE,40)
 	var n := list.size()+1
 	for k in n:
-		var ang := deg_to_rad(200.0+140.0*float(k)/float(n-1))
+		var ang := deg_to_rad(190.0+160.0*float(k)/float(n-1))
 		var gp := hub_pos+Vector3(cos(ang),0,sin(ang))*GATE_R
 		var gate: Node3D
 		if k < list.size():
@@ -293,6 +421,20 @@ func build_hub() -> void:
 			gate = p.make_portal(hub_root,gp,"MYSTIC SKY","4 relics open it",SKY_COL)
 		gate.rotation.y = atan2(hub_pos.x-gp.x,hub_pos.z-gp.z)
 		gates.append([gp,k])
+		# A standing stone between every two gates (and one at each end), with a glowing rune.
+		var gc: Color = list[k].W["col"] if k < list.size() else SKY_COL
+		for e in (2 if k == n-1 else 1):
+			var sa := ang+deg_to_rad(-20.0 if e == 0 else 20.0)
+			var sh := rng.randf_range(5.4,7.0)
+			var out := Vector3(cos(sa),0,sin(sa))
+			var sp := hub_pos+out*(GATE_R+1.2)
+			var stone: MeshInstance3D = g._hm(hub_root,sp+Vector3(0,sh*0.5-0.2,0),Vector3(1.5,sh,1.1),Color.WHITE,false,-sa+PI*0.5+rng.randf_range(-0.2,0.2))
+			stone.material_override = rock_d
+			stone.rotation.z = rng.randf_range(-0.09,0.09)
+			var cap: MeshInstance3D = g._fc_part(hub_root,boulder,sp+Vector3(0,sh-0.1,0),rock,Vector3(1.05,0.5,0.9))
+			cap.rotation.y = rng.randf()*TAU
+			var rune: MeshInstance3D = g._fc_part(hub_root,g._fc_torus(0.22,0.3),sp+Vector3(0,sh*0.62,0)-out*0.62,g._fc_glow(gc))
+			rune.rotation = Vector3(PI*0.5,-sa+PI*0.5,0)
 	# a tall light beam so the terrace can be seen from across the city
 	var bm := StandardMaterial3D.new()
 	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -335,7 +477,7 @@ func gate_tick(delta: float) -> void:
 		return
 	gate_note = maxf(0.0,gate_note-delta)
 	var pp: Vector3 = (g.car if g.driving else g.player).position
-	if absf(pp.x-hub_pos.x) > 30.0 or absf(pp.z-hub_pos.z) > 30.0 or pp.y > 4.0:
+	if absf(pp.x-hub_pos.x) > 30.0 or absf(pp.z-hub_pos.z) > 30.0 or absf(pp.y-hub_pos.y) > 4.0:
 		armed = true
 		return
 	var best := 1e9
@@ -430,7 +572,7 @@ func live_line() -> String:
 	var now := Time.get_ticks_msec()/1000.0
 	for wi in calls:
 		if now-float(calls[wi][0]) < 45.0 and bool(calls[wi][2]):
-			return "BOSS FIGHT in %s: go to the Portal Terrace!" % String(list[int(wi)].W["name"]).to_upper()
+			return "BOSS FIGHT in %s: go to the Portal Summit!" % String(list[int(wi)].W["name"]).to_upper()
 	return ""
 
 func prompt() -> String:
@@ -488,7 +630,7 @@ func go_portal() -> void:
 	var dir: Vector3 = (g.HUB_C-hub_pos).normalized()
 	armed = false
 	list[0].move_player(hub_pos+Vector3(0,0.9,7.0))
-	g._show_toast("The Portal Terrace. Walk through a gate: Paris, Tokyo, New York, Bangkok or the Mystic Sky.")
+	g._show_toast("The Portal Summit. Walk through a gate: Paris, Tokyo, New York, Bangkok or the Mystic Sky.")
 	g._refresh_hud()
 
 func tick(delta: float) -> void:

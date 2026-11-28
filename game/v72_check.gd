@@ -77,7 +77,15 @@ func shots() -> void:
 	await frames(50)
 	await g._save_shot("v72-1-terrace")
 	g.cam_lock = true
-	g.camera.position = ws.hub_pos+Vector3(0,26,34)
+	g.camera.position = ws.hub_pos+Vector3(26,16,40)
+	g.camera.look_at(ws.hub_pos+Vector3(0,1,-2))
+	await frames(6)
+	await g._save_shot("v72-2b-summit-side")
+	g.camera.position = Vector3(142.3,8.4,6.0)
+	g.camera.look_at(ws.hub_pos+Vector3(0,3.0,0))
+	await frames(6)
+	await g._save_shot("v72-2c-from-lookout")
+	g.camera.position = ws.hub_pos+Vector3(0,24,30)
 	g.camera.look_at(ws.hub_pos+Vector3(0,2,-4))
 	await frames(6)
 	await g._save_shot("v72-2-terrace-above")
@@ -149,8 +157,16 @@ func checks() -> void:
 	var clear := true
 	for gt in ws.gates:
 		var gp: Vector3 = gt[0]
-		if ground_y(gp.x,gp.z) < -1.0 or absf(ground_y(gp.x,gp.z)) > 0.3:
+		if absf(ground_y(gp.x,gp.z)-ws.hub_pos.y) > 0.3:
 			clear = false
+	# the way from the Summit Lookout across the rock bridge is level and open
+	var bz := -6.0
+	while bz > -24.0:
+		var gy := ground_y(142.3,bz)
+		if absf(gy-5.7) > 0.25 or g._blocked_at(Vector3(142.3,gy+1.3,bz),0.5):
+			clear = false
+			print("TERRACE bridge blocked at z=",bz," y=",gy)
+		bz -= 1.0
 	print("TERRACE gates=",ws.gates.size()," ground_ok=",clear," centre=",ws.hub_pos)
 	if ws.gates.size() != 5 or not clear:
 		fails += 1

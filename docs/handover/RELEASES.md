@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.72.1 (code 141, 2026-11-28)
+Koko: move the portals to the top at the Summit Lookout, with a rock design and a magical area. `worlds.gd build_hub()`: Portal Summit = solid round rock mesa (MESA_R 18.5, CylinderShape3D, top y 5.7) at HUB_C+(-67.7,5.7,-62) = (142.3,5.7,-30), joined to the lookout plateau by a rock bridge; the plateau's north rail has a 9 m gap (main.gd `_build_ridge`). Five gates on GATE_R 12.6 (190-350 deg), standing stones between them, boulders, crystals, two turning rune rings, floating rocks, motes, light. `gate_tick` compares height with hub_pos.y. `--v72-check` also walks the bridge. Web leaderboard fix: `accept_gzip = false` on web for lb_get/lb_put/ds_get (console showed stream_peer_gzip failures, board empty); `_lb_got` now treats a failed result as a network error.
+
 ## 0.72.0 (code 140, 2026-11-28)
 Koko's asks: leaderboard not updating, 10-20 fruit quests, more rescue quests + a cure gun, a call to action so anyone can join a portal city, a 3-player boss per city (10x power), portals moved to their own place on the Ridge edge with walk-through gates.
 - Leaderboard: Supabase table has `check (level between 1 and 20)`; levels go to 40 since v0.4x, so every upsert of a Lv 21+ player failed. `_lb_me()` now clamps; `_lb_level(row)` derives the shown level from xp. No database change needed.

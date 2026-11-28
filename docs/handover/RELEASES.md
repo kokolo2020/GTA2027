@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.78.2 (code 154, 2026-11-28)
+Koko: "when a player chooses a role it should stay unless they want to switch, no asking every time". `worlds.gd`: `role_set` (saved in [sky] role_set); `ask_role(then, force)` skips the picker once a role was chosen; `role_near()` returns `ALTAR` (99) at the summit altar, prompt CHANGE ROLE, interact opens the picker (forced). Existing saves are asked once more. The Ultimate fight never asked; it uses the saved role. Ultimate timer (`UTIME` 600 s): at 10 min `retreat()` heals the boss to full, toast TIME'S UP, 25 s calm, can be started again.
+
 ## 0.78.1 (code 153, 2026-11-28)
 Koko: "remove the tank, healer, mage thing (you choose the role entering the portal) and redesign the portals, they look like lemon slices, more like a real/futuristic portal". `worlds.gd`: `STONE_ROLES := 0` (no role stones on the summit; `role_near()` returns -1). `paris.gd` `make_portal()`: dark metal plinth with glowing ring, two pylons with light strips and orbs, arch with a turning ring of light bars, orbiting pearls and a swirling energy surface (shader `blend_add`); labels moved up. Used by all gates and the BACK portals. `v72_check.gd`: role stone test replaced by `role_near()==-1`; summit shots `v78-gates-*`.
 

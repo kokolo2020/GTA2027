@@ -466,6 +466,16 @@ func checks() -> void:
 		var r78_d2: float = cu.dmg_mult()
 		var r78_got := [false]
 		g.paris.ask_role(func(): r78_got[0] = true)
+		var r78_keep: bool = g.paris.role_set
+		g.paris.role_set = true
+		var r78_once := [false]
+		g.paris.dry = false
+		g.paris.ask_role(func(): r78_once[0] = true)
+		g.paris.dry = true
+		print("ROLE once: asked again=",not r78_once[0]," (should be false)  altar near=",g.paris.ALTAR)
+		if not r78_once[0]:
+			fails += 1
+		g.paris.role_set = r78_keep
 		var r78_regen := []
 		for r78_rr in [0,1,2,3,4,5]:
 			g.paris.role = r78_rr

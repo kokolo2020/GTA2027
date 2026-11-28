@@ -104,6 +104,8 @@ const ROLES := [
 	{"n":"WARLOCK","sub":"Poison burns the boss over time  ·  a pet fights for you  ·  CURSE","col":Color("b98bff"),"at":Vector3(0,0,0),"btn":"CURSE"},
 	{"n":"HUNTER","sub":"Your pet hits much harder  ·  CURE BLAST","col":Color("a8e04a"),"at":Vector3(0,0,0),"btn":"BLAST"},
 ]
+const ALTAR := 99
+var role_set := false   # true once the player has picked a role; saved
 const STONE_ROLES := 0   # v0.78.1: no role stones any more; the role is chosen on the way through a gate
 var role := 0
 # v0.75.1: the call to action. While a boss fight is on anywhere, every player who is not in that city gets a big
@@ -431,6 +433,7 @@ func build_hub() -> void:
 	g._collider(hub_root,hub_pos+Vector3(0,1.0,0),Vector3(2.4,2.0,2.4))
 	p.label(hub_root,"PORTAL SUMMIT",hub_pos+Vector3(0,13.5,0),Color("e9f3ff"),96).visibility_range_end = 400.0
 	p.label(hub_root,"Walk through a gate to travel",hub_pos+Vector3(0,4.6,0),Color.WHITE,40)
+	p.label(hub_root,"Stand at the altar to change your role",hub_pos+Vector3(0,3.9,0),Color("c9b8ff"),28)
 	# v0.75: three role stones. Stand at one and tap to become that role.
 	for ri in STONE_ROLES:
 		var rd: Dictionary = ROLES[ri]
@@ -510,12 +513,16 @@ func role_near() -> int:
 		var rp: Vector3 = hub_pos+(ROLES[ri]["at"] as Vector3)
 		if Vector2(pp.x-rp.x,pp.z-rp.z).length() < 3.2:
 			return ri
+	if Vector2(pp.x-hub_pos.x,pp.z-hub_pos.z).length() < 3.6:
+		return ALTAR   # v0.78.2: the altar in the middle changes your role
 	return -1
 
 func role_prompt() -> String:
 	var ri := role_near()
 	if ri < 0:
 		return ""
+	if ri == ALTAR:
+		return "CHANGE ROLE  (you are the %s)" % ROLES[role]["n"]
 	return "YOU ARE THE %s" % ROLES[ri]["n"] if ri == role else "BECOME THE %s" % ROLES[ri]["n"]
 
 func set_role(ri: int) -> void:
@@ -537,8 +544,9 @@ var pick_layer: CanvasLayer
 var pick_then := Callable()
 var pick_btns: Array = []
 
-func ask_role(then: Callable) -> void:
-	if dry or g.player == null:
+func ask_role(then: Callable, force := false) -> void:
+	# v0.78.2: the role is asked once and then kept; the altar on the summit changes it.
+	if dry or g.player == null or (role_set and not force):
 		then.call()
 		return
 	if pick_layer == null:
@@ -595,6 +603,7 @@ func pick_build() -> void:
 func pick_choose(ri: int) -> void:
 	if pick_layer != null:
 		pick_layer.visible = false
+	role_set = true
 	set_role(ri)
 	var t := pick_then
 	pick_then = Callable()
@@ -816,6 +825,9 @@ func interact() -> bool:
 		else:
 			g._open_worlds()
 		return true
+	if role_near() == ALTAR:
+		ask_role(func(): pass,true)
+		return true
 	if role_near() >= 0:
 		set_role(role_near())
 		return true
@@ -894,6 +906,7 @@ func save_state(file: ConfigFile) -> void:
 	file.set_value("sky","day",shrine_day)
 	file.set_value("sky","seal_bonus",seal_bonus)
 	file.set_value("sky","role",role)
+	file.set_value("sky","role_set",role_set)
 	if g.ultimate != null:
 		g.ultimate.save_state(file)
 
@@ -904,6 +917,7 @@ func load_state(file: ConfigFile) -> void:
 	shrine_day = String(file.get_value("sky","day",""))
 	seal_bonus = bool(file.get_value("sky","seal_bonus",false))
 	role = clampi(int(file.get_value("sky","role",0)),0,ROLES.size()-1)
+	role_set = bool(file.get_value("sky","role_set",false))
 	if g.ultimate != null:
 		g.ultimate.load_state(file)
 

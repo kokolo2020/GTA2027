@@ -390,7 +390,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("BONKERS CITY: BOSS NIGHT! 0.78.1: new futuristic portals on the Portal Summit, and the role stones are gone (you pick your role when you walk through a portal).")
+	_show_toast("BONKERS CITY: BOSS NIGHT! 0.78.2: your role is kept: you pick it once, and the altar on the Portal Summit changes it.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)

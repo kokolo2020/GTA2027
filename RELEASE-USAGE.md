@@ -58,3 +58,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.77.3 | | | | Claude-built (pets fight in boss fights) |
 | 0.78.0 | | | | Claude-built (roles, alien World Eater, boss arena trees) |
 | 0.78.1 | | | | Claude-built (futuristic portals, role stones removed) |
+| 0.78.2 | | | | Claude-built (role kept, altar changes it) |

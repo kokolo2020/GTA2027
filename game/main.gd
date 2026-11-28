@@ -377,7 +377,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.72.1: the portals moved up to the Portal Summit, a magic rock beside the Summit Lookout. Walk through a gate to travel.")
+	_show_toast("Chit Chat City 0.73.0: CURE BLAST special attack, bosses on open ground with boss music, lightning and a second attack (meteor rain), and a simple boss screen.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -7770,6 +7770,8 @@ func _input(event: InputEvent) -> void:
 			_interact()
 		elif event.keycode == KEY_F and not paused and paris != null and paris.current() != null:
 			paris.current().cu.fire()
+		elif event.keycode == KEY_G and not paused and paris != null and paris.current() != null:
+			paris.current().cu.blast()
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			# Godot mouse emulation handles only the first finger; dispatch touch UI explicitly.

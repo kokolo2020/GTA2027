@@ -190,7 +190,7 @@ func tick(delta: float) -> void:
 	if g.player == null:
 		return
 	var p: Vector3 = g.player.position
-	var here: bool = w.in_paris(p) and not g.paused and not bool(g.explore.on)
+	var here: bool = w.in_paris(p) and not g.paused and not bool(g.explore.on) and not bool(w.cu.b_on)
 	if not here:
 		if layer != null and layer.visible:
 			layer.visible = false

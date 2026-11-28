@@ -114,10 +114,27 @@ func shots() -> void:
 	g.player.position = cu.arena_pos()+Vector3(0,0.9,16)
 	await frames(30)
 	await g._save_shot("v72-6-lair")
+	g.cam_lock = true
+	g.camera.position = cu.arena_pos()+Vector3(8,6,cu.arena_clear+12.0)
+	g.camera.look_at(cu.arena_pos()+Vector3(0,3,0))
+	await frames(6)
+	await g._save_shot("v72-6b-lair-wide")
+	g.cam_lock = false
+	w.dry = false
 	cu.wake()
 	cu.force_players = 3
+	await frames(40)
+	await g._save_shot("v72-6c-awakens")
+	w.dry = true
 	await frames(110)
+	cu.charge = 100.0
+	await frames(10)
 	await g._save_shot("v72-7-boss")
+	w.dry = false
+	cu.blast()
+	await frames(6)
+	await g._save_shot("v72-7b-blast")
+	w.dry = true
 	g.cam_lock = true
 	var bp: Vector3 = w.C+cu.b_node.position
 	var fw: Vector3 = cu.b_node.global_transform.basis.z.normalized()
@@ -209,9 +226,14 @@ func checks() -> void:
 				bad += 1
 				print(tag," trapped in building ",t[1])
 		var al: Vector2 = cu.arena()
-		if w.in_building(al,3.0) or cu.arena_r < 6.0:
+		if w.in_building(al,3.0) or cu.arena_clear < 11.0:
 			bad += 1
 			print(tag," ARENA TIGHT r=",cu.arena_r)
+		var trees_in := 0
+		for tp: Vector2 in w.tree_pts:
+			if tp.distance_to(al) < cu.arena_clear:
+				trees_in += 1
+		print(tag," lair clear=",cu.arena_clear," trees_inside=",trees_in," sleeper=",is_instance_valid(cu.sleeper))
 		print(tag," lair r=",cu.arena_r," from_portal=",int(al.distance_to(w.RET))," roam=",cu.roam.size()," trapped=",cu.trapped.size()," bad_spots=",bad," arena=",al," items=",cu.quest_items(g.player.position).size())
 		if cu.roam.size() != cu.ROAM+10 or bad > 0:
 			fails += 1
@@ -224,7 +246,9 @@ func checks() -> void:
 			g.player.position = w.C+zn.position+Vector3(3,0.9,0)
 			cu.cd = 0.0
 			cu.fire()
-		print(tag," cured=",cu.cured," brutes=",cu.brutes," paid=",cu.paid," shots=",guard)
+		print(tag," cured=",cu.cured," brutes=",cu.brutes," paid=",cu.paid," shots=",guard," charge=",cu.charge)
+		if cu.charge < 100.0:
+			fails += 1
 		for k in 30:
 			if cu.roam.is_empty():
 				break
@@ -251,13 +275,40 @@ func checks() -> void:
 		cu.cd = 0.0
 		cu.fire()
 		var d3: float = h0-d1-cu.b_hp
+		# CURE BLAST: charges with hits, 100 base damage x10 with three players, and resets
+		var hb: float = cu.b_hp
+		cu.charge = 0.0
+		cu.blast()
+		var none: float = hb-cu.b_hp
+		cu.charge = 100.0
+		cu.blast()
+		var bd: float = hb-cu.b_hp
+		cu.b_hp = hb
+		print(tag," blast empty=",none," full=",bd," charge_after=",cu.charge)
+		if none != 0.0 or bd != 1000.0 or cu.charge != 0.0:
+			fails += 1
 		cu.net({"a":"hit","d":40.0})
 		cu.net({"a":"st","hp":5000,"e":30})
 		print(tag," boss prompt=",pr," on=",cu.b_on," dmg1=",d1," dmg3=",d3," hp_after_sync=",cu.b_hp," t=",cu.b_t)
 		if pr != "WAKE THE BOSS" or not cu.b_on or d1 != 4.0 or d3 != 40.0 or cu.b_hp != 5000.0:
 			fails += 1
-		for k in 40:
+		cu.b_rise = 5.0
+		var kinds := {}
+		for k in 120:
 			cu.boss_tick(0.25,g.player.position)
+			if cu.b_slam_live:
+				kinds[cu.b_kind] = true
+		var minions := 0
+		var weakest := 99.0
+		for zz in cu.roam:
+			if String(zz[2]) == "minion":
+				minions += 1
+		print(tag," minions out=",minions," bite=",cu.MINION[3]," vs walker ",cu.o.inf.SPEC["walker"][3])
+		if minions < 4 or minions > cu.MINION_MAX or float(cu.MINION[3]) >= float(cu.o.inf.SPEC["runner"][3]):
+			fails += 1
+		print(tag," boss attack types seen=",kinds.size())
+		if kinds.size() != 2:
+			fails += 1
 		print(tag," boss ticks: roars=",cu.b_roars," temp_runners=",cu.roam.size()," hp=",cu.hp)
 		cu.hp = -1.0
 		cu.tick(0.01)
@@ -281,6 +332,28 @@ func checks() -> void:
 		print(tag," left city: props_freed=",cu.props == null," sky=",g.infect_amt)
 		if cu.props != null:
 			fails += 1
+	# boss music: the whole loop renders, is loud enough and does not clip
+	var cm = ws.list[0].cu
+	g.remove_meta("boss_music") if g.has_meta("boss_music") else null
+	cm.music_score()
+	var events: int = cm.mus_ev.size()
+	var steps := 0
+	var peak := 0.0
+	while not g.has_meta("boss_music") and steps < 100000:
+		cm.music_step(50)
+		steps += 1
+	var wav: AudioStreamWAV = g.get_meta("boss_music") if g.has_meta("boss_music") else null
+	var clipped := 0
+	if wav != null:
+		for k in range(0,wav.data.size(),2):
+			var sv := absf(float(wav.data.decode_s16(k))/30000.0)
+			peak = maxf(peak,sv)
+			if sv >= 0.999:
+				clipped += 1
+	print("MUSIC clipped samples=",clipped)
+	print("MUSIC events=",events," steps=",steps," bytes=",wav.data.size() if wav != null else 0," peak=",snappedf(peak,0.01))
+	if wav == null or wav.data.size() != cm.MUS_LEN*2 or peak < 0.3 or clipped > 200:
+		fails += 1
 	# 5. a call for help from another player puts a JOIN row in the feed; JOIN lands at the lair
 	ws.net_msg({"i":"p-test","n":"Tester","w":2,"a":"start","hp":12000,"e":0})
 	var row := ""

@@ -68,6 +68,7 @@ var vmat: StandardMaterial3D
 var bcells := {}
 var rcells := {}
 var tree_n := 0
+var tree_pts: Array = []        # v0.73: where the trees stand (the boss lair looks for ground without them)
 var test_log: Array = []
 var clue_mask := 0              # v0.61: mystery case, 3 clues found today
 var clue_day := ""
@@ -598,6 +599,7 @@ func build_trees(d: Dictionary) -> void:
 						spots.append(p)
 				t += 4.0
 				acc += 4.0
+	tree_pts = spots
 	var trunks: Array = []
 	var crowns: Array = []
 	var cols: Array = []

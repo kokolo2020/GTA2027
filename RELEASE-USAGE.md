@@ -46,3 +46,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.71.0 | | | | Claude-built (fruit garden) |
 | 0.72.0 | | | | Claude-built (cure gun, bosses, Portal Terrace, fruit quests, leaderboard fix) |
 | 0.72.1 | | | | Claude-built (Portal Summit beside the Summit Lookout) |
+| 0.73.0 | | | | Claude-built (CURE BLAST special attack, simple boss screen) |

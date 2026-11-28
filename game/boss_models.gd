@@ -70,20 +70,128 @@ func animate(root: Node3D, t: float, speed := 1.0) -> void:
 			"spin":
 				n.rotation = Vector3(rb.x,rb.y+t*fr+ph,rb.z)
 
+# v0.77.1: parts made in Blender (blender-src/make_bosses.py) live in res://models/boss_<name>.glb. If a part is missing the
+# older shape-built version below is used, so the game never loses a boss.
+func glb(parent: Node3D, part_name: String, pos := Vector3.ZERO, sc := Vector3.ONE, rot := Vector3.ZERO) -> Node3D:
+	var path := "res://models/boss_%s.glb" % part_name
+	if not ResourceLoader.exists(path):
+		return null
+	var ps = load(path)
+	if not (ps is PackedScene):
+		return null
+	var n := (ps as PackedScene).instantiate() as Node3D
+	if n == null:
+		return null
+	n.position = pos
+	n.scale = sc
+	n.rotation = rot
+	parent.add_child(n)
+	return n
+
+func has_glb(kind: String) -> bool:
+	return ResourceLoader.exists("res://models/boss_%s.glb" % {"dragon":"dragon_body","serpent":"serpent_coil","golem":"golem_torso","kraken":"kraken_head","ultimate":"ultimate_shell"}[kind])
+
 func build(kind: String) -> Node3D:
 	var root := Node3D.new()
+	var fancy := has_glb(kind)
 	match kind:
 		"dragon":
-			dragon(root)
+			if fancy:
+				dragon_glb(root)
+			else:
+				dragon(root)
 		"serpent":
-			serpent(root)
+			if fancy:
+				serpent_glb(root)
+			else:
+				serpent(root)
 		"golem":
-			golem(root)
+			if fancy:
+				golem_glb(root)
+			else:
+				golem(root)
 		"kraken":
-			kraken(root)
+			if fancy:
+				kraken_glb(root)
+			else:
+				kraken(root)
 		"ultimate":
 			ultimate(root)
 	return root
+
+# ---------- Blender-made versions ----------
+func dragon_glb(root: Node3D) -> void:
+	glb(root,"dragon_body")
+	var head := pivot(root,Vector3(0,2.08,1.32))
+	glb(head,"dragon_head")
+	var jaw := pivot(head,Vector3(0,-0.12,0.05),Vector3(0.22,0,0))
+	glb(jaw,"dragon_jaw")
+	anim(root,jaw,"rx",0.2,2.2)
+	anim(root,head,"rx",0.08,1.4)
+	for sx: float in [-1.0,1.0]:
+		var wing := pivot(root,Vector3(sx*0.36,1.5,0.25),Vector3(0,0,-sx*0.15))
+		glb(wing,"dragon_wing_r" if sx > 0.0 else "dragon_wing_l")
+		anim(root,wing,"rz",-sx*0.55,3.0)
+	for k in 7:
+		var kf := float(k)
+		var tail := glb(root,"dragon_tail",Vector3(0,0.98-0.07*kf,-0.7-0.4*kf),Vector3(1.0-0.11*kf,1.0-0.11*kf,1.0))
+		if tail != null:
+			anim(root,tail,"px",0.05*kf,1.8,kf*0.55)
+	var tip := glb(root,"dragon_tailtip",Vector3(0,0.5,-3.6))
+	if tip != null:
+		anim(root,tip,"px",0.35,1.8,4.2)
+
+func serpent_glb(root: Node3D) -> void:
+	glb(root,"serpent_coil")
+	var n := 10
+	for k in n:
+		var f := float(k)/float(n-1)
+		var seg := glb(root,"serpent_segB" if k % 2 == 1 else "serpent_segA",Vector3(0,0.75+0.16*float(k),0.1+0.28*sin(f*2.6)),Vector3.ONE*(1.0-0.039*float(k)))
+		if seg != null:
+			anim(root,seg,"px",0.03+0.12*f,1.7,float(k)*0.55)
+	var head := pivot(root,Vector3(0,2.36,0.5))
+	glb(head,"serpent_head")
+	anim(root,head,"px",0.15,1.7,float(n)*0.55)
+	anim(root,head,"rz",0.05,3.0)
+
+func golem_glb(root: Node3D) -> void:
+	glb(root,"golem_torso")
+	for sx: float in [-1.0,1.0]:
+		glb(root,"golem_leg",Vector3(sx*0.36,0,0))
+		var arm := pivot(root,Vector3(sx*0.88,1.75,0))
+		glb(arm,"golem_arm_r" if sx > 0.0 else "golem_arm_l")
+		anim(root,arm,"rx",0.55,2.2,0.0 if sx < 0.0 else PI)
+	var head := pivot(root,Vector3(0,2.18,0.12))
+	glb(head,"golem_head")
+	anim(root,head,"ry",0.12,0.9)
+
+func kraken_glb(root: Node3D) -> void:
+	glb(root,"kraken_head")
+	var have := ResourceLoader.exists("res://models/boss_kraken_tentacle.glb")
+	for k in 8:
+		var a := float(k)*TAU/8.0+0.2
+		if have:
+			var pv := pivot(root,Vector3(cos(a)*0.45,0.5,sin(a)*0.45),Vector3(0.0,PI*0.5-a,0.0))
+			glb(pv,"kraken_tentacle",Vector3.ZERO,Vector3.ONE*(1.0+0.12*float(k % 2)))
+			anim(root,pv,"rx",0.18,1.6,float(k)*0.8)
+			continue
+		for j in 9:
+			var jf := float(j)
+			var rr := 0.45+0.25*jf
+			var ts := glb(root,"kraken_tentB" if j % 2 == 1 else "kraken_tentA",Vector3(cos(a)*rr,0.45+0.02*jf*jf*0.6,sin(a)*rr),Vector3.ONE*(1.0-0.09*jf),Vector3(0,-a,0))
+			if ts != null:
+				anim(root,ts,"py",0.04+0.03*jf,2.0,jf*0.6+float(k))
+	for sx: float in [-1.0,1.0]:
+		if have:
+			var arm := pivot(root,Vector3(sx*0.5,0.9,0.65),Vector3(-1.05,sx*0.25,0.0))
+			glb(arm,"kraken_tentacle",Vector3.ZERO,Vector3.ONE*0.9)
+			anim(root,arm,"ry",0.3,1.5,sx)
+			continue
+		for j in 7:
+			var jf2 := float(j)
+			var seg := glb(root,"kraken_tentB" if j % 2 == 1 else "kraken_tentA",Vector3(sx*(0.45+0.12*jf2),0.8+0.24*jf2,0.7+0.22*jf2),Vector3.ONE*((0.2-0.02*jf2)/0.3))
+			if seg != null:
+				anim(root,seg,"px",0.04+0.07*jf2,1.6,jf2*0.5+sx)
 
 # ---------- the dragon (Paris): red scales, big wings, a tail, fire in its mouth ----------
 func dragon(root: Node3D) -> void:
@@ -236,17 +344,21 @@ func ultimate(root: Node3D) -> void:
 	var core := glow("e8d8ff")
 	var violet := glow("7a3aff")
 	var white := glow("ffffff")
-	ball(root,Vector3(0,2.9,0),1.25,shell)
-	cone(root,Vector3(0,1.2,0),0.85,0.05,2.3,shell)
-	ball(root,Vector3(0,2.95,1.0),0.55,core,Vector3(1.0,1.0,0.45))
-	ball(root,Vector3(0,2.95,1.18),0.26,mat("0a0710"),Vector3(0.6,1.4,0.5))
-	var ring_eye := part(root,g._fc_torus(0.5,0.58),Vector3(0,2.95,1.1),violet,Vector3.ONE,Vector3(PI*0.5,0,0))
-	ring_eye.scale = Vector3(1.0,1.0,1.0)
+	var fancy := glb(root,"ultimate_shell") != null
+	if not fancy:
+		ball(root,Vector3(0,2.9,0),1.25,shell)
+		cone(root,Vector3(0,1.2,0),0.85,0.05,2.3,shell)
+		ball(root,Vector3(0,2.95,1.0),0.55,core,Vector3(1.0,1.0,0.45))
+		ball(root,Vector3(0,2.95,1.18),0.26,mat("0a0710"),Vector3(0.6,1.4,0.5))
+		var ring_eye := part(root,g._fc_torus(0.5,0.58),Vector3(0,2.95,1.1),violet,Vector3.ONE,Vector3(PI*0.5,0,0))
+		ring_eye.scale = Vector3(1.0,1.0,1.0)
 	for k in 2:
 		var pv := pivot(root,Vector3(0,2.9,0),Vector3(0.9 if k == 0 else -0.9,0,0.4 if k == 0 else -0.4))
 		var rg := part(pv,g._fc_torus(2.1+0.2*float(k),2.2+0.2*float(k)),Vector3.ZERO,violet)
 		anim(root,rg,"spin",0.0,0.7 if k == 0 else -0.5)
 	for k in 9:
+		if fancy:
+			break
 		var ca := float(k)*TAU/9.0
 		cone(root,Vector3(cos(ca)*0.9,4.0,sin(ca)*0.9),0.0,0.17,0.9+0.3*float(k % 3),shell,Vector3(sin(ca)*0.35,0,-cos(ca)*0.35))
 		ball(root,Vector3(cos(ca)*1.15,4.55+0.3*float(k % 3),sin(ca)*1.15),0.06,violet)
@@ -256,10 +368,16 @@ func ultimate(root: Node3D) -> void:
 		var dir: Vector3 = (e[1] as Vector3).normalized()
 		var arm := pivot(root,Vector3(0,2.9,0),Vector3(0,atan2(dir.x,dir.z),0))
 		for k in 4:
-			var ns := ball(arm,Vector3(0,0.1*float(k),1.4+0.5*float(k)),0.3-0.03*float(k),shell)
+			var ns: Node3D = glb(arm,"ultimate_neck",Vector3(0,0.1*float(k),1.4+0.5*float(k)),Vector3.ONE*(1.0-0.1*float(k)))
+			if ns == null:
+				ns = ball(arm,Vector3(0,0.1*float(k),1.4+0.5*float(k)),0.3-0.03*float(k),shell)
 			anim(root,ns,"py",0.1,1.5,float(k)*0.7+float(ai))
 		var tip := Vector3(0,0.45,3.6)
 		match String(e[0]):
+			"dragon" when glb(arm,"dragon_head",tip,Vector3.ONE*1.5) != null:
+				pass
+			"serpent" when glb(arm,"serpent_head",tip,Vector3.ONE*1.3) != null:
+				pass
 			"dragon":
 				ball(arm,tip,0.38,mat("8a1616"),Vector3(0.9,0.8,1.3))
 				box(arm,tip+Vector3(0,-0.1,0.5),Vector3(0.3,0.2,0.5),mat("8a1616"))

@@ -224,7 +224,13 @@ var chase_rotor: Node3D
 var chase_blocks: Array = []
 var chase_block_n := 0
 var carrying := false
-var cash := 0
+var cash := 0:
+	set(v):
+		if v > cash and cash_log_ready:
+			_cash_note(v-cash)
+		cash = v
+var cash_log := {}          # v0.77.1: where the money came from: "file:function" -> [times, total]
+var cash_log_ready := false
 var deliveries := 0
 var car_speed := 0.0
 var touch_id := -1
@@ -360,6 +366,7 @@ func _ready() -> void:
 	add_child(radio_player)
 	_build_hud()
 	_load_progress()
+	cash_log_ready = true
 	# v0.56.2: brand-new players start in the middle of the Harbor Dome; Chapter 1 then guides them to the city.
 	if ch_idx == 0 and ch_step == 0 and deliveries == 0 and not driving:
 		player.position = HUB_C+Vector3(-24,0.9,0)
@@ -383,7 +390,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("BONKERS CITY: BOSS NIGHT! 0.77.0: a dragon, a giant snake, a rock giant and a kraken, then THE WORLD EATER (11+ players). Level 40 now glows.")
+	_show_toast("BONKERS CITY: BOSS NIGHT! 0.77.1: all new boss models made in Blender, and Menu > Cash log shows where your money came from.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -4981,7 +4988,7 @@ func _build_hud() -> void:
 	var pages := [
 		["GO",Color("2f8fb8"),[["Map",_menu_go.bind(_open_map)],["Travel",_menu_go.bind(_open_travel)],["Directions",_menu_go.bind(_open_dir)],["Call car",_menu_go.bind(_menu_call_car)],["Quests",_menu_go.bind(_open_quests)],["World portal",_menu_go.bind(paris.go_portal)],["Explore mode",_menu_go.bind(explore.enter)],["Back to my car",_rescue]]],
 		["PLAY",Color("c9612f"),[["World Biosphere Passport",_menu_go.bind(_world_bio_passport)],["Chapters",_open_chapters],["Careers",_open_careers],[mode_button],["Journal",_open_journal],["Album & Pass",_menu_go.bind(_open_pass)],["Achievements",_open_ach],["Daily goals",_menu_go.bind(daily.open)]]],
-		["ME",Color("8a5ad0"),[["My Home",_open_homes],["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
+		["ME",Color("8a5ad0"),[["My Home",_open_homes],["Garage",_open_garage],["Wardrobe",_menu_go.bind(_open_wardrobe)],[nick_button],["Leaderboard",_open_lb],["Cash log",_show_cash_log],["Group photo",_photo],["Streamer mode",_toggle_streamer]]],
 		["FRIENDS",Color("2fa37a"),[["Chat",_menu_go.bind(_toggle_chat)],["Players & friends",_open_social],[menu_online_button]]],
 		["SETTINGS",Color("5a6b7a"),[[menu_view_button],[menu_radio_button],[menu_run_button],[menu_screen_button],[time_button],[weather_button]]],
 	]
@@ -8528,6 +8535,43 @@ func _rescue() -> void:
 	_show_toast("Back at the waterfront. Tap ENTER CAR to drive. Your money is safe." if checkpoint_id < 0 else "Back at checkpoint %s. Tap ENTER CAR to drive. Your money is safe." % CHECKPOINTS[checkpoint_id]["name"])
 	_refresh_hud()
 
+var cash_log_test := false
+
+func _cash_note(amount: int) -> void:
+	# Remember which function paid you (works in the Android debug build and on the Mac; the web build says "other").
+	if _lb_test_run() and not cash_log_test:
+		return
+	var key := "other"
+	for fr in get_stack():
+		var fn := String(fr.get("function",""))
+		if fn == "_cash_note" or fn.begins_with("@") or fn.contains("setter"):
+			continue
+		if fn.begins_with("_load") or fn == "_ready":
+			return
+		key = String(fr.get("source","")).get_file().get_basename()+":"+fn
+		break
+	if not cash_log.has(key) and cash_log.size() >= 150:
+		key = "other"
+	var row: Array = cash_log.get(key,[0,0])
+	cash_log[key] = [int(row[0])+1,int(row[1])+amount]
+
+func _show_cash_log() -> void:
+	var rows: Array = []
+	var total := 0
+	for k in cash_log:
+		var r: Array = cash_log[k]
+		rows.append([int(r[1]),int(r[0]),String(k)])
+		total += int(r[1])
+	if rows.is_empty():
+		_show_toast("CASH LOG: nothing recorded yet. From now on every payout is listed here by source.")
+		return
+	rows.sort_custom(func(a, b): return int(a[0]) > int(b[0]))
+	var msg := "CASH LOG (earned since 0.77.1: %s)" % _money(total)
+	for i in mini(rows.size(),9):
+		msg += "\n%s  %s  x%d" % [String(rows[i][2]),_money(int(rows[i][0])),int(rows[i][1])]
+	_show_toast(msg)
+	toast_time = 16.0
+
 func _show_toast(message: String) -> void:
 	status_label.text = message
 	toast_time = 6.0
@@ -8620,6 +8664,7 @@ func _save_progress() -> void:
 	file.set_value("progress","tour_got",tour_got)
 	file.set_value("progress","treasure_got",treasure_got)
 	file.set_value("progress","treasure_count",treasure_count)
+	file.set_value("progress","cash_log",cash_log)
 	file.set_value("progress","fm_refund",fm_refund)
 	if fest_shop != null:
 		fest_shop.save_to(file)
@@ -8696,6 +8741,9 @@ func _load_progress() -> void:
 		tour_got = int(file.get_value("progress","tour_got",0)) & ((1 << SKY_STATIONS.size())-1)
 		treasure_got = int(file.get_value("progress","treasure_got",-1))
 		treasure_count = maxi(0,int(file.get_value("progress","treasure_count",0)))
+		var cl = file.get_value("progress","cash_log",{})
+		if cl is Dictionary:
+			cash_log = cl
 		var refund := maxi(0,int(file.get_value("progress","fm_refund",0)))
 		if refund > 0 and not fm_hosting:
 			cash += refund

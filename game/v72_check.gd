@@ -208,6 +208,21 @@ func shots() -> void:
 
 func checks() -> void:
 	var fails := 0
+	# 0. v0.77.1: the cash log remembers where a payout came from
+	var cash_before: int = g.cash
+	var log_before: Dictionary = g.cash_log.duplicate(true)
+	g.cash_log_test = true
+	g.cash_log_ready = true
+	g.cash += 321
+	var cl_total := 0
+	for k in g.cash_log:
+		cl_total += int((g.cash_log[k] as Array)[1])
+	print("CASHLOG keys=",g.cash_log.keys()," total=",cl_total)
+	if g.cash_log.is_empty() or cl_total < 321:
+		fails += 1
+	g.cash = cash_before
+	g.cash_log = log_before
+	g.cash_log_test = false
 	# 1. leaderboard: levels above 20 are sent capped and shown from XP
 	var me: Dictionary = g._lb_me()
 	var l1: int = g._lb_level({"level":20,"xp":12550})

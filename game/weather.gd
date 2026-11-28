@@ -1,4 +1,4 @@
-# v0.58 Weather: rain showers over Chit Chat City. Showers come at random (about one 10-minute slot in
+# v0.58 Weather: rain showers over Bonkers City. Showers come at random (about one 10-minute slot in
 # four, each lasting 2 to 5 minutes) but follow the clock, so everyone online sees the same weather.
 # Rain falls around the camera (never under a roof), the sky greys over and the streets turn wet and shiny.
 # No rain sound. Menu > Settings > Weather switches it off. Start with --rain to force rain (screenshots).

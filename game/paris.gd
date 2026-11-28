@@ -271,7 +271,7 @@ func ensure_built() -> void:
 	build_lamps(d)
 	build_landmark()
 	build_cafe()
-	make_portal(root,Vector3(RET.x,0,RET.y),"BACK TO CHIT CHAT CITY","Portal home",Color("ffcf6b"))
+	make_portal(root,Vector3(RET.x,0,RET.y),"BACK TO BONKERS CITY","Portal home",Color("ffcf6b"))
 	build_mystery()
 	ob.build_post()
 	print("%s built in %d ms" % [W["name"],Time.get_ticks_msec()-t0])
@@ -1042,7 +1042,7 @@ func go_home() -> void:
 	ob.abort("Rescue cancelled.")
 	g.paris.armed = false
 	move_player(hub_pos+Vector3(0,0.9,7.0))
-	g._show_toast("Back in Chit Chat City.")
+	g._show_toast("Back in Bonkers City.")
 	g._refresh_hud()
 
 func order() -> void:

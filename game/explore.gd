@@ -1,5 +1,5 @@
 extends RefCounted
-# v0.62: Explore mode. A free camera tour of Chit Chat City, the four city worlds and the sky island.
+# v0.62: Explore mode. A free camera tour of Bonkers City, the four city worlds and the sky island.
 # No player, no cars, no running: drag left to move, drag right to look, pinch to zoom, UP/DOWN to rise and sink.
 # Own overlay and own input; main only calls enter(), input(), tick() and exit(). Talks to main through `g`.
 const SPEEDS := [8.0,26.0,80.0]

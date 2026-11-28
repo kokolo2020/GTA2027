@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.74.0 (code 144, 2026-11-28)
+Renamed by Koko: Chit Chat City -> **Bonkers City: Boss Night!** ("Bonkers City" is the name, "Boss Night!" the subtitle). Every "Chit Chat City" string in game/*.gd, web_shell.html (logo + loading text), site/index.html, export_presets `package/name` and project.godot `config/name` now says Bonkers City. Package id com.koko.harborcity, signing key and the save folder (`custom_user_dir_name="Harbor City"`) are unchanged, so it installs over the old app and keeps progress. The Chit Chat Roastery café keeps its name. NOT changed yet: the app icon, the site hero image (ccc-hero.jpg, which has the old name drawn in it), the repo name GTA2027, and file names like CLAUDE-HANDOVER. project.godot is kept out of commits by the release launcher (local edits on the Mac), so its `config/name` was edited in place on the Mac.
+
 ## 0.73.1 (code 143, 2026-11-28)
 Koko: the character should cast its spells with hand movements, not just stand. `cure.gd`: `cast(kind)` from `fire()` (1) and `blast()` (2); `cast_pose(person,delta)` is called by main right after the player's `_pose_person` (via `worlds.cast_pose`) and lays arm/forearm/head rotations over the walk, plus a glowing `orb` child of the player. Forward sign `fs` is worked out from the arm's parent basis (people models and the player face opposite ways). `fire()` also turns the player to face the target and starts the bolt at the hand. Local only: other players do not see your casting yet (not sent over the network). `cast_hold` freezes a pose for screenshots.
 

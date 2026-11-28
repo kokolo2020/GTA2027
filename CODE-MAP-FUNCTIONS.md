@@ -62,7 +62,7 @@ Every function in game/main.gd under its section, with line numbers. See CODE-MA
 
 `_qt`:5191, `_build_quest_offer`:5195, `_quest_offer_tick`:5225, `_quest_auto_pick`:5275, `_quest_accept`:5290, `_quest_decline`:5304, `_quest_stop`:5310
 
-## 5319-5686  v0.31: a futuristic Chit Chat City (neon strips, holograms, flying traffic, glowing streets)
+## 5319-5686  v0.31: a futuristic Bonkers City (neon strips, holograms, flying traffic, glowing streets)
 
 `_neon_mat`:5343, `_holo_material`:5352, `_build_future`:5360, `_build_neon`:5374, `_model_profile`:5443, `_model_body_box`:5466, `_build_holograms`:5480, `_holo_tick`:5530, `_build_sky_traffic`:5547, `_sky_hover_car`:5565, `_sky_drone`:5612, `_sky_traffic_tick`:5656, `_future_lights`:5675
 

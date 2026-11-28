@@ -5,7 +5,7 @@
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
 		<meta name="theme-color" content="#0b1620">
 		<title>$GODOT_PROJECT_NAME</title>
-		<!-- Chit Chat City web shell (v0.51.3): a branded loading screen with a real progress bar.
+		<!-- Bonkers City web shell (v0.51.3): a branded loading screen with a real progress bar.
 		     Godot fills in the $GODOT_* placeholders on every web export. -->
 		<style>
 html, body, #canvas {
@@ -140,8 +140,8 @@ body {
 		</noscript>
 
 		<div id="status">
-			<div id="hc-logo">CHIT CHAT CITY<span>LATE NIGHT CHIT CHAT</span></div>
-			<div id="hc-loading">Loading Chit Chat City…</div>
+			<div id="hc-logo">BONKERS CITY<span>BOSS NIGHT!</span></div>
+			<div id="hc-loading">Loading Bonkers City…</div>
 			<div id="hc-bar"><div id="hc-fill"></div></div>
 			<div id="hc-detail"></div>
 			<div id="hc-tip">Walk: drag on the left of the screen (or WASD). Look around: drag on the right.</div>
@@ -168,7 +168,7 @@ const engine = new Engine(GODOT_CONFIG);
 	let done = false;
 
 	if (joining) {
-		loadingText.textContent = 'Loading Chit Chat City… joining the stream';
+		loadingText.textContent = 'Loading Bonkers City… joining the stream';
 	}
 
 	function mark(name) {
@@ -213,7 +213,7 @@ const engine = new Engine(GODOT_CONFIG);
 		}
 		statusNotice.textContent = text;
 		statusNotice.style.display = 'block';
-		loadingText.textContent = 'Chit Chat City could not start';
+		loadingText.textContent = 'Bonkers City could not start';
 		fill.classList.remove('busy');
 		done = true;
 	}
@@ -223,7 +223,7 @@ const engine = new Engine(GODOT_CONFIG);
 	});
 
 	if (missing.length !== 0) {
-		displayFailureNotice('Your browser is missing features Chit Chat City needs:\n' + missing.join('\n'));
+		displayFailureNotice('Your browser is missing features Bonkers City needs:\n' + missing.join('\n'));
 		return;
 	}
 

@@ -1,5 +1,5 @@
 extends RefCounted
-# v0.60: Chit Chat City world portal. One portal in the Harbor Dome opens a picker with real-city worlds
+# v0.60: Bonkers City world portal. One portal in the Harbor Dome opens a picker with real-city worlds
 # (Paris, Tokyo, New York, Bangkok), each built lazily from OpenStreetMap data (c) OpenStreetMap contributors, ODbL.
 # Each world is one paris.gd instance driven by a definition below. Talks to main through `g`.
 const Paris := preload("res://paris.gd")
@@ -203,7 +203,7 @@ func build_sky() -> void:
 	ol.omni_range = 40.0
 	ol.position = Vector3(0,7,0)
 	sky_root.add_child(ol)
-	list[0].make_portal(sky_root,Vector3(0,0,24),"BACK TO CHIT CHAT CITY","Portal home",Color("ffcf6b"))
+	list[0].make_portal(sky_root,Vector3(0,0,24),"BACK TO BONKERS CITY","Portal home",Color("ffcf6b"))
 	for sx: float in [-1.0,1.0]:
 		g._collider(sky_root,Vector3(sx*28.0,3,0),Vector3(2,8,58))
 		g._collider(sky_root,Vector3(0,3,sx*28.0),Vector3(58,8,2))
@@ -234,7 +234,7 @@ func sky_prompt() -> String:
 func sky_interact(pr: String) -> void:
 	if pr == "PORTAL HOME":
 		go_portal()
-		g._show_toast("Back in Chit Chat City.")
+		g._show_toast("Back in Bonkers City.")
 		return
 	var today := Time.get_date_string_from_system()
 	if not shrine_done:
@@ -670,7 +670,7 @@ func check_seal_bonus() -> void:
 	if not g.legacy_rules:
 		g.bonus_xp += 2500
 	g._show_toast("ALL 4 OUTBREAKS SEALED! Bonus +$50,000 and 2,500 XP.")
-	g._feed_add("All four cities sealed. Chit Chat City is safe!","")
+	g._feed_add("All four cities sealed. Bonkers City is safe!","")
 	g._save_progress()
 
 func save_state(file: ConfigFile) -> void:

@@ -13,7 +13,7 @@ const Daily := preload("res://daily.gd")
 var daily   # v0.66: daily goals and login streak (daily.gd)
 var explore   # v0.62: free camera Explore mode (explore.gd)
 var paris   # v0.60: world portal (worlds.gd): Paris, Tokyo, New York, Bangkok
-## Chit Chat City: original single-player driving prototype. No external assets or services.
+## Bonkers City: original single-player driving prototype. No external assets or services.
 
 # v0.23: job stops sit on the pavement beside the road (6.5 m from the road centre), not in the lanes.
 const PICKUP := Vector3(-25.5, 0, 26)
@@ -377,7 +377,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("Chit Chat City 0.73.1: your character now casts its spells (arm thrust for the cure bolt, both arms raised and slammed down for the BLAST). Bosses have minions, music and two attacks.")
+	_show_toast("Welcome to BONKERS CITY: BOSS NIGHT! (the new name of Chit Chat City). Grab two friends, go to the Portal Summit and wake a boss.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
@@ -3278,7 +3278,7 @@ func _check_level() -> void:
 		return
 	if lv > last_level:
 		last_level = lv
-		var extra := " MAX LEVEL! You are a Chit Chat City legend." if lv >= _level_table().size() else ""
+		var extra := " MAX LEVEL! You are a Bonkers City legend." if lv >= _level_table().size() else ""
 		_show_toast("LEVEL UP! You are now Level %d.%s" % [lv,extra])
 		_level_up_fx(lv)
 
@@ -4336,10 +4336,10 @@ func _try_model(path: String) -> Node3D:
 
 # ---------- v0.14.0: Blender-made people (player, pedestrians, online players on foot) ----------
 func _make_person(parent: Node3D, variant: int, colors: Dictionary, tint := false) -> Dictionary:
-	# v0.35: rigged, animated people (Kenney CC0 body + Chit Chat City animations) when the model is there.
+	# v0.35: rigged, animated people (Kenney CC0 body + Bonkers City animations) when the model is there.
 	if not kperson_tried:
 		kperson_tried = true
-		# v0.36.1: back to the original Chit Chat City people (person_N.glb) by request. The animated
+		# v0.36.1: back to the original Bonkers City people (person_N.glb) by request. The animated
 		# Kenney people stay in the project; set USE_KPERSON to bring them back.
 		if USE_KPERSON and ResourceLoader.exists(KPERSON_PATH):
 			kperson_scene = load(KPERSON_PATH) as PackedScene
@@ -4440,7 +4440,7 @@ func _make_kperson(parent: Node3D, variant: int, colors: Dictionary, tint: bool)
 	var holder := Node3D.new()
 	parent.add_child(holder)
 	var model := kperson_scene.instantiate() as Node3D
-	# The model faces +Z; Chit Chat City people face -Z like the old ones.
+	# The model faces +Z; Bonkers City people face -Z like the old ones.
 	model.rotation.y = PI
 	holder.add_child(model)
 	var h := absi(hash("%s|%s|%d" % [colors.get("Shirt",Color.WHITE),colors.get("Pants",Color.WHITE),variant]))
@@ -4563,7 +4563,7 @@ func _pose_person(person: Dictionary, phase: float, amount: float) -> void:
 	_pose_limbs(person,phase,amount)
 
 func _pose_limbs(person: Dictionary, phase: float, amount: float) -> void:
-	# v0.36.1: a more natural walk and a living idle for the original Chit Chat City people.
+	# v0.36.1: a more natural walk and a living idle for the original Bonkers City people.
 	# Walk: legs swing from the hip with a bent knee through the swing and a soft bend on landing,
 	# relaxed arms swing opposite the legs (a little away from the body, elbows bent more going
 	# forward), the head stays level and turns slightly against the step, the body bobs and sways.
@@ -5316,7 +5316,7 @@ func _quest_stop() -> void:
 	_refresh_hud()
 	_show_toast("Quest skipped. Here's the next one!")
 
-# ---------- v0.31: a futuristic Chit Chat City (neon strips, holograms, flying traffic, glowing streets) ----------
+# ---------- v0.31: a futuristic Bonkers City (neon strips, holograms, flying traffic, glowing streets) ----------
 const NEON_CYAN := Color("3df0ff")
 const NEON_VIOLET := Color("b46bff")
 const HOLO_SHADER := """
@@ -6967,11 +6967,11 @@ const QUIZ := [
 	["How many strings does a standard guitar have?","6","4","5","8"],
 	["What is 100 divided by 4?","25","20","40","50"],
 	["Which metal is liquid at room temperature?","Mercury","Iron","Gold","Copper"],
-	["In Chit Chat City, what is the sky train loop called?","Harbor Loop","Neon Line","City Ring","Sky Circle"],
-	["In Chit Chat City, which district has the 165 m tower?","Skyline District","Sunset Beach","Westside","Marina Heights"],
-	["In Chit Chat City, what floats over Times Plaza at night?","A NEO HARBOR hologram","A blimp","Fireworks","A rainbow"],
-	["In Chit Chat City, how many daily quests are there?","26","10","5","100"],
-	["In Chit Chat City, where is the dance floor?","Times Plaza","The airport","The lighthouse","Ridge Pass"],
+	["In Bonkers City, what is the sky train loop called?","Harbor Loop","Neon Line","City Ring","Sky Circle"],
+	["In Bonkers City, which district has the 165 m tower?","Skyline District","Sunset Beach","Westside","Marina Heights"],
+	["In Bonkers City, what floats over Times Plaza at night?","A NEO HARBOR hologram","A blimp","Fireworks","A rainbow"],
+	["In Bonkers City, how many daily quests are there?","26","10","5","100"],
+	["In Bonkers City, where is the dance floor?","Times Plaza","The airport","The lighthouse","Ridge Pass"],
 	["Which is the tallest animal?","Giraffe","Elephant","Horse","Camel"],
 	["How many hours are in a day?","24","12","36","20"],
 	["Which of these is a mammal?","Dolphin","Shark","Tuna","Octopus"],
@@ -7273,7 +7273,7 @@ const ACH := [
 	["lv5","Getting Around","Reach level 5","level",5,"b"],
 	["lv10","City Regular","Reach level 10","level",10,"s"],
 	["lv15","Local Hero","Reach level 15","level",15,"g"],
-	["lv20","Legend of Chit Chat City","Reach level 20","level",20,"l"],
+	["lv20","Legend of Bonkers City","Reach level 20","level",20,"l"],
 	["lv25","Rising Star","Reach level 25","level",25,"g"],
 	["lv30","City Icon","Reach level 30","level",30,"l"],
 	["lv40","Harbor Immortal","Reach level 40","level",40,"l"],
@@ -7350,7 +7350,7 @@ const ACH := [
 	["hf250","Hands of Gold","Give 250 high-fives","highfives",250,"g"],
 	["gift1","Generous","Give a gift","gifts",1,"b"],
 	["gift25","Philanthropist","Give 25 gifts","gifts",25,"s"],
-	["gift100","Heart of Chit Chat City","Give 100 gifts","gifts",100,"g"],
+	["gift100","Heart of Bonkers City","Give 100 gifts","gifts",100,"g"],
 	["kind50","Kind Soul","Reach 50 kindness","kindness",50,"s"],
 	["kind250","Saint of the Streets","Reach 250 kindness","kindness",250,"g"],
 	["crew","Crew Up","Join or start a crew","crew",1,"b"],
@@ -8270,7 +8270,7 @@ func _refresh_hud() -> void:
 		elif _marina_open() and _nearest_marina() >= 0:
 			objective.text = "Discover " + str(MARINA[_nearest_marina()]["name"])+"  ·  "+str(distance)+"m"
 		else:
-			objective.text = "Chit Chat City fully explored!"
+			objective.text = "Bonkers City fully explored!"
 	elif next_job_pending:
 		objective.text = "Job complete! Tap NEXT JOB"
 	else:
@@ -13390,7 +13390,7 @@ func _level_up_fx(lv: int, title := "", sub := "", small := false) -> void:
 		if sub != "":
 			lvl_sub.text = sub
 		else:
-			lvl_sub.text = ("You reached Level %d (MAX)\nChit Chat City legend!" % lv) if lv >= _level_table().size() else "You are now Level %d" % lv
+			lvl_sub.text = ("You reached Level %d (MAX)\nBonkers City legend!" % lv) if lv >= _level_table().size() else "You are now Level %d" % lv
 		lvl_root.show()
 		lvl_root.scale = Vector2(0.25,0.25)
 		lvl_root.modulate = Color(1,1,1,0)
@@ -16028,7 +16028,7 @@ func _chat_area(at: Vector3) -> String:
 		return "Harbor Food Court"
 	if Vector2(at.x-HUB_C.x,at.z-HUB_C.z).length() < HUB_R+6.0:
 		return "Harbor Dome"
-	var best := "Chit Chat City"
+	var best := "Bonkers City"
 	var bd := INF
 	for m in MAP_LABELS:
 		var v: Vector2 = m[1]
@@ -19449,7 +19449,7 @@ func _build_qr(root: Control) -> void:
 	qr_small = _qr_button(tex,108,"SCAN TO PLAY")
 	root.add_child(qr_small)
 	qr_small.pressed.connect(func(): qr_big.show())
-	qr_big = _qr_button(tex,420,"Scan with your phone camera to play Chit Chat City in the browser and join online.\nTap to close.")
+	qr_big = _qr_button(tex,420,"Scan with your phone camera to play Bonkers City in the browser and join online.\nTap to close.")
 	root.add_child(qr_big)
 	qr_big.pressed.connect(func(): qr_big.hide())
 	qr_big.hide()
@@ -23666,7 +23666,7 @@ const LK_ACCS := [
 # [name, price, rarity 0 common .. 3 legendary, story, colour, shape]
 const RELICS := [
 	["Brass Compass",2000,0,"Its needle points to the nearest adventure.",Color("d8a84a"),"compass"],
-	["Sea Glass Orb",2500,0,"Polished by a thousand Chit Chat City tides.",Color("6fd3c4"),"orb"],
+	["Sea Glass Orb",2500,0,"Polished by a thousand Bonkers City tides.",Color("6fd3c4"),"orb"],
 	["Lucky Dice",3000,0,"Always rolls a six. Almost always.",Color("f4f1ec"),"dice"],
 	["Paper Lantern",3500,0,"Lit once, it never goes out.",Color("ff8a3c"),"lantern"],
 	["Spiral Shell",5000,1,"Hold it to your ear to hear the old harbor.",Color("f2c0a0"),"shell"],
@@ -23678,7 +23678,7 @@ const RELICS := [
 	["Dragon Egg",35000,2,"Something inside it is humming.",Color("7a3ad8"),"egg"],
 	["Meteor Fragment",40000,2,"Fell on Summit Pass one starry night.",Color("8a8f9a"),"meteor"],
 	["Starlight Gem",60000,3,"Glows brighter the more friends you have online.",Color("ff7ab8"),"gem"],
-	["Ancient Crown",80000,3,"Worn by the first Mayor of Chit Chat City.",Color("ffcf4a"),"crown"],
+	["Ancient Crown",80000,3,"Worn by the first Mayor of Bonkers City.",Color("ffcf4a"),"crown"],
 	["Sun Disc",100000,3,"A piece of the dawn, kept forever.",Color("ffb000"),"sun"],
 	["Moon Pearl",120000,3,"Found on Sunset Beach under a blue moon.",Color("e9e4ff"),"pearl"],
 ]
@@ -25180,7 +25180,7 @@ func _ga_mannequins(n: Node3D, z: float, looks: Array, heads := false) -> void:
 # ---------------- featured outfits and the Sky Run ----------------
 # Two spinning podiums on the promenade show today's featured outfits (new every day). Beside the
 # mall, the Sky Run: bounce pads launch you from platform to platform up to a prize at the top
-# (once a day). There is no jump button in Chit Chat City, so the pads do the jumping.
+# (once a day). There is no jump button in Bonkers City, so the pads do the jumping.
 const SKY_PADS := [[Vector3(-364,0,-590),0.0],[Vector3(-369,0,-595),3.5],[Vector3(-375,0,-599),7.0],[Vector3(-381,0,-595),10.5],[Vector3(-386,0,-589),14.0],[Vector3(-381,0,-583),17.5]]
 const SKY_PAY := 300
 const SKY_XP := 60
@@ -26356,7 +26356,7 @@ func _hp_refresh() -> void:
 				if int(P[1]) >= int(P[2]):
 					done += 1
 			hp_title.text = "HARBOR ALBUM  ·  %d/%d pages" % [done,pages.size()]
-			hp_info.text = "Everything you collect in Chit Chat City, in one book. Complete a page for %s and %d XP; complete them all for %s more." % [_money(ALBUM_PAY),ALBUM_XP,_money(ALBUM_ALL_PAY)]
+			hp_info.text = "Everything you collect in Bonkers City, in one book. Complete a page for %s and %d XP; complete them all for %s more." % [_money(ALBUM_PAY),ALBUM_XP,_money(ALBUM_ALL_PAY)]
 			for i in pages.size():
 				var P: Array = pages[i]
 				var full := int(P[1]) >= int(P[2])
@@ -30618,7 +30618,7 @@ func _city_shots() -> void:
 	stats["quiz_points"] = 4200.0
 	ach_ready = true
 	_ach_check()
-	_feed_add("★ Mia unlocked LEGEND: Legend of Chit Chat City!","")
+	_feed_add("★ Mia unlocked LEGEND: Legend of Bonkers City!","")
 	_ach_tick(0.0)
 	for f in 4:
 		await get_tree().process_frame
@@ -31993,7 +31993,7 @@ func _dir_tick(delta: float) -> void:
 const GC_C := Vector3(-420,0,-340)
 const GC_T := Vector3(-340,0,-340)
 const GC_WALKERS := 28
-const GC_SCREEN := ["GRAND CENTRAL\nThe heart of Chit Chat City","HARBOR LOOP\n10 stations · all of town","AURORA RESIDENCES\nSky homes now open","TONIGHT\nGame night at the stadium","CAFE ORBIT\nCold brew on the plaza","THE MERIDIAN\nOffices with a view","HARBOR GALLERIA\nNew looks every day","WORLD BIOSPHERE\nSeven continents · one passport"]
+const GC_SCREEN := ["GRAND CENTRAL\nThe heart of Bonkers City","HARBOR LOOP\n10 stations · all of town","AURORA RESIDENCES\nSky homes now open","TONIGHT\nGame night at the stadium","CAFE ORBIT\nCold brew on the plaza","THE MERIDIAN\nOffices with a view","HARBOR GALLERIA\nNew looks every day","WORLD BIOSPHERE\nSeven continents · one passport"]
 const GC_SHOPS := ["MAISON LUMA","ATELIER NOVA","BLOOM & CO","VELVET","KAI SUSHI","NORTHWIND","PIXEL HOUSE","SOLENE","THE BAKERY","OPTIQUE","GREEN TABLE","HARBOR BOOKS","LUX TECH","GELATO 21","STUDIO MODA","CAFE ORBIT"]
 # v0.46: which shops open in the podium (12 bays) and what each one sells.
 const GC_SHOP_PICK := [0,1,2,3,4,5,6,7,8,11,12,13]
@@ -34341,7 +34341,7 @@ func _ch_finish_chapter() -> void:
 	if ch_idx+1 < CHAPTERS.size():
 		nxt = "  Next: %s." % String(CHAPTERS[ch_idx+1]["name"])
 	else:
-		nxt = "  You finished every chapter. You are a Chit Chat City legend!"
+		nxt = "  You finished every chapter. You are a Bonkers City legend!"
 	var reward: String = "+%s  +%d XP" % [_money(int(C["pay"])),int(C["xp"])] if paid else "replayed"
 	_show_toast("CHAPTER %d COMPLETE: %s  %s.%s" % [ch_idx+1,C["name"],reward,nxt])
 	_level_up_fx(0,"CHAPTER %d COMPLETE!" % (ch_idx+1),"%s\n%s" % [C["name"],reward.replace("  "," · ")])
@@ -34493,7 +34493,7 @@ func _chapters_text() -> String:
 			lines.append("      %d. %s  ·  %d steps" % [i+1,C["name"],steps.size()])
 	if ch_idx >= CHAPTERS.size():
 		lines.append("")
-		lines.append("All chapters complete. You have seen all of Chit Chat City!")
+		lines.append("All chapters complete. You have seen all of Bonkers City!")
 	return "\n".join(lines)
 
 func _open_chapters() -> void:
@@ -35078,9 +35078,9 @@ func _sj_welcome(who: String) -> void:
 		sj_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(sj_hint)
 	if who != "":
-		sj_title.text = "Welcome to Chit Chat City!\nYou're playing with %s — say hi!" % who
+		sj_title.text = "Welcome to Bonkers City!\nYou're playing with %s — say hi!" % who
 	else:
-		sj_title.text = "Welcome to Chit Chat City!\nYou're online — say hi with CHAT!"
+		sj_title.text = "Welcome to Bonkers City!\nYou're online — say hi with CHAT!"
 	sj_hint.text = "Walk: drag on the left of the screen (or WASD / arrow keys)\nLook around: drag on the right   ·   Talk: CHAT"
 	sj_banner_t = 10.0
 	sj_banner.modulate.a = 1.0

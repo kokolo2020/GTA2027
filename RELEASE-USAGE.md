@@ -48,3 +48,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.72.1 | | | | Claude-built (Portal Summit beside the Summit Lookout) |
 | 0.73.0 | | | | Claude-built (CURE BLAST, dramatic bosses, minions, music, simple boss screen) |
 | 0.73.1 | | | | Claude-built (spell-casting arm movements) |
+| 0.74.0 | | | | Claude-built (renamed Bonkers City: Boss Night!) |

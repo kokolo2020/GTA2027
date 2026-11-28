@@ -76,6 +76,14 @@ func shots() -> void:
 	ws.go_portal()
 	await frames(50)
 	await g._save_shot("v72-1-terrace")
+	if OS.get_environment("HC_ONLY") == "banner":
+		ws.dry = false
+		for k in 6:
+			ws.net_msg({"i":"p-test","n":"Master Kolo","w":0,"a":"st","hp":9000,"e":10})
+			await frames(10)
+		await g._save_shot("v75-banner")
+		ws.dry = true
+		return
 	if OS.get_environment("HC_ONLY") == "summit":
 		g.cam_lock = true
 		g.camera.position = ws.hub_pos+Vector3(0,9,22)
@@ -425,11 +433,28 @@ func checks() -> void:
 		if item["from"] == "p-test":
 			row = String(item["text"])
 			inv = item["invite"]
+	# the banner: shown while the fight's heartbeat keeps coming, gone when it stops or you are in that city
+	ws.banner_tick()
+	var b1: bool = ws.banner_layer != null and ws.banner_layer.visible
+	var btxt: String = ws.banner_text.text if ws.banner_text != null else ""
+	ws.calls[2][0] = Time.get_ticks_msec()/1000.0-20.0
+	ws.banner_tick()
+	var b2: bool = ws.banner_layer.visible
+	ws.net_msg({"i":"p-test","n":"Tester","w":2,"a":"st","hp":9000,"e":10})
+	ws.banner_tick()
+	var b3: bool = ws.banner_layer.visible
+	print("BANNER on_call=",b1," after_silence=",b2," on_heartbeat=",b3," text=",btxt.replace("\n"," | "))
+	if not b1 or b2 or not b3:
+		fails += 1
 	print("CALL feed=",row," invite=",inv," live=",ws.live_line()," summary=",ws.summary(2))
 	g._accept_invite("p-test")
 	for k in 10:
 		await g.get_tree().physics_frame
 	var w2 = ws.list[2]
+	ws.banner_tick()
+	print("BANNER hidden once in that city=",not ws.banner_layer.visible)
+	if ws.banner_layer.visible:
+		fails += 1
 	print("JOIN in_city=",w2.in_paris(g.player.position)," dist_to_lair=",int(g.player.position.distance_to(w2.cu.arena_pos())))
 	if not w2.in_paris(g.player.position) or inv.is_empty():
 		fails += 1

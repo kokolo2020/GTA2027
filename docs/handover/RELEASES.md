@@ -1,5 +1,8 @@
 # Release notes for handover (newest first; 0.55.x). Older releases: docs/handover/HISTORY.md and docs/releases/*.md
 
+## 0.75.1 (code 146, 2026-11-28)
+Koko: no call to action reached other players when he summoned a boss. Not reproduced (needs real devices); the old call was one `start` message that put a row in the small chat feed. Now `worlds.gd` shows a big banner with a JOIN button (`banner_tick`, own CanvasLayer 70) on every player who is not in that city, for as long as the fight's `st` heartbeat (every 2 s), `call` or `start` keeps arriving (`calls`, fresh for BANNER_FRESH 9 s); X hides it for 90 s. `start` now also wakes the boss at once for players already in the city. The summoner gets a toast saying how many players were called, or that they are offline. Auto-calls go out every 8 s while fewer than 3 players are there.
+
 ## 0.75.0 (code 145, 2026-11-28)
 First step of Koko's role idea (healer, tank, damage; later mage/warlock/hunter with pet once there is a player base). `worlds.gd`: `ROLES` (0 MAGE, 1 TANK, 2 HEALER), three role stones on the Portal Summit (`role_near`, `role_prompt`, `set_role`), `role` saved in section "sky". `cure.gd`: `role()`, `mhp()` (tank 200), `blast()` branches: mage = CURE BLAST as before; tank = SHIELD SLAM (`shield_t` 7 s, damage x0.2, blue bubble, cures around, 60% blast damage); healer = HEAL WAVE (self to full, online event `bz` `a:"heal"` with x,z heals players within HEAL_R 22 m by 60, cures within 9.6 m, 30% blast damage). The special button shows BLAST / SHIELD / HEAL. Roles are not shown on name tags yet and the boss does not target the tank specially (each client runs its own boss attacks).
 

@@ -102,6 +102,17 @@ const ROLES := [
 	{"n":"HEALER","sub":"Medic  ·  HEAL WAVE heals you and your team","col":Color("8dffb0"),"at":Vector3(9.0,0,5.0),"btn":"HEAL"},
 ]
 var role := 0
+# v0.75.1: the call to action. While a boss fight is on anywhere, every player who is not in that city gets a big
+# banner with a JOIN button. It is driven by the fight's heartbeat (sent every 2 s), not by one single message.
+const BANNER_FRESH := 9.0
+var banner_layer: CanvasLayer
+var banner_box: PanelContainer
+var banner_text: Label
+var banner_join: Button
+var banner_close: Button
+var banner_wi := -1
+var banner_hide := {}        # world index -> time until which the player dismissed the banner
+var banner_seen := {}        # world index -> time the banner last appeared (for the sound)
 var calls := {}              # world index -> [time, caller name, boss awake]
 # v0.61: the mystic sky island, unlocked by one relic from each of the four cities
 const SKY := Vector3(9600,260,700)
@@ -576,6 +587,9 @@ func net_msg(p: Dictionary) -> void:
 		var boss := a == "start" or int(p.get("b",0)) == 1
 		calls[wi] = [Time.get_ticks_msec()/1000.0,nm,boss]
 		if here:
+			# already in that city: the boss wakes for you at once
+			if a == "start":
+				w.cu.net(p)
 			return
 		var text := "%s is fighting %s in %s! It needs %d players." % [nm,w.cu.boss_name(),w.W["name"],w.cu.BOSS_NEED] if boss else "%s calls all players to %s: cure the infected together!" % [nm,w.W["name"]]
 		for item in g.feed:
@@ -594,6 +608,78 @@ func net_msg(p: Dictionary) -> void:
 	if a == "st" and not here:
 		calls[wi] = [Time.get_ticks_msec()/1000.0,nm,true]
 	w.cu.net(p)
+
+func banner_build() -> void:
+	banner_layer = CanvasLayer.new()
+	banner_layer.layer = 70
+	g.add_child(banner_layer)
+	banner_box = PanelContainer.new()
+	banner_box.add_theme_stylebox_override("panel",g._panel(Color(0.55,0.08,0.06,0.94),18))
+	banner_layer.add_child(banner_box)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",14)
+	banner_box.add_child(row)
+	banner_text = g._label("",21,Color("fff1d0"))
+	banner_text.custom_minimum_size = Vector2(470,0)
+	banner_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(banner_text)
+	banner_join = g._button("JOIN",func(): banner_go())
+	banner_join.custom_minimum_size = Vector2(150,64)
+	banner_join.add_theme_font_size_override("font_size",28)
+	banner_join.add_theme_stylebox_override("normal",g._panel(Color("f0bd62"),14))
+	banner_join.add_theme_stylebox_override("hover",g._panel(Color("ffd27a"),14))
+	banner_join.add_theme_color_override("font_color",Color("3a1208"))
+	row.add_child(banner_join)
+	banner_close = g._button("X",func(): banner_dismiss())
+	banner_close.custom_minimum_size = Vector2(52,64)
+	banner_close.add_theme_font_size_override("font_size",22)
+	row.add_child(banner_close)
+
+func banner_go() -> void:
+	if banner_wi >= 0:
+		join_call(banner_wi)
+
+func banner_dismiss() -> void:
+	if banner_wi >= 0:
+		banner_hide[banner_wi] = Time.get_ticks_msec()/1000.0+90.0
+
+func banner_world() -> int:
+	# The city with a boss fight going on right now that you are not in (-1 = none).
+	var now := Time.get_ticks_msec()/1000.0
+	for wi in calls:
+		var c: Array = calls[wi]
+		if not bool(c[2]) or now-float(c[0]) > BANNER_FRESH or now < float(banner_hide.get(wi,0.0)):
+			continue
+		if g.player != null and list[int(wi)].in_paris(g.player.position):
+			continue
+		return int(wi)
+	return -1
+
+func banner_tick() -> void:
+	var wi := banner_world()
+	var cur = current()
+	var show: bool = wi >= 0 and not g.paused and not busy() and not (g.explore != null and bool(g.explore.on)) and not (cur != null and bool(cur.cu.b_on))
+	if not show:
+		if banner_layer != null and banner_layer.visible:
+			banner_layer.visible = false
+		return
+	if banner_layer == null:
+		banner_build()
+	banner_layer.visible = true
+	banner_wi = wi
+	var w = list[wi]
+	var np := players_in(wi)
+	banner_text.text = "BOSS FIGHT in %s!  %s is fighting %s.\n%d of %d players there. Jump in!" % [String(w.W["name"]).to_upper(),String(calls[wi][1]),w.cu.boss_name(),np,w.cu.BOSS_NEED]
+	var vs: Vector2 = g.get_viewport().get_visible_rect().size
+	banner_box.reset_size()
+	banner_box.position = Vector2(vs.x*0.5-banner_box.size.x*0.5,132.0)
+	var pulse := 0.5+0.5*sin(Time.get_ticks_msec()/1000.0*6.0)
+	banner_join.modulate = Color(1,1,1).lerp(Color(1.0,0.85,0.6),pulse)
+	var now := Time.get_ticks_msec()/1000.0
+	if now-float(banner_seen.get(wi,-999.0)) > 30.0 and not dry:
+		g._play_coin()
+		g._show_toast("BOSS FIGHT in %s! Tap JOIN at the top of the screen." % String(w.W["name"]).to_upper())
+	banner_seen[wi] = now
 
 func join_call(i: int) -> void:
 	# JOIN on a call for help: straight into that city, next to the boss lair.
@@ -690,6 +776,7 @@ func tick(delta: float) -> void:
 	for w in list:
 		w.tick(delta)
 	gate_tick(delta)
+	banner_tick()
 	if sky_built and g.player != null and absf(g.player.position.x-SKY.x) < 80.0 and absf(g.player.position.z-SKY.z) < 80.0 and g.player.position.y < SKY.y-30.0:
 		list[0].move_player(SKY+Vector3(0,0.9,16))
 	var spr := sky_prompt()

@@ -50,3 +50,4 @@ Note usage % (Claude: Settings > Usage) before and after each release. One line 
 | 0.73.1 | | | | Claude-built (spell-casting arm movements) |
 | 0.74.0 | | | | Claude-built (renamed Bonkers City: Boss Night!) |
 | 0.75.0 | | | | Claude-built (roles: mage, tank, healer) |
+| 0.75.1 | | | | Claude-built (JOIN banner for boss fights) |

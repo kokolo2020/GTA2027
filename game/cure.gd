@@ -1038,7 +1038,18 @@ func wake() -> void:
 	send({"a":"start","hp":int(b_hp),"e":0})
 	call_t = clk
 	if not w.dry:
-		g._feed_add("You woke %s! Every online player got a JOIN button." % boss_name(),"")
+		# Tell the summoner what the call did, so there is no doubt.
+		var others := 0
+		var now := Time.get_ticks_msec()/1000.0
+		for id in g.online_peers:
+			if now-float((g.online_peers[id] as Dictionary).get("seen",0.0)) < 8.0:
+				others += 1
+		if not (g.online_on and int(g.online_state) == 3):
+			g._show_toast("You are OFFLINE, so nobody can be called. Turn Online on in the Menu, then wake the boss again.")
+		elif others == 0:
+			g._show_toast("No other players are online right now. The call keeps going out: anyone who comes online gets a JOIN button.")
+		else:
+			g._show_toast("Calling %d player%s: a JOIN button is on their screen now." % [others,"" if others == 1 else "s"])
 
 func call_help() -> void:
 	if clk-call_t < CALL_CD:
@@ -1287,7 +1298,7 @@ func boss_tick(delta: float, p: Vector3) -> void:
 	if b_sync > 2.0:
 		b_sync = 0.0
 		send({"a":"st","hp":int(b_hp),"e":int(b_t)})
-		if players_here() < BOSS_NEED and clk-call_t > CALL_CD:
+		if players_here() < BOSS_NEED and clk-call_t > 8.0:
 			call_t = clk
 			send({"a":"call","b":1})
 

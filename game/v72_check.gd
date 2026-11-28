@@ -132,6 +132,14 @@ func shots() -> void:
 		g.camera.look_at(ws.hub_pos+Vector3(0,1.5,-2))
 		await frames(6)
 		await g._save_shot("v75-roles")
+		g.camera.position = ws.hub_pos+Vector3(0,3.5,15)
+		g.camera.look_at(ws.hub_pos+Vector3(0,3,0))
+		await frames(30)
+		await g._save_shot("v78-gates-front")
+		g.camera.position = ws.hub_pos+Vector3(-9,4,8)
+		g.camera.look_at(ws.hub_pos+Vector3(-10,3,-6))
+		await frames(30)
+		await g._save_shot("v78-gates-close")
 		g.cam_lock = false
 		return
 	g.cam_lock = true
@@ -517,14 +525,8 @@ func checks() -> void:
 	# roles: the stones on the summit set the role; tank has double health and a shield, healer heals
 	ws.go_portal()
 	await g.get_tree().physics_frame
-	var role_ok := true
-	for ri in 3:
-		g.player.position = ws.hub_pos+(ws.ROLES[ri]["at"] as Vector3)+Vector3(0.5,0.9,0)
-		var rp: String = ws.prompt()
-		ws.interact()
-		if ws.role != ri or not rp.contains(String(ws.ROLES[ri]["n"])):
-			role_ok = false
-		print("ROLE stone ",ri," prompt=",rp," role=",ws.role)
+	var role_ok: bool = ws.role_near() == -1   # v0.78.1: no stones on the summit any more
+	print("ROLE stones gone: role_near=",ws.role_near())
 	var w0 = ws.list[0]
 	await w0.enter()
 	await g.get_tree().physics_frame

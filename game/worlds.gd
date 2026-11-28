@@ -104,7 +104,7 @@ const ROLES := [
 	{"n":"WARLOCK","sub":"Poison burns the boss over time  ·  a pet fights for you  ·  CURSE","col":Color("b98bff"),"at":Vector3(0,0,0),"btn":"CURSE"},
 	{"n":"HUNTER","sub":"Your pet hits much harder  ·  CURE BLAST","col":Color("a8e04a"),"at":Vector3(0,0,0),"btn":"BLAST"},
 ]
-const STONE_ROLES := 3   # only the first three have a stone on the Portal Summit; all six are chosen on the way through a gate
+const STONE_ROLES := 0   # v0.78.1: no role stones any more; the role is chosen on the way through a gate
 var role := 0
 # v0.75.1: the call to action. While a boss fight is on anywhere, every player who is not in that city gets a big
 # banner with a JOIN button. It is driven by the fight's heartbeat (sent every 2 s), not by one single message.

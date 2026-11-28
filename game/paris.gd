@@ -193,37 +193,75 @@ func make_portal(parent: Node3D, pos: Vector3, title: String, sub: String, col: 
 	var n := Node3D.new()
 	n.position = pos
 	parent.add_child(n)
-	g._fc_part(n,g._bcone(4.2,4.4,0.25),Vector3(0,0.12,0),g._material(Color("2b2f45")))
-	g._fc_part(n,g._bcone(3.6,3.6,0.06),Vector3(0,0.27,0),g._fc_glow(col))
-	for sx: float in [-2.9,2.9]:
-		g._fc_part(n,g._bcone(0.35,0.5,5.6),Vector3(sx,2.8,0),g._fc_pearl())
-		g._fc_part(n,g._bsph(0.5),Vector3(sx,5.7,0),g._fc_glow(col))
-	var pivot := Node3D.new()
-	pivot.position = Vector3(0,2.9,0)
-	pivot.rotation.x = PI/2.0
-	n.add_child(pivot)
-	var ring := MeshInstance3D.new()
-	ring.mesh = g._fc_torus(2.05,2.5)
-	ring.material_override = g._fc_glow(col)
-	pivot.add_child(ring)
-	g._fc_part(pivot,g._bcone(2.1,2.1,0.04),Vector3.ZERO,g._fc_ghost(col))
-	var spinner := Node3D.new()
-	pivot.add_child(spinner)
+	# v0.78.1: a futuristic portal: a dark metal plinth, two tall pylons with light strips, a thin glowing arch with
+	# turning rings and a swirling energy surface (shader) in the middle.
+	var metal := StandardMaterial3D.new()
+	metal.albedo_color = Color("1a2036")
+	metal.metallic = 0.7
+	metal.roughness = 0.4
+	var plinth: MeshInstance3D = g._fc_part(n,g._bcone(4.1,4.3,0.3),Vector3(0,0.15,0),metal)
+	var pr := MeshInstance3D.new()
+	pr.mesh = g._fc_torus(3.7,3.9)
+	pr.material_override = g._fc_glow(col)
+	pr.position = Vector3(0,0.33,0)
+	n.add_child(pr)
+	for sx: float in [-3.1,3.1]:
+		g._fc_part(n,g._bbox(),Vector3(sx,3.0,0),metal,Vector3(0.75,6.0,0.75))
+		g._fc_part(n,g._bbox(),Vector3(sx,6.1,0),metal,Vector3(1.0,0.22,1.0))
+		g._fc_part(n,g._bbox(),Vector3(sx,3.0,0.4),g._fc_glow(col),Vector3(0.14,5.2,0.1))
+		g._fc_part(n,g._bsph(0.34),Vector3(sx,6.5,0),g._fc_glow(col.lightened(0.5)))
+		g._fc_part(n,g._bbox(),Vector3(sx*0.8,0.5,0),metal,Vector3(1.5,0.5,1.3))
+	var arch := MeshInstance3D.new()
+	arch.mesh = g._fc_torus(2.55,2.75)
+	arch.material_override = metal
+	arch.position = Vector3(0,2.9,0)
+	arch.rotation.x = PI/2.0
+	n.add_child(arch)
+	var inner := MeshInstance3D.new()
+	inner.mesh = g._fc_torus(2.3,2.4)
+	inner.material_override = g._fc_glow(col)
+	inner.position = Vector3(0,2.9,0.12)
+	inner.rotation.x = PI/2.0
+	n.add_child(inner)
+	var sw := Shader.new()
+	sw.code = "shader_type spatial;\nrender_mode unshaded, blend_add, cull_disabled, depth_draw_never;\nuniform vec4 col : source_color = vec4(0.4,0.8,1.0,1.0);\nvoid fragment() {\n\tvec2 p = UV*2.0-1.0;\n\tfloat r = length(p);\n\tfloat a = atan(p.y,p.x);\n\tfloat s1 = sin(a*3.0+r*9.0-TIME*2.4)*0.5+0.5;\n\tfloat s2 = sin(a*5.0-r*13.0+TIME*3.1)*0.5+0.5;\n\tfloat core = clamp(1.0-r,0.0,1.0);\n\tfloat edge = smoothstep(1.0,0.86,r);\n\tfloat v = (0.22+0.55*s1*s2+0.35*core*core)*edge;\n\tALBEDO = col.rgb*v*1.15;\n\tALPHA = clamp(v,0.0,1.0);\n}\n"
+	var sm := ShaderMaterial.new()
+	sm.shader = sw
+	sm.set_shader_parameter("col",col)
+	var qm := QuadMesh.new()
+	qm.size = Vector2(4.7,4.7)
+	var horizon := MeshInstance3D.new()
+	horizon.mesh = qm
+	horizon.material_override = sm
+	horizon.position = Vector3(0,2.9,0)
+	horizon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.add_child(horizon)
+	var spin_a := Node3D.new()
+	spin_a.position = Vector3(0,2.9,0.2)
+	n.add_child(spin_a)
+	for k in 12:
+		var a := TAU*float(k)/12.0
+		g._fc_part(spin_a,g._bbox(),Vector3(cos(a),sin(a),0)*2.47,g._fc_glow(col.lightened(0.6)),Vector3(0.34,0.1,0.1)).rotation.z = a
+	var spin_b := Node3D.new()
+	spin_b.position = Vector3(0,2.9,0.3)
+	n.add_child(spin_b)
 	for k in 6:
-		var a := TAU*float(k)/6.0
-		var arm: MeshInstance3D = g._fc_part(spinner,g._bbox(),Vector3(cos(a),0,sin(a))*1.0,g._fc_glow(col.lightened(0.4)),Vector3(1.9,0.05,0.2))
-		arm.rotation.y = -a
+		var a2 := TAU*float(k)/6.0
+		g._fc_part(spin_b,g._bsph(0.12),Vector3(cos(a2),sin(a2),0)*1.9,g._fc_glow(Color.WHITE))
 	var tw: Tween = g.create_tween()
 	tw.set_loops()
-	tw.tween_property(spinner,"rotation:y",TAU,7.0).from(0.0)
+	tw.tween_property(spin_a,"rotation:z",TAU,16.0).from(0.0)
+	var tw2: Tween = g.create_tween()
+	tw2.set_loops()
+	tw2.tween_property(spin_b,"rotation:z",-TAU,5.0).from(0.0)
 	var light := OmniLight3D.new()
 	light.light_color = col
 	light.light_energy = 1.4
 	light.omni_range = 14.0
 	light.position = Vector3(0,2.9,1.5)
 	n.add_child(light)
-	label(n,title,Vector3(0,7.0,0),col.lightened(0.5),64)
-	label(n,sub,Vector3(0,6.0,0),Color.WHITE,36)
+	label(n,title,Vector3(0,7.9,0),col.lightened(0.5),64)
+	label(n,sub,Vector3(0,7.0,0),Color.WHITE,36)
 	return n
 
 func label(parent: Node3D, text: String, pos: Vector3, col: Color, size: int) -> Label3D:

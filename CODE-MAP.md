@@ -351,11 +351,11 @@ Functions:
 
 Functions: `_init`:42, `build_post`:47, `refresh_post`:57, `prompt`:61, `owns`:73, `interact`:76, `spot`:87, `figure`:100, `block_figure`:184, `mist`:197, `start`:214, `build_hud`:270, `order_text`:328, `update_hud`:334, `tick`:347, `tick_zombies`:377, `die`:415, `rescue`:426, `press_valve`:437, `seal`:461, `timeout`:483, `abort`:490, `cleanup`:498, `save_state`:519, `load_state`:523
 
-### game/paris.gd (1144 lines, 60 funcs)
+### game/paris.gd (1182 lines, 60 funcs)
 
-Sections: 103 helpers; 191 portals; 242 the district; 954 play
+Sections: 103 helpers; 191 portals; 280 the district; 992 play
 
-Functions: `_init`:83, `in_area`:104, `poly_area`:107, `to_poly`:114, `mm_boxes`:122, `seg_xf`:139, `beam_xf`:146, `finish`:155, `load_data`:181, `make_portal`:192, `label`:229, `ensure_built`:243, `build_ground`:279, `build_river`:289, `build_water`:332, `build_parks`:354, `build_roads`:381, `facade_details`:417, `dormers`:444, `prism`:455, `cap`:472, `build_buildings`:480, `in_building`:538, `build_trees`:555, `build_lamps`:641, `build_landmark`:689, `lm_radius`:702, `hw`:705, `build_tower`:708, `build_cafe`:762, `clue_world`:780, `build_mystery`:784, `update_clues`:805, `clue_text`:809, `found_clue`:812, `clue_count`:827, `submit_case`:834, `facing`:856, `panel`:860, `build_crossing`:872, `build_times`:901, `build_prang`:918, `build_statue`:942, `near`:955, `in_paris`:958, `lm_pos`:962, `prompt`:966, `busy`:984, `interact`:987, `move_player`:1010, `enter`:1018, `go_home`:1041, `order`:1048, `done_count`:1052, `roll_day`:1059, `pay`:1070, `award`:1083, `tick`:1096, `save_state`:1119, `load_state`:1132
+Functions: `_init`:83, `in_area`:104, `poly_area`:107, `to_poly`:114, `mm_boxes`:122, `seg_xf`:139, `beam_xf`:146, `finish`:155, `load_data`:181, `make_portal`:192, `label`:267, `ensure_built`:281, `build_ground`:317, `build_river`:327, `build_water`:370, `build_parks`:392, `build_roads`:419, `facade_details`:455, `dormers`:482, `prism`:493, `cap`:510, `build_buildings`:518, `in_building`:576, `build_trees`:593, `build_lamps`:679, `build_landmark`:727, `lm_radius`:740, `hw`:743, `build_tower`:746, `build_cafe`:800, `clue_world`:818, `build_mystery`:822, `update_clues`:843, `clue_text`:847, `found_clue`:850, `clue_count`:865, `submit_case`:872, `facing`:894, `panel`:898, `build_crossing`:910, `build_times`:939, `build_prang`:956, `build_statue`:980, `near`:993, `in_paris`:996, `lm_pos`:1000, `prompt`:1004, `busy`:1022, `interact`:1025, `move_player`:1048, `enter`:1056, `go_home`:1079, `order`:1086, `done_count`:1090, `roll_day`:1097, `pay`:1108, `award`:1121, `tick`:1134, `save_state`:1157, `load_state`:1170
 
 ### game/promo.gd (346 lines, 15 funcs)
 
@@ -381,9 +381,9 @@ Sections: 125 appearing; 200 every frame; 402 fighting back; 490 online; 517 sav
 
 Functions: `_init`:77, `today`:80, `centre`:83, `helper`:86, `near_dome`:94, `players_here`:98, `power`:109, `four_done`:112, `send`:120, `summon`:126, `build_node`:147, `free_node`:188, `tick`:201, `engage`:241, `fight_tick`:263, `start_attack`:325, `resolve`:363, `retreat`:388, `rl`:403, `fire`:406, `blast`:421, `hit`:434, `win`:447, `party_tick`:479, `net`:491, `save_state`:518, `load_state`:521, `bar`:525, `build_hud`:528, `simple`:578, `hud_hide`:595, `hud`:600
 
-### game/v72_check.gd (621 lines, 7 funcs)
+### game/v72_check.gd (623 lines, 7 funcs)
 
-Functions: `_init`:5, `ground_y`:8, `probe`:14, `run`:34, `frames`:68, `shots`:73, `checks`:217
+Functions: `_init`:5, `ground_y`:8, `probe`:14, `run`:34, `frames`:68, `shots`:73, `checks`:225
 
 ### game/weather.gd (129 lines, 7 funcs)
 

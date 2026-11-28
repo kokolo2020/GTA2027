@@ -273,11 +273,11 @@ Functions: `_init`:40, `rng_f`:44, `lp`:48, `prop`:51, `solid`:62, `glass`:71, `
 
 Functions: `_init`:7, `_career_rank`:10, `_career_rank_name`:17, `_career_mult`:20, `_career_spots`:23, `_career_pick`:51, `_career_block_reason`:62, `_career_start`:75, `_career_lights`:94, `_career_lights_off`:109, `_career_end`:118, `_career_clear_job`:134, `_cid`:147, `_career_place_name`:150, `_career_tag`:162, `_career_person`:179, `_cj_pp`:206, `_cj_anim`:209, `_cj_pose`:215, `_cj_pose_tick`:240, `_cj_hands_up`:245, `_cj_face`:248, `_career_fire`:254, `_career_next`:318, `_career_target`:356, `_career_pay`:366, `_career_rank_line`:374, `_career_job_done`:380, `_career_job_failed`:399, `_career_tick`:407, `_taxi_meter`:469, `_taxi_tip`:489, `_cs_taxi_pickup`:495, `_taxi_seat`:528, `_cs_taxi_dropoff`:540, `_stretcher`:584, `_cs_medic_load`:596, `_cs_medic_unload`:635, `_cs_police_radio`:666, `_career_chase_over`:679, `_fire_aimed`:722, `_fire_hose_tick`:732, `_cs_fire_out`:789, `_career_bar_build`:818, `_career_steps_bbcode`:848, `_career_bar_text`:862, `_career_bar_tick`:891, `_career_hud`:908, `_cs_play`:915, `_cs_tick`:929, `_cs_skip`:946, `_cs_finish`:952, `_cs_side_cam`:968, `_cs_cam`:987, `_cs_ui`:1001, `_cs_caption`:1052, `_cs_mirror`:1071, `_siren_sound`:1118, `_siren`:1140, `_build_career_panel`:1153, `_open_careers`:1192, `_career_ach_line`:1210, `_career_close`:1225, `_career_end_close`:1229
 
-### game/cure.gd (1600 lines, 71 funcs)
+### game/cure.gd (1843 lines, 78 funcs)
 
-Sections: 224 the infected that roam the city; 415 the cure gun; 761 boss music: an original loop, made in code a little each frame so nothing stutters; 886 every frame; 1020 the boss; 1370 quest tracker rows; 1581 save
+Sections: 245 the infected that roam the city; 469 the cure gun; 831 v0.76: victory; 976 boss music: an original loop, made in code a little each frame so nothing stutters; 1101 every frame; 1242 the boss; 1613 quest tracker rows; 1824 save
 
-Functions: `_init`:126, `today`:131, `roll_day`:134, `boss_name`:143, `local`:146, `world`:149, `arena`:152, `arena_pos`:207, `players_here`:210, `power`:221, `bases`:225, `open_at`:234, `free_spot`:237, `add_zombie`:249, `populate`:267, `build_lair`:296, `make_sleeper`:351, `boss_dress`:361, `simple`:369, `despawn`:386, `targets`:412, `fire`:416, `role`:460, `mhp`:463, `add_charge`:467, `blast`:474, `cast`:524, `cast_pose`:529, `heal_fx`:592, `blast_fx`:614, `hit_zombie`:636, `cure`:648, `check_quests`:687, `beam`:697, `tone`:722, `zap`:743, `roar`:746, `thunder`:751, `show_title`:755, `music_begin`:762, `music_score`:767, `music_step`:800, `music_play`:864, `music_stop`:877, `thud`:883, `tick`:887, `move_zombies`:940, `damage`:967, `die`:972, `tick_trapped`:981, `rescue`:998, `prompt`:1021, `owns`:1028, `interact`:1031, `wake`:1034, `call_help`:1054, `send`:1067, `net`:1071, `boss_start`:1099, `hit_boss`:1164, `boss_tick`:1177, `boss_end`:1305, `goto_arena`:1364, `quest_items`:1371, `bar`:1404, `out_label`:1419, `build_hud`:1429, `hud`:1488, `set_sky`:1573, `save_state`:1582, `load_state`:1592
+Functions: `_init`:141, `today`:146, `roll_day`:149, `boss`:158, `bhp`:161, `boss_name`:164, `local`:167, `world`:170, `arena`:173, `arena_pos`:228, `players_here`:231, `power`:242, `bases`:246, `open_at`:255, `free_spot`:258, `add_zombie`:270, `populate`:288, `build_lair`:317, `make_sleeper`:372, `boss_dress`:384, `simple`:423, `despawn`:440, `targets`:466, `fire`:470, `role`:514, `mhp`:517, `add_charge`:521, `blast`:528, `cast`:578, `cast_pose`:583, `heal_fx`:661, `blast_fx`:683, `hit_zombie`:705, `cure`:717, `check_quests`:756, `beam`:766, `tone`:791, `zap`:812, `roar`:815, `thunder`:820, `show_title`:824, `level_up_now`:832, `victory`:843, `firework`:919, `fanfare`:950, `party_tick`:963, `music_begin`:977, `music_score`:982, `music_step`:1015, `music_play`:1079, `music_stop`:1092, `thud`:1098, `tick`:1102, `move_zombies`:1162, `damage`:1189, `die`:1194, `tick_trapped`:1203, `rescue`:1220, `prompt`:1243, `owns`:1250, `interact`:1253, `wake`:1256, `call_help`:1276, `send`:1289, `net`:1293, `boss_start`:1321, `hit_boss`:1389, `boss_tick`:1402, `boss_end`:1557, `goto_arena`:1607, `quest_items`:1614, `bar`:1647, `out_label`:1662, `build_hud`:1672, `hud`:1731, `set_sky`:1816, `save_state`:1825, `load_state`:1835
 
 ### game/daily.gd (227 lines, 18 funcs)
 
@@ -365,9 +365,9 @@ Functions: `_init`:19, `pt`:25, `rib`:28, `multimesh`:39, `spin`:52, `part`:57, 
 
 Functions: `_init`:23, `build`:27, `place`:93, `set_open`:97, `collect`:102, `pick_default`:142, `rebuild_rows`:153, `tick`:189
 
-### game/v72_check.gd (467 lines, 7 funcs)
+### game/v72_check.gd (515 lines, 7 funcs)
 
-Functions: `_init`:5, `ground_y`:8, `probe`:14, `run`:34, `frames`:68, `shots`:73, `checks`:175
+Functions: `_init`:5, `ground_y`:8, `probe`:14, `run`:34, `frames`:68, `shots`:73, `checks`:209
 
 ### game/weather.gd (129 lines, 7 funcs)
 

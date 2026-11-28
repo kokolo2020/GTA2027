@@ -669,7 +669,7 @@ func banner_tick() -> void:
 	banner_wi = wi
 	var w = list[wi]
 	var np := players_in(wi)
-	banner_text.text = "BOSS FIGHT in %s!  %s is fighting %s.\n%d of %d players there. Jump in!" % [String(w.W["name"]).to_upper(),String(calls[wi][1]),w.cu.boss_name(),np,w.cu.BOSS_NEED]
+	banner_text.text = "JOIN THE FIGHT NOW!\n%s vs %s in %s  ·  %d of %d players" % [String(calls[wi][1]),w.cu.boss_name(),String(w.W["name"]).to_upper(),np,w.cu.BOSS_NEED]
 	var vs: Vector2 = g.get_viewport().get_visible_rect().size
 	banner_box.reset_size()
 	banner_box.position = Vector2(vs.x*0.5-banner_box.size.x*0.5,132.0)
@@ -678,7 +678,7 @@ func banner_tick() -> void:
 	var now := Time.get_ticks_msec()/1000.0
 	if now-float(banner_seen.get(wi,-999.0)) > 30.0 and not dry:
 		g._play_coin()
-		g._show_toast("BOSS FIGHT in %s! Tap JOIN at the top of the screen." % String(w.W["name"]).to_upper())
+		g._show_toast("JOIN THE FIGHT NOW! Boss fight in %s: tap JOIN at the top of the screen." % String(w.W["name"]).to_upper())
 	banner_seen[wi] = now
 
 func join_call(i: int) -> void:
@@ -708,7 +708,7 @@ func live_line() -> String:
 	var now := Time.get_ticks_msec()/1000.0
 	for wi in calls:
 		if now-float(calls[wi][0]) < 45.0 and bool(calls[wi][2]):
-			return "BOSS FIGHT in %s: go to the Portal Summit!" % String(list[int(wi)].W["name"]).to_upper()
+			return "JOIN THE FIGHT NOW: boss in %s. Go to the Portal Summit!" % String(list[int(wi)].W["name"]).to_upper()
 	return ""
 
 func prompt() -> String:

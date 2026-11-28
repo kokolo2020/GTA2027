@@ -24,6 +24,17 @@ const MINION := [3.3,60.0,1.2,6.0]   # the boss's small minions: speed, notice r
 const MINION_MAX := 10
 const MINION_WAVE := 4
 const BOSS_NAMES := {"paris":"THE IRON GHOUL","tokyo":"THE NEON ONI","newyork":"THE TIMES TITAN","bangkok":"THE RIVER GIANT"}
+# v0.76: every city's boss is its own monster: look, size, health, speed, signature attack, minions and music pitch.
+#   sig: the second attack. meteor = five fireballs around you; line = a row of blasts from the boss straight through you;
+#   stomp = everything near the boss explodes (run away from it); cross = a plus-shaped pattern centred on you.
+const BOSSES := {
+	"paris":{"body":"3a1010","skin":"6a8a50","glow":"ff3a1a","fire":"ff7a1f","scale":4.2,"hp":12000.0,"pace":1.0,"sig":"meteor","sig_name":"METEOR RAIN","minion":"a01818","wave":4,"pitch":1.0,"deco":"horns"},
+	"tokyo":{"body":"2a0f4a","skin":"ff5ad0","glow":"3af0ff","fire":"ff4ae0","scale":3.7,"hp":10000.0,"pace":1.6,"sig":"line","sig_name":"NEON RAIL","minion":"d020c0","wave":4,"pitch":1.1,"deco":"oni"},
+	"newyork":{"body":"1c1c26","skin":"c9a23a","glow":"ffd23a","fire":"ffe27a","scale":5.0,"hp":15000.0,"pace":0.65,"sig":"stomp","sig_name":"TITAN STOMP","minion":"b08a1a","wave":3,"pitch":0.9,"deco":"crown"},
+	"bangkok":{"body":"0f3a3a","skin":"3ad0a0","glow":"3affc0","fire":"3ad0ff","scale":4.4,"hp":12000.0,"pace":1.0,"sig":"cross","sig_name":"RIVER CROSS","minion":"1a9a80","wave":6,"pitch":1.0,"deco":"fins"},
+}
+const WIN_PAY := 100000      # every player in the fight, the first win in each city each day
+const WIN_AGAIN := 10000     # later wins in the same city on the same day
 const Q_CURE := 10
 const Q_RESCUE := 5
 const Q_BRUTE := 2
@@ -77,6 +88,10 @@ var bubble: MeshInstance3D
 const SHIELD_TIME := 7.0
 const HEAL_R := 22.0
 const HEAL_AMT := 60.0
+var party_t := 0.0           # seconds of victory fireworks left
+var party_next := 0.0
+var party_at := Vector3.ZERO
+var home_t := 0.0            # after a lost fight: seconds until everyone is sent home
 var cast_kind := 0
 var cast_t := 0.0
 var cast_len := 0.0
@@ -139,6 +154,12 @@ func roll_day() -> void:
 		brutes = 0
 		paid = 0
 		trap_mask = 0
+
+func boss() -> Dictionary:
+	return BOSSES.get(String(w.W["save"]),BOSSES["paris"])
+
+func bhp() -> float:
+	return float(boss()["hp"])
 
 func boss_name() -> String:
 	return String(BOSS_NAMES.get(String(w.W["save"]),"THE BOSS"))
@@ -247,7 +268,7 @@ func free_spot(base: Vector2) -> Vector2:
 	return o.spot(w.RET+(w.RET-o.inf.post_local()).normalized()*14.0)
 
 func add_zombie(s: Vector2, kind: String, temp := false) -> void:
-	var cols := {"walker":Color("6a7d3a"),"runner":Color("7a3a3a"),"brute":Color("5a6a35"),"minion":Color("a01818")}
+	var cols := {"walker":Color("6a7d3a"),"runner":Color("7a3a3a"),"brute":Color("5a6a35"),"minion":Color(String(boss()["minion"]))}
 	var zn: Node3D = o.figure(props,Vector3(s.x,0,s.y),cols[kind],Color("8fcf5a"),true)
 	if kind == "minion":
 		# Small, quick and weak: one shot each. They glow red so you can tell them from the infected.
@@ -305,7 +326,7 @@ func build_lair() -> void:
 	scorch.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	scorch.roughness = 1.0
 	g._fc_part(props,g._bcone(lr,lr,0.04),c+Vector3(0,0.06,0),scorch)
-	g._fc_part(props,g._fc_torus(lr-0.35,lr),c+Vector3(0,0.12,0),g._fc_glow(Color("ff3a2a")))
+	g._fc_part(props,g._fc_torus(lr-0.35,lr),c+Vector3(0,0.12,0),g._fc_glow(Color(String(boss()["glow"]))))
 	g._fc_part(props,g._fc_torus(lr*0.55,lr*0.55+0.22),c+Vector3(0,0.12,0),g._fc_glow(Color("a01a10")))
 	g._fc_part(props,g._fc_torus(lr*0.22,lr*0.22+0.16),c+Vector3(0,0.12,0),g._fc_glow(Color("ff7a2a")))
 	for k in 14:
@@ -321,7 +342,7 @@ func build_lair() -> void:
 		var spike: MeshInstance3D = g._fc_part(props,g._bcone(0.04,0.9,h),c+out*lr+Vector3(0,h*0.45,0),black)
 		spike.rotation = Vector3(out.z*0.32,0,-out.x*0.32)
 		g._fc_part(props,g._bcone(0.02,0.4,h*0.5),c+out*(lr+1.3)+Vector3(0,h*0.22,0),black).rotation = Vector3(out.z*-0.25,0,out.x*0.25)
-		g._fc_part(props,g._bsph(0.3),c+out*(lr-h*0.14)+Vector3(0,h*0.9,0),g._fc_glow(Color("ff4a2a")))
+		g._fc_part(props,g._bsph(0.3),c+out*(lr-h*0.14)+Vector3(0,h*0.9,0),g._fc_glow(Color(String(boss()["glow"]))))
 	var embers := CPUParticles3D.new()
 	embers.position = c+Vector3(0,0.3,0)
 	embers.amount = 22
@@ -353,18 +374,51 @@ func make_sleeper() -> void:
 	if props == null or not is_instance_valid(props) or b_on or is_instance_valid(sleeper):
 		return
 	var a := arena()
-	sleeper = o.figure(props,Vector3(a.x,-4.9,a.y),Color("3a1010"),Color("6a8a50"),true)
-	sleeper.scale = Vector3(4.2,4.2,4.2)
+	var bd := boss()
+	var bs: float = bd["scale"]
+	sleeper = o.figure(props,Vector3(a.x,-1.17*bs,a.y),Color(String(bd["body"])),Color(String(bd["skin"])),true)
+	sleeper.scale = Vector3(bs,bs,bs)
 	sleeper.rotation.y = atan2(w.RET.x-a.x,w.RET.y-a.y)
 	boss_dress(sleeper)
 
 func boss_dress(n: Node3D) -> void:
-	# Horns, burning eyes and a red glow in the chest.
+	# Burning eyes and a glowing chest for all of them; the rest is each boss's own.
+	var bd := boss()
+	var glow := Color(String(bd["glow"]))
+	var dark: StandardMaterial3D = g._material(Color("15101a"))
 	for sx: float in [-1.0,1.0]:
-		var horn: MeshInstance3D = g._fc_part(n,g._bcone(0.0,0.07,0.42),Vector3(sx*0.16,1.92,0.02),g._material(Color("1a0d0d")))
-		horn.rotation.z = -sx*0.5
-		g._fc_part(n,g._bsph(0.045),Vector3(sx*0.075,1.66,0.17),g._fc_glow(Color("ff2a10")))
-	g._fc_part(n,g._bsph(0.16),Vector3(0,1.25,0.12),g._fc_glow(Color("ff3a1a")))
+		g._fc_part(n,g._bsph(0.045),Vector3(sx*0.075,1.66,0.17),g._fc_glow(glow))
+	g._fc_part(n,g._bsph(0.16),Vector3(0,1.25,0.12),g._fc_glow(glow))
+	match String(bd["deco"]):
+		"horns":
+			# The Iron Ghoul: short black horns.
+			for sx: float in [-1.0,1.0]:
+				var horn: MeshInstance3D = g._fc_part(n,g._bcone(0.0,0.07,0.42),Vector3(sx*0.16,1.92,0.02),dark)
+				horn.rotation.z = -sx*0.5
+		"oni":
+			# The Neon Oni: long swept horns, a neon collar and glowing bands on the arms.
+			for sx: float in [-1.0,1.0]:
+				var h2: MeshInstance3D = g._fc_part(n,g._bcone(0.0,0.06,0.75),Vector3(sx*0.2,2.02,0.0),g._fc_glow(Color("ff4ae0")))
+				h2.rotation.z = -sx*0.75
+				g._fc_part(n,g._fc_torus(0.09,0.12),Vector3(sx*0.3,1.15,0.0),g._fc_glow(glow)).rotation.z = PI*0.5
+			g._fc_part(n,g._fc_torus(0.2,0.25),Vector3(0,1.5,0),g._fc_glow(glow))
+			g._fc_part(n,g._fc_torus(0.26,0.3),Vector3(0,0.95,0),g._fc_glow(Color("ff4ae0")))
+		"crown":
+			# The Times Titan: a golden crown and heavy golden shoulders.
+			for k in 7:
+				var ca := float(k)*TAU/7.0
+				g._fc_part(n,g._bcone(0.0,0.045,0.26),Vector3(cos(ca)*0.14,1.95,sin(ca)*0.14),g._fc_glow(glow))
+			g._fc_part(n,g._fc_torus(0.13,0.17),Vector3(0,1.82,0),g._fc_glow(glow))
+			for sx: float in [-1.0,1.0]:
+				g._fc_part(n,g._bsph(0.17),Vector3(sx*0.3,1.46,0),g._material(Color("c9a23a")))
+		"fins":
+			# The River Giant: a crest of fins down its back and two tusks.
+			for k in 4:
+				var fin: MeshInstance3D = g._fc_part(n,g._bcone(0.0,0.1,0.34),Vector3(0,1.85-0.24*float(k),-0.12-0.03*float(k)),g._fc_glow(glow))
+				fin.rotation.x = -0.6
+			for sx: float in [-1.0,1.0]:
+				var tusk: MeshInstance3D = g._fc_part(n,g._bcone(0.0,0.035,0.24),Vector3(sx*0.07,1.6,0.18),g._material(Color("f2ead0")))
+				tusk.rotation.x = 0.5
 
 func simple(on: bool) -> void:
 	if on == simple_on:
@@ -524,7 +578,7 @@ func blast() -> void:
 func cast(kind: int) -> void:
 	cast_kind = kind
 	cast_t = 0.0
-	cast_len = 0.42 if kind == 1 else 1.0
+	cast_len = 0.42 if kind == 1 else (4.5 if kind == 3 else 1.0)
 
 func cast_pose(person: Dictionary, delta: float) -> void:
 	# Laid over the walk every frame: the arms cast the spell, a ball of light sits in the hands.
@@ -554,7 +608,22 @@ func cast_pose(person: Dictionary, delta: float) -> void:
 	if ar != null and ar.get_parent() is Node3D:
 		var fwd: Vector3 = -g.player.global_transform.basis.z
 		fs = 1.0 if (ar.get_parent() as Node3D).global_transform.basis.z.dot(fwd) > 0.0 else -1.0
-	if cast_kind == 1:
+	if cast_kind == 3:
+		# Victory cheer: both arms up, pumping.
+		orb.visible = false
+		var wgt := clampf(minf(u/0.08,(1.0-u)/0.15),0.0,1.0)
+		var pump := sin(cast_t*9.0)*0.35
+		for arm: Node3D in [al,ar]:
+			if arm != null:
+				var sd := signf(arm.position.x) if absf(arm.position.x) > 0.001 else 1.0
+				arm.rotation.x = lerpf(arm.rotation.x,(-2.75+pump*sd)*fs,wgt)
+				arm.rotation.z = lerpf(arm.rotation.z,sd*0.3,wgt)
+		for fa2: Node3D in [fl,fr]:
+			if fa2 != null:
+				fa2.rotation.x = lerpf(fa2.rotation.x,-0.2*fs,wgt)
+		if hd != null:
+			hd.rotation.x = lerpf(hd.rotation.x,-0.3*fs,wgt)
+	elif cast_kind == 1:
 		# Cure bolt: the right arm punches straight out, the left hand steadies it, then both relax.
 		var k := clampf(minf(u/0.18,(1.0-u)/0.4),0.0,1.0)
 		if ar != null:
@@ -752,11 +821,157 @@ func thunder() -> void:
 	tone(1.1,func(t: float) -> float:
 		return (randf()*2.0-1.0)*0.55*exp(-t*3.2)*(0.6+0.4*sin(TAU*38.0*t))+sin(TAU*(70.0-30.0*t)*t)*0.4*exp(-t*5.0),-4.0)
 
-func show_title(big: String, small: String) -> void:
+func show_title(big: String, small: String, col := Color("ff5a3a"), hold := 3.2) -> void:
 	if title_lbl == null or not is_instance_valid(title_lbl) or w.dry:
 		return
 	title_lbl.text = "%s\n%s" % [big,small]
-	title_t = 3.2
+	title_lbl.add_theme_color_override("font_color",col)
+	title_t = hold
+
+# ---------- v0.76: victory ----------
+func level_up_now() -> int:
+	# Straight to the next level (0 when already at the top).
+	if g.legacy_rules:
+		return 0
+	var table: Array = g._level_table()
+	var lv: int = g._level()
+	if lv >= table.size():
+		return 0
+	g.bonus_xp += maxi(int(table[lv])-int(g._xp()),0)
+	return lv+1
+
+func victory() -> void:
+	roll_day()
+	if g.daily != null:
+		g.daily.bump("boss")
+	var first_today := boss_day != today()
+	boss_won = true
+	boss_day = today()
+	var amount := WIN_PAY if first_today else WIN_AGAIN
+	g.cash += amount
+	var new_lv := level_up_now() if first_today else 0
+	party_t = 10.0
+	party_at = arena_pos()
+	hp = mhp()
+	if hurt != null and is_instance_valid(hurt):
+		hurt.color.a = 0.0
+	if w.dry:
+		return
+	var sub := "+%s" % g._money(amount)+("  ·  LEVEL %d!" % new_lv if new_lv > 0 else "")
+	show_title("VICTORY!",sub,Color("ffd84a"),6.0)
+	g._show_toast("%s IS DEFEATED! Every player in the fight gets %s%s." % [boss_name(),g._money(amount)," and goes up a level" if new_lv > 0 else ""])
+	g._feed_add("%s defeated in %s by %d players! +%s each" % [boss_name(),w.W["name"],players_here(),g._money(amount)],"")
+	if flash != null and is_instance_valid(flash):
+		flash.color.a = 0.8
+	cast(3)
+	fanfare()
+	# Gold bursts out of the ground where the boss fell.
+	var gold := CPUParticles3D.new()
+	gold.amount = 90
+	gold.lifetime = 2.6
+	gold.explosiveness = 0.1
+	gold.direction = Vector3(0,1,0)
+	gold.spread = 28.0
+	gold.gravity = Vector3(0,-9.0,0)
+	gold.initial_velocity_min = 9.0
+	gold.initial_velocity_max = 15.0
+	var coin := CylinderMesh.new()
+	coin.top_radius = 0.22
+	coin.bottom_radius = 0.22
+	coin.height = 0.05
+	coin.radial_segments = 8
+	coin.material = g._fc_glow(Color("ffd23a"))
+	gold.mesh = coin
+	gold.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	g.add_child(gold)
+	gold.global_position = party_at+Vector3(0,0.5,0)
+	g.get_tree().create_timer(6.0).timeout.connect(func(): gold.emitting = false)
+	g.get_tree().create_timer(9.5).timeout.connect(gold.queue_free)
+	# Three golden rings roll out, and a pillar of light stands where it fell.
+	for k in 3:
+		var ring := MeshInstance3D.new()
+		ring.mesh = g._fc_torus(0.8,1.0)
+		var rm := StandardMaterial3D.new()
+		rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		rm.albedo_color = Color(1.0,0.85,0.3,0.9)
+		ring.material_override = rm
+		g.add_child(ring)
+		ring.global_position = party_at+Vector3(0,0.15,0)
+		var tw: Tween = g.create_tween()
+		tw.tween_interval(0.35*float(k))
+		tw.tween_property(ring,"scale",Vector3(arena_clear+6.0,1.0,arena_clear+6.0),1.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(rm,"albedo_color:a",0.0,1.2)
+		tw.tween_callback(ring.queue_free)
+	var pm := StandardMaterial3D.new()
+	pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pm.albedo_color = Color(1.0,0.9,0.5,0.4)
+	var pillar: MeshInstance3D = g._fc_part(g,g._bcone(2.2,3.0,70.0),Vector3.ZERO,pm)
+	pillar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	pillar.global_position = party_at+Vector3(0,35.0,0)
+	var ptw: Tween = g.create_tween()
+	ptw.tween_interval(7.0)
+	ptw.tween_property(pm,"albedo_color:a",0.0,2.5)
+	ptw.tween_callback(pillar.queue_free)
+	g._save_progress()
+
+func firework(at: Vector3, col: Color) -> void:
+	if w.dry:
+		return
+	var fw := CPUParticles3D.new()
+	fw.one_shot = true
+	fw.explosiveness = 1.0
+	fw.amount = 54
+	fw.lifetime = 1.7
+	fw.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	fw.emission_sphere_radius = 0.3
+	fw.direction = Vector3(0,1,0)
+	fw.spread = 180.0
+	fw.gravity = Vector3(0,-5.0,0)
+	fw.initial_velocity_min = 7.0
+	fw.initial_velocity_max = 13.0
+	fw.damping_min = 2.0
+	fw.damping_max = 3.5
+	var sm := SphereMesh.new()
+	sm.radius = 0.2
+	sm.height = 0.4
+	sm.radial_segments = 4
+	sm.rings = 2
+	sm.material = g._fc_glow(col)
+	fw.mesh = sm
+	fw.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	g.add_child(fw)
+	fw.global_position = at
+	fw.emitting = true
+	g.get_tree().create_timer(2.4).timeout.connect(fw.queue_free)
+	tone(0.35,func(t: float) -> float: return (randf()*2.0-1.0)*0.5*exp(-t*9.0)+sin(TAU*(140.0-160.0*t)*t)*0.3*exp(-t*8.0),-8.0)
+
+func fanfare() -> void:
+	# Four rising notes and a held chord.
+	tone(1.6,func(t: float) -> float:
+		var notes := [523.25,659.25,783.99,1046.5]
+		var i := mini(int(t/0.16),3)
+		var f: float = notes[i]
+		var lt := t-0.16*float(i) if i < 3 else t-0.48
+		var v := sin(TAU*f*t)*0.5+sin(TAU*f*2.0*t)*0.2
+		if i == 3:
+			v += sin(TAU*659.25*t)*0.3+sin(TAU*783.99*t)*0.3
+			return v*0.45*exp(-lt*1.6)
+		return v*0.5*exp(-lt*5.0),-4.0)
+
+func party_tick(delta: float) -> void:
+	# Fireworks over the lair for ten seconds after a win.
+	if party_t <= 0.0:
+		return
+	party_t -= delta
+	party_next -= delta
+	if party_next <= 0.0:
+		party_next = 0.42
+		var cols := [Color("ffd23a"),Color("ff5a8a"),Color("5ad0ff"),Color("8dffb0"),Color("d98aff"),Color("ffffff")]
+		var a := randf()*TAU
+		var r := randf_range(4.0,arena_clear+8.0)
+		firework(party_at+Vector3(cos(a)*r,randf_range(11.0,24.0),sin(a)*r),cols[randi() % cols.size()])
 
 # ---------- boss music: an original loop, made in code a little each frame so nothing stutters ----------
 func music_begin() -> void:
@@ -869,7 +1084,7 @@ func music_play() -> void:
 		music.volume_db = -7.0
 		g.add_child(music)
 	music.stream = g.get_meta("boss_music")
-	music.pitch_scale = 1.12 if b_enraged else 1.0
+	music.pitch_scale = float(boss()["pitch"])*(1.12 if b_enraged else 1.0)
 	music.play()
 	if g.radio_player != null and is_instance_valid(g.radio_player):
 		g.radio_player.stream_paused = true
@@ -906,6 +1121,13 @@ func tick(delta: float) -> void:
 	if bubble != null and is_instance_valid(bubble):
 		bubble.visible = shield_t > 0.0
 	music_step(4)
+	party_tick(delta)
+	if home_t > 0.0:
+		home_t -= delta
+		if home_t <= 0.0:
+			# The fight was lost: everyone goes home to the Portal Summit.
+			w.go_home()
+			return
 	warn_t = maxf(0.0,warn_t-delta)
 	if o.active:
 		# The outbreak mission has its own zombies and health; the gun works on them.
@@ -1034,7 +1256,7 @@ func interact(_txt: String) -> void:
 func wake() -> void:
 	if b_on or props == null:
 		return
-	boss_start(BOSS_HP,0.0)
+	boss_start(bhp(),0.0)
 	send({"a":"start","hp":int(b_hp),"e":0})
 	call_t = clk
 	if not w.dry:
@@ -1075,7 +1297,7 @@ func net(p: Dictionary) -> void:
 	if not here:
 		return
 	if a == "start" or a == "st":
-		var rhp := clampf(float(p.get("hp",0.0)),0.0,BOSS_HP)
+		var rhp := clampf(float(p.get("hp",0.0)),0.0,bhp())
 		var e := clampf(float(p.get("e",0.0)),0.0,BOSS_TIME)
 		if not b_on:
 			if rhp > 0.0 and e < BOSS_TIME-5.0:
@@ -1110,8 +1332,11 @@ func boss_start(start_hp: float, elapsed: float) -> void:
 	if is_instance_valid(sleeper):
 		sleeper.queue_free()
 	sleeper = null
-	b_node = o.figure(props,Vector3(a.x,-4.9,a.y),Color("3a1010"),Color("6a8a50"),true)
-	b_node.scale = Vector3(4.2,4.2,4.2)
+	var bd := boss()
+	var bs: float = bd["scale"]
+	var bglow := Color(String(bd["glow"]))
+	b_node = o.figure(props,Vector3(a.x,-1.17*bs,a.y),Color(String(bd["body"])),Color(String(bd["skin"])),true)
+	b_node.scale = Vector3(bs,bs,bs)
 	b_node.rotation.y = atan2(w.RET.x-a.x,w.RET.y-a.y)
 	b_rise = 0.0 if elapsed < 1.0 else 9.0
 	b_bolt = 0.4
@@ -1122,15 +1347,15 @@ func boss_start(start_hp: float, elapsed: float) -> void:
 	var lr := maxf(arena_clear-2.0,5.0)
 	for k in 20:
 		var fa := float(k)*TAU/20.0
-		var fl: MeshInstance3D = g._fc_part(props,g._bcone(0.02,0.55,2.6),Vector3(a.x+cos(fa)*lr,1.3,a.y+sin(fa)*lr),g._fc_glow(Color("ff7a1f") if k % 2 == 0 else Color("ffc23a")))
+		var fl: MeshInstance3D = g._fc_part(props,g._bcone(0.02,0.55,2.6),Vector3(a.x+cos(fa)*lr,1.3,a.y+sin(fa)*lr),g._fc_glow(Color(String(bd["fire"])) if k % 2 == 0 else bglow.lightened(0.35)))
 		b_fire.append(fl)
 	show_title(boss_name(),"HAS AWAKENED")
 	music_play()
 	boss_dress(b_node)
-	var lb: Label3D = w.label(b_node,boss_name(),Vector3(0,2.6,0),Color("ff5a3a"),30)
+	var lb: Label3D = w.label(b_node,boss_name(),Vector3(0,2.6,0),bglow.lightened(0.2),30)
 	lb.visibility_range_end = 400.0
 	b_light = OmniLight3D.new()
-	b_light.light_color = Color("ff2a1a")
+	b_light.light_color = bglow
 	b_light.light_energy = 3.0
 	b_light.omni_range = 26.0
 	b_light.shadow_enabled = false
@@ -1141,19 +1366,19 @@ func boss_start(start_hp: float, elapsed: float) -> void:
 	var rm := StandardMaterial3D.new()
 	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	rm.albedo_color = Color(1.0,0.15,0.1,0.8)
+	rm.albedo_color = Color(bglow.r,bglow.g,bglow.b,0.85)
 	b_ring.material_override = rm
 	b_ring.visible = false
 	props.add_child(b_ring)
 	b_mets.clear()
 	b_kind = 0
-	for k in 5:
+	for k in 9:
 		var mr := MeshInstance3D.new()
 		mr.mesh = g._fc_torus(2.3,2.7)
 		mr.material_override = rm
 		mr.visible = false
 		props.add_child(mr)
-		var ball: MeshInstance3D = g._fc_part(props,g._bsph(0.9),Vector3.ZERO,g._fc_glow(Color("ff8a2a")))
+		var ball: MeshInstance3D = g._fc_part(props,g._bsph(0.9),Vector3.ZERO,g._fc_glow(Color(String(bd["fire"]))))
 		ball.visible = false
 		b_mets.append([mr,ball,Vector3.ZERO])
 	shake = 2.2
@@ -1180,12 +1405,12 @@ func boss_tick(delta: float, p: Vector3) -> void:
 		boss_end(false)
 		return
 	var a := arena()
-	var enraged := b_hp < BOSS_HP*0.5
+	var enraged := b_hp < bhp()*0.5
 	if enraged and not b_enraged:
 		b_enraged = true
 		show_title("ENRAGED!",boss_name()+" is faster and angrier")
 		if music != null:
-			music.pitch_scale = 1.12
+			music.pitch_scale = float(boss()["pitch"])*1.12
 	# Flames flicker, lightning strikes.
 	for k in b_fire.size():
 		if is_instance_valid(b_fire[k]):
@@ -1201,10 +1426,10 @@ func boss_tick(delta: float, p: Vector3) -> void:
 	b_rise += delta
 	if is_instance_valid(b_node) and b_rise < 2.4:
 		# Climbing out of the ground: the earth shakes, it does not walk yet.
-		b_node.position.y = lerpf(-4.9,0.0,ease(b_rise/2.4,0.5))
+		b_node.position.y = lerpf(-1.17*float(boss()["scale"]),0.0,ease(b_rise/2.4,0.5))
 		shake = maxf(shake,0.5)
 	elif is_instance_valid(b_node):
-		var k := b_t*(0.5 if enraged else 0.32)
+		var k := b_t*(0.5 if enraged else 0.32)*float(boss()["pace"])
 		var np := Vector2(a.x+cos(k)*arena_r,a.y+sin(k*1.31)*arena_r)
 		var mv := np-Vector2(b_node.position.x,b_node.position.z)
 		b_node.position.x = np.x
@@ -1228,13 +1453,38 @@ func boss_tick(delta: float, p: Vector3) -> void:
 			b_ring.position = b_slam_at
 			b_ring.visible = true
 		else:
+			# The signature attack: a different pattern of blasts for every boss.
 			b_slam = 1.7
+			var sig := String(boss()["sig"])
+			var bpos := Vector3(b_node.position.x,0.12,b_node.position.z) if is_instance_valid(b_node) else b_slam_at
+			var to_me := b_slam_at-bpos
+			to_me.y = 0.0
+			var dir := to_me.normalized() if to_me.length() > 0.5 else Vector3(1,0,0)
+			var side := Vector3(-dir.z,0,dir.x)
 			for k in b_mets.size():
-				var off := Vector3.ZERO if k == 0 else Vector3(randf_range(-9.0,9.0),0,randf_range(-9.0,9.0))
-				b_mets[k][2] = b_slam_at+off
-				(b_mets[k][0] as MeshInstance3D).position = b_slam_at+off
-				(b_mets[k][0] as MeshInstance3D).visible = true
-				(b_mets[k][1] as MeshInstance3D).visible = true
+				var at := b_slam_at
+				var used := true
+				match sig:
+					"line":
+						# Neon rail: nine blasts in a straight row from the boss through you. Step sideways.
+						at = b_slam_at+dir*(float(k)-4.0)*4.6
+					"stomp":
+						# Titan stomp: a ring of blasts all round the boss, and one under it. Get away from it.
+						at = bpos if k == 0 else bpos+Vector3(cos(float(k)*TAU/8.0),0,sin(float(k)*TAU/8.0))*7.5
+					"cross":
+						# River cross: a plus centred on you. The corners are safe.
+						at = b_slam_at+([Vector3.ZERO,dir,-dir,side,-side,dir*2.0,-dir*2.0,side*2.0,-side*2.0][k] as Vector3)*4.8
+					_:
+						# Meteor rain: one on you, four scattered round you.
+						used = k < 5
+						at = b_slam_at+(Vector3.ZERO if k == 0 else Vector3(randf_range(-9.0,9.0),0,randf_range(-9.0,9.0)))
+				b_mets[k][2] = at if used else Vector3(0,-500,0)
+				(b_mets[k][0] as MeshInstance3D).position = at
+				(b_mets[k][0] as MeshInstance3D).visible = used
+				(b_mets[k][1] as MeshInstance3D).visible = used
+			if not w.dry:
+				show_title(String(boss()["sig_name"]),"")
+				title_t = 1.2
 	elif b_slam_live and b_kind == 1:
 		for m in b_mets:
 			var tp: Vector3 = m[2]
@@ -1247,9 +1497,10 @@ func boss_tick(delta: float, p: Vector3) -> void:
 			thud()
 			var burned := false
 			for m in b_mets:
+				var was_used: bool = (m[0] as MeshInstance3D).visible
 				(m[0] as MeshInstance3D).visible = false
 				(m[1] as MeshInstance3D).visible = false
-				if not w.dry:
+				if not w.dry and was_used:
 					g._quick_fx(w.C+(m[2] as Vector3))
 				if Vector2((m[2] as Vector3).x,(m[2] as Vector3).z).distance_to(local(p)) < 3.2:
 					burned = true
@@ -1278,13 +1529,14 @@ func boss_tick(delta: float, p: Vector3) -> void:
 			if String(z[2]) == "minion":
 				have += 1
 		var bl := Vector2(b_node.position.x,b_node.position.z)
-		for k in mini(MINION_WAVE+(1 if enraged else 0),MINION_MAX-have):
-			var ma := float(k)*TAU/float(MINION_WAVE+1)+b_t
+		var wave: int = int(boss()["wave"])
+		for k in mini(wave+(1 if enraged else 0),MINION_MAX-have):
+			var ma := float(k)*TAU/float(wave+1)+b_t
 			add_zombie(bl+Vector2(cos(ma),sin(ma))*3.5,"minion",true)
 		if have < MINION_MAX and not w.dry:
 			g._show_toast("%s releases its minions! One shot each: they charge your BLAST." % boss_name())
 	# Roars at 75, 50 and 25 percent: runners rush in.
-	var stage := 3-int(ceil(clampf(b_hp/BOSS_HP,0.0,1.0)*4.0-0.001))
+	var stage := 3-int(ceil(clampf(b_hp/bhp(),0.0,1.0)*4.0-0.001))
 	if stage > b_roars and b_roars < 3:
 		b_roars += 1
 		shake = 1.0
@@ -1340,26 +1592,17 @@ func boss_end(won: bool, quiet := false) -> void:
 	if quiet:
 		return
 	if not won:
-		if not w.dry:
-			g._show_toast("%s went back to sleep. Bring %d players and wake it again!" % [boss_name(),BOSS_NEED])
+		# Time ran out: the team lost. Everyone is sent home in a moment.
+		home_t = 2.5
+		if w.dry:
+			home_t = 0.0
+			w.go_home()
+		else:
+			show_title("TIME'S UP!","%s wins this round" % boss_name(),Color("ff5a3a"),2.5)
+			g._show_toast("Time's up! %s won this round. Back home you go: bring %d players and try again." % [boss_name(),BOSS_NEED])
 		return
 	shake = 1.5
-	show_title("VICTORY!",boss_name()+" is defeated")
-	roll_day()
-	if g.daily != null:
-		g.daily.bump("boss")
-	if not boss_won:
-		boss_won = true
-		boss_day = today()
-		w.pay(int(BOSS_FIRST[0]),int(BOSS_FIRST[1]),"%s DEFEATED" % boss_name())
-	elif boss_day != today():
-		boss_day = today()
-		w.pay(int(BOSS_DAILY[0]),int(BOSS_DAILY[1]),"%s DEFEATED AGAIN" % boss_name())
-	elif not w.dry:
-		g._show_toast("%s is down again! The reward is paid once a day." % boss_name())
-	if not w.dry:
-		g._feed_add("%s defeated in %s by %d players!" % [boss_name(),w.W["name"],players_here()],"")
-		g._save_progress()
+	victory()
 
 func goto_arena() -> void:
 	# A player who tapped JOIN lands just outside the lair.
@@ -1559,7 +1802,7 @@ func hud(p: Vector3) -> void:
 		boss_lbl.position = Vector2(vs.x*0.5-450.0,by)
 		boss_bg.position = Vector2(vs.x*0.5-310.0,by+34.0)
 		power_lbl.position = Vector2(vs.x*0.5-450.0,by+66.0)
-		boss_fill.size.x = 612.0*clampf(b_hp/BOSS_HP,0.0,1.0)
+		boss_fill.size.x = 612.0*clampf(b_hp/bhp(),0.0,1.0)
 		var left := maxi(0,int(BOSS_TIME-b_t))
 		boss_lbl.text = "%s   %d:%02d" % [boss_name(),left/60,left % 60]
 		var np := players_here()

@@ -76,6 +76,40 @@ func shots() -> void:
 	ws.go_portal()
 	await frames(50)
 	await g._save_shot("v72-1-terrace")
+	if OS.get_environment("HC_ONLY") == "bosses":
+		for wi2 in ws.list.size():
+			var wb = ws.list[wi2]
+			await wb.enter()
+			await frames(40)
+			var cb = wb.cu
+			cb.force_players = 3
+			g.player.position = cb.arena_pos()+Vector3(0,0.9,cb.arena_clear-3.0)
+			cb.wake()
+			cb.b_rise = 5.0
+			cb.b_slam = 0.0
+			cb.b_kind = 1
+			await frames(14)
+			g.cam_lock = true
+			var bp2: Vector3 = wb.C+cb.b_node.position
+			g.camera.position = bp2+Vector3(7,4.5,cb.arena_clear+2.0)
+			g.camera.look_at(bp2+Vector3(0,4.0,0))
+			await frames(5)
+			await g._save_shot("v76-boss-%d-%s" % [wi2,wb.W["save"]])
+			if wi2 == 0:
+				wb.dry = false
+				cb.boss_day = ""
+				cb.hit_boss(99999.0,true)
+				g.camera.position = cb.arena_pos()+Vector3(6,5,cb.arena_clear+12.0)
+				g.camera.look_at(cb.arena_pos()+Vector3(0,10.0,0))
+				await frames(9)
+				await g._save_shot("v76-victory")
+				wb.dry = true
+			else:
+				cb.boss_end(false,true)
+			g.cam_lock = false
+			wb.go_home()
+			await frames(10)
+		return
 	if OS.get_environment("HC_ONLY") == "banner":
 		ws.dry = false
 		for k in 6:
@@ -342,14 +376,28 @@ func checks() -> void:
 		cu.tick(0.01)
 		print(tag," death -> at_portal=",w.near(g.player.position,w.ret_pos,8.0)," hp=",cu.hp," boss_still_on=",cu.b_on)
 		var c1: int = g.cash
+		var lv1: int = g._level()
+		var top: bool = lv1 >= g._level_table().size()
 		cu.hit_boss(99999.0,true)
-		print(tag," boss won=",cu.boss_won," on=",cu.b_on," reward=",g.cash-c1," runners_left=",cu.roam.size())
-		if not cu.boss_won or cu.b_on or g.cash-c1 != 25000:
+		print(tag," ",cu.boss_name()," hp=",cu.bhp()," sig=",cu.boss()["sig"]," won=",cu.boss_won," on=",cu.b_on," reward=",g.cash-c1," level ",lv1,"->",g._level()," party=",cu.party_t > 0.0)
+		if not cu.boss_won or cu.b_on or g.cash-c1 != 100000 or (not top and g._level() != lv1+1) or cu.party_t <= 0.0:
+			fails += 1
+		var c2: int = g.cash
+		cu.wake()
+		cu.hit_boss(99999.0,true)
+		print(tag," second win same day pays ",g.cash-c2," level stays ",g._level() == (lv1 if top else lv1+1))
+		if g.cash-c2 != 10000:
 			fails += 1
 		cu.wake()
 		cu.b_t = cu.BOSS_TIME-0.1
 		cu.boss_tick(0.3,g.player.position)
-		print(tag," timeout -> on=",cu.b_on)
+		await g.get_tree().physics_frame
+		print(tag," timeout -> on=",cu.b_on," sent_home=",not w.in_paris(g.player.position))
+		if cu.b_on or w.in_paris(g.player.position):
+			fails += 1
+		await w.enter()
+		await g.get_tree().physics_frame
+		cu.tick(0.1)
 		cu.force_players = 0
 		var cf2 := ConfigFile.new()
 		w.save_state(cf2)

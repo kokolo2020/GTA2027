@@ -377,7 +377,7 @@ func _ready() -> void:
 	_radio_refresh()
 	if radio_station > 0 and "--smoke-test" not in OS.get_cmdline_user_args() and "--shots" not in OS.get_cmdline_user_args():
 		_radio_set(radio_station)
-	_show_toast("BONKERS CITY: BOSS NIGHT! 0.75.1: when anyone wakes a boss, a big JOIN banner appears on every other player's screen. Roles are at the Portal Summit.")
+	_show_toast("BONKERS CITY: BOSS NIGHT! 0.76.0: four different bosses, a victory party with $100,000 and a level for every player, and JOIN THE FIGHT NOW calls.")
 	booted = true
 	if OS.get_cmdline_user_args().is_empty():
 		get_tree().create_timer(5.0).timeout.connect(daily.check_in)
